@@ -3,7 +3,7 @@
 > **상태**: 설계 완료 (구현 대기)
 > **작성일**: 2026-07-23
 > **관련 원칙**: P4(증권사명 침투 금지) · P7(블로킹 금지) · P10(SSOT) · P11(폴링 금지) · P13(설정 메모리 상주) · P15(단일 주문 경로) · P16(살아있는 경로) · P20(폴백 금지) · P21(사용자 투명성) · P22(데이터 정합성) · P23(일관성) · P24(단순성) · P25(격리된 실패)
-> **관련 파일**: `backend/app/core/ls_connector.py` · `backend/app/pipelines/pipeline_compute_tick_handlers.py` · `backend/app/domain/buy_filter.py` · `backend/app/services/engine_radar.py` · `backend/app/services/engine_state.py` · `backend/app/core/engine_settings.py` · `backend/app/core/settings_defaults.py` · `backend/app/core/settings_store.py` · `frontend/src/pages/buy-settings.ts` · `frontend/src/pages/general-settings.ts` · `frontend/src/types/index.ts`
+> **관련 파일**: `backend/app/core/ls_connector.py` · `backend/app/pipelines/pipeline_compute_tick_handlers.py` · `backend/app/domain/buy_filter.py` · `backend/app/services/engine_radar.py` · `backend/app/services/engine_state.py` · `backend/app/services/sector_data_provider.py` · `backend/app/core/engine_settings.py` · `backend/app/core/settings_defaults.py` · `backend/app/core/settings_store.py` · `frontend/src/pages/buy-settings.ts` · `frontend/src/pages/buy-target.ts` · `frontend/src/pages/general-settings.ts` · `frontend/src/types/index.ts`
 > **관련 API 스펙**: `docs/api_specs/LS증권API/websocket/실시간/실시간뉴스제목패킷NWS.txt`
 
 ---
@@ -465,6 +465,27 @@ engine_state.state.news_boost_ttl_sec = int(settings.get("news_boost_ttl_sec", 3
 
 **주의**: 설정 변경 시에도 동기화 필요 — 기존 설정 변경 핸들러(실시간 설정 갱신)와 동일 위치에서 갱신.
 
+### 3.10 매수후보 데이터 프로바이더에 news_boost 필드 추가
+
+**파일**: `backend/app/services/sector_data_provider.py`
+
+매수후보 딕셔너리 생성 함수(라인 135-153)에 `news_boost` 필드 추가 — 프론트엔드 매수후보 테이블 뉴스 가산점 컬럼용:
+
+```python
+from backend.app.services.engine_radar import get_news_boost_cache
+
+# 매수후보 딕셔너리 내 (라인 149-152 부근)
+_news_cache = get_news_boost_cache()
+# ...
+"boost_score": s.boost_score,
+"news_boost": _news_cache.get(s.code, 0.0),  # 신규 — 뉴스 가산점 (0.0 = 미부여)
+"high_5d": int(cache_entry.get("high_5d_price", 0) or 0),
+"order_ratio": cache_entry.get("order_ratio"),
+"program_net_buy": cache_entry.get("program_net_buy"),
+```
+
+**주의**: `get_news_boost_cache()`는 만료 항목 lazy 제거 후 반환. 매수후보 딕셔너리 생성 시점에 한 번 호출하여 모든 종목에 O(1) 조회. P7 부합 (매 종목마다 캐시 순회 아님).
+
 ---
 
 ## 4. 프론트엔드 변경 사항
@@ -480,6 +501,12 @@ boost_news_on: boolean
 boost_news_score: number
 news_boost_ttl_sec: number
 news_keywords: string  // 쉼표 구분 문자열
+```
+
+`SectorStock` 인터페이스에 신규 필드 추가 (매수후보 테이블 컬럼용):
+
+```typescript
+news_boost?: number  // 뉴스 가산점 (0 = 미부여, >0 = 부여됨)
 ```
 
 ### 4.2 매수설정 — 뉴스 가산점 토글/점수 UI
@@ -534,45 +561,111 @@ boostNewsScoreInput = createNumInput({
 
 **UI 표시**: "실시간 뉴스 가산점" — 기존 3개(5일고가 돌파, 호가 잔량 비율, 프로그램 순매수)와 동일 위계.
 
-### 4.3 일반설정 — 호재 키워드 편집 섹션
+### 4.3 일반설정 — 호재 키워드 편집 섹션 (자동매매 탭)
 
 **파일**: `frontend/src/pages/general-settings.ts`
 
-#### 4.3.1 섹션 위치
+#### 4.3.1 배치 위치 — 자동매매 탭 내 "화면 표시" 섹션 이후
 
-"전역매매설정 (매매 안전장치)" 섹션(라인 683)과 "화면 표시" 섹션(라인 689) 사이에 신규 섹션 추가:
+일반설정 페이지는 5개 탭(자동매매 / 시간 설정 / 투자모드 / API 설정 / 텔레그램)으로 구성. 호재 키워드 편집은 **자동매매 탭**(`renderAutoTradeTab()`, 라인 675-692) 내에 배치.
 
-```
-sectionTitle('실시간 뉴스 설정')
-```
+**선택 근거 (P23/P24)**:
+- 자동매매 탭은 마스터토글 → 자동매수/매도 → 전역매매설정(매매 안전장치) → 화면 표시 순서로 매매 관련 설정이 모여있음
+- 호재 키워드 사전은 매수 로직의 일부 → 매매 설정과 동일 탭이 일관성 부합 (P23)
+- 별도 탭 생성은 탭 1개 추가에 비해 키워드 1개 섹션이 과잉 (P24 단순성)
 
-#### 4.3.2 키워드 입력 UI
-
-텍스트에어리어 + 쉼표/줄바꿈 구분 입력 (기존 공통 컴포넌트 재사용, P23):
+`renderAutoTradeTab()` 내 "화면 표시" 섹션(라인 688-691) 이후에 신규 섹션 추가:
 
 ```typescript
-// 호재 키워드 입력 (쉼표 또는 줄바꿈 구분)
-const keywordsInput = createTextAreaInput({
-  value: '',
-  onChange: v => { vals.news_keywords = v; saveHelper!.autoSave('news_keywords', v) },
-  placeholder: '수주, 최대실적, 특허, 공급계약, ...',
-  name: 'news_keywords',
-})
+// renderAutoTradeTab() 내 (라인 691 이후)
+// 실시간 뉴스 설정 섹션
+container.appendChild(sectionTitle('실시간 뉴스 설정'))
+container.appendChild(createDescText('뉴스 제목에 포함된 호재 키워드 감지 시 매수 가산점 부여. 키워드는 쉼표로 구분하여 입력.'))
+container.appendChild(buildNewsKeywordsRow())
+container.appendChild(buildNewsTtlRow())
 ```
 
-**주의**: `createTextAreaInput`이 기존 공통 컴포넌트에 없으면, `components/common/`에서 텍스트 입력 패턴 검색 후 동일 패턴으로 추가 (P23 공통 자산 재사용). 없을 경우 `createNumInput` 패턴 참조하여 신규 생성.
+#### 4.3.2 키워드 입력 UI — 태그 칩 패턴
 
-#### 4.3.3 TTL 설정 (옵션)
+기본 호재 단어가 미리 채워져 있고 사용자가 추가/삭제 가능한 방식. 기존 공통 컴포넌트(`components/common/`)에서 태그/칩 입력 패턴이 있으면 재사용 (P23). 없을 경우 신규 생성.
 
-뉴스 가산점 유지 시간(`news_boost_ttl_sec`)도 동일 섹션에 숫자 입력으로 추가 — 기본 300초(5분).
+**UI 구조**:
+- 키워드 입력 필드 + 추가 버튼
+- 입력된 키워드가 칩(chip) 형태로 나열, 각 칩에 × 삭제 버튼
+- 기본값: `수주, 최대실적, 특허, 공급계약, 무상증자, 세계최초, MOU, FDA승인, 독점공급, 대규모수주`
 
-### 4.4 매수후보 테이블 — 뉴스 가산점 표시 (P21)
+```typescript
+function buildNewsKeywordsRow(): HTMLElement {
+  // 키워드 칩 컨테이너 + 입력 필드
+  // vals.news_keywords (쉼표 구분 문자열) → 칩 배열로 변환하여 렌더링
+  // 칩 삭제 시 vals.news_keywords 갱신 + autoSave
+  // 입력 필드에서 Enter 또는 추가 버튼 시 신규 칩 추가 + vals.news_keywords 갱신 + autoSave
+}
+```
 
-**파일**: 매수후보 테이블 렌더링 파일 (추후 조사에서 특정)
+**저장 방식**: 칩 추가/삭제 시 `vals.news_keywords`를 쉼표 구분 문자열로 재조합하여 `settingsMgr.saveSection({ news_keywords: ... })` 호출 — 기존 설정 저장 패턴과 일관 (P23).
 
-매수후보 테이블에 뉴스 가산점이 반영된 종목 표시 — 기존 가산점 표시 패턴(있다면)과 일관성 유지. 사용자가 "이 종목에 왜 뉴스 가산점이 붙었지?" 확인 가능 (P21).
+**주의**: 태그 칩 컴포넌트가 `components/common/`에 없을 경우, 2세션 심층 사전조사에서 기존 칩/배지 컴포넌트(`badge.ts` 등) 재사용 가능성 검토 후 신규 컴포넌트 생성 여부 결정.
 
-**상세**: 2세션 심층 사전조사에서 매수후보 테이블 컬럼 구조 확인 후 구체화.
+#### 4.3.3 TTL 설정
+
+뉴스 가산점 유지 시간(`news_boost_ttl_sec`)을 동일 섹션에 숫자 입력으로 추가 — 기본 300초(5분). 기존 `createNumInput` 패턴 재사용:
+
+```typescript
+function buildNewsTtlRow(): HTMLElement {
+  // createNumInput({ value: 300, onChange: ..., name: 'news_boost_ttl_sec' })
+  // 라벨: "뉴스 가산점 유지 시간(초)"
+}
+```
+
+### 4.4 매수후보 테이블 — 뉴스 가산점 컬럼 추가 (P21)
+
+**파일**: `frontend/src/pages/buy-target.ts`
+
+#### 4.4.1 컬럼 위치 — 5일고가 컬럼 왼쪽
+
+현재 매수후보 테이블 컬럼 순서 (12개):
+```
+순번 → 종목코드 → 종목명 → 현재가 → 전일대비 → 등락률 → 호가잔량비 → 프.순.매 → 5일고가 → 가산점 → 제한 → 원인
+```
+
+뉴스 가산점 컬럼을 **5일고가 컬럼(`high_5d`, 라인 100) 직전**에 삽입. 변경 후 순서 (13개):
+```
+순번 → 종목코드 → 종목명 → 현재가 → 전일대비 → 등락률 → 호가잔량비 → 프.순.매 → 📰뉴스 → 5일고가 → 가산점 → 제한 → 원인
+```
+
+#### 4.4.2 컬럼 정의 추가
+
+`COLUMNS` 배열(라인 18) 내 `high_5d` 컬럼(라인 100-109) 직전에 삽입:
+
+```typescript
+{
+  key: 'news_boost', label: '📰뉴스', align: 'center', type: 'news', maxWidth: 70,
+  render: (t) => {
+    const newsScore = Number(t.news_boost) || 0
+    if (newsScore <= 0) return ''
+    const span = document.createElement('span')
+    span.textContent = '📰'
+    span.style.color = COLOR.up
+    span.style.fontSize = FONT_SIZE.body
+    span.title = `뉴스 가산점 ${newsScore.toFixed(1)}점 부여됨`
+    return span
+  },
+},
+```
+
+**UI 표시 방식**:
+- 뉴스 가산점 미부여(`news_boost <= 0`): 빈칸
+- 뉴스 가산점 부여(`news_boost > 0`): 📰 이모지 + hover 시 tooltip으로 점수 표시
+- 색상: `COLOR.up`(상승색) — 호재를 직관적으로 표현 (기존 5일고가 돌파 ▲ 아이콘과 동일 색상, P23 일관성)
+
+**주의**: 이모지 사용은 사용자가 명시적으로 요청한 UI 표시이므로 예외 허용. 기존 5일고가 돌파 표시(`▲` 아이콘, 라인 35-43)와 동일한 "직관적 아이콘" 패턴 (P23).
+
+#### 4.4.3 데이터 소스
+
+`SectorStock.news_boost` 필드(4.1에서 추가) → `sector_data_provider.py`의 매수후보 딕셔너리(3.10에서 추가)에서 전달. 프론트엔드는 WS 이벤트로 수신한 매수후보 데이터에서 `t.news_boost`를 읽어 렌더링.
+
+**갱신 시점**: 매수후보 테이블이 갱신될 때마다 `news_boost` 필드도 함께 갱신 — 기존 `boost_score`/`high_5d`/`program_net_buy` 갱신과 동일 경로 (P10 SSOT, P16 살아있는 경로).
 
 ---
 
@@ -588,9 +681,9 @@ const keywordsInput = createTextAreaInput({
 | **P15 (단일 주문 경로)** | ✅ | 뉴스 가산점은 매수 점수에만 가산. 매도 로직(`execute_sell()`) 우회 없음. 악재 자동 손절 제외 |
 | **P16 (살아있는 경로)** | ✅ | `subscribe_news()`가 `connect()`/재연결 루프에 연결됨. `_handle_nws_news()`가 디스패치에 연결됨. `calculate_boost_score()`에 news 분기 연결됨. dead code 없음 |
 | **P20 (폴백 금지)** | ✅ | code 빈 뉴스 → 폴백 없이 스킵 + `logger.debug()`. 키워드 미설정 → 가산점 0 (빈값 폴백 아님). `except: pass` 없음 — 모든 예외 `logger.error(exc_info=True)` |
-| **P21 (사용자 투명성)** | ✅ | 매수설정에 가산점 토글/점수 UI. 일반설정에 키워드 편집 UI. 매수후보 테이블에 뉴스 가산점 표시. 뉴스 가산점 부여 시 `logger.info()`로 종목+제목 로깅 |
+| **P21 (사용자 투명성)** | ✅ | 매수설정에 가산점 토글/점수 UI. 일반설정 자동매매 탭에 키워드 편집 UI. 매수후보 테이블에 📰뉴스 컬럼(5일고가 왼쪽)으로 가산점 부여 종목 한눈에 확인. 뉴스 가산점 부여 시 `logger.info()`로 종목+제목 로깅 |
 | **P22 (데이터 정합성)** | ✅ | `news_boost_cache`는 파생 데이터(원본: NWS 패킷 + 키워드 사전). 중복 저장 없음. TTL 만료 시 자동 제거로 정합성 유지 |
-| **P23 (일관성)** | ✅ | NWS 구독 = JIF 패턴. NWS 핸들러 = PGM 캐시 갱신 패턴. 가산점 UI = 기존 3개와 동일 패턴. 용어: "뉴스" (뉴스 가산점, 호재 키워드). `_TR_KOR` 딕셔너리 확장 |
+| **P23 (일관성)** | ✅ | NWS 구독 = JIF 패턴. NWS 핸들러 = PGM 캐시 갱신 패턴. 가산점 UI = 기존 3개와 동일 패턴. 📰뉴스 컬럼 = 기존 5일고가 ▲ 아이콘과 동일 직관적 아이콘 패턴. 키워드 편집 = 자동매매 탭 내 매매 설정 섹션과 동일 위계. 용어: "뉴스" (뉴스 가산점, 호재 키워드). `_TR_KOR` 딕셔너리 확장 |
 | **P24 (단순성)** | ✅ | 기존 3개 가산점 패턴 그대로 4번째 추가 — 신규 추상화 없음. 키워드 사전 = 단순 리스트. TTL = lazy 만료 (별도 타이머 태스크 없음). LLM 미사용 |
 | **P25 (격리된 실패)** | ✅ | NWS 구독 실패 → `logger.warning()` 후 계속 (JIF와 동일). NWS 핸들러 예외 → `logger.error()` 후 다른 틱 처리 유지. LS WebSocket 끊김 → 키움 체결/호가 정상 작동. 키움-only 환경 → 뉴스 가산점 0점 (에러 아님) |
 
@@ -601,8 +694,10 @@ const keywordsInput = createTextAreaInput({
 | 항목 | 결정 | 비고 |
 |---|---|---|
 | 점수 유지 시간 | **5분 (300초)** | 사용자 선택. `news_boost_ttl_sec` 기본값 |
-| 키워드 편집 위치 | **일반설정 페이지 분리** | 사용자 제안 + 기술 검토 합의. 매수설정은 가산점 토글/점수만 |
+| 키워드 편집 위치 | **일반설정 자동매매 탭 내 섹션** | 사용자 제안(일반설정 분리) + 기술 검토 합의. 자동매매 탭 "화면 표시" 섹션 이후. 매수설정은 가산점 토글/점수만 |
+| 키워드 편집 UI | **태그 칩 패턴 + 기본값 미리 채움** | 사용자 보완 요청. 기본 호재 단어 미리 입력, 사용자 추가/삭제 가능 |
 | 후보 외 종목 처리 | **매수후보 테이블 내 종목만** | 1차 필터(거래대금) 통과한 종목만. 사용자 결정 |
+| 매수후보 테이블 표시 | **📰뉴스 컬럼 신규 추가 (5일고가 왼쪽)** | 사용자 보완 요청. 뉴스 가산점 부여 종목 한눈에 확인 |
 | LLM 분류 | **제외** | 정적 키워드 사전만. 효과 검증 후 별도 설계 |
 | 악재 자동 손절 | **제외** | P15 위반 + 낚시성 뉴스 위험 |
 
@@ -612,10 +707,10 @@ const keywordsInput = createTextAreaInput({
 
 2세션에서 수행할 심층 사전조사 + 태스크 파일 작성 항목:
 
-1. **의존성 조사**: `_on_ws_message()` 디스패치 구조 정확한 위치, `engine_state` 설정 동기화 시점, 매수후보 테이블 컬럼 구조
-2. **영향 범위**: 백엔드 9파일 + 프론트엔드 3파일 + 테스트 1파일 (`test_buy_filter.py`)
-3. **기존 공통 자산 확인**: `createTextAreaInput` 존재 여부, 매수후보 테이블 가산점 표시 기존 패턴, `engine_state` 설정 동기화 기존 패턴
-4. **단계 분할**: 백엔드 NWS 인프라(구독/변환/핸들러) → 가산점 로직 → 설정 → 프론트엔드 매수설정 → 프론트엔드 일반설정 → 테스트
+1. **의존성 조사**: `_on_ws_message()` 디스패치 구조 정확한 위치, `engine_state` 설정 동기화 시점, 매수후보 테이블 컬럼 구조(`buy-target.ts` COLUMNS 배열), `sector_data_provider.py` 매수후보 딕셔너리 생성 함수
+2. **영향 범위**: 백엔드 10파일(`ls_connector.py`·`pipeline_compute_tick_handlers.py`·`buy_filter.py`·`engine_radar.py`·`engine_state.py`·`sector_data_provider.py`·`engine_settings.py`·`settings_defaults.py`·`settings_store.py` + 디스패치 파일) + 프론트엔드 4파일(`buy-settings.ts`·`buy-target.ts`·`general-settings.ts`·`types/index.ts`) + 테스트 1파일(`test_buy_filter.py`)
+3. **기존 공통 자산 확인**: 태그 칩 컴포넌트 존재 여부(`components/common/`에서 chip/tag/badge 패턴 검색), `buy-target.ts` 기존 컬럼 아이콘 패턴(5일고가 ▲), `engine_state` 설정 동기화 기존 패턴, `createNumInput`/`createToggleLabelControlsRow` 재사용
+4. **단계 분할**: 백엔드 NWS 인프라(구독/변환/핸들러) → 가산점 로직 + 데이터 프로바이더 → 설정 → 프론트엔드 매수설정(가산점 토글/점수) → 프론트엔드 매수후보 테이블(📰뉴스 컬럼) → 프론트엔드 일반설정(키워드 칩 + TTL) → 테스트
 5. **태스크 파일**: `docs/plan_news_boost.md` 작성
 
 ---
@@ -625,4 +720,6 @@ const keywordsInput = createTextAreaInput({
 - `test_buy_filter.py`: `calculate_boost_score()` news 케이스 추가 (가산점 부여/미부여/빈 캐시/TTL 만료)
 - NWS 핸들러 단위 테스트: 키워드 매칭, code 빈값 스킵, 복수 code 파싱, 매수후보 외 종목 무시
 - LS connector: `subscribe_news()` / `_convert_ls_to_internal()` NWS 케이스 (모의 메시지)
-- 런타임 검증: LS 모의투자 WebSocket 연결 후 NWS 구독 ACK + 모의 뉴스 수신 → 가산점 부여 로그 확인
+- `sector_data_provider.py`: 매수후보 딕셔너리 `news_boost` 필드 포함 확인
+- 프론트엔드 빌드: `buy-target.ts` 📰뉴스 컬럼 추가 후 타입체크 + 빌드 통과
+- 런타임 검증: LS 모의투자 WebSocket 연결 후 NWS 구독 ACK + 모의 뉴스 수신 → 가산점 부여 로그 확인 → 매수후보 테이블 📰 표시 확인
