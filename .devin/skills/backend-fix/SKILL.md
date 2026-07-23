@@ -39,6 +39,18 @@ allowed-tools:
   - `except Exception: pass` 금지 → `logger.warning(..., exc_info=True)`
   - async 함수 `await` 누락 금지 → 4-2 RuntimeWarning 검증으로 확인
   - dead code 방치 금지 → 호출되지 않는 함수 삭제 또는 명시적 `# DEPRECATED` 표시
+- **실시간 데이터 처리 금지 목록 (Python 백엔드)**:
+  - `time.sleep()` → `asyncio.sleep()`
+  - `threading.Lock/RLock/Event` → `asyncio.Lock/Event`
+  - `input()` → 절대 사용 금지
+  - `requests`/`urllib` → `httpx.AsyncClient`
+  - 전체 `json.dumps()` 재직렬화 → delta만 직렬화
+  - 전체 리스트 순회 후 교체 → 인덱스/키 직접 접근
+  - 매 틱마다 전체 데이터 재조회 → 변경분만 처리
+  - `threading.Thread()` 신규 생성 → 기존 이벤트 루프 활용
+  - `asyncio.create_task()` 무분별한 분리 → 호출 체인 유지
+  - Queue에 무한 쌓기 → 처리 속도 > 수신 속도 보장
+  - 공통: 실시간 수신 데이터는 delta만 처리, 50ms 초과 시 경고 로그, 200ms 초과 시 처리 중단 및 원인 보고
 
 ### 3. 정적 검증
 - py_compile 통과 확인
@@ -70,8 +82,52 @@ kill <PID>
 ```bash
 python -m pytest backend/tests/[파일명] -v --timeout=15 --timeout-method=signal
 ```
+- `timeout_method = signal` 필수 — `thread` 방식은 asyncio C-level wait를 interrupt하지 못해 hang 시 프로세스가 영구 블록됨
+- `pytest.ini`에 전역 설정되어 있으므로 CLI에서 생략 가능
 - hang 감지 시 즉시 강제 종료
 - 잔존 프로세스 정리는 AGENTS.md 섹션3 규칙 5-1 준수
+
+#### 5-1. 자동 hang 체크 원칙 (에이전트 필수 — 수동 개입 금지)
+- 10초마다 `command_status`로 진행 상태 자동 체크
+- 10초 이상 로그/출력 멈추면 즉시 hang 간주 → 강제 종료
+- hang 감지 시 즉시 SIGTERM/Ctrl+C로 프로세스 종료 후 원인 분석
+- 위 모든 과정은 에이전트가 자동 수행 — 사용자 확인 대기 금지, 수동 개입 금지
+
+#### 5-2. 테스트 hang 방지 코딩 원칙 (근본 원인별)
+
+**원인 A: 실제 asyncio 동기화 프리미티브 (Lock/Event/wait_for)**
+- 금지: 테스트에서 실제 `asyncio.Lock()`, `asyncio.Event()`, `asyncio.wait_for()` 사용
+- 해결: `MagicMock` + `AsyncMock`으로 교체
+  - Lock: `lock.__aenter__ = AsyncMock(return_value=lock)`, `lock.__aexit__ = AsyncMock(return_value=None)`
+  - Event: `ev.wait = AsyncMock()`, `ev.clear/set = MagicMock()`
+  - wait_for: 즉시 반환 또는 즉시 `TimeoutError` 발생시키는 async 함수로 patch
+
+**원인 B: asyncio.create_task 백그라운드 태스크**
+- 금지: 테스트에서 `asyncio.create_task()`가 실제 실행되는 것을 허용
+- 해결: `patch("module.asyncio.create_task")`로 mock 교체, `add_done_callback` 속성 포함
+
+**원인 C: NotificationWorker / 백그라운드 워커 싱글톤**
+- 금지: `_fire_and_forget_telegram` 등이 실제 `NotificationWorker.get_instance()`를 호출하여 백그라운드 태스크 생성
+- 해결: autouse fixture에서 `patch("module._fire_and_forget_telegram")` 처리
+
+**원인 D: 실제 DB I/O (aiosqlite)**
+- 금지: 테스트에서 `get_db_connection()`이 실제 DB에 연결
+- 해결: autouse fixture에서 `patch("backend.app.db.database.get_db_connection")` 처리
+
+**원인 E: pytest-asyncio 이벤트 루프 간섭**
+- 금지: conftest.py에 async fixture 사용 (이벤트 루프 정리 중 hang 유발)
+- 금지: conftest.py에서 `asyncio.sleep` 전역 patch (pytest-asyncio 내부 동작 간섭)
+- 해결: conftest.py는 동기 fixture만 사용, 캐시 리셋 등 최소 기능만 유지
+
+#### 5-3. 동적 타임아웃 설정 (무한 대기 방지)
+- `@pytest.mark.timeout(N)` 또는 `--timeout=N` CLI 옵션
+- 비동기 테스트는 `asyncio.wait_for(coro, timeout=N)`로 개별 타임아웃 적용
+- 기본값: 단위 테스트 30초, 통합 테스트 60초, E2E 120초
+- 타임아웃 초과 시 실패로 처리하고 원인 분석
+
+#### 5-4. run_command 사용 시
+- `Blocking: false` + `WaitMsBeforeAsync: 20000` — hang 감지 시 명령 취소 가능
+- 또는 subprocess + `proc.wait(timeout=N)` + `proc.kill()` 패턴 사용
 
 ### 6. 보고
 - 수정한 파일
