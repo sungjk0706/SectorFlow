@@ -74,35 +74,50 @@ export function createSummaryCards(container: HTMLElement, callbacks: SummaryCar
   const cardEls: HTMLDivElement[] = []
 
   for (let i = 0; i < 4; i++) {
-    const card = document.createElement('div')
-    card.style.cssText = CARD_STYLE
-    const handler = clickHandlers[i]
-    if (handler) card.addEventListener('click', handler)
-    cardEls.push(card)
+    // P25: 카드 단위 격리 — 한 카드 생성 throw 시 다음 카드 계속 렌더링.
+    // pnlEls/rateEls/cardEls push는 인덱스 기반이므로
+    // 실패 시 더미 push로 인덱스 정합성 유지 (P22). buildStatRow 패턴과 일치 (P23).
+    try {
+      const card = document.createElement('div')
+      card.style.cssText = CARD_STYLE
+      const handler = clickHandlers[i]
+      if (handler) card.addEventListener('click', handler)
+      cardEls.push(card)
 
-    const titleEl = document.createElement('div')
-    Object.assign(titleEl.style, { fontSize: FONT_SIZE.section, color: COLOR.tertiary, whiteSpace: 'nowrap' })
-    titleEl.textContent = CARD_TITLES[i]
+      const titleEl = document.createElement('div')
+      Object.assign(titleEl.style, { fontSize: FONT_SIZE.section, color: COLOR.tertiary, whiteSpace: 'nowrap' })
+      titleEl.textContent = CARD_TITLES[i]
 
-    const valRow = document.createElement('div')
-    Object.assign(valRow.style, { display: 'flex', justifyContent: 'flex-end', alignItems: 'baseline', gap: '6px' })
+      const valRow = document.createElement('div')
+      Object.assign(valRow.style, { display: 'flex', justifyContent: 'flex-end', alignItems: 'baseline', gap: '6px' })
 
-    const pnlEl = document.createElement('span')
-    Object.assign(pnlEl.style, { fontSize: FONT_SIZE.section, fontWeight: FONT_WEIGHT.normal })
-    pnlEl.textContent = fmtWon(0)
+      const pnlEl = document.createElement('span')
+      Object.assign(pnlEl.style, { fontSize: FONT_SIZE.section, fontWeight: FONT_WEIGHT.normal })
+      pnlEl.textContent = fmtWon(0)
 
-    const rateEl = document.createElement('span')
-    Object.assign(rateEl.style, { fontSize: FONT_SIZE.label, color: COLOR.neutral })
-    rateEl.textContent = '0.00%'
+      const rateEl = document.createElement('span')
+      Object.assign(rateEl.style, { fontSize: FONT_SIZE.label, color: COLOR.neutral })
+      rateEl.textContent = '0.00%'
 
-    valRow.appendChild(pnlEl)
-    valRow.appendChild(rateEl)
-    card.appendChild(titleEl)
-    card.appendChild(valRow)
-    container.appendChild(card)
+      valRow.appendChild(pnlEl)
+      valRow.appendChild(rateEl)
+      card.appendChild(titleEl)
+      card.appendChild(valRow)
+      container.appendChild(card)
 
-    pnlEls.push(pnlEl)
-    rateEls.push(rateEl)
+      pnlEls.push(pnlEl)
+      rateEls.push(rateEl)
+    } catch (e) {
+      console.error('[profit-shared] summary card build error', e)
+      const dummyPnl = document.createElement('span')
+      dummyPnl.textContent = '-'
+      pnlEls.push(dummyPnl)
+      const dummyRate = document.createElement('span')
+      dummyRate.textContent = '-'
+      rateEls.push(dummyRate)
+      const dummyCard = document.createElement('div')
+      cardEls.push(dummyCard)
+    }
   }
 
   return {

@@ -409,25 +409,37 @@ function mount(container: HTMLElement): void {
 
   // O(1) 초저지연 DOM 갱신 이벤트 리스너
   onRealDataTick = (e: Event) => {
-    const code = (e as CustomEvent<string>).detail
-    if (dataTable && dataTable.updateItemByKey) {
-      dataTable.updateItemByKey(code)
+    try {
+      const code = (e as CustomEvent<string>).detail
+      if (dataTable && dataTable.updateItemByKey) {
+        dataTable.updateItemByKey(code)
+      }
+    } catch (err) {
+      console.error('[buy-target] real-data-tick error', err)
     }
   }
   window.addEventListener('real-data-tick', onRealDataTick)
 
   onOrderbookTick = (e: Event) => {
-    const code = (e as CustomEvent<string>).detail
-    if (dataTable && dataTable.updateItemByKey) {
-      dataTable.updateItemByKey(code)
+    try {
+      const code = (e as CustomEvent<string>).detail
+      if (dataTable && dataTable.updateItemByKey) {
+        dataTable.updateItemByKey(code)
+      }
+    } catch (err) {
+      console.error('[buy-target] orderbook-tick error', err)
     }
   }
   window.addEventListener('orderbook-tick', onOrderbookTick)
 
   onProgramTick = (e: Event) => {
-    const code = (e as CustomEvent<string>).detail
-    if (dataTable && dataTable.updateItemByKey) {
-      dataTable.updateItemByKey(code)
+    try {
+      const code = (e as CustomEvent<string>).detail
+      if (dataTable && dataTable.updateItemByKey) {
+        dataTable.updateItemByKey(code)
+      }
+    } catch (err) {
+      console.error('[buy-target] program-tick error', err)
     }
   }
   window.addEventListener('program-tick', onProgramTick)

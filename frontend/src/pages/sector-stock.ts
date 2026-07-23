@@ -608,9 +608,13 @@ class SectorStockTable extends HTMLElement {
 
     // O(1) 초저지연 DOM 갱신 이벤트 리스너
     this.onRealDataTick = (e: Event) => {
-      const code = (e as CustomEvent<string>).detail
-      if (this.dataTable && this.dataTable.updateItemByKey) {
-        this.dataTable.updateItemByKey(code)
+      try {
+        const code = (e as CustomEvent<string>).detail
+        if (this.dataTable && this.dataTable.updateItemByKey) {
+          this.dataTable.updateItemByKey(code)
+        }
+      } catch (err) {
+        console.error('[sector-stock] real-data-tick error', err)
       }
     }
     window.addEventListener('real-data-tick', this.onRealDataTick)

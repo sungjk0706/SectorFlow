@@ -103,8 +103,14 @@ export function createRouter(routes: RouteConfig[]): RouterApi {
   }
 
   function notifyRouteChange(route: string): void {
+    // P25: per-cb 격리 — 한 리스너 throw 시 다른 리스너 계속 호출.
+    // 리스너 1(setActiveRoute) 실패 시 리스너 2(settingsCard 마운트) 스킵 방지.
     for (const cb of routeChangeListeners) {
-      cb(route)
+      try {
+        cb(route)
+      } catch (e) {
+        console.error('[Router] routeChange listener error', e)
+      }
     }
   }
 

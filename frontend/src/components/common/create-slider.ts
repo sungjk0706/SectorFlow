@@ -76,10 +76,14 @@ export function createSlider(opts: SliderOptions = {}): SliderHandle {
     if (labelSpan && opts.valueLabel) {
       labelSpan.textContent = opts.valueLabel(Number(input.value))
     }
-    opts.onChange?.(Number(input.value))
+    try { opts.onChange?.(Number(input.value)) } catch (e) { console.error('[Slider] onChange error', e) }
   })
-  input.addEventListener('mouseup', () => opts.onCommit?.(Number(input.value)))
-  input.addEventListener('touchend', () => opts.onCommit?.(Number(input.value)))
+  input.addEventListener('mouseup', () => {
+    try { opts.onCommit?.(Number(input.value)) } catch (e) { console.error('[Slider] onCommit error', e) }
+  })
+  input.addEventListener('touchend', () => {
+    try { opts.onCommit?.(Number(input.value)) } catch (e) { console.error('[Slider] onCommit error', e) }
+  })
 
   return {
     el,

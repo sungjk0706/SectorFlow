@@ -59,7 +59,11 @@ export function createToggleBtn(options: {
   }
 
   render()
-  btn.addEventListener('click', () => { if (!options.disabled) options.onClick() })
+  btn.addEventListener('click', () => {
+    if (!options.disabled) {
+      try { options.onClick() } catch (e) { console.error('[ToggleBtn] onClick error', e) }
+    }
+  })
 
   function setOn(v: boolean) {
     isOn = v
@@ -106,7 +110,7 @@ export function createRadioGroup(options: {
     radio.checked = item.value === initialValue
     radio.addEventListener('change', () => {
       currentValue = item.value
-      onChange(item.value)
+      try { onChange(item.value) } catch (e) { console.error('[RadioGroup] onChange error', e) }
     })
     radios[item.value] = radio
     label.appendChild(radio)

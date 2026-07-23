@@ -82,7 +82,10 @@ export function createActionButton(options: ActionButtonOptions): HTMLButtonElem
 
   // 항상 click 리스너를 추가 — disabled는 속성으로 클릭을 차단하고,
   // 이후 disabled=false 변경 시 클릭이 동작하도록 보장
-  btn.addEventListener('click', onClick)
+  // P25: onClick throw 시 에러 로깅 + 다른 기능 계속 동작
+  btn.addEventListener('click', () => {
+    try { onClick() } catch (e) { console.error('[ActionButton] click error', e) }
+  })
 
   if (disabled) {
     btn.disabled = true
@@ -157,7 +160,10 @@ export function createSolidBtn(options: SolidButtonOptions): HTMLButtonElement {
     btn.addEventListener('mouseenter', () => { btn.style.background = hoverColor })
     btn.addEventListener('mouseleave', () => { btn.style.background = color })
   }
-  btn.addEventListener('click', onClick)
+  // P25: onClick throw 시 에러 로깅 + 다른 기능 계속 동작
+  btn.addEventListener('click', (e) => {
+    try { onClick(e) } catch (err) { console.error('[SolidBtn] click error', err) }
+  })
 
   if (disabled) {
     btn.disabled = true
@@ -243,7 +249,8 @@ export function createTabBar(options: TabBarOptions): { el: HTMLElement; buttons
       if (tab.id !== currentActive) {
         currentActive = tab.id
         updateActive()
-        onChange(tab.id)
+        // P25: onChange throw 시 에러 로깅 + 탭 전환 UI는 정상 적용
+        try { onChange(tab.id) } catch (e) { console.error('[TabBar] onChange error', e) }
       }
     })
     buttons.set(tab.id, btn)
@@ -319,7 +326,8 @@ export function createToggleSelectBtn(options: ToggleSelectButtonOptions): { el:
   render()
 
   btn.addEventListener('click', (e) => {
-    onClick()
+    // P25: onClick throw 시 에러 로깅 + blur는 항상 실행 (UI 정리)
+    try { onClick() } catch (err) { console.error('[ToggleBtn] click error', err) }
     ;(e.target as HTMLElement).blur()
   })
 

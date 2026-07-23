@@ -211,7 +211,9 @@ function createGridPanel(
     btn.textContent = item
     btn.addEventListener('mouseenter', () => { if (item !== value) btn.style.background = COLOR.hoverBg })
     btn.addEventListener('mouseleave', () => { if (item !== value) btn.style.background = 'transparent' })
-    btn.addEventListener('click', () => onChange(item))
+    btn.addEventListener('click', () => {
+      try { onChange(item) } catch (e) { console.error('[TimeDropdown] grid select error', e) }
+    })
     grid.appendChild(btn)
   }
   return grid
@@ -235,8 +237,14 @@ function createFineAdjust(minute: string, onChange: (m: string) => void): HTMLEl
   Object.assign(incBtn.style, { width: '28px', height: '24px', border: '1px solid ' + COLOR.borderDark, borderRadius: '4px', background: COLOR.surface, cursor: 'pointer', fontSize: FONT_SIZE.badge })
   incBtn.textContent = '+1'
 
-  decBtn.addEventListener('click', () => { m = Math.max(0, m - 1); const s = String(m).padStart(2, '0'); label.textContent = s; onChange(s) })
-  incBtn.addEventListener('click', () => { m = Math.min(59, m + 1); const s = String(m).padStart(2, '0'); label.textContent = s; onChange(s) })
+  decBtn.addEventListener('click', () => {
+    m = Math.max(0, m - 1); const s = String(m).padStart(2, '0'); label.textContent = s
+    try { onChange(s) } catch (e) { console.error('[TimeDropdown] fine adjust dec error', e) }
+  })
+  incBtn.addEventListener('click', () => {
+    m = Math.min(59, m + 1); const s = String(m).padStart(2, '0'); label.textContent = s
+    try { onChange(s) } catch (e) { console.error('[TimeDropdown] fine adjust inc error', e) }
+  })
 
   wrap.appendChild(decBtn); wrap.appendChild(label); wrap.appendChild(incBtn)
   return wrap
