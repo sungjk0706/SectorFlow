@@ -47,6 +47,12 @@ DEFAULT_USER_SETTINGS: dict[str, Any] = {
     "boost_program_net_buy_on": False,
     "boost_program_net_buy_score": 1.0,
 
+    # 매수 가산점 — 뉴스 호재 (NWS)
+    "boost_news_on": False,
+    "boost_news_score": 1.0,
+    "news_boost_ttl_sec": 300,
+    "news_keywords": "수주,최대실적,특허,공급계약,무상증자,세계최초,MOU,FDA승인,독점공급,대규모수주",
+
     # 리스크 관리
     "max_daily_loss_limit": -500000,
     "max_single_stock_exposure": 20000000,

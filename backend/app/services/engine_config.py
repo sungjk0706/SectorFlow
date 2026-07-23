@@ -43,6 +43,20 @@ def get_settings_snapshot() -> dict:
 
 # ── 설정 캐시 갱신 ─────────────────────────────────────────────────────
 
+def _sync_nws_settings_to_state(fresh: dict) -> None:
+    """NWS 가산점 설정을 engine_state에 동기화 (P13 — 틱 단계 DB 조회 금지, 메모리 상주).
+
+    news_keywords: 쉼표 문자열 → list 파싱 (빈 문자열/None → 빈 리스트, P20 폴백 금지 — 설정값 그대로).
+    초기 기동(app.py)과 설정 갱신(refresh_engine_integrated_system_settings_cache) 양쪽에서 호출 (P10 SSOT — 단일 로직).
+    """
+    _kw_raw = str(fresh.get("news_keywords", "") or "")
+    engine_state.state.news_keywords_cache = [
+        kw.strip() for kw in _kw_raw.split(",") if kw.strip()
+    ]
+    engine_state.state.news_boost_score = float(fresh.get("boost_news_score", 1.0))
+    engine_state.state.news_boost_ttl_sec = int(fresh.get("news_boost_ttl_sec", 300))
+
+
 async def refresh_engine_integrated_system_settings_cache(user_id: str | None = None, *, use_root: bool = False) -> None:
     """
     설정 파일 저장 직후 호출: 디스크와 동일한 내용으로 state.integrated_system_settings_cache 를 갱신한다.
@@ -80,6 +94,10 @@ async def refresh_engine_integrated_system_settings_cache(user_id: str | None = 
         engine_state.state.integrated_system_settings_cache.clear()
         engine_state.state.integrated_system_settings_cache.update(fresh)
         engine_state.state.integrated_system_settings_cache.update(preserved)
+
+        # NWS 가산점 설정 동기화 (P13 — 메모리 상주)
+        _sync_nws_settings_to_state(fresh)
+
         logger.info("[설정] 설정 캐시 갱신 완료")
 
         # ── step 2) 엔진 실행 중일 때만: 필터 콜백 트리거 ──────────────────────

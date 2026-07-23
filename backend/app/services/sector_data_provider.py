@@ -121,16 +121,21 @@ async def get_buy_targets_sector_stocks() -> list:
     if not ss:
         return []
 
+    # 뉴스 가산점 캐시 — 엔트리별 중복 조회 방지를 위해 한 번만 조회 (P7)
+    from backend.app.services.engine_radar import get_news_boost_cache
+    news_boost_cache = get_news_boost_cache()
+
     # buy_targets와 blocked_targets 통합 (단일 소스 진리: _sector_summary_cache)
-    result = [_build_target_entry(bt) for bt in ss.buy_targets]
-    result.extend(_build_target_entry(bt) for bt in ss.blocked_targets)
+    result = [_build_target_entry(bt, news_boost_cache) for bt in ss.buy_targets]
+    result.extend(_build_target_entry(bt, news_boost_cache) for bt in ss.blocked_targets)
     return result
 
 
-def _build_target_entry(bt) -> dict:
+def _build_target_entry(bt, news_boost_cache: dict[str, float] | None = None) -> dict:
     """매수 후보/차단 후보 공통 엔트리 생성 — master_stocks_cache 실시간 데이터 병합."""
     s = bt.stock
     cache_entry = engine_state.state.master_stocks_cache.get(s.code, {})
+    _nbc = news_boost_cache or {}
     return {
         "code": s.code,
         "name": s.name,
@@ -148,6 +153,7 @@ def _build_target_entry(bt) -> dict:
         "reason": bt.reason,
         "boost_score": s.boost_score,
         "high_5d": int(cache_entry.get("high_5d_price", 0) or 0),
+        "news_boost": _nbc.get(s.code, 0.0),
         "order_ratio": cache_entry.get("order_ratio"),
         "program_net_buy": cache_entry.get("program_net_buy"),
     }

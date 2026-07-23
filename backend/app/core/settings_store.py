@@ -319,6 +319,26 @@ def _validate_numeric_fields(data: dict) -> None:
             if _f < _lo or _f > _hi:
                 raise ValueError(f"{_k}는 {_lo}~{_hi} 사이여야 합니다")
 
+    # ── 뉴스 호재 가산점 (NWS) 검증 (P20/P22) ──
+    if "boost_news_score" in data:
+        try:
+            _f = float(data["boost_news_score"])
+        except (TypeError, ValueError):
+            raise ValueError("boost_news_score는 숫자여야 합니다")
+        if _f < 0 or _f > 100:
+            raise ValueError("boost_news_score는 0~100 사이여야 합니다")
+    if "news_boost_ttl_sec" in data:
+        try:
+            _n = int(data["news_boost_ttl_sec"])
+        except (TypeError, ValueError):
+            raise ValueError("news_boost_ttl_sec는 정수여야 합니다")
+        if _n < 0 or _n > 3600:
+            raise ValueError("news_boost_ttl_sec는 0~3600 사이여야 합니다")
+    if "news_keywords" in data:
+        _kw = str(data["news_keywords"] or "")
+        if len(_kw) > 2000:
+            raise ValueError("news_keywords는 2000자 이하여야 합니다")
+
 
 def _compute_changed_keys(data: dict, before: dict, after: dict) -> set[str]:
     """before와 after 비교하여 실제로 값이 달라진 키 집합 반환."""
