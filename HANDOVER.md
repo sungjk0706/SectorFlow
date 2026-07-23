@@ -6,6 +6,64 @@
 
 ## 직전 완료 작업
 
+### T3-S12a/S12b REAL 틱 per-item 격리 + 0J 핸들러 + 게이트웨이 done_callback + REST 재시도 일관성 — 완료 (2026-07-23) — B2-03-03/04/05 + B4-06-02 완료 (Tier 3 첫 세션, LOW 4건)
+
+**세션**: 단일 세션. 백엔드 코드 수정 (backend-fix + problem-solve 스킬). 세션 라벨 T3-S12a/S12b (사용자 지정 — 문서상 T3-S13 + T3-S14 일부).
+
+**배경**: P25 수정 계획 Tier 3 첫 세션. 사용자가 문서상 T3-S13(B2-03-03/04/05)과 T3-S14의 B4-06-02를 한 세션에 묶어 "T3-S12a/S12b" 라벨로 진행 지시. 모두 LOW 등급·동일 성격(격리 패턴 정비)이므로 한 세션 처리. T2-S8(pipeline_compute.py 같은 파일)·T2-S9(market_close_pipeline.py 같은 파일) 권장 의존성 해결 상태에서 진행.
+
+**작업 내용** (4건 + 테스트 2건):
+1. **B2-03-03 (LOW) 완료** — `pipeline_compute.py:521-531` `_handle_real_tick` for 루프 per-item try/except 추가. 한 item 예외 시 같은 REAL 틱의 나머지 item 계속 처리. 외곽 try/except(_extract_real_items 보호)는 유지. `_process_tick_batch`(262-267) 패턴 재사용 — `logger.error("[연산] 아이템 처리 오류 (계속): %s", e, exc_info=True)`.
+2. **B2-03-04 (LOW) 완료** — `pipeline_compute_tick_handlers.py:92-107` `_handle_real_0j_tick` 본문 try/except 추가. 형제 leaf 핸들러(01/0d/PGM)는 이미 try/except 있는데 0J만 누락되어 P23 위반 → 해소. `logger.error("[연산] 업종지수 틱(0J) 처리 오류: %s", e, exc_info=True)`.
+3. **B2-03-05 (LOW) 완료** — `pipeline_gateway.py:32-36` `start_gateway_loop`에 `_gateway_task.add_done_callback` 추가. compute 서브태스크(pipeline_compute.py:210-213) 패턴과 일치. app.py:63 외부 콜백은 다층 방어로 유지 (제거 시 별도 파일 수정 + 규칙 0-3 검토 대상).
+4. **B4-06-02 (LOW) 완료 (Option A)** — `kiwoom_rest.py:353-360` `_request` 예외 시 즉시 `return None` → `_call_api`(188-194) 패턴대로 재시도. 3회 루프가 있어도 예외 경로는 1회만 실행되던 P23 위반 해소. `if attempt < 2: await asyncio.sleep(3*(attempt+1)); continue; return None`. 로그에 시도 횟수 추가.
+5. **테스트**:
+   - `test_pipeline_compute.py`: 신규 2건 — `test_per_item_exception_continues_remaining_items`(B2-03-03), `TestHandleReal0jTickException.test_exception_does_not_raise`(B2-03-04).
+   - `test_kiwoom_rest.py`: 기존 `test_exception`에 `asyncio.sleep` 패치 추가 + 신규 `test_exception_retry_then_success`(B4-06-02).
+
+**수정 파일**: 6개 (백엔드 4 + 테스트 2).
+- `backend/app/pipelines/pipeline_compute.py` (+9줄)
+- `backend/app/pipelines/pipeline_compute_tick_handlers.py` (+16줄)
+- `backend/app/pipelines/pipeline_gateway.py` (+4줄)
+- `backend/app/core/kiwoom_rest.py` (+5줄)
+- `backend/tests/test_pipeline_compute.py` (+25줄)
+- `backend/tests/test_kiwoom_rest.py` (+16줄)
+
+**아키텍처 원칙 부합**:
+- P25 (격리된 실패): 4건 직접 해결 — 한 item/leaf/태스크/REST 호출 실패가 형제/전체로 전파 차단.
+- P23 (일관성): B2-03-04(형제 핸들러 패턴), B2-03-05(compute 서브태스크 done_callback 패턴), B4-06-02(`_call_api` 재시도 패턴) — 기존 패턴에 맞춤.
+- P20 (폴백 금지): silent `except: pass` 없음 — 전부 `logger.error/warning(..., exc_info=True)`.
+- P16 (살아있는 경로): per-item try/except는 실시간 틱 처리 경로에 직접 배선, done_callback은 태스크 생성 시 부착.
+- P24 (단순성): 함수 50줄 이하 유지, 신규 추상화/상수 없음, 기존 패턴 3줄 복제.
+- P23 (공통 자산 재사용): per-item 패턴(_process_tick_batch), leaf 패턴(_handle_real_0d_tick), done_callback 패턴(pipeline_compute.py:210-213), 재시도 패턴(_call_api:188-194) 재사용. 신규 함수/상수 없음.
+
+**영향 범위**: 백엔드 4개 파일 + 테스트 2개 파일. 프론트엔드 영향 없음. 핵심 매매 로직(매수/매도 조건, 수신률, 업종 점수) 변경 없음 — 규칙 0-4 해당 없음. 롤백 아님 (신규 격리 코드 추가만, 기존 로직 제거 없음) — 규칙 0-3 해당 없음.
+
+**UI 기준 화면 변화 (규칙 0-4)**:
+- 정상 동작 변화 없음.
+- 비정상 상황에서만 개선: 실시간 틱의 여러 종목 중 1개 처리 오류여도 나머지 종목 화면 갱신 계속(기존은 같은 틱 나머지 종목 누락). 업종지수 표시 중 오류 시에도 틱 흐름 유지. 계좌 잔고 조회 일시적 통신 오류 시 자동 재시도 후 화면 표시(기존은 즉시 실패).
+
+**검증**:
+- `py_compile` 6개 파일 통과.
+- `ruff check` — 본 수정 범위 밖 unused import 2건(`time`, `_check_realtime_latency`) 잔존. T2-S11에서 이미 HANDOVER 미해결 문제에 기록된 항목 — 중복 기록 생략.
+- `pytest test_pipeline_compute.py test_kiwoom_rest.py` — 182 passed (신규 3건 포함).
+- `python -W error::RuntimeWarning main.py` 기동 — RuntimeWarning/Traceback/Error 0건, 게이트웨이·compute 루프 정상 기동, 실시간 틱 수신 정상 (NXT 80%+ 진행).
+- 종료 시 finally 블록 전 단계 정상 실행, 잠금 파일 자동 삭제.
+- 잔존 프로세스 0건 확인 (이전 세션 잔존 PID 19201 + 본 세션 자식 19970 모두 정리).
+
+**작업 중 발견 문제**: 없음. (unused import 2건은 T2-S11에서 이미 기록된 항목)
+
+**핵심 결정**:
+- B4-06-02 Option A(재시도 추가) 선택: 3회 재시도 루프가 이미 존재하므로 "의도적 단일 시도" 주석(Option B)은 코드와 모순. `_call_api`와 동일 패턴 적용으로 P23 일관성 확보.
+- app.py:63 외부 done_callback 유지: 제거 시 별도 파일 수정 + 규칙 0-3 검토 대상. 다층 방어로 의도적이므로 본 세션 범위에서 유지.
+- 사용자 라벨 "T3-S12a/S12b"와 문서상 라벨 "T3-S13 + T3-S14 일부" 불일치 — 본 세션은 사용자 라벨 따르되, 태스크 파일에는 문서상 라벨(T3-S13/T3-S14) 기준으로 체크 표시.
+
+**다음 세션 대기 사항**:
+- **Tier 3 잔여**: T3-S12a(A1-01-05 프론트, 문서상 T3-S12a), T3-S12b(B1-02-05/06/07 백엔드, 문서상 T3-S12b — T3-S13 선행 완료로 의존성 해결), T3-S14 잔여(B3-05-03/04 백엔드), T3-S15(A3-07-08/09/10 프론트), T3-S16(B5-08-01/02/04 백엔드, safe-trade 필수 + 규칙 0-4 핵심 로직). 총 5세션.
+- **중요 안내**: 본 세션에서 이미 문서상 T3-S13(B2-03-03/04/05) 완료. 사용자가 "다음 세션: T3-S13 진행"이라고 하셨으나, 문서상 T3-S13은 본 세션에서 완료됨. 다음 세션 후보는 위 잔여 5세션 중 선택 필요.
+
+---
+
 ### T2-S11 fake_fill_event 정합성 격리 (기동 시 대조 메커니즘 신설) — 완료 (2026-07-23) — B5-08-03 완료 (Tier 2 마지막 세션, safe-trade 적용)
 
 **세션**: 단일 세션. 백엔드 코드 수정 (safe-trade 스킬). 세션 라벨 T2-S11 (Tier 2 마지막 세션, MEDIUM 1건).

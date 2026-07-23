@@ -291,7 +291,7 @@
   - [ ] `python -W error::RuntimeWarning main.py` 기동 확인
   - [ ] 런타임: leaf 핸들러 예외 시 엔진 루프 종료 아님 확인
 
-### T3-S13 — REAL 틱 per-item / leaf 핸들러 / 게이트웨이 done_callback
+### T3-S13 — REAL 틱 per-item / leaf 핸들러 / 게이트웨이 done_callback — 완료 (2026-07-23)
 
 - **대상 위반 ID**: B2-03-03 (LOW), B2-03-04 (LOW), B2-03-05 (LOW)
 - **수정 파일**: `backend/app/pipelines/pipeline_compute.py`, `backend/app/pipelines/pipeline_compute_tick_handlers.py`, `backend/app/pipelines/pipeline_gateway.py`
@@ -303,12 +303,13 @@
   - B2-03-04: `_handle_real_0j_tick` try/except 추가 (형제 핸들러 패턴과 일치, P23)
   - B2-03-05: `_gateway_task` `add_done_callback` 추가 (compute 서브태스크 패턴과 일치, P23)
 - **검증 방법**:
-  - [ ] `pytest tests/` 관련 테스트 통과
-  - [ ] `python -W error::RuntimeWarning main.py` 기동 확인
-  - [ ] 런타임: REAL 틱 처리 중 일부 item 예외 시 나머지 item 계속 처리 확인
-  - [ ] P23 일관성: 형제 핸들러 패턴 / compute 서브태스크 패턴과 일치 확인
+  - [x] `pytest tests/` 관련 테스트 통과 — test_pipeline_compute.py + test_kiwoom_rest.py 182 passed
+  - [x] `python -W error::RuntimeWarning main.py` 기동 확인 — RuntimeWarning/Traceback/Error 0건
+  - [x] 런타임: REAL 틱 처리 중 일부 item 예외 시 나머지 item 계속 처리 확인 — 단위 테스트 test_per_item_exception_continues_remaining_items로 검증
+  - [x] P23 일관성: 형제 핸들러 패턴 / compute 서브태스크 패턴과 일치 확인
+- **비고**: 사용자 라벨 "T3-S12a"로 진행 (문서상 T3-S13). T3-S14의 B4-06-02와 함께 한 세션에 묶어 처리.
 
-### T3-S14 — silent except / exc_info 누락 / REST 재시도 일관성
+### T3-S14 — silent except / exc_info 누락 / REST 재시도 일관성 — 부분 완료 (2026-07-23)
 
 - **대상 위반 ID**: B3-05-03 (LOW), B3-05-04 (LOW), B4-06-02 (LOW)
 - **수정 파일**: `backend/app/services/market_close_pipeline.py`, `backend/app/services/daily_time_scheduler.py`, `backend/app/services/kiwoom_rest.py`
@@ -324,7 +325,11 @@
   - [ ] `python -W error::RuntimeWarning main.py` 기동 확인
   - [ ] 로그: exc_info=True 추가 후 스택트레이스 포함 확인 (11곳)
   - [ ] P20: silent `except: pass` 제거 확인
-  - [ ] P23: kiwoom_rest `_request` / `_call_api` 일관성 확인
+  - [x] P23: kiwoom_rest `_request` / `_call_api` 일관성 확인 — Option A 적용 (재시도 추가), test_exception_retry_then_success 통과
+- **진행 상태**:
+  - [x] **B4-06-02 완료** — 사용자 라벨 "T3-S12b"로 T3-S13과 함께 한 세션에 묶어 처리 (commit ec4b5e0). `_request` 예외 시 `_call_api` 패턴대로 재시도 (Option A).
+  - [ ] **B3-05-03/04 미진행** — 별도 세션에서 진행. market_close_pipeline.py + daily_time_scheduler.py 수정 필요.
+- **비고**: B4-06-02는 T3-S13 세션에서 함께 처리 (사용자 지시). 잔여 B3-05-03/04는 후속 세션에서 진행.
 
 ### T3-S15 — 통계 카드 / 라우트 변경 / addEventListener 검토
 
