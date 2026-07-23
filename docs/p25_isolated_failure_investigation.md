@@ -108,6 +108,11 @@ AGENTS.md 섹션3 규칙 0-1 (세션당 1단계 원칙) 준수.
 | B1-02-05 | B1 엔진 코어 루프 | `backend/app/services/engine_ws_dispatch.py:149-153` | `_handle_real_00` 내 `auto_trade.on_fill_update()`와 `engine_account._on_fill_after_ws()` 호출에 try/except 없음. throw 시 호출자(pipeline_compute.py:487)로 전파 | 주문체결 처리 중 예외 시 호출자로 전파. 호출자(pipeline_compute)의 격리 여부는 세션 3에서 확인. 세션 2 범위에서는 "호출자 의존" | LOW | P25 | 세션 2 | 미승인 |
 | B1-02-06 | B1 엔진 코어 루프 | `backend/app/services/engine_ws_dispatch.py:162` | `_handle_real_balance` 내 `engine_account._apply_balance_realtime()` 호출에 try/except 없음. throw 시 호출자(pipeline_compute.py:492)로 전파 | 잔고 처리 중 예외 시 호출자로 전파. 호출자 격리 여부는 세션 3에서 확인 | LOW | P25 | 세션 2 | 미승인 |
 | B1-02-07 | B1 엔진 코어 루프 | `backend/app/services/engine_lifecycle.py:38` | `start_engine` 내 `dry_run._refresh_positions_if_dirty()` 호출에 try/except 없음. throw 시 start_engine throw | 주 호출자(app.py:123 `_engine_init_background`)는 try/except(122-144)로 격리 → P25 준수. 단, engine_service.py:93 경유 호출 시 해당 함수의 try/except 여부는 세션 6에서 확인 | LOW | P25 | 세션 2 | 미승인 |
+| B2-03-01 | B2 파이프라인 연산 | `backend/app/pipelines/pipeline_compute.py:646-670` | `_phase2_batch_recompute_loop` while 루프 본문에 try/except 없음. `notify_desktop_sector_scores`(667)/`_flush_sector_recompute_impl`(670) 등 무보호 호출이 throw 시 전파 → 태스크 영구 종료. 동일 구조의 `_compute_loop_impl`(316)은 `except Exception: log+continue` 있는데 비대칭 | 한 번의 업종 점수 전송/재계산 실패가 Phase 2 루프 사망 → 업종 점수 갱신 영구 중단 → 매수 후보 선정 영향 | HIGH | P25, P7, P23 | 세션 3 | 미승인 |
+| B2-03-02 | B2 파이프라인 연산 | `backend/app/pipelines/pipeline_compute.py:673-686` | `_sector_recompute_loop_impl`이 `except CancelledError`(684)만 있고 `except Exception` 없음. B2-03-01의 상위 원인 — 비-CancelledError 예외 시 태스크 종료 | Phase 1/Phase 2 전체 사망. `_compute_loop_impl`은 `except Exception` 있는데 본 함수는 없어 P23 일관성 위반 | MEDIUM | P25, P23 | 세션 3 | 미승인 |
+| B2-03-03 | B2 파이프라인 연산 | `backend/app/pipelines/pipeline_compute.py:521-526` | `_handle_real_tick` for item 루프에 per-item try/except 없음. 한 item(00 체결 등) 실패 시 같은 REAL 틱의 나머지 item(01/0D/0J 등) 스킵. 루프 전체 try/except(519-528)는 compute 루프 전파는 차단하나 형제 item 손실은 막지 못함 | 한 종목 체결 처리 오류가 같은 프레임의 다른 종목 시세/호가/업종지수 갱신 누락. B1-02-05/06 형제 손실과 동일 경로 | LOW | P25, P7 | 세션 3 | 미승인 |
+| B2-03-04 | B2 파이프라인 연산 | `backend/app/pipelines/pipeline_compute_tick_handlers.py:92-104` | `_handle_real_0j_tick`에 try/except 없음. 다른 leaf 핸들러(`_handle_real_01_tick`/`_handle_real_0d_tick`/`_handle_real_pgm_tick`)는 try/except 있는데 0J만 없음 → P23 일관성 위반. `notify_index_data` 실패 시 상위 `_handle_real_tick`에 의존 | 업종지수 전송 실패 시 같은 REAL 틱의 나머지 item 스킵(B2-03-03 경로 합류). 영향도 국소적 | LOW | P25, P23 | 세션 3 | 미승인 |
+| B2-03-05 | B2 파이프라인 연산 | `backend/app/pipelines/pipeline_gateway.py:32` | `start_gateway_loop`가 `_gateway_task`에 done_callback 없음. compute 서브태스크(`pipeline_compute.py:210-218`)는 done_callback 있는데 게이트웨이는 없음 → P23 일관성 위반 | 루프 자체는 `_broadcast_loop` try/except로 격리되어 영향도 낮음. 단 태스크 예외 시 로깅 누락(P21) | LOW | P25, P21, P23 | 세션 3 | 미승인 |
 
 ### 등급 정의
 - **CRITICAL**: 한 구성요소 실패가 시스템 전체 중단 유발 (자동매매 정지, 화면 전체 멈춤)
@@ -370,19 +375,159 @@ tick_queue → pipeline_compute → _handle_real_00 / _handle_real_balance (engi
 
 ## 5. 세션 3: B2 파이프라인 연산 루프 조사
 
-> 상태: 미시작
-> 조사 파일: `pipeline_compute.py`, `pipeline_compute_tick_handlers.py`, `pipeline_gateway.py`
+> 상태: 완료 (2026-07-23)
+> 조사 파일: `pipeline_compute.py` (686줄), `pipeline_compute_tick_handlers.py` (333줄), `pipeline_gateway.py` (120줄)
+> 보조 조사 파일: `engine_lifecycle.py` (schedule_engine_task 비교), `app.py` (게이트웨이 호출부), `engine_ws_dispatch.py` (B1-02-05/06 원본), `engine_sector_confirm.py`/`engine_account_notify.py` (Phase 2 호출 함수들)
 > 조사 범위:
 > - `pipeline_compute.py:209,214` create_task 직접 호출 (schedule_engine_task 미사용 — P23 위반 후보)
-> - `pipeline_compute.py:247` `while True` 루프 내부 예외 격리
-> - `_compute_loop_impl` / `_sector_recompute_loop_impl` 루프 실패 시 전파 경로
+> - `_compute_loop_impl` / `_sector_recompute_loop_impl` / `_phase2_batch_recompute_loop` 루프 실패 시 전파 경로
+> - `_handle_real_tick` for item 루프 per-item 격리 (B1-02-05/06 호출부 격리 확인)
 > - tick_handlers의 틱 핸들러 예외 처리 (P7 교차)
+> - `pipeline_gateway.py` 게이트웨이 루프 격리 + done_callback 일관성
 
 ### 5.1 조사 결과
-_작성 예정_
+
+#### 5.1.1 파이프라인 연산 호출 경로 (정상 시)
+
+```
+엔진 루프 (engine_loop.py:296)
+  → await start_compute_loop (pipeline_compute.py:199)
+    → asyncio.create_task(_compute_loop_impl()) (209, done_callback 있음)
+    → asyncio.create_task(_sector_recompute_loop_impl()) (214, done_callback 있음)
+
+_compute_loop_impl (278):
+  while _compute_running (286)
+    try { tick_queue.get(timeout=0.5) → _drain_control_queue → _process_tick_batch → sleep(0) }
+    except CancelledError: break
+    except Exception: log+continue  ← P25 준수
+
+_process_tick_batch (256):
+  for event in coalesced:
+    try { _process_tick_data(event) } except Exception: log  ← per-event P25 준수
+
+_process_tick_data → _handle_real_tick (509):
+  try { for item in items: _dispatch_real_item(item) } except Exception: log  ← 루프 전파 차단 O, per-item X
+    → _dispatch_real_item (467): 01/00/04/80/0d/0j/PGM 분기
+      → _handle_real_00 (engine_ws_dispatch.py:139) ← B1-02-05 원본
+      → _handle_real_balance (engine_ws_dispatch.py:158) ← B1-02-06 원본
+      → _handle_real_01_tick / _handle_real_0d_tick / _handle_real_pgm_tick (try/except 있음)
+      → _handle_real_0j_tick (try/except 없음 — B2-03-04)
+
+_sector_recompute_loop_impl (673):
+  try { _phase1_wait_threshold → _phase2_batch_recompute_loop }
+  except CancelledError: log  ← except Exception 없음 (B2-03-02)
+
+_phase1_wait_threshold (569):
+  while _compute_running and not phase1_completed (588)
+    try { _receive_rate_event.wait → _calculate_receive_rate → _evaluate_threshold }
+    except Exception: log+continue  ← P25 준수
+
+_phase2_batch_recompute_loop (638):
+  while _compute_running (646)
+    await asyncio.sleep(0.2)
+    if _receive_rate_dirty: _calculate_receive_rate + _send_receive_rate
+    await notify_desktop_sector_scores(force=False)  ← 무보호 (B2-03-01)
+    if has_dirty_sectors(): await _flush_sector_recompute_impl()  ← 무보호 (B2-03-01)
+
+app.py lifespan (62):
+  _gateway_task = asyncio.create_task(start_gateway_loop())  ← done_callback 있음 (63)
+    → _gateway_loop_impl (51) → _broadcast_loop (62)
+      while _gateway_running (68)
+        try { broadcast_queue.get → _process_broadcast → task_done }
+        except CancelledError: break
+        except Exception: log+continue  ← P25 준수
+```
+
+#### 5.1.2 보호 계층 분석 (어디까지 막아주는가)
+
+| 계층 | 위치 | try/except | 보호 대상 | 비고 |
+|------|------|-----------|-----------|------|
+| compute 루프 | `_compute_loop_impl` pipeline_compute.py:285-318 | O (루프 본문) | tick_queue 처리 전체 | 양호. `except Exception: log+continue` |
+| 배치 처리 | `_process_tick_batch` pipeline_compute.py:261-267 | O (per-event) | 개별 이벤트 처리 | 양호. 한 이벤트 실패 시 다음 이벤트 계속 |
+| REAL 틱 처리 | `_handle_real_tick` pipeline_compute.py:519-528 | O (루프 전체) | for item 루프 전체 | **위반**: per-item try/except 없음 → 한 item 실패 시 나머지 item 스킵 (B2-03-03) |
+| 01 leaf 핸들러 | `_handle_real_01_tick` tick_handlers.py:208-255 | O (전체) | 01 체결 처리 | 양호. try/except + log |
+| 0d leaf 핸들러 | `_handle_real_0d_tick` tick_handlers.py:265-293 | O (전체) | 0D 호가 처리 | 양호 |
+| PGM leaf 핸들러 | `_handle_real_pgm_tick` tick_handlers.py:302-333 | O (전체) | PGM 순매수 처리 | 양호 |
+| 0J leaf 핸들러 | `_handle_real_0j_tick` tick_handlers.py:92-104 | X | 0J 업종지수 처리 | **위반**: 다른 leaf는 try/except 있는데 0J만 없음 (B2-03-04). P23 일관성 위반 |
+| 제어 신호 | `_process_control_signal` pipeline_compute.py:369-393 | O (전체) | 제어 신호 처리 | 양호 |
+| 업종 재계산 신호 | `_handle_sector_recompute` pipeline_compute.py:425-433 | O (전체) | 재계산 처리 | 양호 |
+| 수신율 계산 | `_calculate_receive_rate` pipeline_compute.py:149-161 | O (전체) | 수신율 계산 | 양호 |
+| Phase 1 루프 | `_phase1_wait_threshold` pipeline_compute.py:588-635 | O (루프 본문) | 임계값 대기 | 양호. `except Exception: log+continue` |
+| Phase 2 루프 | `_phase2_batch_recompute_loop` pipeline_compute.py:646-670 | X (루프 본문) | 업종 점수 전송/재계산 | **핵심 위반**: while 본문 무보호 (B2-03-01) |
+| 업종 재계산 루프 | `_sector_recompute_loop_impl` pipeline_compute.py:681-686 | 부분 | Phase 1+2 전체 | **위반**: `except CancelledError`만 있고 `except Exception` 없음 (B2-03-02) |
+| _flush_sector_recompute_impl | engine_sector_confirm.py:79-201 | O (전체) | 증분 재계산 | 양호. 내부 try/except |
+| notify_desktop_sector_scores | engine_account_notify.py:191-220 | 부분 | 업종 점수 전송 | 임계값 게이트 try/except(195-201) 있으나 본문 무보호. _safe_broadcast는 try/except(67-70) |
+| 게이트웨이 루프 | `_broadcast_loop` pipeline_gateway.py:67-80 | O (루프 본문) | broadcast_queue 처리 | 양호. `except Exception: log+continue` |
+| 게이트웨이 전송 | `_process_broadcast`/`_send_to_websocket` pipeline_gateway.py:92-120 | O (각각) | 전송 처리 | 양호 |
+| 게이트웨이 태스크 | `start_gateway_loop` pipeline_gateway.py:32 | X (done_callback) | 태스크 실패 로깅 | **위반**: compute 서브태스크는 done_callback 있는데 게이트웨이는 없음 (B2-03-05). 단 app.py:63에서 외부 done_callback 추가됨 — 본 파일 내 일관성 위반 |
+
+#### 5.1.3 사전 위반 후보(1.7절) 확정 결과
+
+- `pipeline_compute.py:209,214` create_task 직접 호출 — **위반 아님**
+  - `start_compute_loop`는 `engine_loop.py:296`에서 `await start_compute_loop()`로 호출 — 이미 엔진 이벤트 루프 안에서 실행
+  - `schedule_engine_task`는 UI 스레드(이벤트 루프 없음)에서 크로스 스레드 스케줄링용 (`call_soon_threadsafe`). 이미 루프 안에서는 폴백 경로(engine_lifecycle.py:299-302)와 동일한 `create_task + add_done_callback` 패턴 사용
+  - 209-213, 215-218: done_callback 로깅 있음 → P25 격리 확보, P23 일관성 유지
+
+#### 5.1.4 B1-02-05/06 호출부 격리 확인 (세션 2에서 이월)
+
+- **B1-02-05** (`_handle_real_00` 내 `on_fill_update`/`_on_fill_after_ws` 무보호):
+  - 호출부: `_dispatch_real_item` (pipeline_compute.py:487) → `_handle_real_tick` (519-528) try/except
+  - ✅ 루프 전파 차단: compute 루프로 전파 안 됨
+  - ❌ 형제 item 손실: per-item try/except 없음 → 같은 REAL 틱의 나머지 item 스킵 (B2-03-03)
+  - **결론**: 등급 LOW 유지. 본문 try/catch는 선택적(루프 전파는 호출부가 차단). 형제 item 손실 방지 위해 per-item try/except 권장
+
+- **B1-02-06** (`_handle_real_balance` 내 `_apply_balance_realtime` 무보호):
+  - 호출부: `_dispatch_real_item` (pipeline_compute.py:492) → 동일 경로
+  - **결론**: B1-02-05와 동일. 등급 LOW 유지
+
+#### 5.1.5 _phase2_batch_recompute_loop vs _compute_loop_impl 비대칭 (P23 위반)
+
+| 루프 | while 본문 try/except | except Exception | 비고 |
+|------|----------------------|------------------|------|
+| `_compute_loop_impl` (286-313) | O (287-317) | O (316-317) log+continue | P25 준수 |
+| `_phase1_wait_threshold` (588-634) | O (589-635) | O (634-635) log+continue | P25 준수 |
+| `_phase2_batch_recompute_loop` (646-670) | X | X | **위반** (B2-03-01) |
+| `_sector_recompute_loop_impl` (681-686) | — | X (CancelledError만) | **위반** (B2-03-02) |
+
+동일한 while 루프 패턴이 4곳에서 사용되는데 2곳만 보호되고 2곳은 미보호. P23 일관성 위반 + P25 위반.
 
 ### 5.2 위반 목록
-_작성 예정_
+
+| ID | 등급 | 파일:줄 | 위반 요약 | 수정 방향 (참고용, 승인 시 별도 세션) |
+|----|------|---------|-----------|---------------------------------------|
+| B2-03-01 | HIGH | pipeline_compute.py:646-670 | `_phase2_batch_recompute_loop` while 루프 본문에 try/except 없음. `notify_desktop_sector_scores`/`_flush_sector_recompute_impl` 무보호 호출이 throw 시 태스크 영구 종료 | while 루프 본문을 try/except로 감싸고, `except asyncio.CancelledError: break` + `except Exception: logger.error(..., exc_info=True)` + continue. `_compute_loop_impl`(314-317) 패턴과 일치시켜 P23 준수 |
+| B2-03-02 | MEDIUM | pipeline_compute.py:673-686 | `_sector_recompute_loop_impl`이 `except CancelledError`만 있고 `except Exception` 없음. B2-03-01 상위 원인 | `except asyncio.CancelledError` 후 `except Exception: logger.error(..., exc_info=True)` 추가. 단 B2-03-01 수정 시 본 함수는 Phase 1/2 진입만 감싸므로 자연 해결 가능 |
+| B2-03-03 | LOW | pipeline_compute.py:521-526 | `_handle_real_tick` for item 루프에 per-item try/except 없음. 한 item 실패 시 같은 REAL 틱의 나머지 item 스킵 | for 루프 본문을 per-item try/except로 감싸고, `except Exception: logger.error("[연산] 아이템 처리 오류 (계속): %s", e, exc_info=True)`. `_process_tick_batch`(262-267) 패턴과 일치 |
+| B2-03-04 | LOW | pipeline_compute_tick_handlers.py:92-104 | `_handle_real_0j_tick`에 try/except 없음. 다른 leaf 핸들러(01/0d/PGM)는 try/except 있는데 0J만 없음 → P23 일관성 위반 | `_handle_real_0j_tick` 본문을 try/except로 감싸고, `except Exception: logger.error("[연산] 업종지수 틱(0J) 처리 오류: %s", e, exc_info=True)`. 다른 leaf 핸들러 패턴과 일치 |
+| B2-03-05 | LOW | pipeline_gateway.py:32 | `start_gateway_loop`가 `_gateway_task`에 done_callback 없음. compute 서브태스크는 done_callback 있는데 게이트웨이는 없음 → P23 일관성 위반 | `_gateway_task.add_done_callback(lambda t: logger.warning("[연결] 게이트웨이 루프 작업 실패: %s", t.exception()) if t.exception() else None)` 추가. 단 app.py:63에서 외부 done_callback 있으나 본 파일 내 일관성은 본문에서 유지 |
+
+### 5.3 교차 원칙 점검 (세션 3 범위)
+
+| 원칙 | 해당 여부 | 비고 |
+|------|-----------|------|
+| P7 (블로킹 금지) | 해당 | B2-03-01: Phase 2 루프 사망 = 업종 점수 갱신 블로킹. B2-03-03: 한 item 실패 시 같은 프레임 나머지 item 시세 갱신 블로킹 |
+| P9 (파이프라인 독립) | 해당 | B2-03-01: compute 루프와 sector 재계산 루프는 독립 태스크이나 Phase 2 사망 시 업종 점수 파이프라인 전체 중단. 게이트웨이 루프는 독립 유지 |
+| P16 (살아있는 경로) | 해당 | B2-03-01/02: Phase 2 루프 사망 시 경로가 살아있지 않음. done_callback은 로깅만 하고 재시작 안 함 |
+| P20 (폴백 금지) | 해당 아님 | 본 세션에서 silent `except: pass` 없음. 모든 catch는 logger.error/warning + exc_info=True. 무보호 호출(B2-03-01~04)은 catch 자체가 없어 P20 대상 아님 |
+| P23 (일관성) | 해당 | B2-03-02: `_compute_loop_impl`은 `except Exception` 있는데 `_sector_recompute_loop_impl`은 없음 — 비대칭. B2-03-04: leaf 핸들러 4개 중 0J만 try/except 없음. B2-03-05: compute는 done_callback 있는데 gateway는 없음. 사전 위반 후보 create_task 직접 호출은 위반 아님(5.1.3) |
+
+### 5.4 양호 항목 (P25 준수 확인)
+
+- `_compute_loop_impl` (pipeline_compute.py:278-319): while 루프 try/except, `except Exception: log+continue`. **P25 준수**
+- `_process_tick_batch` (pipeline_compute.py:256-276): per-event try/except (262-267). **P25 준수**
+- `_process_control_signal` (pipeline_compute.py:358-393): try/except 전체. **P25 준수**
+- `_handle_sector_recompute` (pipeline_compute.py:416-433): try/except 전체. **P25 준수**
+- `_calculate_receive_rate` (pipeline_compute.py:135-161): try/except 전체. **P25 준수**
+- `_phase1_wait_threshold` (pipeline_compute.py:569-635): while 루프 try/except, `except Exception: log+continue`. **P25 준수**
+- `_handle_real_01_tick` (tick_handlers.py:196-256): try/except 전체. **P25 준수**
+- `_handle_real_0d_tick` (tick_handlers.py:259-293): try/except 전체. **P25 준수**
+- `_handle_real_pgm_tick` (tick_handlers.py:296-333): try/except 전체. **P25 준수**
+- `_flush_sector_recompute_impl` (engine_sector_confirm.py:66-201): try/except 전체 (200-201). **P25 준수**
+- `_safe_broadcast` (engine_account_notify.py:64-70): try/except. **P25 준수**
+- `_broadcast_loop` (pipeline_gateway.py:62-80): while 루프 try/except, `except Exception: log+continue`. **P25 준수**
+- `_process_broadcast`/`_send_to_websocket` (pipeline_gateway.py:83-120): 각각 try/except. **P25 준수**
+- `pipeline_compute.py:209,214` create_task 직접 호출: 엔진 루프 안에서 호출, done_callback 있음. schedule_engine_task 불필요. **위반 아님**
+- app.py:62-63 게이트웨이 태스크: 외부 done_callback 추가. **P25 준수** (단 pipeline_gateway.py 내부 일관성은 B2-03-05)
 
 ---
 

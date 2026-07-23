@@ -6,6 +6,42 @@
 
 ## 직전 완료 작업
 
+### P25 전수 조사 세션 3: B2 파이프라인 연산 루프 조사 완료 (2026-07-23)
+
+**세션**: 단일 세션. 조사 보고서 1파일 갱신. 조사만 수행 (코드 수정 없음).
+
+**배경**: P25 전수 조사 9세션 중 세션 3. B2 파이프라인 연산 루프 영역(`pipeline_compute.py`, `pipeline_compute_tick_handlers.py`, `pipeline_gateway.py` 3개) 조사. 우선순위 3위 — 업종 점수·매수 후보 산출 경로, 중단 시 매수 후보 미갱신 위험. 세션 2에서 이월된 B1-02-05/06(호출자 의존) 확인도 함께 수행.
+
+**조사 파일**: 3개 메인 파일 (pipeline_compute 686줄, pipeline_compute_tick_handlers 333줄, pipeline_gateway 120줄) + 6개 보조 파일 (engine_lifecycle, app.py, engine_ws_dispatch, engine_sector_confirm, engine_account_notify, sector_data_provider — schedule_engine_task 비교·B1-02-05/06 원본·Phase 2 호출 함수 확인용)
+
+**식별 위반 5건**:
+- **B2-03-01 (HIGH)**: `pipeline_compute.py:646-670` `_phase2_batch_recompute_loop` while 루프 본문에 try/except 없음. `notify_desktop_sector_scores`/`_flush_sector_recompute_impl` 무보호 호출이 throw 시 태스크 영구 종료 → 업종 점수 갱신 영구 중단 → 매수 후보 선정 영향.
+- **B2-03-02 (MEDIUM)**: `pipeline_compute.py:673-686` `_sector_recompute_loop_impl`이 `except CancelledError`만 있고 `except Exception` 없음. B2-03-01 상위 원인. `_compute_loop_impl`은 `except Exception` 있는데 비대칭 (P23 위반).
+- **B2-03-03 (LOW)**: `pipeline_compute.py:521-526` `_handle_real_tick` for item 루프에 per-item try/except 없음. 한 item 실패 시 같은 REAL 틱의 나머지 item 스킵. 루프 전체 try/except(519-528)는 compute 루프 전파는 차단하나 형제 item 손실은 막지 못함.
+- **B2-03-04 (LOW)**: `pipeline_compute_tick_handlers.py:92-104` `_handle_real_0j_tick`에 try/except 없음. 다른 leaf 핸들러(01/0d/PGM)는 try/except 있는데 0J만 없음 → P23 일관성 위반.
+- **B2-03-05 (LOW)**: `pipeline_gateway.py:32` `start_gateway_loop`가 `_gateway_task`에 done_callback 없음. compute 서브태스크는 done_callback 있는데 게이트웨이는 없음 → P23 일관성 위반. 단 app.py:63에서 외부 done_callback 추가됨.
+
+**핵심 발견**:
+- 사전 위반 후보 `pipeline_compute.py:209,214` create_task 직접 호출은 **위반 아님**으로 확정 — `start_compute_loop`는 엔진 루프 안에서 `await`로 호출되므로 `schedule_engine_task`(UI 스레드 크로스 스레드용) 불필요. done_callback 로깅 있어 P25/P23 준수.
+- **B1-02-05/06 호출부 격리 확인 완료**: `_handle_real_tick`(519-528) try/except가 루프 전파 차단 → compute 루프로 전파 안 됨. 단 per-item try/except 없어 형제 item 손실(B2-03-03). B1-02-05/06 등급 LOW 유지, 본문 try/catch는 선택적.
+- `_compute_loop_impl`(278-319)과 `_phase1_wait_threshold`(569-635)는 while 루프 try/except + `except Exception: log+continue`로 P25 준수. 반면 `_phase2_batch_recompute_loop`(646-670)와 `_sector_recompute_loop_impl`(673-686)는 미보호 — 동일한 while 루프 패턴 4곳 중 2곳만 보호되어 P23 비대칭.
+- 양호 항목 다수: `_process_tick_batch` per-event try/except, `_process_control_signal`/`_handle_sector_recompute`/`_calculate_receive_rate` try/except, leaf 핸들러 01/0d/PGM try/except, `_flush_sector_recompute_impl` try/except, `_broadcast_loop` while 루프 try/except.
+
+**수정 방향 (참고용, 승인 시 별도 세션)**:
+- B2-03-01: while 루프 본문을 try/except로 감싸고, `except CancelledError: break` + `except Exception: log+continue`. `_compute_loop_impl`(314-317) 패턴과 일치
+- B2-03-02: `except Exception: log` 추가. 단 B2-03-01 수정 시 자연 해결 가능
+- B2-03-03: for 루프 본문 per-item try/except. `_process_tick_batch`(262-267) 패턴과 일치
+- B2-03-04: `_handle_real_0j_tick` 본문 try/except. 다른 leaf 핸들러 패턴과 일치
+- B2-03-05: `_gateway_task.add_done_callback(...)` 추가. compute 서브태스크 패턴과 일치
+
+**검증**: 조사만 수행 — typecheck/build 불필요. 잔존 프로세스 0건.
+
+**화면 영향**: 없음 (조사 보고서 작성).
+
+**다음 세션 대기 사항**: 세션 4 (A2 Store listener 조사) 진행 대기. 조사 보고서 `docs/p25_isolated_failure_investigation.md` 섹션 6에 결과 누적 예정. 조사 파일: `frontend/src/stores/store.ts`, `hotStore.ts`, `uiStore.ts`, `stockClassificationStore.ts`.
+
+---
+
 ### P25 전수 조사 세션 2: B1 엔진 코어 루프 조사 완료 (2026-07-23)
 
 **세션**: 단일 세션. 조사 보고서 1파일 갱신. 조사만 수행 (코드 수정 없음).
