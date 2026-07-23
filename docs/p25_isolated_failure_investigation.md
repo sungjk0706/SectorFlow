@@ -654,7 +654,7 @@ app.py lifespan (62):
 
 ## 8. 세션 6: B4 워커·IO·재시도 루프 조사
 
-> 상태: 미시작
+> 상태: 완료 (2026-07-23)
 > 조사 파일: `notification_worker.py`, `db_writer.py`, `telegram_bot.py`, `kiwoom_rest.py`, `kiwoom_stock_rest.py`, `engine_cache.py`, `app.py`, `ws.py`, `ws_settings.py`, `ws_orders.py`
 > 조사 범위:
 > - `notification_worker.py:55` `_consume_loop` while 루프 예외 격리
@@ -664,10 +664,73 @@ app.py lifespan (62):
 > - `app.py:62,141,146` 시작 태스크 실패 시 기동 블로킹 여부 (P25 핵심 — 기동 블로킹 금지)
 
 ### 8.1 조사 결과
-_작성 예정_
+
+**전반적 평가**: 대부분의 while 루프와 재시도 루프는 P25(격리된 실패)와 P1-P3(async 일관성)를 잘 준수. IO는 전부 async(httpx.AsyncClient, aiosqlite)이고 동기 블로킹 I/O는 발견되지 않음. 백그라운드 태스크들은 `add_done_callback`로 조용히 사망 시 로깅 처리.
+
+**파일별 상세**:
+
+1. **notification_worker.py** — 양호
+   - `_consume_loop` (53-65): while 루프, `await _handle(msg)` 예외 시 `logger.warning` 후 계속, `finally: task_done()`. CancelledError는 break.
+   - `enqueue` (41-51): `put_nowait` + QueueFull 로깅. 논블로킹 OK.
+   - `shutdown` (78-93): `asyncio.wait_for(queue.join(), timeout=10.0)` graceful. OK.
+
+2. **db_writer.py** — 잠재 이슈 1건
+   - `_db_writer_loop` (53-88): `asyncio.wait`로 shutdown_event + queue get 동시 대기. 예외 시 `logger.error(..., exc_info=True)` 후 계속.
+   - **이슈**: `_process_operation`이 실패해 `raise`하면 line 79의 `task_done()`이 스킵됨 → 큐 미완료 카운트 누적. graceful shutdown 경로에서 `queue.join()`이 무한 대기할 가능성. 단, `stop_db_writer`는 cancel + 큐 비우기로 회피하므로 실제 발현은 제한적.
+   - IO: aiosqlite async + `get_db_lock()`. OK.
+
+3. **telegram_bot.py** — 양호
+   - `_poll_loop` (88-111): while 루프, 예외 시 `had_error=True` + 로깅 + 2초 sleep 후 재시도. CancelledError break. 활성 설정 없으면 자동 종료.
+   - `_poll_one` (144-197): httpx async, 예외 시 로깅 후 return(다음 폴링에서 재시도). atexit 예외 시 루프 중단. OK.
+   - `asyncio.gather(*tasks, return_exceptions=True)`로 개별 폴링 예외 격리. OK.
+
+4. **kiwoom_rest.py** — 잠재 이슈 1건
+   - `_call_api` (125-197): 재시도 루프, 429 adaptive backoff, 예외 시 `_reset_client` 후 재시도. 모두 실패 시 `(None, hit_429)`. 양호.
+   - `_issue_token` (199-266): 3회 재시도, 429 sleep. 양호.
+   - **이슈**: `_request` (317-357)는 예외 시 재시도 없이 즉시 `return None` (line 353-356). `_call_api`는 예외 시 재시도하는데 일관성 부족(P23). 의도적일 수 있으나 확인 필요.
+   - `_paginated_request` (359-422): 페이지네이션 while + 429 내부 재시도 3회. 예외 시 부분 결과 반환. 양호.
+   - IO: 전부 httpx async. OK.
+
+5. **kiwoom_stock_rest.py** — 양호
+   - `fetch_ka10081_daily_5d_data` (138-218): while True 페이지네이션, resp 없음/예외 시 break. OK.
+   - `_fetch_all_stocks_ka10081` (221-): for 루프, 예외 시 `failed_codes` 추가 후 계속. 양호.
+   - IO: 전부 async. OK.
+
+6. **engine_cache.py** — 잠재 이슈 1건
+   - `_load_caches_preboot` (14-149): 단일 try-except.
+   - **이슈**: line 148-149에서 치명적 오류(`RuntimeError("master_stocks_table 테이블에 데이터가 없습니다")` line 28 포함)를 "무시, 기존 흐름으로 진행"으로 처리. **P20(폴백 금지) 위반 소지** — master_stocks_table 없음이 치명적인데 폴백으로 덮음.
+   - 백그라운드 태스크(line 134-136, 143-144)는 `add_done_callback`로 실패 로깅. P25 준수.
+
+7. **app.py** — 양호
+   - lifespan (32-195): startup/shutdown. 백그라운드 태스크 전부 `add_done_callback`로 실패 로깅. P25 준수.
+   - `global_exception_handler` (245-271): 예외 로깅 + 텔레그램 알림(5분 쿨다운). OK.
+   - IO: 전부 async. OK.
+
+8. **ws.py / ws_settings.py / ws_orders.py** — 양호 (동일 패턴)
+   - 세 파일 모두 while True 수신 루프, `WebSocketDisconnect` pass, 기타 예외 `logger.warning`, finally `unregister`.
+   - `_send_initial_snapshot_delayed`는 이벤트 대기 기반(폴링 없음), 예외 시 로깅. OK.
+   - IO: 전부 async. OK.
+
+**IO 블로킹 여부**: 발견 없음. 모든 I/O는 async(httpx.AsyncClient, aiosqlite, asyncio.Queue/Event) 기반. 동기 `requests`, `sqlite3`, `time.sleep`, `threading` 사용 없음.
 
 ### 8.2 위반 목록
-_작성 예정_
+
+| ID | 심각도 | 파일:줄 | 내용 | 관련 원칙 |
+|----|--------|---------|------|-----------|
+| B4-06-01 | MEDIUM | `db_writer.py:79` | `_process_operation` 실패 시 `task_done()` 스킵 → 큐 미완료 카운트 누적, graceful shutdown 시 `queue.join()` 무한 대기 위험 | P25 부분 |
+| B4-06-02 | LOW | `kiwoom_rest.py:353-356` | `_request` 예외 시 재시도 없이 즉시 `return None` — `_call_api`와 일관성 부족 | P23(일관성) |
+| B4-06-03 | MEDIUM | `engine_cache.py:148-149` | 치명적 오류(RuntimeError 포함)를 "무시하고 진행" — master_stocks_table 없음이 치명적인데 폴백 처리 | P20(폴백 금지) |
+
+### 8.3 양호 항목 (P25 준수 확인)
+
+- `notification_worker._consume_loop`: 예외 격리 + finally task_done + CancelledError break — P25 OK
+- `telegram_bot._poll_loop`: had_error 플래그 + 2초 sleep 재시도 + gather return_exceptions — P25 OK
+- `kiwoom_rest._call_api`: 429 adaptive backoff + 예외 시 재시도 + _reset_client — P25 OK
+- `kiwoom_rest._paginated_request`: 부분 결과 반환 + 429 내부 재시도 — P25 OK
+- `kiwoom_stock_rest._fetch_all_stocks_ka10081`: failed_codes 추적 후 루프 계속 — P25 OK
+- `app.py` 백그라운드 태스크 3곳(62, 141, 146): add_done_callback 실패 로깅 — P25 OK
+- `ws.py/ws_settings.py/ws_orders.py` 수신 루프: WebSocketDisconnect pass + 기타 예외 로깅 + finally unregister — P25 OK
+- IO 전부 async: P1-P3 준수
 
 ---
 
