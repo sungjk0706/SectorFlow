@@ -151,7 +151,7 @@ const COLUMNS: ColumnDef<SectorStock>[] = [
 
 /* ── 모듈 변수 ── */
 let dataTable: DataTableApi<SectorStock> | null = null
-let badgeEls: { orderable: BadgeHandle; daily: BadgeHandle; holding: BadgeHandle } | null = null
+let badgeEls: { orderable: BadgeHandle; daily: BadgeHandle; holding: BadgeHandle; status: BadgeHandle } | null = null
 let emptyEl: HTMLElement | null = null
 let searchInput: ReturnType<typeof createSearchInput> | null = null
 let searchTerm = ''
@@ -243,6 +243,42 @@ function updateBadges(): void {
     statusText: holdingStatusText,
     statusColor: holdingHit ? COLOR.up : holdingNear ? COLOR.warning : COLOR.code,
   })
+
+  // 매수상태 배지 — 전체 차단 게이트 집계 (P21 사용자 투명성)
+  // 우선순위: 서킷브레이커 > 리스크 > 시간대 > 자동매매/매수 OFF > 매수 시간대 외
+  // 데이터 소스: 기존 uiStore 상태 + globalSettingsManager (P10 SSOT — 신규 데이터 없음)
+  // 미노출 4개 사유(daily_state, realtime_latency, test_cash, order_fail)는 백엔드 WS 미브로드캐스트 — 별도 후속 작업
+  let statusText = '매수 가능'
+  let statusBlocked = false
+  if (uiState.circuitBreakerOpen) {
+    statusText = '차단: 서킷브레이커'
+    statusBlocked = true
+  } else if (uiState.riskBlockStatus && uiState.riskBlockStatus.side === 'buy') {
+    statusText = `차단: 리스크(${uiState.riskBlockStatus.reason})`
+    statusBlocked = true
+  } else if (uiState.orderTimeBlocked) {
+    statusText = `차단: ${uiState.orderTimeBlocked.reason}`
+    statusBlocked = true
+  } else if (!settings || !settings.time_scheduler_on) {
+    statusText = '차단: 자동매매 OFF'
+    statusBlocked = true
+  } else if (!settings.auto_buy_on) {
+    statusText = '차단: 자동매수 OFF'
+    statusBlocked = true
+  } else {
+    // 매수 작동 시간 범위 체크 (KST HH:MM 기준 — 백엔드 auto_buy_effective와 동일 로직)
+    const nowKst = new Date().toLocaleTimeString('en-GB', { timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit' })
+    const buyStart = String(settings.buy_time_start ?? '09:00').slice(0, 5)
+    const buyEnd = String(settings.buy_time_end ?? '15:20').slice(0, 5)
+    if (nowKst < buyStart || nowKst > buyEnd) {
+      statusText = '차단: 매수 시간대 외'
+      statusBlocked = true
+    }
+  }
+  updateBadge(badgeEls.status, statusText, {
+    status: statusBlocked ? 'warn' : 'normal',
+    statusColor: statusBlocked ? COLOR.up : COLOR.down,
+  })
 }
 
 /* ── mount ── */
@@ -257,15 +293,17 @@ function mount(container: HTMLElement): void {
   const headerRow = createCardHeaderWithMargin('매수후보', undefined, '4px')
   root.appendChild(headerRow)
 
-  // 한도 배지 행 — 공통 컴포넌트 (flex 3등분 고정)
+  // 한도 배지 행 — 공통 컴포넌트 (flex 4등분 고정)
   const badgeRow = createBadgeRow()
   const orderableBadge = createBadge('💳 주문가능금액', '원')
-  const dailyBadge = createBadge('💰 일일 매수 금액 (수수료 포함)', '원')
-  const holdingBadge = createBadge('📦 동시 보유 종목 최대', '종목')
+  const dailyBadge = createBadge('💰 일일 매수', '원')
+  const holdingBadge = createBadge('📦 보유 종목', '종목')
+  const statusBadge = createBadge('🚦 매수상태', '')
   badgeRow.appendChild(orderableBadge.el)
   badgeRow.appendChild(dailyBadge.el)
   badgeRow.appendChild(holdingBadge.el)
-  badgeEls = { orderable: orderableBadge, daily: dailyBadge, holding: holdingBadge }
+  badgeRow.appendChild(statusBadge.el)
+  badgeEls = { orderable: orderableBadge, daily: dailyBadge, holding: holdingBadge, status: statusBadge }
   root.appendChild(badgeRow)
 
   // 검색 입력란 — 테이블 좌측 상단, 주문가능금액 배지 하단 (업종별 종목 시세와 동일한 패턴)
@@ -342,6 +380,9 @@ function mount(container: HTMLElement): void {
   let lastRenderedSettings = globalSettingsManager.getSettings()
   const initUiState = uiStore.getState()
   let lastRenderedBuyLimitStatus = initUiState.buyLimitStatus
+  let lastRenderedCircuitBreaker = initUiState.circuitBreakerOpen
+  let lastRenderedOrderTimeBlocked = initUiState.orderTimeBlocked
+  let lastRenderedRiskBlockStatus = initUiState.riskBlockStatus
 
   function scheduleRender(): void {
     const hotState = hotStore.getState()
@@ -352,6 +393,9 @@ function mount(container: HTMLElement): void {
       hotState.account !== lastRenderedAccount ||
       globalSettingsManager.getSettings() !== lastRenderedSettings ||
       uiState.buyLimitStatus !== lastRenderedBuyLimitStatus ||
+      uiState.circuitBreakerOpen !== lastRenderedCircuitBreaker ||
+      uiState.orderTimeBlocked !== lastRenderedOrderTimeBlocked ||
+      uiState.riskBlockStatus !== lastRenderedRiskBlockStatus ||
       searchTerm !== lastRenderedSearchTerm
 
     if (!anyChanged) return
@@ -387,18 +431,24 @@ function mount(container: HTMLElement): void {
         }
       }
 
-      // buyTargets / positions / account / settings / buyLimitStatus 변경 시 배지 업데이트
+      // buyTargets / positions / account / settings / buyLimitStatus / 차단 상태 변경 시 배지 업데이트
       if (
         targetsChanged ||
         latest.positions !== lastRenderedPositions ||
         latest.account !== lastRenderedAccount ||
         globalSettingsManager.getSettings() !== lastRenderedSettings ||
-        latestUi.buyLimitStatus !== lastRenderedBuyLimitStatus
+        latestUi.buyLimitStatus !== lastRenderedBuyLimitStatus ||
+        latestUi.circuitBreakerOpen !== lastRenderedCircuitBreaker ||
+        latestUi.orderTimeBlocked !== lastRenderedOrderTimeBlocked ||
+        latestUi.riskBlockStatus !== lastRenderedRiskBlockStatus
       ) {
         lastRenderedPositions = latest.positions
         lastRenderedAccount = latest.account
         lastRenderedSettings = globalSettingsManager.getSettings()
         lastRenderedBuyLimitStatus = latestUi.buyLimitStatus
+        lastRenderedCircuitBreaker = latestUi.circuitBreakerOpen
+        lastRenderedOrderTimeBlocked = latestUi.orderTimeBlocked
+        lastRenderedRiskBlockStatus = latestUi.riskBlockStatus
         updateBadges()
       }
     })

@@ -8,6 +8,7 @@
 
 | 날짜 | 세션 | 작업 | 상태 |
 |------|------|------|------|
+| 2026-07-23 | T3-S21 | 매수후보 테이블 4번째 배지 "🚦 매수상태" 추가 (전체 차단 게이트 UI 표시) — P21 (프론트엔드) | 완료 |
 | 2026-07-23 | T3-S20 | 매수 수량 계산 수수료 여유분 확보 (max_buy_qty_for_budget 헬퍼 SSOT) — P10/P22 (백엔드+테스트) | 완료 |
 | 2026-07-23 | T3-S19 | 일일/종목당 매수 한도 수수료 포함 통일 (테스트모드) — P22/P10/P21 (백엔드+프론트+테스트) | 완료 |
 | 2026-07-23 | T3-S18 | 수익상세 페이지 매수/매도 금액 라벨 명확화 + 승률/수익률 카드 순서 교환 (P21/P23) | 완료 |
@@ -20,6 +21,56 @@
 ---
 
 ## 직전 완료 작업
+
+### T3-S21 매수후보 테이블 4번째 배지 "🚦 매수상태" 추가 — 완료 (2026-07-23) — P21 사용자 투명성 (프론트엔드, problem-solve)
+
+**세션**: 단일 세션. 매수후보 테이블 상단 배지 행에 4번째 배지 추가로 "왜 매수가 안 되는지"를 화면에서 즉시 파악 가능하게 함.
+
+**배경**: 기존 3개 배지(주문가능금액/일일 매수/보유 종목)는 "한도(용량)"만 표시. 주문가능금액이 충분해도 서킷브레이커·리스크·시간대·자동매수 OFF 등으로 매수가 차단될 수 있으나, 그 사실이 매수후보 페이지에 문맥적으로 연결되지 않아 사용자가 "돈 있는데 왜 안 사?"라는 의문을 갖게 됨 (P21 위반). 차단 정보는 화면 최상단 헤더 칩에 있으나 시선 분리.
+
+**작업 내용** (4건, 1개 파일):
+1. **배지 라벨 간소화 (4등분 폭 압축 대응)** — `buy-target.ts:263-265` "💰 일일 매수 금액 (수수료 포함)" → "💰 일일 매수", "📦 동시 보유 종목 최대" → "📦 보유 종목". 신규 "🚦 매수상태" 배지 추가 (단위 없음).
+2. **`badgeEls` 타입에 `status: BadgeHandle` 추가** — `buy-target.ts:154` 4번째 배지 핸들 보관.
+3. **`updateBadges()`에 매수상태 로직 추가** — `buy-target.ts:247-281`. 우선순위 체인: 서킷브레이커 > 리스크(side=buy) > 시간대 > 자동매매 OFF > 자동매수 OFF > 매수 시간대 외. 정상 시 "매수 가능"(파랑), 차단 시 "차단: {사유}"(빨강). 시간 범위 체크는 KST HH:MM 기준(`toLocaleTimeString('en-GB', { timeZone: 'Asia/Seoul' })`)으로 백엔드 `auto_buy_effective`와 동일 로직.
+4. **`scheduleRender()` 변경 감지에 차단 상태 추가** — `buy-target.ts:381-393,434-447`. `circuitBreakerOpen`/`orderTimeBlocked`/`riskBlockStatus` 참조 변경 시 재렌더 트리거 + lastRendered 갱신.
+
+**수정 파일**: 1개 (프론트엔드).
+- `frontend/src/pages/buy-target.ts` (배지 라벨 간소화 + 4번째 배지 추가 + updateBadges 매수상태 로직 + scheduleRender 변경 감지)
+
+**데이터 소스 (P10 SSOT — 신규 데이터 없음)**:
+- `uiStore.circuitBreakerOpen` / `orderTimeBlocked` / `riskBlockStatus` — 기존 WS 이벤트(`circuit_breaker_open`/`order_time_blocked`/`risk_block_status`)로 갱신됨
+- `globalSettingsManager.getSettings()`의 `time_scheduler_on`/`auto_buy_on`/`buy_time_start`/`buy_time_end` — 기존 설정
+
+**아키텍처 원칙 부합**:
+- P21 (사용자 투명성): 핵심 목적 — 매수 차단 원인을 매수후보 화면에 직접 표시. "돈 있는데 왜 안 사?" 의문 해소.
+- P10 (SSOT): 신규 데이터/상태 없음. 기존 uiStore 상태 집계만.
+- P16 (살아있는 경로): updateBadges()는 기존 렌더 경로에서 호출됨.
+- P20 (폴백 금지): settings null 시 early return (기존 패턴 준수).
+- P23 (일관성): `createBadge`/`updateBadge` 공통 컴포넌트 재사용, 용어사전 준수("매수").
+- P24 (단순성): 우선순위 if-else 체인, 신규 추상화 없음.
+- P25 (격리된 실패): 기존 updateBadges 호출부 패턴 준수.
+
+**영향 범위**: 프론트엔드 1파일. 백엔드/테스트 영향 없음. 핵심 매매 로직 아님 (UI 표시만) → 규칙 0-4 해당 없음. 롤백 아님 (신규 배지 추가) → 규칙 0-3 해당 없음.
+
+**UI 기준 화면 변화 (규칙 0-4)**:
+- 매수후보 화면 상단 배지 행이 3개 → 4개로 변경. 기존 배지 라벨 간소화 ("💰 일일 매수 금액 (수수료 포함)" → "💰 일일 매수", "📦 동시 보유 종목 최대" → "📦 보유 종목").
+- 4번째 배지 "🚦 매수상태" 추가:
+  - 정상: "매수 가능" (파랑)
+  - 서킷브레이커 발동 시: "차단: 서킷브레이커" (빨강)
+  - 리스크 차단 시: "차단: 리스크({사유})" (빨강)
+  - 동시호가/장외 시: "차단: {사유}" (빨강)
+  - 자동매매 OFF 시: "차단: 자동매매 OFF" (빨강)
+  - 자동매수 OFF 시: "차단: 자동매수 OFF" (빨강)
+  - 매수 작동 시간 외: "차단: 매수 시간대 외" (빨강)
+- 사용자가 매수후보 화면만 보고 "지금 매수가 실행 가능한가?"를 즉시 파악 가능.
+
+**검증**:
+- `npm run build` (tsc -b + vite build) 통과 — 76 modules, 629ms ✓
+- 브라우저 검증: 사용자 확인 대기
+
+**작업 중 발견 문제**: 미노출 4개 전체 차단 사유(`daily_state`, `realtime_latency`, `test_cash`, `order_fail`)가 백엔드에서 WS 브로드캐스트되지 않아 프론트에서 표시 불가. "미해결 문제" 섹션에 별도 기록.
+
+---
 
 ### T3-S20 매수 수량 계산 수수료 여유분 확보 — 완료 (2026-07-23) — P10 SSOT / P22 데이터 정합성 (백엔드, safe-trade + backend-fix)
 
@@ -277,6 +328,13 @@
 ---
 
 ## 미해결 문제
+
+### P21 갭: 미노출 4개 전체 차단 사유 백엔드 WS 미브로드캐스트 (2026-07-23 T3-S21 발견)
+- **파일**: `backend/app/services/trading.py:204,216,222` (`BUY_REJECT_DAILY_STATE`/`BUY_REJECT_REALTIME_LATENCY`/`BUY_REJECT_AUTO_BUY_OFF`), `trading.py` `BUY_REJECT_TEST_CASH`/`BUY_REJECT_ORDER_FAIL` (사후 사유)
+- **위반/부합 원칙**: P21 (사용자 투명성) 위반 — 4개 전체 차단 사유가 백엔드에서 WS 브로드캐스트되지 않아 프론트엔드 매수상태 배지(T3-S21)에서 표시 불가.
+- **증상**: 일일 매수 상태 로드 실패(`daily_state`), 실시간 지연 200ms 초과(`realtime_latency`), 테스트 예수금 검증 실패(`test_cash`), 주문 전송 실패(`order_fail`) 발생 시 매수후보 화면의 "🚦 매수상태" 배지가 "매수 가능"으로 잘못 표시됨 (실제로는 차단됨).
+- **근거**: T3-S21에서 매수상태 배지 추가 시 기존 uiStore 상태만 사용하기로 함 (P10 SSOT). 이 4개 사유는 백엔드에서 WS 이벤트로 전송되지 않으므로 프론트에서 알 수 없음.
+- **수정 방향**: 별도 후속 세션에서 백엔드 `trading.py`에 WS 브로드캐스트 추가. `engine_state` 기반으로 `daily_state`/`realtime_latency` 상태를 WS 이벤트(`buy_block_status` 등 신규 또는 기존 `risk_block_status` 확장)로 전송 → 프론트 uiStore에 신규 상태 추가 → 매수상태 배지 우선순위 체인에 반영. `test_cash`/`order_fail`은 사후 사유이므로 별도 알림 방식 검토 필요.
 
 ### P18 갭: 테스트/실전 한도 체크 기준 상이 (2026-07-23 T3-S19 발견)
 - **파일**: `backend/app/services/trading.py:141,147` (_load_daily_buy_state), `trading.py:450-457` (매수 후 누적), `backend/app/services/trade_history.py:270,280` (record_buy total_amt)
