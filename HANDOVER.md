@@ -8,6 +8,7 @@
 
 | 날짜 | 세션 | 작업 | 상태 |
 |------|------|------|------|
+| 2026-07-23 | T3-S31 | 체결강도 매수차단 제거 프론트엔드 구현 (다단계 워크플로우 세션 4) — Step 4-1~4-3 (프론트엔드 3파일) — P16/P21/P23/P24 (프론트엔드) | 완료 |
 | 2026-07-23 | T3-S30 | 체결강도 매수차단 제거 백엔드 구현 (다단계 워크플로우 세션 3) — Step 3-1~3-9 (백엔드 5파일 + 테스트 3파일) — safe-trade/P15/P16/P18/P20/P21/P22/P23/P24/P25 | 완료 |
 | 2026-07-23 | T3-S29 | 체결강도 제거 심층 사전조사 + 태스크 파일 작성 (다단계 워크플로우 세션 2) — safe-trade/P15/P16/P20/P21/P22/P23/P24/P25 (태스크 작성만, 코드 수정 없음) | 태스크 완료 |
 | 2026-07-23 | T3-S28 | 체결강도 제거 사전조사 + 사용자 방향 확정 + 설계 문서 작성 (구현은 다음 세션) — safe-trade/P15/P16/P20/P21/P22/P23/P24/P25 (설계만, 코드 수정 없음) | 설계 완료 |
@@ -30,6 +31,50 @@
 ---
 
 ## 직전 완료 작업
+
+### T3-S31 체결강도 매수차단 제거 프론트엔드 구현 — 완료 (2026-07-23) — P16/P21/P23/P24 (다단계 워크플로우 세션 4, 프론트엔드 구현)
+
+**세션**: 다단계 워크플로우 세션 4 (프론트엔드 구현). 세션 2(태스크 작성) 산출물 `docs/plan_strength_removal.md` 섹션 3의 Step 4-1~4-3 수행. frontend-fix 스킬 적용. 사용자 명시적 실행 지시어("진행해. buy-target.ts + buy-settings.ts + types/index.ts 3개 파일")로 승인.
+
+**배경**: 세션 3(백엔드 구현) 완료. 본 세션에서 체결강도 매수차단 기능의 프론트엔드 구현(매수 후보 컬럼 + 설정 UI + 타입) 수행.
+
+**작업 내용** (3 Step, 3개 파일):
+1. **Step 4-1** `buy-target.ts` — 49줄 `makeStrengthColumn` 호출 제거 + 11줄 import에서 `makeStrengthColumn` 제거
+2. **Step 4-2** `buy-settings.ts` — 29-31줄 `strengthToggle`/`strengthInput`/`strengthControls` 변수 선언 제거 + 86-89줄 `syncBuyBlock` 내 strength 동기화 3줄 제거 + 211-222줄 `buildBuyBlockSection` 내 체결강도 토글+입력란 UI 생성 블록 제거 + 435줄 cleanup 시 strength 변수 null 처리 제거
+3. **Step 4-3** `types/index.ts` — 189-190줄 `buy_block_strength_on: boolean`/`buy_min_strength: number` 타입 필드 2개 제거
+
+**수정 파일**: 3개 (프론트엔드).
+- `frontend/src/pages/buy-target.ts` (컬럼 1개 + import 제거)
+- `frontend/src/pages/buy-settings.ts` (변수 3 + 동기화 3줄 + UI 블록 + cleanup 제거)
+- `frontend/src/types/index.ts` (타입 필드 2개 제거)
+
+**아키텍처 원칙 부합**:
+- P16 (살아있는 경로): 미사용 변수/타입/UI 완전 제거, dead code 잔존 없음
+- P21 (사용자 투명성): 설정 화면에서 체결강도 토글+입력란 사라짐 → 사용자가 기능 제거 인지 가능
+- P23 (일관성): 백엔드에서 제거한 설정 키를 프론트엔드에서도 동시 제거. `makeStrengthColumn`/`strengthColor`/`createStrengthCell` 공통 자산은 업종순위 화면이 사용하므로 유지
+- P24 (단순성): 미사용 UI/타입/변수 제거로 단순화
+
+**영향 범위**: 프론트엔드 3개 파일. 백엔드는 세션 3에서 이미 제거 완료. 업종 순위 화면·텔레그램의 체결강도 표시는 유지 (`strength?: number` 타입은 유지).
+
+**UI 기준 화면 변화 (규칙 0-4)**:
+- 매수 설정 화면: "종목 체결강도 매수차단" 토글+입력란 사라짐. 상승률/하락률 매수차단은 유지.
+- 매수 후보 화면: 테이블에서 "체결강도" 컬럼 사라짐. 다른 컬럼(순번/코드/종목명/현재가/등락/등락률/거래대금 등)은 유지.
+- 업종 순위 화면, 텔레그램: 체결강도 표시 유지 (변화 없음, 회귀 없음)
+
+**검증**:
+- 잔존 참조 검색 (프론트엔드): `buy_block_strength_on`, `buy_min_strength` 모두 **0건**
+- buy-target.ts strength 잔존: **0건** (import + 호출 모두 제거)
+- npm run build: **성공** — TypeScript 오류 없음, 77 modules transformed, built in 1.88s
+- 브라우저 확인: 사용자가 개발 서버(5173 포트)에서 직접 확인 예정
+
+**작업 중 발견 문제**: 없음.
+
+**다음 세션 인계**:
+- **세션 5 (문서 수정 + HANDOVER.md 갱신)**: `docs/plan_strength_removal.md` 섹션 4의 Step 5-1~5-3 수행. 문서 2개 파일(ARCHITECTURE.md, p25_isolated_failure_investigation.md) 수정 + 계획서 2개 파일 삭제 + HANDOVER.md 참조 경로 정리.
+- 참조 문서: `docs/strength_removal_design.md` (설계), `docs/plan_strength_removal.md` (태스크)
+- 승인 상태: 세션 5 진행 시 사용자 명시적 실행 지시어 필요 (규칙 0)
+
+---
 
 ### T3-S30 체결강도 매수차단 제거 백엔드 구현 — 완료 (2026-07-23) — safe-trade + P15/P16/P18/P20/P21/P22/P23/P24/P25 (다단계 워크플로우 세션 3, 백엔드 구현)
 

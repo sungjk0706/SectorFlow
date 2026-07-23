@@ -26,9 +26,6 @@ let riseControls: HTMLElement | null = null
 let fallToggle: ReturnType<typeof createToggleBtn> | null = null
 let fallInput: ReturnType<typeof createNumInput> | null = null
 let fallControls: HTMLElement | null = null
-let strengthToggle: ReturnType<typeof createToggleBtn> | null = null
-let strengthInput: ReturnType<typeof createNumInput> | null = null
-let strengthControls: HTMLElement | null = null
 let maxDailyToggle: ReturnType<typeof createToggleBtn> | null = null
 let maxDailyInput: ReturnType<typeof createMoneyInput> | null = null
 let maxDailyControls: HTMLElement | null = null
@@ -82,11 +79,6 @@ function syncBuyBlock(r: Record<string, unknown>, act: Element | null): void {
   fallToggle?.setOn(fallOn)
   if (fallInput && (!act || !fallInput.el.contains(act))) fallInput.setValue(Number(r.buy_block_fall_pct) ?? 0)
   if (fallControls) setDisabled(fallControls, !fallOn)
-
-  const strengthOn = !!r.buy_block_strength_on
-  strengthToggle?.setOn(strengthOn)
-  if (strengthInput && (!act || !strengthInput.el.contains(act))) strengthInput.setValue(Number(r.buy_min_strength) ?? 0)
-  if (strengthControls) setDisabled(strengthControls, !strengthOn)
 }
 
 function syncBoost(r: Record<string, unknown>, act: Element | null): void {
@@ -205,19 +197,6 @@ function buildBuyBlockSection(root: HTMLElement): void {
       controlsChild: fallInput.el,
     })
     fallToggle = r.toggle; fallControls = r.controls
-    root.appendChild(r.el)
-  }
-
-  // 체결강도 하한 (토글 + 입력)
-  strengthInput = createNumInput({ value: 0, onChange: v => { vals.buy_min_strength = v; saveHelper!.autoSave('buy_min_strength', v) }, step: 1, name: 'buy_min_strength' })
-  {
-    const r = createToggleLabelControlsRow({
-      labelText: '종목 체결강도 매수차단',
-      toggleOn: false,
-      onToggle: next => { vals.buy_block_strength_on = next; saveHelper!.saveImmediate({ buy_block_strength_on: next }) },
-      controlsChild: strengthInput.el,
-    })
-    strengthToggle = r.toggle; strengthControls = r.controls
     root.appendChild(r.el)
   }
 }
@@ -432,7 +411,6 @@ function unmount(): void {
   unsubSettings = null; saveHelper = null; settingsMgr = null
   riseToggle = null; riseInput = null; riseControls = null
   fallToggle = null; fallInput = null; fallControls = null
-  strengthToggle = null; strengthInput = null; strengthControls = null
   maxDailyToggle = null; maxDailyInput = null; maxDailyControls = null
   maxStockCntToggle = null; maxStockCntInput = null; maxStockCntControls = null
   buyAmtToggle = null; buyAmtInput = null; buyAmtControls = null

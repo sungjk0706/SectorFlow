@@ -186,8 +186,6 @@ export interface AppSettings {
   buy_block_rise_pct: number;
   buy_block_fall_on: boolean;
   buy_block_fall_pct: number;
-  buy_block_strength_on: boolean;
-  buy_min_strength: number;
 
   // 매수 가산점
   boost_high_breakout_on: boolean;
