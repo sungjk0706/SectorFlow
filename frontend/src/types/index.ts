@@ -55,6 +55,7 @@ export interface SectorStock {
   order_ratio?: [number, number] | null;
   high_5d?: number;
   program_net_buy?: number;
+  news_boost?: number;  // 뉴스 호재 가산점 (0 = 미부여, >0 = 부여됨)
 }
 
 export interface RadarStock {
@@ -194,6 +195,12 @@ export interface AppSettings {
   boost_order_ratio_score: number;
   boost_program_net_buy_on: boolean;
   boost_program_net_buy_score: number;
+
+  // 매수 가산점 — 뉴스 호재 (NWS)
+  boost_news_on: boolean;
+  boost_news_score: number;
+  news_boost_ttl_sec: number;
+  news_keywords: string;  // 쉼표 구분 문자열
 
   // 텔레그램
   tele_on: boolean;
