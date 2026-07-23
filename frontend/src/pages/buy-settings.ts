@@ -217,19 +217,6 @@ function buildBoostSection(root: HTMLElement): void {
     root.appendChild(r.el)
   }
 
-  // --- 프로그램 순매수 ---
-  {
-    boostProgramScoreInput = createNumInput({ value: 1.0, onChange: v => { vals.boost_program_net_buy_score = v; saveHelper!.autoSave('boost_program_net_buy_score', v) }, step: 1, name: 'boost_program_net_buy_score' })
-    const r = createToggleLabelControlsRow({
-      labelText: '프로그램 순매수',
-      toggleOn: false,
-      onToggle: next => { vals.boost_program_net_buy_on = next; saveHelper!.saveImmediate({ boost_program_net_buy_on: next }) },
-      controlsChild: boostProgramScoreInput.el,
-    })
-    boostProgramToggle = r.toggle; boostProgramControls = r.controls
-    root.appendChild(r.el)
-  }
-
   // --- 뉴스 호재 ---
   {
     boostNewsScoreInput = createNumInput({ value: 1.0, onChange: v => { vals.boost_news_score = v; saveHelper!.autoSave('boost_news_score', v) }, step: 1, name: 'boost_news_score' })
@@ -240,6 +227,19 @@ function buildBoostSection(root: HTMLElement): void {
       controlsChild: boostNewsScoreInput.el,
     })
     boostNewsToggle = r.toggle; boostNewsControls = r.controls
+    root.appendChild(r.el)
+  }
+
+  // --- 프로그램 순매수 ---
+  {
+    boostProgramScoreInput = createNumInput({ value: 1.0, onChange: v => { vals.boost_program_net_buy_score = v; saveHelper!.autoSave('boost_program_net_buy_score', v) }, step: 1, name: 'boost_program_net_buy_score' })
+    const r = createToggleLabelControlsRow({
+      labelText: '프로그램 순매수',
+      toggleOn: false,
+      onToggle: next => { vals.boost_program_net_buy_on = next; saveHelper!.saveImmediate({ boost_program_net_buy_on: next }) },
+      controlsChild: boostProgramScoreInput.el,
+    })
+    boostProgramToggle = r.toggle; boostProgramControls = r.controls
     root.appendChild(r.el)
   }
 
