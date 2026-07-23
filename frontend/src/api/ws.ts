@@ -178,11 +178,17 @@ export class WSClient {
   }
 
   private _handleTextFrame(text: string): void {
+    let msg: { event: string; data: unknown }
     try {
-      const msg = JSON.parse(text)
+      msg = JSON.parse(text)
+    } catch (err) {
+      console.error('[WS] JSON 파싱 실패:', err)
+      return
+    }
+    try {
       this._dispatchMessage(msg)
     } catch (err) {
-      console.error('[WS] 파싱 실패:', err)
+      console.error('[WS] text frame event 디스패치 실패:', err)
     }
   }
 

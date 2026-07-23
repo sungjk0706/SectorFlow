@@ -364,10 +364,18 @@ export function applyRealData(item: RealDataEvent): void {
         // rank-0가 변경된 경우 기존/신규 rank-0 종목의 셀도 갱신
         if (oldRank0 !== newRank0) {
           if (oldRank0 && oldRank0 !== code) {
-            window.dispatchEvent(new CustomEvent('real-data-tick', { detail: oldRank0 }))
+            try {
+              window.dispatchEvent(new CustomEvent('real-data-tick', { detail: oldRank0 }))
+            } catch (e) {
+              console.error('[hotStore] dispatchEvent error (real-data-tick):', e)
+            }
           }
           if (newRank0 && newRank0 !== code) {
-            window.dispatchEvent(new CustomEvent('real-data-tick', { detail: newRank0 }))
+            try {
+              window.dispatchEvent(new CustomEvent('real-data-tick', { detail: newRank0 }))
+            } catch (e) {
+              console.error('[hotStore] dispatchEvent error (real-data-tick):', e)
+            }
           }
         }
       }
@@ -387,7 +395,11 @@ export function applyRealData(item: RealDataEvent): void {
 
   // 변경사항이 있을 경우 글로벌 이벤트로 특정 종목의 변경을 알림 (O(1) DOM 갱신용)
   if (changed) {
-    window.dispatchEvent(new CustomEvent('real-data-tick', { detail: code }));
+    try {
+      window.dispatchEvent(new CustomEvent('real-data-tick', { detail: code }));
+    } catch (e) {
+      console.error('[hotStore] dispatchEvent error (real-data-tick):', e)
+    }
   }
   }
 }
@@ -409,7 +421,11 @@ export function applyOrderbookUpdate(data: { code: string; bid: number; ask: num
   t.order_ratio = [bid, ask];
   
   // O(1) DOM 갱신을 위해 글로벌 이벤트 발생
-  window.dispatchEvent(new CustomEvent('orderbook-tick', { detail: code }));
+  try {
+    window.dispatchEvent(new CustomEvent('orderbook-tick', { detail: code }));
+  } catch (e) {
+    console.error('[hotStore] dispatchEvent error (orderbook-tick):', e)
+  }
 }
 
 /* ── program-update: 매수후보 프로그램순매수 실시간 갱신 ── */
@@ -428,7 +444,11 @@ export function applyProgramUpdate(data: { code: string; net_buy: number }): voi
   t.program_net_buy = net_buy;
 
   // O(1) DOM 갱신을 위해 글로벌 이벤트 발생
-  window.dispatchEvent(new CustomEvent('program-tick', { detail: code }));
+  try {
+    window.dispatchEvent(new CustomEvent('program-tick', { detail: code }));
+  } catch (e) {
+    console.error('[hotStore] dispatchEvent error (program-tick):', e)
+  }
 }
 
 /* ── 공통 헬퍼: 지정된 필드를 null로 설정 ── */
