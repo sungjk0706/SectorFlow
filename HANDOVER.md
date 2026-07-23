@@ -8,6 +8,7 @@
 
 | 날짜 | 세션 | 작업 | 상태 |
 |------|------|------|------|
+| 2026-07-23 | T3-S24 | 매수/매도 상태 배지 판정 로직 공통 추출 (computeOrderBlockStatus) — P10/P23/P25 (프론트엔드) | 완료 |
 | 2026-07-23 | T3-S23 | 배지 폰트 위계 조정 + 보유종목 배지 라벨 축약 (P23/P21) (프론트엔드) | 완료 |
 | 2026-07-23 | T3-S22 | 보유종목 테이블 4번째 배지 "🚦 매도상태" 추가 (매수후보 T3-S21과 동일 패턴) — P21 (프론트엔드) | 완료 |
 | 2026-07-23 | T3-S21 | 매수후보 테이블 4번째 배지 "🚦 매수상태" 추가 (전체 차단 게이트 UI 표시) — P21 (프론트엔드) | 완료 |
@@ -23,6 +24,42 @@
 ---
 
 ## 직전 완료 작업
+
+### T3-S24 매수/매도 상태 배지 판정 로직 공통 추출 — 완료 (2026-07-23) — P10 SSOT + P23 일관성 + P25 격리된 실패 (프론트엔드, frontend-fix)
+
+**세션**: 단일 세션. 매수후보/보유종목 양쪽 상태 배지의 차단 게이트 판정 로직(서킷브레이커 > 리스크 > 시간대 > 자동매매 OFF > 자동매수/매도 OFF > 시간대 외)이 거의 동일 코드로 중복되어 있던 것을 단일 함수 `computeOrderBlockStatus()`로 추출. buy-target 쪽 try/catch 누락(P25 위반)도 함께 보정.
+
+**배경**: T3-S23 작업 중 발견 — `buy-target.ts:247-281`(인라인, try/catch 없음)과 `sell-position.ts:146-186`(`updateSellStatusBadge()`, try/catch 있음)이 6단계 게이트 우선순위 체인을 거의 동일하게 중복 구현. side/플래그/시간설정/텍스트만 다른 매개변수화 가능한 7개 차이점만 존재. P23(일관성) 위반 + buy 쪽 P25(격리된 실패) 위반(try/catch 누락으로 판정 중 예외 시 페이지 전체 중단 위험).
+
+**작업 내용** (3건, 3개 파일):
+1. **신규 `utils/order-block-status.ts`** — `computeOrderBlockStatus(side, uiState, settings): OrderBlockStatus` 단일 함수. side별 텍스트 매핑 테이블(`SIDE_TEXT`) 1곳에서 buy/sell 차이 관리 (ok/autoOff/outOfTime 텍스트 + autoFlag/timeStart/timeEnd 키). DOM 렌더링은 호출부 `updateBadge()` 담당 → 관심사 분리 (P24 단순성 — badge.ts 렌더링 책임과 분리).
+2. **`buy-target.ts` 인라인 블록 교체** — 36줄 게이트 체인 → `computeOrderBlockStatus('buy', ...)` 호출 13줄. **try/catch + console.error 추가** (P25 격리 — 기존 누락 보정, sell 쪽과 일관성 확보).
+3. **`sell-position.ts` 함수 본문 축소** — `updateSellStatusBadge()` 본문 45줄 → 16줄. 기존 try/catch 구조 유지.
+
+**수정 파일**: 3개 (프론트엔드).
+- `frontend/src/utils/order-block-status.ts` (신규, 89줄 — 판정 함수 + side 매핑 테이블)
+- `frontend/src/pages/buy-target.ts` (import 추가 + 인라인 게이트 체인 → 함수 호출 + try/catch 추가)
+- `frontend/src/pages/sell-position.ts` (import 추가 + 함수 본문 → 호출 1줄)
+
+**아키텍처 원칙 부합**:
+- P10 (SSOT): 게이트 판정 로직 단일 함수화 — 기존 2곳 중복 제거. side별 텍스트/키 매핑도 단일 테이블에서 관리.
+- P23 (일관성): buy/sell 동일 패턴 보장. buy 쪽 try/catch 누락 보정으로 에러 격리 패턴 일관성 회복.
+- P24 (단순성): 추상화 최소 (함수 1개 + 인터페이스 1개 + 매핑 테이블 1개). DOM 렌더링은 호출부 유지로 관심사 분리. badge.ts(렌더링 컴포넌트)에 비즈니스 로직 혼재 방지.
+- P25 (격리된 실패): buy 쪽 try/catch 추가 → 양쪽 모두 판정 중 예외 시 해당 배지만 갱신 중단, 페이지 전체 중단 없음.
+- P21 (사용자 투명성): 기존 UI 표시 텍스트/색상/우선순위 100% 유지 → 화면 변화 없음.
+
+**영향 범위**: 프론트엔드 3파일(신규 1 + 수정 2). 백엔드/DB/테스트 영향 없음. 핵심 매매 로직 아님 (UI 상태 배지 판정만) → 규칙 0-4 해당 없음. 롤백 아님 (중복 제거 추출) → 규칙 0-3 해당 없음.
+
+**UI 기준 화면 변화 (규칙 0-4)**: 없음. 매수후보 "🚦 매수상태" 배지와 보유종목 "🚦 매도상태" 배지의 표시 텍스트·색상·차단 사유 우선순위가 이전과 완전히 동일. 내부 코드 구조만 공통 함수로 통일.
+
+**검증**:
+- `npm run typecheck` (tsc --noEmit) 통과 ✓
+- `npm run build` (tsc -b + vite build) 통과 — `order-block-status` 청크 분리 생성, 623ms, 타입 오류 없음 ✓
+- 브라우저 검증: 사용자 확인 완료 (매수후보/보유종목 상태 배지 표시 이전과 동일)
+
+**작업 중 발견 문제**: 본 세션에서 해결 완료. 추가 발견 문제 없음.
+
+---
 
 ### T3-S23 배지 폰트 위계 조정 + 보유종목 배지 라벨 축약 — 완료 (2026-07-23) — P23 일관성 + P21 사용자 투명성 (프론트엔드, frontend-fix)
 
