@@ -6,53 +6,62 @@
 
 ## 직전 완료 작업
 
-### P25 전수 조사 세션 6: B4 워커·IO·재시도 루프 조사 완료 (2026-07-23)
+### P25 전수 조사 세션 7: A3 UI 컴포넌트 렌더링 조사 완료 (2026-07-23)
 
-**세션**: 단일 세션. 조사만 수행 (코드 수정 없음). HANDOVER 미해결 문제 3건 기록.
+**세션**: 단일 세션. 조사만 수행 (코드 수정 없음). HANDOVER 미해결 문제 10건 기록.
 
-**배경**: P25 전수 조사 9세션 중 세션 6. B4 워커·IO·재시도 루프 영역 조사. 우선순위 6위 — 알림 워커, DB Writer, 텔레그램 폴링, 키움 REST 재시도, 엔진 캐시 오케스트레이션, WS 서버 루프. 한 번 중단 시 알림 누락/DB 쓰기 누락/REST 호출 실패 위험이나 다른 구성요소는 정상 작동 유지 필요.
+**배경**: P25 전수 조사 9세션 중 세션 7. A3 UI 컴포넌트 렌더링 영역 조사. 우선순위 7위 — 프론트엔드 pages/, components/common/, layout/ 전역. 개별 칩/컴포넌트 렌더링 실패가 전체 화면 중단 유발 여부 (F-02 사례와 동일 패턴).
 
-**조사 파일**: 10개 (`notification_worker.py`, `db_writer.py`, `telegram_bot.py`, `kiwoom_rest.py`, `kiwoom_stock_rest.py`, `engine_cache.py`, `app.py`, `ws.py`, `ws_settings.py`, `ws_orders.py`)
+**조사 파일**: 51개 (pages/ 23, components/common/ 28, layout/ 3) + 참조 2개 (binding.ts, virtual-scroller.ts)
 
-**조사 항목 3가지 결과**:
+**조사 항목 결과**:
 
-1. **while 루프 예외 격리**:
-   - `notification_worker._consume_loop`: 예외 시 로깅 후 계속 + finally task_done → P25 OK
-   - `telegram_bot._poll_loop`: had_error 플래그 + 2초 sleep 재시도 → P25 OK
-   - `kiwoom_rest._paginated_request`: 부분 결과 반환 → P25 OK
-   - `kiwoom_stock_rest.fetch_ka10081_daily_5d_data`: 예외 시 break → P25 OK
-   - `ws.py/ws_settings.py/ws_orders.py` 수신 루프: WebSocketDisconnect pass + 기타 예외 로깅 + finally unregister → P25 OK
-   - `db_writer._db_writer_loop`: 예외 시 로깅 후 계속 → P25 OK이나 task_done 스킵 이슈 (B4-06-01)
+1. **Store 리스너 간 격리**: ✅ 준수. `store.ts:40-46` setState가 각 listener를 try/catch + console.error로 격리 (F-02 fix). 한 페이지 subscribe 콜백이 throw해도 다른 페이지/헤더 리스너는 계속 실행. 단, **리스너 "내부" 부분 실패 시 콜백 내 나머지 작업은 중단** (A3-07-04).
 
-2. **재시도 루프 실패 전파**:
-   - `kiwoom_rest._call_api`: 429 adaptive backoff + 예외 시 재시도 + 모두 실패 시 (None, hit_429) → 양호
-   - `kiwoom_rest._issue_token`: 3회 재시도 → 양호
-   - `kiwoom_rest._request`: 예외 시 재시도 없이 즉시 return None → `_call_api`와 일관성 부족 (B4-06-02)
-   - `telegram_bot._poll_one`: 예외 시 return 후 다음 폴링에서 재시도 → 양호
+2. **DataTable 셀 렌더링 격리**: ✅ 준수. `data-table-fixed.ts:154-162, 274-290` 및 `data-table-virtual.ts:243-250`에서 각 셀 `c.render()`를 try/catch + console.error로 격리. 개별 셀 실패 시 해당 셀만 빈 상태로 남고 나머지 셀/행은 정상 렌더링.
 
-3. **IO 블로킹 여부**:
-   - **발견 없음**. 모든 I/O는 async(httpx.AsyncClient, aiosqlite, asyncio.Queue/Event) 기반. 동기 `requests`, `sqlite3`, `time.sleep`, `threading` 사용 없음. P1-P3 준수.
+3. **DataTable 행 렌더링 격리**: ❌ 미준수. `virtual-scroller.ts:293-316` renderRange 루프 내 `renderRow()` 호출(304, 312행)과 `data-table-fixed.ts:230-236` 신규 키 추가 루프 내 `renderDataRow()` 호출(232행)에 try/catch 없음. rowStyle() 또는 행 생성 자체 throw 시 루프 중단 → 가시 영역 전체 공백.
 
-**식별 위반 3건** (미해결 문제에 기록):
-- **B4-06-01 (MEDIUM)**: `db_writer.py:79` `_process_operation` 실패 시 `task_done()` 스킵 → 큐 미완료 카운트 누적, graceful shutdown 시 `queue.join()` 무한 대기 위험. 단 `stop_db_writer`는 cancel + 큐 비우기로 회피하므로 실제 발현은 제한적 → **P25 부분 위반**
-- **B4-06-02 (LOW)**: `kiwoom_rest.py:353-356` `_request` 예외 시 재시도 없이 즉시 `return None` — `_call_api`는 예외 시 재시도하는데 일관성 부족 → **P23(일관성) 위반**. 의도적일 수 있으나 확인 필요
-- **B4-06-03 (MEDIUM)**: `engine_cache.py:148-149` 치명적 오류(RuntimeError 포함, line 28 `master_stocks_table 테이블에 데이터가 없습니다`)를 "무시, 기존 흐름으로 진행"으로 처리 → **P20(폴백 금지) 위반 소지** — master_stocks_table 없음이 치명적인데 폴백으로 덮음
+4. **헤더 칩 렌더링 (콜백 내)**: ❌ 미준수. `header.ts:365-494` onStateChange 단일 대형 함수(~130줄, 15개 칩 순차 갱신)에 내부 try/catch 없음. store.ts가 콜백 전체를 보호하므로 다른 리스너는 안전하나, 콜백 내 한 칩 throw 시 이후 칩들 미갱신 → 헤더 일부 칩 멈춤 상태 방치 (P21 위반). F-02 잔존 위험.
+
+5. **페이지 리스트 루프**: ❌ 미준수. profit-overview-sector-pnl(이중 루프), stock-classification(칩/종목 3개 루프), profit-overview-mount(계좌 행), profit-detail-mount(통계 카드) 등 대부분 per-item 격리 없음.
+
+6. **DOM addEventListener 핸들러**: ❌ 미준수. 87개 중 try/catch 보호 사실상 전무. 사용자 구동이라 빈도 낮아 위험 중간~낮음.
+
+7. **Router**: 부분. `notifyRouteChange`(105-109) cb 루프 무보호(LOW). `handleRouteChange`(154-193)는 try/catch + 에러 UI + 재시도 버튼으로 P25 준수.
+
+**식별 위반 10건** (미해결 문제에 기록):
+- **A3-07-01 (HIGH)**: `virtual-scroller.ts:293-316` renderRange 루프 내 renderRow 호출 try/catch 없음 → 가시 영역 전체 렌더링 중단
+- **A3-07-02 (HIGH)**: `data-table-fixed.ts:230-236` 신규 키 추가 루프 내 renderDataRow 호출 try/catch 없음 → 전체 테이블 렌더링 실패
+- **A3-07-03 (MEDIUM)**: `data-table.ts:104-112` extractSamples 루프 무보호 → 테이블 초기화 차단
+- **A3-07-04 (HIGH)**: `header.ts:365-494` onStateChange 단일 함수, 15개 칩 간 격리 없음 → 한 칩 실패 시 이후 칩 미갱신 (P21 위반, F-02 잔존)
+- **A3-07-05 (MEDIUM)**: `profit-overview-sector-pnl.ts:139-168` 업종×종목 이중 루프 무보호 → 한 종목 실패 시 이후 업종 전부 누락
+- **A3-07-06 (MEDIUM)**: `stock-classification.ts:278-322` 3개 루프 무보호 → 칩 업종명/카운트 미갱신
+- **A3-07-07 (MEDIUM)**: `profit-overview-mount.ts:101-133` buildAccountRows 루프 무보호 → 계좌 행 일부 누락
+- **A3-07-08 (LOW)**: `profit-detail-mount.ts:185-222` buildStatRow 루프 무보호
+- **A3-07-09 (LOW)**: `router.ts:105-109` notifyRouteChange cb 루프 무보호
+- **A3-07-10 (LOW)**: 프론트엔드 전역 87개 addEventListener 핸들러 대부분 무보호
 
 **핵심 발견**:
-- IO 블로킹 전무 — P1-P3(async 일관성) 전면 준수. 동기 I/O 사용 0건.
-- 백그라운드 태스크(app.py 3곳, engine_cache.py 2곳) 전부 add_done_callback로 조용히 사망 시 로깅 → P25 준수
-- WS 서버 3개 루프 동일 패턴(WebSocketDisconnect pass + 기타 예외 로깅 + finally unregister) → P25 일관적
-- notification_worker/telegram_bot/kiwoom_rest 재시도 루프는 예외 격리 잘 되어 있음
-- 양호 항목 다수: 10개 파일 중 7개는 위반 없음. 위반 3건 모두 경계 케이스(실제 발현 제한적 또는 의도적 가능성)
+- Store 리스너 "간" 격리는 F-02 fix로 양호하나 "내부" 칩 간 격리는 미해결 (A3-07-04)
+- DataTable 셀 단위 격리는 잘 되어 있으나 행 단위 격리 부재 (A3-07-01/02)
+- F-02 사례와 동일 패턴이 헤더 onStateChange에 잔존 — F-02 근본 수정 완성을 위해 A3-07-04 수정 필요
+- 페이지 리스트 루프 대부분 per-item 격리 없음
+- 양호 항목: store.ts listener 루프, DataTable 셀 단위 격리(fixed/virtual), Router handleRouteChange(에러 UI+재시도)
 
 **수정 방향 (참고용, 승인 시 별도 세션)**:
-- B4-06-01: `_db_writer_loop` line 78-79를 try/finally로 감싸 `task_done()`을 항상 호출하도록. 또는 `_process_operation` 실패 시에도 task_done 호출
-- B4-06-02: `_request` 예외 시 `_call_api`와 동일하게 재시도 추가, 또는 의도적일 경우 주석 명시
-- B4-06-03: line 148-149에서 RuntimeError(치명적)와 일반 Exception 분리 — RuntimeError는 raise 전파, 일반 Exception만 로깅 후 진행
+- A3-07-01/02: 행 렌더링 루프 내 renderRow/renderDataRow 호출을 try/catch로 감싸고 실패 시 로깅 + 해당 행 건너뛰기
+- A3-07-04: onStateChange 내 각 칩 갱신 블록을 개별 try/catch로 감싸거나 칩 갱신 헬퍼에 try/catch 내장. 증권사 칩 루프도 per-broker try/catch
+- A3-07-05~07: 페이지 리스트 루프 per-item try/catch + 로깅
+- A3-07-03: extractSamples 샘플링 루프 내 셀 render try/catch (샘플링이므로 빈 문자열 폴백은 P20 위반 아님)
+- A3-07-09: notifyRouteChange cb 루프 try/catch
+- A3-07-10: 고위력 핸들러(저장/주문 관련)부터 우선 try/catch, 전역 일괄은 P24 검토
+
+**추가 작업**: 세션 6 B4-06 위반 3건이 섹션 2 매트릭스에 누락되어 있어 이번 세션에서 보완 추가 (B4-06-01~03).
 
 **검증**: 조사만 수행 — typecheck/build 불필요. 잔존 프로세스 0건.
 
-**다음 세션 대기 사항**: 세션 7 (A3 UI 컴포넌트 렌더링 조사) 진행 대기. 조사 보고서 `docs/p25_isolated_failure_investigation.md` 섹션 9에 결과 누적 예정. 조사 파일: 36개 파일 (pages/*, components/common/*, layout/*). 조사 범위: subscribe() 리스너 내부 렌더링 실패 시 전파, addEventListener 콜백 실패 시 전파, 컴포넌트 팩토리 내부 DOM 조작 예외 처리, 개별 칩/컴포넌트 렌더링 실패가 전체 화면 중단 유발 여부 (F-02 사례와 동일 패턴).
+**다음 세션 대기 사항**: 세션 8 (B5 매매·테스트모드 태스크 조사) 진행 대기. 조사 보고서 `docs/p25_isolated_failure_investigation.md` 섹션 10에 결과 누적 예정. 조사 파일: `trading.py`, `buy_order_executor.py`, `dry_run.py`. 조사 범위: `trading.py:477,666` dry_run fake_fill create_task 직접 호출 (P23 위반 후보), add_done_callback 로깅 실제 발화 여부 (P16 교차), 매매 경로 예외 전파 — 매수/매도 실패 시 엔진 루프 영향, safe-trade 스킬 연계 (거래 로직 수정 시 별도 스킬 필수).
 
 ---
 
