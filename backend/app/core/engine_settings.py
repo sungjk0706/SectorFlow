@@ -195,8 +195,6 @@ def _build_sector_and_order_settings(merged: dict, flat: dict) -> dict:
     _rise_pct = float(_v) if _v is not None else 7.0
     _v = flat.get("buy_block_fall_pct")
     _fall_pct = float(_v) if _v is not None else 7.0
-    _v = flat.get("buy_min_strength")
-    _strength = float(_v) if _v is not None else 0
 
     result = {
         "sector_sort_keys": sector_sort_keys,
@@ -209,8 +207,6 @@ def _build_sector_and_order_settings(merged: dict, flat: dict) -> dict:
         "buy_block_rise_pct": _rise_pct,
         "buy_block_fall_on": bool(flat.get("buy_block_fall_on")) if "buy_block_fall_on" in flat else (_fall_pct > 0),
         "buy_block_fall_pct": _fall_pct,
-        "buy_block_strength_on": bool(flat.get("buy_block_strength_on")) if "buy_block_strength_on" in flat else (_strength > 0),
-        "buy_min_strength": _strength,
         "sector_bonus_rise_ratio_slider": int(merged.get("sector_bonus_rise_ratio_slider", 0)),
         "sector_bonus_relative_strength_slider": int(merged.get("sector_bonus_relative_strength_slider", 0)),
         "sector_bonus_trade_amount_slider": int(merged.get("sector_bonus_trade_amount_slider", 0)),

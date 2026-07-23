@@ -215,7 +215,6 @@ async def _apply_sector_ui_change(changed_keys: set[str]) -> None:
         "sector_bonus_trade_amount_slider",
         "buy_block_rise_on", "buy_block_rise_pct",
         "buy_block_fall_on", "buy_block_fall_pct",
-        "buy_block_strength_on", "buy_min_strength",
         # 가산점 설정
         "boost_high_breakout_on", "boost_high_breakout_score",
         "boost_order_ratio_on",
