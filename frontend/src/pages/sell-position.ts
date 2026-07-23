@@ -197,9 +197,9 @@ function mount(container: HTMLElement): void {
 
   // 보유 종목 요약 배지 행 — 공통 컴포넌트 (flex 자동 균등 분할)
   const summaryRow = createBadgeRow()
-  summaryEvalBadge = createBadge('📊 보유 종목 평가금액 합계', '원')
-  summaryPnlBadge = createBadge('📉 보유 종목 평가손익 합계', '원')
-  summaryRateBadge = createBadge('📈 보유 종목 평가수익률', '%')
+  summaryEvalBadge = createBadge('📊 평가금액 합계', '원')
+  summaryPnlBadge = createBadge('📉 평가손익 합계', '원')
+  summaryRateBadge = createBadge('📈 평가수익률', '%')
   summaryStatusBadge = createBadge('🚦 매도상태', '')
   summaryRow.appendChild(summaryEvalBadge.el)
   summaryRow.appendChild(summaryPnlBadge.el)
