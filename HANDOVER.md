@@ -8,7 +8,8 @@
 
 | 날짜 | 세션 | 작업 | 상태 |
 |------|------|------|------|
-| 2026-07-24 | CLEAN-03 | 백엔드 죽은 코드 정리 — 사용되지 않는 import/변수/global 선언/함수/메서드/상태속성/모듈/중복 wrapper 제거 (75개 파일, +43/-2520줄) — P16/P24 | 완료 (프론트엔드 정리는 다음 세션 대기) |
+| 2026-07-24 | CLEAN-04 | 프론트엔드 죽은 `??` 폴백 15개 정리 — `Number(x) ?? 기본값` → `Number(x ?? 기본값)` (NaN 표시 버그 해결, buy-settings 10개 + sell-settings 5개) — P16/P20/P23 | 완료 (2-2/2-3은 다음 세션 대기) |
+| 2026-07-24 | CLEAN-03 | 백엔드 죽은 코드 정리 — 사용되지 않는 import/변수/global 선언/함수/메서드/상태속성/모듈/중복 wrapper 제거 (75개 파일, +43/-2520줄) — P16/P24 | 완료 |
 | 2026-07-24 | CLEAN-02 | 프로젝트 폴더 추가 용량 정리 — 캐시/PDF/DB백업/worktree 고아브랜치 정리(18MB) + .venv 개발도구 제거(113MB) + 방치 브랜치 삭제 = 총 131MB 절감 (339MB→208MB) — P24/P25 | 완료 |
 | 2026-07-24 | CLEAN-01 | 프로젝트 폴더 용량 정리 — 캐시 22MB 삭제 + DB 백업 파일 9.6MB 정리(최근 1세트만 남김) + 백업 자동 정리 로직 추가(기동 시 최근 1세트만 유지) — P10/P16/P22/P25 | 완료 |
 | 2026-07-24 | GS-S4 | 일반설정 탭 재분류 다단계 워크플로우 4세션 — Step 2 UI 변경 (5→7개 탭, 토글 이동, 상태 배지, 뉴스/화면 탭 신설) — P21/P23/P24 | 완료 (워크플로우 전체 완료) |
@@ -26,6 +27,16 @@
 ---
 
 ## 직전 완료 작업
+
+### CLEAN-04 프론트엔드 죽은 `??` 폴백 15개 정리 (2026-07-24)
+- **작업**: CLEAN-03 백엔드 정리에 이은 프론트엔드 정리 2-1. `Number(x) ?? 기본값` 패턴 15개 수정.
+- **문제**: `Number()`는 항상 number 타입 반환하므로 `??` 우항이 dead code (NaN은 nullish가 아님). 동시에 x가 undefined일 때 `Number(undefined)`=NaN이 `setValue()`로 전달되어 화면에 NaN 표시 가능 버그.
+- **수정 (2개 파일, +15/-15줄)**: `Number(r.x) ?? 기본값` → `Number(r.x ?? 기본값)`로 폴백을 정상 경로로 이동. `profit-columns.ts`의 기존 패턴과 통일.
+  - `frontend/src/pages/buy-settings.ts` 10개 (줄 75,80,87,96,106,113,122,127,132,150)
+  - `frontend/src/pages/sell-settings.ts` 5개 (줄 51,57,63,64,71)
+- **아키텍처 원칙**: P16 (살아있는 경로 — dead code 제거) / P20 (폴백 금지 — 잘못된 폴백을 정상 경로로 수정) / P23 (일관성 — profit-columns.ts 기존 패턴과 통일).
+- **검증**: typecheck 통과 / build 성공 (636ms) / 브라우저 확인 — 매수·매도 설정 화면 모든 숫자 정상 표시, NaN 없음 / 커밋 `e605149`
+- **보류**: 2-2 죽은 초기 할당 2개 (`stock-classification.ts:474,522` `let dataExists = false`) / 2-3 명명 중복 4개 (COLUMNS/PADDING/initialState/mount-unmount, 의도된 중복 가능성 검토 필요) — 다음 세션에서 진행.
 
 ### CLEAN-03 백엔드 죽은 코드 정리 (2026-07-24)
 - **작업**: 연속 개발 과정에서 누적된 백엔드 죽은 코드/중복 코드 정리. 사전 조사 보고서 102개 항목 검증(정확도 99%, 오진단 1건 제외) 후 7단계로 분할 정리.
@@ -63,7 +74,7 @@
 ## 다음 세션 진행 대기
 
 **사용자 지시 시 진행 가능 항목 (audit 문서 잔여)**:
-- **CLEAN-03 프론트엔드 정리 (다음 세션 우선 진행)**: 2-1 죽은 `??` 폴백 15개 (`Number()`는 항상 number 타입 반환으로 `??` 우항이 dead code, `undefined` 입력 시 NaN이 setValue()로 전달되는 버그 가능성) / 2-2 죽은 초기 할당 2개 (`stock-classification.ts:474,522` `let dataExists = false`가 try 블록에서 반드시 재할당, catch에서 return) / 2-3 명명 중복 4개 (COLUMNS/PADDING/initialState/mount-unmount, store/페이지 패턴상 의도된 중복이므로 정리 여부 검토 필요)
+- **CLEAN-04 프론트엔드 정리 잔여 (다음 세션 우선 진행)**: 2-2 죽은 초기 할당 2개 (`stock-classification.ts:474,522` `let dataExists = false`가 try 블록에서 반드시 재할당, catch에서 return) / 2-3 명명 중복 4개 (COLUMNS/PADDING/initialState/mount-unmount, store/페이지 패턴상 의도된 중복이므로 정리 여부 검토 필요)
 - B-13 보류 5건 (B13-03/04/06/07/08, LOW/INFO 등급) — `docs/architecture_audit_plan.md` 섹션 7 참조
 - B21-01 보류 (암호화 폴백, 사용자 승인 대기 — 보안 동작 변화, UI 기준 설명 필요)
 - F-03 보류 4건 (F03-07/08/09/10) — `docs/architecture_audit_tasks.md` F-03 섹션 참조
