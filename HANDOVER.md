@@ -8,6 +8,7 @@
 
 | 날짜 | 세션 | 작업 | 상태 |
 |------|------|------|------|
+| 2026-07-24 | NWS-S5 | 실시간 뉴스(NWS) 매수 가산점 프론트엔드 매수설정+매수후보 테이블 (다단계 워크플로우 5세션) — P21/P23/P24/P25 | 완료 (6세션 대기) |
 | 2026-07-24 | NWS-S4 | 실시간 뉴스(NWS) 매수 가산점 백엔드 가산점 로직+설정 구현 (다단계 워크플로우 4세션) — P10/P13/P15/P16/P20/P21/P23/P24/P25 | 완료 (5세션 대기) |
 | 2026-07-24 | NWS-S3 | 실시간 뉴스(NWS) 매수 가산점 백엔드 NWS 인프라 구현 (다단계 워크플로우 3세션) — P4/P7/P10/P11/P13/P16/P20/P21/P23/P25 | 완료 (4세션 대기) |
 | 2026-07-24 | NWS-S2 | 실시간 뉴스(NWS) 매수 가산점 심층 사전조사 + 태스크 파일 작성 (다단계 워크플로우 2세션) — P4/P7/P10/P11/P13/P15/P16/P20/P21/P22/P23/P24/P25 | 사전조사+태스크 완료 (구현 대기) |
@@ -23,6 +24,13 @@
 ---
 
 ## 직전 완료 작업
+
+### NWS-S5 실시간 뉴스(NWS) 매수 가산점 프론트엔드 매수설정+매수후보 테이블 (2026-07-24)
+- **작업**: 다단계 워크플로우 5세션(프론트엔드 매수설정+매수후보 테이블). 사전조사 중 태스크 파일에 누락된 의존성 1건 발견 — `table-config.ts`의 `ColumnType`에 `'news'` 타입이 없어 `buy-target.ts`에서 `type: 'news'` 사용 시 typecheck 실패. 태스크 파일 3파일 + 사전조사 발견 1파일 = 4파일 수정. 기존 3개 가산점 행 패턴 그대로 4번째 행 추가 (P23 일관성), 기존 공통 자산 재사용 (`createNumInput`, `createToggleLabelControlsRow`, `COLOR.up`, `FONT_SIZE.body`, `FONT_WEIGHT.bold`).
+- **수정**: 프론트엔드 4파일 — `types/index.ts` (AppSettings 4키 + SectorStock news_boost 필드), `table-config.ts` (ColumnType 'news' + COLUMN_WIDTH 정의), `buy-settings.ts` (모듈 상태 3개 + syncBoost 뉴스 동기화 + buildBoostSection 4번째 행 + unmount null 처리), `buy-target.ts` (📰뉴스 컬럼 5일고가 앞)
+- **영향 범위**: 매수설정 "매수 가산점 (+N)" 섹션 4번째 줄 "📰 뉴스 호재" 추가, 매수후보 표 "프.순.매"와 "5일고가" 사이에 "📰뉴스" 컬럼 추가. 기본값 `boost_news_on=False`이므로 사용자가 매수설정에서 켜기 전까지 기존 동작 유지. 거래 로직 변경 없음 (P15). DB 스키마 변경 없음.
+- **사용자 결정**: table-config.ts 포함 4파일 계획 승인
+- **검증**: typecheck 통과 / build 성공 (603ms, 77 modules, 타입 오류 없음) / lint 스크립트 package.json에 없음 (기존과 동일) / 개발 서버 5173 실행 중 (브라우저 확인 가능)
 
 ### NWS-S4 실시간 뉴스(NWS) 매수 가산점 백엔드 가산점 로직+설정 구현 (2026-07-24)
 - **작업**: 다단계 워크플로우 4세션(백엔드 가산점 로직+설정). `news_boost_cache` → 매수 가산점 반영 + 설정 기본값/검증/동기화. 사전조사 중 태스크 파일의 동기화 위치 오류 발견 — 태스크 파일은 `engine_state.py`에 동기화하라고 기재했으나, `integrated_system_settings_cache` 갱신은 `engine_config.py`의 `refresh_engine_integrated_system_settings_cache()`에서 단일 소스로 수행 (P10/P17). 사용자 승인 하에 `engine_config.py`로 정정. 추가로 초기 기동 시 `app.py`에서도 동기화 필요 → `_sync_nws_settings_to_state()` 헬퍼로 추출하여 양쪽에서 호출 (P10 SSOT — 단일 로직, P24 단순성 — 중복 제거).
@@ -70,9 +78,9 @@
 ## 다음 세션 진행 대기
 
 **다단계 작업 진행 중 — NWS 실시간 뉴스 매수 가산점 (설계 → 태스크 → 구현)**:
-- **현재 단계**: 4세션(백엔드 가산점 로직+설정) 완료. 5세션(프론트엔드 매수설정+매수후보 테이블) 대기.
-- **다음 세션 작업**: 5세션 — 프론트엔드 매수설정 + 매수후보 테이블 (types/index.ts AppSettings 4개 키 + SectorStock news_boost 필드 / buy-settings.ts 4번째 가산점 행 / buy-target.ts 📰뉴스 컬럼 5일고가 앞). 매수설정 4번째 가산점 토글/점수 UI + 매수후보 📰뉴스 컬럼.
-- **참조 문서**: `docs/architecture_news_boost_design.md` (설계서) + `docs/plan_news_boost.md` (태스크 파일 — 5~7세션 단계별 상세)
+- **현재 단계**: 5세션(프론트엔드 매수설정+매수후보 테이블) 완료. 6세션(프론트엔드 일반설정 키워드 칩+TTL) 대기.
+- **다음 세션 작업**: 6세션 — 프론트엔드 일반설정 자동매매 탭에 호재 키워드 편집 섹션 + TTL 입력 (tag-chip.ts 신규 컴포넌트 + general-settings.ts 키워드 칩+TTL). 키워드 칩 편집 UI + 뉴스 가산점 유지 시간 입력.
+- **참조 문서**: `docs/architecture_news_boost_design.md` (설계서) + `docs/plan_news_boost.md` (태스크 파일 — 6~7세션 단계별 상세)
 
 **사용자 지시 시 진행 가능 항목 (audit 문서 잔여)**:
 - B-13 보류 5건 (B13-03/04/06/07/08, LOW/INFO 등급) — `docs/architecture_audit_plan.md` 섹션 7 참조
