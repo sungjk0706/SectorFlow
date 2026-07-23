@@ -8,6 +8,7 @@
 
 | 날짜 | 세션 | 작업 | 상태 |
 |------|------|------|------|
+| 2026-07-23 | T3-S27 | DataTable 빈 데이터 시 헤더 라벨 잘림 방지 (initFromRows 빈 데이터 분기 호출) — P21/P16/P20 (프론트엔드) | 완료 |
 | 2026-07-23 | T3-S26 | 전 페이지 패널 padding 8px 통일 (shell 기본값 변경 + sector-ranking 중복 오버라이드 제거) — P23/P24/P10 (프론트엔드) | 완료 |
 | 2026-07-23 | T3-S25 | 업종순위 페이지 가운데·우측 패널 padding 16px→8px (컬럼 너비 확보) — P21/P23 (프론트엔드) | 완료 |
 | 2026-07-23 | T3-S24 | 매수/매도 상태 배지 판정 로직 공통 추출 (computeOrderBlockStatus) — P10/P23/P25 (프론트엔드) | 완료 |
@@ -26,6 +27,42 @@
 ---
 
 ## 직전 완료 작업
+
+### T3-S27 DataTable 빈 데이터 시 헤더 라벨 잘림 방지 — 완료 (2026-07-23) — P21 사용자 투명성 + P16 살아있는 경로 + P20 폴백 금지 (프론트엔드, frontend-fix)
+
+**세션**: 단일 세션. 가상 스크롤/고정 모드 DataTable 모두에서 빈 데이터 초기 렌더링 시 컬럼 폭 계산이 스킵되어 헤더 라벨이 잘리는 현상 수정. `createColumnWidthManager.initFromRows()`를 빈 데이터 분기에서도 호출하도록 변경.
+
+**배경**: T3-S25에서 발견된 업종순위 테이블 "평균거래(억)" 라벨 짤림 현상(임계치 수신율 달성 전 잘림, 달성 후 정상 표시) 조사 결과 — `data-table-virtual.ts:388`의 `if (rows.length > 0)` 조건으로 인해 빈 데이터일 때 `initFromRows`가 스킵되고, `cachedPercentages`가 균등 분할(컬럼수 10개 → 각 10%) 상태로 유지됨. 헤더 셀 `whiteSpace: nowrap` + `overflow: hidden` 스타일로 인해 10% 폭에서 "평균거래(억)" 라벨이 잘림. 임계치 후 첫 유효 데이터 진입 시 `initFromRows`가 1회 실행되어 라벨 폭 기반 정상 폭 적용. `data-table-fixed.ts:201`에도 동일 패턴(`rows.length === 0` 분기에서 `initFromRows` 스킵) 확인.
+
+**작업 내용** (2건, 2개 파일):
+1. **`data-table-virtual.ts:388`** — `if (rows.length > 0) { widthMgr.initFromRows(rows) }` → 조건 제거하고 무조건 `widthMgr.initFromRows(rows)` 호출. `computeColWidths`는 샘플이 비어도 라벨 폭 기반으로 minWidth 산출하므로 라벨 잘림 해결.
+2. **`data-table-fixed.ts:201`** — 빈 데이터 분기(`rows.length === 0`) 내에 `widthMgr.initFromRows(rows)` 호출 추가. 동일 원리로 라벨 폭 기반 폭 적용.
+
+**수정 파일**: 2개 (프론트엔드).
+- `frontend/src/components/common/data-table-virtual.ts` (조건 제거 + 주석 갱신, 5줄 감소)
+- `frontend/src/components/common/data-table-fixed.ts` (빈 데이터 분기에 initFromRows 호출 1줄 + 주석 1줄 추가)
+
+**아키텍처 원칙 부합**:
+- P21 (사용자 투명성): 빈 데이터 상태에서도 헤더 라벨이 온전히 표시되어 사용자가 컬럼 의미 인지 가능.
+- P16 (살아있는 경로): 기존 `initFromRows` 정상 계산 경로 그대로 사용, 새 분기/우회 경로 없음.
+- P20 (폴밭 금지): 빈 데이터를 폴백으로 덮는 것이 아니라 라벨 기반 정상 계산 경로로 진입시키는 것. silent `except: pass` 없음.
+- P24 (단순성): 조건 1개 제거/추가만으로 해결, 신규 추상화 없음.
+- P25 (격리된 실패): 해당 없음 (폭 계산 로직 변경).
+
+**영향 범위**: 프론트엔드 2파일. 백엔드/DB/테스트 영향 없음. 가상 스크롤/고정 모드 DataTable을 사용하는 모든 페이지(sector-ranking-list, sector-stock, buy-target, sell-position, stock-detail 등)의 빈 데이터 초기 렌더링 시 헤더 라벨 잘림 해소. 데이터 진입 후 1회 재계산 로직은 기존과 동일 (이후 고정). 핵심 매매 로직 아님 → 규칙 0-4 해당 없음. **롤백 아님** — 조건 제거/추가로 정상 경로 진입 확대이지 이전 상태로 회귀가 아님 → 규칙 0-3 해당 없음.
+
+**UI 기준 화면 변화 (규칙 0-4)**:
+- 임계치 수신율 달성 전 상태에서 업종순위 테이블의 "평균거래(억)" 라벨이 잘리지 않고 전체 표시됨 (기존: 잘림).
+- 종목 리스트 테이블의 "거래대금(억)" 등 모든 컬럼 헤더도 빈 데이터 상태에서 정상 표시됨.
+- 임계치 달성 후 데이터 진입 시 컬럼 너비는 기존과 동일하게 데이터 기반으로 1회 재계산 후 고정 (화면 변화 없음).
+
+**검증**:
+- `npm run build` (tsc -b + vite build) 통과 — 77 모듈 변환, 876ms, 타입 오류 없음 ✓
+- 브라우저 검증: 사용자 확인 대기
+
+**작업 중 발견 문제**: 본 세션에서 해결 완료. 추가 발견 문제 없음.
+
+---
 
 ### T3-S26 전 페이지 패널 padding 8px 통일 — 완료 (2026-07-23) — P23 일관성 + P24 단순성 + P10 SSOT (프론트엔드, frontend-fix)
 
@@ -524,6 +561,7 @@
 - **추정 원인**: 임계치 전 빈 데이터로 `initFromRows`가 실행되어 컬럼 폭이 label 기준으로 고정되거나, mount 시점 clientWidth=0으로 gridTemplateColumns가 미적용된 상태에서 헤더가 균등 분배로 렌더링. 임계치 후 데이터/레이아웃 변화로 ResizeObserver가 재계산하면서 정상 폭 적용.
 - **정확한 원인 파악에 필요한 추가 검증**: 브라우저 개발자 도구로 임계치 전후의 computed `gridTemplateColumns` px 값과 `scrollContainer.clientWidth` 확인 필요.
 - **수정 방향 후보**: (1) `initFromRows`를 빈 데이터일 때 실행하지 않고 첫 유효 데이터까지 지연, (2) `initFromRows` 재계산 허용 (initialized 플래그 제거 또는 리셋 기능 추가), (3) label 폭에 안전 여백 추가. 어느 방향이든 P21(사용자 투명성) + P24(단순성) + P23(다른 DataTable과 일관성) 검토 필요.
+- → **T3-S27에서 해결 완료** — 실제 원인은 `initFromRows`가 빈 데이터일 때 스킵되어 `cachedPercentages`가 균등 분할 상태로 유지된 것. `data-table-virtual.ts`와 `data-table-fixed.ts` 모두 빈 데이터 분기에서도 `initFromRows` 호출하도록 수정. `computeColWidths`는 샘플이 비어도 라벨 폭 기반으로 minWidth 산출하므로 라벨 잘림 해결.
 
 **다른 페이지 패널 padding 8px 통일 검토 (T3-S25 발견)** — T3-S25에서 sector-ranking-page의 가운데·우측 패널 padding을 16px→8px로 축소하여 좌측 패널(8px)과 일치시킴. 다른 페이지도 shell 기본값 16px를 사용 중이므로 동일 패턴으로 8px 통일 검토 필요. → **T3-S26에서 해결 완료** (shell 기본값 16px→8px로 전 페이지 통일 + sector-ranking 중복 오버라이드/복원 코드 제거).
 
