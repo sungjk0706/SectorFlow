@@ -5,8 +5,10 @@
 
 import { createDataTable, type DataTableApi, type ColumnDef } from '../components/common/data-table'
 import { hotStore, normalizeStockCode, getPositionIndex } from '../stores/hotStore'
+import { uiStore } from '../stores/uiStore'
 import { notifyPageActive, notifyPageInactive } from '../api/ws'
 import { createCardHeaderWithMargin } from '../components/common/card-header'
+import { globalSettingsManager } from '../settings'
 import { rateColor, pnlColor, fmtComma, fmtRate, createCodeCell, createStockNameColumn, createNumberCell, createPriceCell, COLOR } from '../components/common/ui-styles'
 import { createBadgeRow, createBadge, updateBadge, type BadgeHandle } from '../components/common/badge'
 import { computeHoldingsSummary } from './profit-shared'
@@ -98,8 +100,11 @@ const COLUMNS: ColumnDef<Position>[] = [
 
 let dataTable: DataTableApi<Position> | null = null
 let unsubStore: (() => void) | null = null
+let unsubUiStore: (() => void) | null = null
+let unsubSettings: (() => void) | null = null
 let _rafId: number | null = null
 let _summaryRafId: number | null = null
+let _statusRafId: number | null = null
 let onRealDataTick: ((e: Event) => void) | null = null
 let _mounted = false
 
@@ -107,6 +112,7 @@ let _mounted = false
 let summaryEvalBadge: BadgeHandle | null = null
 let summaryPnlBadge: BadgeHandle | null = null
 let summaryRateBadge: BadgeHandle | null = null
+let summaryStatusBadge: BadgeHandle | null = null
 
 /** 보유 종목 요약 행 렌더 — positions + sectorStocks에서 직접 계산 (개별 종목 행과 동일 소스·공식) */
 function renderSummary(): void {
@@ -133,6 +139,52 @@ function renderSummary(): void {
   }
 }
 
+/** 매도상태 배지 업데이트 — 전체 차단 게이트 집계 (P21 사용자 투명성)
+ *  buy-target.ts updateBadges()의 매수상태 로직과 동일 패턴 (P23 일관성)
+ *  우선순위: 서킷브레이커 > 리스크(sell) > 시간대 > 자동매매/매도 OFF > 매도 시간대 외
+ *  데이터 소스: 기존 uiStore 상태 + globalSettingsManager (P10 SSOT — 신규 데이터 없음) */
+function updateSellStatusBadge(): void {
+  if (!summaryStatusBadge) return
+  try {
+    const uiState = uiStore.getState()
+    const settings = globalSettingsManager.getSettings()
+
+    let statusText = '매도 가능'
+    let statusBlocked = false
+    if (uiState.circuitBreakerOpen) {
+      statusText = '차단: 서킷브레이커'
+      statusBlocked = true
+    } else if (uiState.riskBlockStatus && uiState.riskBlockStatus.side === 'sell') {
+      statusText = `차단: 리스크(${uiState.riskBlockStatus.reason})`
+      statusBlocked = true
+    } else if (uiState.orderTimeBlocked) {
+      statusText = `차단: ${uiState.orderTimeBlocked.reason}`
+      statusBlocked = true
+    } else if (!settings || !settings.time_scheduler_on) {
+      statusText = '차단: 자동매매 OFF'
+      statusBlocked = true
+    } else if (!settings.auto_sell_on) {
+      statusText = '차단: 자동매도 OFF'
+      statusBlocked = true
+    } else {
+      // 매도 작동 시간 범위 체크 (KST HH:MM 기준 — 백엔드 auto_sell_effective와 동일 로직)
+      const nowKst = new Date().toLocaleTimeString('en-GB', { timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit' })
+      const sellStart = String(settings.sell_time_start ?? '09:00').slice(0, 5)
+      const sellEnd = String(settings.sell_time_end ?? '15:20').slice(0, 5)
+      if (nowKst < sellStart || nowKst > sellEnd) {
+        statusText = '차단: 매도 시간대 외'
+        statusBlocked = true
+      }
+    }
+    updateBadge(summaryStatusBadge, statusText, {
+      status: statusBlocked ? 'warn' : 'normal',
+      statusColor: statusBlocked ? COLOR.up : COLOR.down,
+    })
+  } catch (err) {
+    console.error('[sell-position] updateSellStatusBadge error', err)
+  }
+}
+
 function mount(container: HTMLElement): void {
   _mounted = true
   notifyPageActive('sell-position')
@@ -143,14 +195,16 @@ function mount(container: HTMLElement): void {
   const headerRow = createCardHeaderWithMargin('보유종목', undefined, '4px')
   root.appendChild(headerRow)
 
-  // 보유 종목 요약 배지 행 — 공통 컴포넌트 (flex 3등분 고정)
+  // 보유 종목 요약 배지 행 — 공통 컴포넌트 (flex 자동 균등 분할)
   const summaryRow = createBadgeRow()
   summaryEvalBadge = createBadge('📊 보유 종목 평가금액 합계', '원')
   summaryPnlBadge = createBadge('📉 보유 종목 평가손익 합계', '원')
   summaryRateBadge = createBadge('📈 보유 종목 평가수익률', '%')
+  summaryStatusBadge = createBadge('🚦 매도상태', '')
   summaryRow.appendChild(summaryEvalBadge.el)
   summaryRow.appendChild(summaryPnlBadge.el)
   summaryRow.appendChild(summaryRateBadge.el)
+  summaryRow.appendChild(summaryStatusBadge.el)
   root.appendChild(summaryRow)
 
   const scrollContainer = document.createElement('div')
@@ -179,6 +233,7 @@ function mount(container: HTMLElement): void {
   const initialPositions = state.positions
   dataTable.updateRows(initialPositions)
   renderSummary()
+  updateSellStatusBadge()
 
   // Store 구독 — reference equality guard + rAF 배칭
   {
@@ -222,6 +277,31 @@ function mount(container: HTMLElement): void {
     })
   }
 
+  // uiStore 구독 — 매도상태 배지 갱신 (서킷브레이커/리스크/시간대 차단)
+  // rAF 배칭 — 프레임당 1회만 갱신 예약 (buy-target.ts 동일 패턴, P23 일관성)
+  {
+    unsubUiStore = uiStore.subscribe(() => {
+      if (_statusRafId !== null) return
+      _statusRafId = requestAnimationFrame(() => {
+        _statusRafId = null
+        if (!_mounted) return
+        updateSellStatusBadge()
+      })
+    })
+  }
+
+  // globalSettingsManager 구독 — 자동매매/자동매도/매도 시간대 설정 변경 시 배지 갱신
+  {
+    unsubSettings = globalSettingsManager.subscribe(() => {
+      if (_statusRafId !== null) return
+      _statusRafId = requestAnimationFrame(() => {
+        _statusRafId = null
+        if (!_mounted) return
+        updateSellStatusBadge()
+      })
+    })
+  }
+
   // O(1) 초저지연 DOM 갱신 이벤트 리스너
   onRealDataTick = (e: Event) => {
     try {
@@ -252,12 +332,16 @@ function unmount(): void {
     onRealDataTick = null
   }
   if (unsubStore) { unsubStore(); unsubStore = null }
+  if (unsubUiStore) { unsubUiStore(); unsubUiStore = null }
+  if (unsubSettings) { unsubSettings(); unsubSettings = null }
   if (_rafId !== null) { cancelAnimationFrame(_rafId); _rafId = null }
   if (_summaryRafId !== null) { cancelAnimationFrame(_summaryRafId); _summaryRafId = null }
+  if (_statusRafId !== null) { cancelAnimationFrame(_statusRafId); _statusRafId = null }
   if (dataTable) { dataTable.destroy(); dataTable = null }
   summaryEvalBadge = null
   summaryPnlBadge = null
   summaryRateBadge = null
+  summaryStatusBadge = null
 }
 
 export default { mount, unmount }
