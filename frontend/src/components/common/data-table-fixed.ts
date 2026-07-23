@@ -201,6 +201,8 @@ export function createFixedMode<T extends object>(
       if (rows.length === 0) {
         emptyTr.style.display = ''
         for (const tr of rowCaches) tr.style.display = 'none'
+        // 빈 데이터라도 라벨 폭 기반으로 헤더 잘림 방지 (computeColWidths는 샘플 비어도 라벨 폭 사용).
+        widthMgr.initFromRows(rows)
         return
       }
       emptyTr.style.display = 'none'
