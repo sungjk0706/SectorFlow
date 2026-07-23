@@ -194,23 +194,31 @@
 - **비고**: B2-03-02 골격은 T1-S3에서 선제 처리되었으나, 상태 정리(`_compute_running=False`) 누락이 본 세션에서 보완됨. ruff F401 unused import 2건(`time`, `_check_realtime_latency`)은 본 세션 수정 범위 밖 — HANDOVER.md 미해결 문제에 기록.
 - **커밋**: `4231651 fix(backend): T2-S8 엔진 종료 finally / 파이프라인 서브루프 격리 (B1-02-02/03, B2-03-02)`
 
-### T2-S9 — confirmed 빈 폴백 제거 / DB writer / engine_cache 치명 오류 처리
+### T2-S9 — confirmed 빈 폴백 제거 / DB writer / engine_cache 치명 오류 처리 — 완료 (2026-07-23)
 
 - **대상 위반 ID**: B3-05-02 (MEDIUM), B4-06-01 (MEDIUM), B4-06-03 (MEDIUM)
-- **수정 파일**: `backend/app/services/market_close_pipeline.py`, `backend/app/services/db_writer.py`, `backend/app/services/engine_cache.py`
+- **수정 파일**: `backend/app/services/market_close_pipeline.py`, `backend/app/db/db_writer.py`, `backend/app/services/engine_cache.py`
 - **프론트/백엔드**: 백엔드
 - **safe-trade 스킬**: 불필요
-- **의존성**: **T1-S4 필수** (B3-05-02는 market_close_pipeline.py 같은 파일)
+- **의존성**: **T1-S4 필수** (B3-05-02는 market_close_pipeline.py 같은 파일) — 완료됨
 - **수정 방향**:
   - B3-05-02: 빈 confirmed 시 `_run_post_confirmed_pipeline` 호출 스킵 + `logger.warning` (빈 폴백 `confirmed = {}` 제거, P20)
   - B4-06-01: 실패 시에도 `task_done()` 호출 (또는 예외 로깅 후 task_done)
   - B4-06-03: RuntimeError(master_stocks_table 없음) 시 기동 중단 또는 명시적 감소 모드 전환 + 사용자 알림 (P20/P21)
+- **진행 상태**:
+  - [x] **B3-05-02 완료** — `market_close_pipeline.py` 896-908줄: 다운로드 실패 시 `logger.error(..., exc_info=True)` + 화면 실패 진행률 전송 + `return 0, total, False` early return. 빈 폴백 `confirmed = {}` 제거 (P20).
+  - [x] **B4-06-01 완료** — `db_writer.py` 76-84줄: `_process_operation`을 try/finally로 감싸 `task_done()` 항상 호출 보장 (P25). 예외는 기존대로 외부 except에서 `logger.error(..., exc_info=True)` 로깅.
+  - [x] **B4-06-03 완료** — `engine_cache.py` 148-153줄: 치명 오류를 "무시하고 진행"에서 log-and-rethrow(`logger.error + raise`)로 변경 (P20). 예외가 호출자 engine_loop.py:34로 전파 → "감소 모드로 기동" 에러 로그 + engine-ready 화면 전송 (P21).
 - **검증 방법**:
-  - [ ] `pytest tests/` 관련 테스트 통과
-  - [ ] `python -W error::RuntimeWarning main.py` 기동 확인
-  - [ ] 런타임: DB writer 실패 시 task_done 호출 확인 (큐 누적 없음)
-  - [ ] 런타임: engine_cache 치명적 오류 시 기동 중단 또는 감소 모드 전환 확인
-  - [ ] P21: 치명적 오류 시 사용자 알림 UI 표시 확인
+  - [x] `pytest backend/tests/` — 2819 passed, 0 failed (10.75s). 신규/정정 테스트 7개 포함.
+  - [x] `python -W error::RuntimeWarning main.py` 기동 — RuntimeWarning/Traceback/Error 0건. `[데이터] 선행 캐시 로드 완료` (engine_cache 정상 경로), `[데이터] 시작됨` (db_writer 정상 시작) 확인.
+  - [x] 런타임: DB writer 실패 시 task_done 호출 — 단위 테스트로 검증 (test_db_writer.py).
+  - [x] 런타임: engine_cache 치명적 오류 시 감소 모드 전환 — 단위 테스트로 검증 (test_engine_cache.py, log-and-rethrow + engine_loop.py 기존 except 경로 활성화).
+  - [x] P21: 치명적 오류 시 사용자 알림 — engine-ready 화면 전송은 engine_loop.py 기존 경로로 유지. 화면에 "감소 모드" 명시 표시 추가는 프론트엔드 변경이 별도 필요 (본 세션 백엔드 3건 범위 밖).
+  - [x] ruff check — 6개 파일 전부 통과.
+  - [x] 잔존 프로세스 0건 확인.
+- **비고**: B4-06-03의 "감소 모드" 화면 명시 표시는 프론트엔드 변경이 필요하므로 본 세션 범위 밖. 백엔드 log-and-rethrow로 engine_loop.py의 기존 "감소 모드로 기동" 에러 로그 + engine-ready 전송 경로가 활성화됨.
+- **커밋**: `1d34ce8 fix(backend): T2-S9 confirmed 빈 폴백 제거 / DB writer task_done 보장 / engine_cache 치명 오류 처리 (B3-05-02, B4-06-01, B4-06-03)`
 
 ### T2-S10 — 페이지 렌더링 루프 격리 (수익/분류/계좌)
 
