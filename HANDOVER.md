@@ -8,6 +8,7 @@
 
 | 날짜 | 세션 | 작업 | 상태 |
 |------|------|------|------|
+| 2026-07-24 | CLEAN-01 | 프로젝트 폴더 용량 정리 — 캐시 22MB 삭제 + DB 백업 파일 9.6MB 정리(최근 1세트만 남김) + 백업 자동 정리 로직 추가(기동 시 최근 1세트만 유지) — P10/P16/P22/P25 | 완료 |
 | 2026-07-24 | GS-S4 | 일반설정 탭 재분류 다단계 워크플로우 4세션 — Step 2 UI 변경 (5→7개 탭, 토글 이동, 상태 배지, 뉴스/화면 탭 신설) — P21/P23/P24 | 완료 (워크플로우 전체 완료) |
 | 2026-07-24 | GS-S3 | 일반설정 탭 재분류 다단계 워크플로우 3세션 — Step 1 파일 분할 (1443줄 → 7개 파일, 순수 이동) — P10/P23/P24 | 완료 |
 | 2026-07-24 | GS-S2 | 일반설정 탭 재분류 다단계 워크플로우 2세션 — 심층 사전조사 + 태스크 파일 작성 — P10/P23/P24 | 완료 |
@@ -23,6 +24,13 @@
 ---
 
 ## 직전 완료 작업
+
+### CLEAN-01 프로젝트 폴더 용량 정리 + 백업 자동 정리 로직 (2026-07-24)
+- **작업**: (1) 캐시 4종 삭제 — `.mypy_cache`(15M) + `backend/tests/__pycache__`(6.5M) + `.pytest_cache`(316K) + `.ruff_cache`(28K) = 약 22MB. (2) DB 백업 파일 정리 — `backend/data/`의 `.backup` 파일 9세트(27개) 중 최근 1세트(20260723_234321)만 남기고 8세트(24개) 삭제 = 약 9.6MB. (3) 백업 자동 정리 로직 추가 — `backend/app/db/database.py`에 `cleanup_old_backups(keep=1)` 함수 추가, `backend/app/web/app.py` lifespan startup에서 DB 초기화 직후 호출. 매 기동 시 최근 1세트(db/shm/wal 3종)만 남기고 오래된 백업 자동 삭제.
+- **수정**: `backend/app/db/database.py` (+59줄: `_db_dir()` 경로 계산 + `cleanup_old_backups()` 정리 함수), `backend/app/web/app.py` (+7줄: startup에서 호출, P25 격리 try/except), `backend/tests/test_db_backup_cleanup.py` (신규 115줄: 6개 테스트 케이스).
+- **안전장치**: `stocks.db` 본체·`-shm`·`-wal`·`sectorflow.db`는 절대 삭제 금지 (P22 — `.backup` 확장자만 대상). 정리 실패 시 기동 블로킹 않고 warning 로깅 (P25). DB 경로 계산을 `get_db_connection`과 동일 방식으로 같은 모듈에 배치 (P10 SSOT).
+- **검증**: pytest 6/6 통과 / ruff 통과 / mypy 통과(수정 파일) / 런타임 기동 확인(239ms, 백업 정리 관련 에러 없음) / 커밋 (해시는 git log 참조)
+- **효과**: `backend/data/` 12MB → 2.4MB. 향후 마이그레이션 백업 누적 방지.
 
 ### GS-S4 일반설정 탭 재분류 다단계 워크플로우 4세션 — Step 2 UI 변경 (2026-07-24)
 - **작업**: 일반설정 탭 5→7개 재분류 + 자동매수/매도 토글 이동 + 상태 배지 추가. (1) 시간 설정 탭: 자동매수/매도 시간 행 우측에 토글 통합 (한 행에서 시간+켜짐/꺼짐 조작). (2) 자동매매 탭: 토글 제거 → '켜짐'/'꺼짐' 작은 배지(읽기 전용, 클릭 불가)로 상태 표시 (P21). (3) 뉴스 설정 탭 신설: 호재 키워드 칩 + 가산점 유지 시간. (4) 화면 설정 탭 신설: 실시간 현재가 플래시 효과 토글. (5) syncFromSettings 분할: syncAutoTradeTab(마스터+배지+안전장치) / syncTimeSettingsTab(시간+토글+타임테이블+구독한도) / syncNewsSettingsTab / syncDisplaySettingsTab.

@@ -53,6 +53,13 @@ async def lifespan(app: FastAPI):
     await migrate_add_buy_date_to_trades()
     await create_stock_5d_bars_table()
 
+    # 오래된 DB 백업 파일 정리 (P25 — 실패해도 기동 블로킹 않음)
+    from backend.app.db.database import cleanup_old_backups
+    try:
+        cleanup_old_backups()
+    except Exception as e:
+        logger.warning("[웹서버] 백업 파일 정리 실패 (기동 계속): %s", e, exc_info=True)
+
     # 전역 큐 초기화 (엔진 시작 전 보장)
     from backend.app.services.core_queues import initialize_queues
     initialize_queues()
