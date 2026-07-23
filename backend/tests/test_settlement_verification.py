@@ -253,6 +253,12 @@ class TestAsyncTaskCancellation:
         assert len(trade_history._buy_history) == 1, \
             "정합성 위반: 매수 이력은 존재하나 orderable이 차감되지 않음 (후보 C)"
 
+        # 6. 기동 시 대조(reconciliation) — 거래내역 기준 재계산 후 orderable 복구 (B5-08-03)
+        await settlement_engine.reconcile_with_trades()
+        expected_after_reconcile = _INITIAL_DEPOSIT - _expected_buy_cost(fill_price, 10)
+        assert settlement_engine.get_orderable() == expected_after_reconcile, \
+            f"대조 후 orderable이 거래내역 기준으로 복구되어야 함: expected={expected_after_reconcile:,}, actual={settlement_engine.get_orderable():,}"
+
 
 # ── S4-2: 비동기 vs 동기 실행 비교 (경로 대칭성) ───────────────────────────────
 

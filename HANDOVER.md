@@ -6,6 +6,57 @@
 
 ## 직전 완료 작업
 
+### T2-S11 fake_fill_event 정합성 격리 (기동 시 대조 메커니즘 신설) — 완료 (2026-07-23) — B5-08-03 완료 (Tier 2 마지막 세션, safe-trade 적용)
+
+**세션**: 단일 세션. 백엔드 코드 수정 (safe-trade 스킬). 세션 라벨 T2-S11 (Tier 2 마지막 세션, MEDIUM 1건).
+
+**배경**: P25 수정 계획 Tier 2 마지막 세션. fake_fill_event 태스크 실패/취소 시 on_buy_fill/on_sell_fill이 누락되어 Settlement Engine 잔고(_orderable)가 거래 이력과 불일치하는 상태가 영속화되는 것을 방지 (P22 데이터 정합성). 세션9 조사에서 기동 시 대조 메커니즘 부재 확정 — 본 세션에서 메커니즘 신설.
+
+**작업 내용** (신규 메커니즘 3개 파일 + 테스트 1개 파일):
+1. **trade_history.py** — `compute_expected_orderable(initial_deposit, trade_mode)` 신설. _buy_history/_sell_history에서 주문가능금액 재계산. on_buy_fill/on_sell_fill 공식과 동일 (BUY_COMMISSION/SELL_COMMISSION/SECURITIES_TAX 상수 재사용). ts 오름차순 병합 처리. trade_mode="test"만 대조 (실전은 증권사 서버 SSOT).
+2. **settlement_engine.py** — `reconcile_with_trades()` 신설. compute_expected_orderable 호출 후 현재 _orderable과 대조. 일치 시 debug 로그. 불일치 시 error 로그 + 재계산값으로 _orderable 복구 + _persist + _broadcast_delta + UI 알림(settlement_reconciled 이벤트 — 불일치 금액/복구 여부). 대조 자체 실패 시 기동 중단 아님 (P25 격리된 실패).
+3. **engine_cache.py** — `_load_caches_preboot` 내 load_state 직후 reconcile_with_trades 호출 추가 (테스트모드만, 1줄).
+4. **test_settlement_verification.py** — S4-1 확장: 태스크 취소 후 정합성 위반 상태에서 reconcile_with_trades 호출 시 거래내역 기준으로 orderable 복구 검증 추가.
+5. **test_engine_cache.py** — autouse fixture 추가: reconcile_with_trades를 AsyncMock으로 패치 (engine_cache 테스트는 캐시 로드 로직 검증이 목적, settlement 정합성 검증이 아님 — _persist DB writer 큐 대기로 무한 hang 방지).
+
+**수정 파일**: 5개 (백엔드 3 + 테스트 2).
+- `backend/app/services/trade_history.py` (+33줄, compute_expected_orderable 신설)
+- `backend/app/services/settlement_engine.py` (+50줄, reconcile_with_trades 신설)
+- `backend/app/services/engine_cache.py` (+2줄, 기동 시 대조 호출)
+- `backend/tests/test_settlement_verification.py` (+6줄, S4-1 복구 검증)
+- `backend/tests/test_engine_cache.py` (+13줄, autouse fixture)
+
+**아키텍처 원칙 부합**:
+- P22 (데이터 정합성): 본 위반의 직접 해결 — 기동 시 거래내역 기준 잔고 재계산·대조·복구.
+- P10 (SSOT): trade_history가 잔고의 진실 원천. orderable이 별도 영속화되어 SSOT 분산 상태 → 대조로 단일화.
+- P16 (살아있는 경로): 기동 시 매번 실행되는 _load_caches_preboot 경로에 배선.
+- P20 (폴백 금지): 불일치 시 silent pass 아님 — error 로그 + UI 알림 + 자동 복구.
+- P21 (사용자 투명성): 불일치 발견 시 settlement_reconciled 이벤트로 화면에 알림 (잔고 자동 보정 표시).
+- P25 (격리된 실패): 대조 실패 시 엔진 기동 중단 아님 — error 로깅 후 계속 진행.
+- P15 (단일 주문 경로): 유지 — execute_buy()/execute_sell() 경로 변경 없음.
+- P18 (테스트모드 동등성): 유지 — 실전모드는 증권사 서버가 SSOT이므로 대조 대상 아님 (테스트모드만 대조).
+- P23 (공통 자산 재사용): on_buy_fill/on_sell_fill 공식·상수·_persist/_broadcast_delta/_safe_broadcast 재사용. 신규 상수/패턴 없음.
+
+**영향 범위**: 백엔드 3개 파일 + 테스트 2개 파일. 프론트엔드 영향 없음 (기존 account-update WS 채널 + 신규 settlement_reconciled 이벤트 수신만). 핵심 매매 로직(매수/매도 조건, 주문 경로, 수수료 계산식) 변경 없음 — 규칙 0-4 해당 없음. 롤백 아님 (신규 메커니즘 추가만, 규칙 0-3 해당 없음).
+
+**검증**:
+- `pytest tests/test_settlement_verification.py tests/test_settlement_engine.py tests/test_dry_run.py tests/test_dry_run_fill_event.py tests/test_engine_cache.py` — 131 passed (settlement 관련 전체).
+- `python -W error::RuntimeWarning main.py` 기동 확인 — RuntimeWarning 없음, 기동 성공. 기동 시 대조 로그 확인: "[정산] 기동 대조 완료 — 주문가능 870,541원 (일치)" — 메커니즘 정상 작동 확인.
+- P15 단일 주문 경로 유지 확인 — execute_buy()/execute_sell() 변경 없음.
+
+**작업 중 발견 문제**: 없음.
+
+**핵심 결정**:
+- 기동 시 대조 메커니즘 방식 선택 (세션9 조사 결과 11.4.4 반영): fake_fill_event 내부 try/except + 실패 시 trade_history 롤백 방식 대신 기동 시 대조 방식 선택. 이유: fake_fill_event 실패 시 롤백은 태스크 취소/프로세스 비정상 종료 시 처리 불가 — 기동 시 대조가 유일한 복구 시점. 불일치 시 자동 복구(재계산값 적용) 선택 — 사용자 확인 대기 차단 방식은 엔진 기동 블로킹으로 P25 위반.
+- test_engine_cache.py autouse fixture: reconcile_with_trades가 _persist(save_settlement_state wait=True)를 호출하는데, 테스트 환경에서 DB writer 미기동 시 무한 hang. engine_cache 테스트는 캐시 로드 로직 검증이 목적이므로 reconcile_with_trades를 AsyncMock으로 패치.
+
+**다음 세션 대기 사항**:
+- **Tier 2 완료**: T2-S7~S11 전체 완료. MEDIUM 14건 전부 완료.
+- **Tier 3 진행 대기**: T3-S12a (A1-01-05, 프론트), T3-S12b (B1-02-05/06/07, 백엔드), T3-S13 (B2-03-03, 백엔드), T3-S14 (B3-05-03/04, B4-06-02, 백엔드), T3-S15 (A3-07-08/09/10, 프론트), T3-S16 (B5-08-01/02/04, 백엔드, safe-trade 필수 + 규칙 0-4 핵심 로직). 총 6세션.
+- **T3-S16 주의**: B5-08-01은 schedule_engine_task 교체 (trading.py 같은 파일 — 본 세션과 충돌 방지 위해 T2-S11 권장 의존성 해결). B5-08-02/04는 핵심 매매 로직 — 규칙 0-4(핵심 로직 변경 UI 기준 설명+승인) 및 규칙 0-5(사용자 설계 로직 더 엄격) 적용. safe-trade 스킬 필수.
+
+---
+
 ### T2-S10 페이지 렌더링 루프 격리 (수익/분류/계좌/통계) — 완료 (2026-07-23) — A3-07-05/06/07/08 완료 (Tier 2 넷째 세션, 안 B 적용)
 
 **세션**: 단일 세션. 프론트엔드 코드 수정 (frontend-fix + problem-solve 스킬). 세션 라벨 T2-S10 (Tier 2 넷째 세션, MEDIUM 4건).

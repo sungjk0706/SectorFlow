@@ -258,6 +258,53 @@ async def _load(force_reload: bool = False, initial_deposit: int | None = None) 
     )
 
 
+# ── 기동 시 정합성 대조 (P22 데이터 정합성) ──────────────────────────────────
+
+async def reconcile_with_trades() -> None:
+    """기동 시 trade_history에서 주문가능금액을 재계산하여 현재 _orderable과 대조.
+
+    fake_fill_event 태스크 실패/취소 시 on_buy_fill/on_sell_fill이 누락되어
+    _orderable이 거래 이력과 불일치하는 상태가 영속화되는 것을 방지 (B5-08-03).
+
+    - 일치 시: debug 로그만.
+    - 불일치 시: 에러 로그 + 재계산값으로 _orderable 복구 + 영속화 + 브로드캐스트
+                + UI 알림(settlement_reconciled 이벤트 — 불일치 금액/복구 여부 포함).
+
+    P22(데이터 정합성) + P21(사용자 투명성) + P25(격리된 실패 — 대조 실패 시 기동 중단 아님).
+    """
+    global _orderable
+    try:
+        from backend.app.services import trade_history
+        expected = await trade_history.compute_expected_orderable(_initial_deposit, "test")
+        actual = _orderable
+        if expected == actual:
+            logger.info("[정산] 기동 대조 완료 — 주문가능 %s원 (일치)", f"{actual:,}")
+            return
+        diff = actual - expected
+        logger.error(
+            "[정산] 기동 대조 불일치 — DB=%s원, 재계산=%s원, 차액=%s원 → 재계산값으로 복구",
+            f"{actual:,}", f"{expected:,}", f"{diff:+,}",
+        )
+        _orderable = expected
+        await _persist()
+        await _broadcast_delta()
+        # P21 사용자 투명성 — 잔고 자동 보정을 화면에 알림
+        try:
+            from backend.app.services.engine_account_notify import _safe_broadcast
+            await _safe_broadcast("settlement_reconciled", {
+                "recovered": True,
+                "expected": expected,
+                "previous": actual,
+                "diff": diff,
+                "message": f"잔고 정합성 복구 — {diff:+,}원 보정 (거래내역 기준)",
+            })
+        except Exception as e:
+            logger.warning("[정산] 정합성 복구 알림 전송 실패 (복구 자체는 완료): %s", e, exc_info=True)
+    except Exception as e:
+        # P25 격리된 실패 — 대조 자체 실패 시 기동 중단하지 않고 로깅 후 진행
+        logger.error("[정산] 기동 대조 실패 — 정합성 검증 생략 (엔진은 계속 기동): %s", e, exc_info=True)
+
+
 # ── 브로드캐스트 ────────────────────────────────────────────────────────────
 
 async def _broadcast_delta() -> None:
