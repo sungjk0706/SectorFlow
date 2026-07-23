@@ -17,6 +17,7 @@ from backend.app.services import dry_run
 from backend.app.services import trade_history
 from backend.app.services.engine_symbol_utils import _base_stk_cd
 from backend.app.services.risk_manager import get_risk_manager
+from backend.app.core.constants import BUY_COMMISSION
 
 logger = logging.getLogger(__name__)
 
@@ -135,16 +136,18 @@ class AutoTradeManager:
 
     async def _load_daily_buy_state(self) -> tuple[int | None, dict[str, float], dict[str, int]]:
         """기동 시 trade_history에서 오늘 매수 합계 + 매수 종목 timestamp dict + 종목당 누적 매수금액 로드.
+        한도 체크 기준 = trade_history.total_amt (테스트: 수수료 포함 / 실전: 순수 매수가).
         실패 시 spent=None 반환 — 호출부에서 매수 차단."""
         try:
             rows = await trade_history.get_buy_history(today_only=True)
-            spent = sum(int(r.get("price", 0) or 0) * int(r.get("qty", 0) or 0) for r in rows)
+            # total_amt 사용 — trade_history.record_buy 공식과 단일 기준 (P10 SSOT, P22 정합성)
+            spent = sum(int(r.get("total_amt", 0) or 0) for r in rows)
             bought_today: dict[str, float] = {}
             symbol_spent: dict[str, int] = {}
             for r in rows:
                 cd = str(r.get("stk_cd", "")).strip()
                 if cd:
-                    symbol_spent[cd] = symbol_spent.get(cd, 0) + int(r.get("price", 0) or 0) * int(r.get("qty", 0) or 0)
+                    symbol_spent[cd] = symbol_spent.get(cd, 0) + int(r.get("total_amt", 0) or 0)
                     ts_str = r.get("ts") or r.get("date", "")
                     try:
                         ts_dt = datetime.fromisoformat(ts_str)
@@ -356,7 +359,11 @@ class AutoTradeManager:
         # effective_buy_amt=None → 종목당 한도 없음 → 주문가능 금액이 상한
         _max_available = min(effective_buy_amt, _orderable) if effective_buy_amt is not None else _orderable
         _est_buy_price = dry_run.estimate_fill_price(int(current_price), "BUY") if is_test_mode(raw_all) else int(current_price)
-        buy_qty = _max_available // _est_buy_price
+        # 수수료 여유분 확보 (P10 SSOT — reserve_buy_power의 cost 공식과 정합, P22 정합성)
+        from backend.app.services import settlement_engine
+        buy_qty = settlement_engine.max_buy_qty_for_budget(
+            _est_buy_price, _max_available, is_test_mode(raw_all),
+        )
         if buy_qty <= 0:
             return False, BUY_REJECT_QTY_ZERO
 
@@ -411,7 +418,6 @@ class AutoTradeManager:
             _fire_and_forget_telegram(f"⚠️ [매수실패] {stk_nm}({stk_cd}) 주문 전송 실패. 잠금 해제.", raw_all)
             # ── 사전 차감 롤백 (주문 실패 시 정합성 보장, P22) ──
             if _reserved_cost > 0:
-                from backend.app.services import settlement_engine
                 await settlement_engine.release_buy_power(_reserved_cost)
                 _reserved_cost = 0
             try:
@@ -447,7 +453,11 @@ class AutoTradeManager:
         fill_price = int(order_price) if order_price > 0 else int(current_price)
         if is_test_mode(raw_all):
             fill_price = dry_run.estimate_fill_price(fill_price, "BUY")
-        spent = int(buy_qty * fill_price)
+        # 한도 누적 기준 = trade_history.record_buy의 total_amt 공식과 동일 (P10/P22)
+        # 테스트모드: 수수료 포함 / 실전모드: 순수 매수가 (실전 수수료 대응은 별도 세션)
+        _base = int(buy_qty * fill_price)
+        _fee = round(_base * BUY_COMMISSION) if is_test_mode(raw_all) else 0
+        spent = _base + _fee
         self._daily_buy_spent += max(0, spent)
         self._symbol_daily_buy_spent[stk_cd] = self._symbol_daily_buy_spent.get(stk_cd, 0) + max(0, spent)
 

@@ -260,7 +260,7 @@ function mount(container: HTMLElement): void {
   // 한도 배지 행 — 공통 컴포넌트 (flex 3등분 고정)
   const badgeRow = createBadgeRow()
   const orderableBadge = createBadge('💳 주문가능금액', '원')
-  const dailyBadge = createBadge('💰 일일 매수 금액 (수수료 제외)', '원')
+  const dailyBadge = createBadge('💰 일일 매수 금액 (수수료 포함)', '원')
   const holdingBadge = createBadge('📦 동시 보유 종목 최대', '종목')
   badgeRow.appendChild(orderableBadge.el)
   badgeRow.appendChild(dailyBadge.el)
