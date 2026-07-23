@@ -6,6 +6,38 @@
 
 ## 직전 완료 작업
 
+### P25 전수 조사 세션 1: A1 WS 디스패치 조사 완료 (2026-07-23)
+
+**세션**: 단일 세션. 조사 보고서 1파일 갱신. 조사만 수행 (코드 수정 없음).
+
+**배경**: P25 전수 조사 9세션 중 세션 1. A1 WS 디스패치 영역(`frontend/src/api/ws.ts`, `frontend/src/binding.ts`) 조사. 우선순위 1위 — 매 이벤트 통과 경로, 한 핸들러 throw 시 전 채널 이벤트 수신 중단 위험.
+
+**조사 파일**: `ws.ts`(261줄), `binding.ts`(338줄), `store.ts`(57줄 — F-02 fix 보호 범위 확인용)
+
+**식별 위반 5건**:
+- **A1-01-01 (CRITICAL)**: `ws.ts:193` `_dispatchMessage`의 `list.forEach(h => h(data))` 핸들러별 try/catch 없음. 한 핸들러 throw 시 forEach 중단 → 같은 event type 후속 핸들러 미실행 + 예외 상위 전파.
+- **A1-01-02 (CRITICAL)**: `ws.ts:164-174` `_handleBinaryFrame`의 `for (const event of events)` 루프가 try 블록 내부. 한 이벤트 핸들러 throw 시 catch가 잡지만 루프 중단 → 같은 바이너리 프레임의 나머지 이벤트 모두 손실. real-data 고빈도 프레임이므로 한 종목 오류가 다른 종목 시세 갱신 차단.
+- **A1-01-03 (MEDIUM)**: `ws.ts:172,181` catch 로그가 "디코딩 실패"/"파싱 실패"로 핸들러 예외와 혼동. P21/P23 위반.
+- **A1-01-04 (HIGH)**: `binding.ts` 33개 onEvent 핸들러 전부 내부 try/catch 없음. F-02 fix(store.ts listener 루프)는 UI 렌더링 listener만 보호, binding.ts 핸들러 본문 로직 + setState updater 함수는 보호되지 않음. 고위험: `buy-targets-delta`, `sector-scores`, `sector-stocks-delta`, `circuit_breaker_open`.
+- **A1-01-05 (LOW)**: `ws.ts:132-136` `_scheduleReconnect` setTimeout 콜백 try/catch 없음. `_connect` 동기 throw 시 재연결 루프 영구 중단.
+
+**핵심 발견**: F-02 fix(store.ts:40-46 listener 루프 try/catch)는 UI 렌더링 listener만 보호. binding.ts 핸들러 본문 로직(destructuring, recalcTradeAmountRank, rebuildBuyTargetIndex) + setState updater 함수(`partial(state)` — store.ts:19)는 보호되지 않아, throw 시 store.ts를 넘어 ws.ts 디스패치 단계로 역전파 → A1-01-01/02 경로 합류.
+
+**수정 방향 (참고용, 승인 시 별도 세션)**:
+- A1-01-01: `forEach`를 try/catch 감싼 루프로 변경, 핸들러 throw 시 `console.error('[WS] handler error', type, e)` + 다른 핸들러 계속 실행
+- A1-01-02: A1-01-01 수정으로 자연 해결 (핸들러 throw가 상위로 전파되지 않음)
+- A1-01-03: 디코딩 catch와 핸들러 catch 분리 후 목적에 맞는 로그
+- A1-01-04: 디스패치 격리 확보 시 핸들러 개별 try/catch는 선택적. 고위험 핸들러는 본문 try/catch 권장. 최종 방침은 수정 세션에서 결정
+- A1-01-05: `_connect()` 호출 try/catch, 실패 시 `_scheduleReconnect` 재호출
+
+**검증**: 조사만 수행 — typecheck/build 불필요. 잔존 프로세스 0건.
+
+**화면 영향**: 없음 (조사 보고서 작성).
+
+**다음 세션 대기 사항**: 세션 2 (B1 엔진 코어 루프 조사) 진행 대기. 조사 보고서 `docs/p25_isolated_failure_investigation.md` 섹션 4에 결과 누적 예정.
+
+---
+
 ### P25 전수 조사 보고서 파일 생성 (2026-07-23)
 
 **세션**: 단일 세션. 문서 1파일 신규 작성. 사전 검토(별도 파일 필요성) → 승인 → 파일 생성 → 커밋.
@@ -939,6 +971,15 @@
 **화면 영향**: 없음. 순수 파일 분할이며 외부 import 경로가 동일하게 유지되어 모든 페이지가 동일하게 동작.
 
 ## 미해결 문제 (발견 즉시 기록)
+
+### P25 전수 조사 — 세션 1 (A1 WS 디스패치) 위반 5건 식별 (2026-07-23)
+- 조사 보고서: `docs/p25_isolated_failure_investigation.md` 섹션 2(매트릭스) + 섹션 3(세션 1 결과) 참조
+- **A1-01-01 (CRITICAL)**: `ws.ts:193` `_dispatchMessage` 핸들러별 try/catch 없음. 한 핸들러 throw 시 같은 이벤트 후속 핸들러 미실행 + 예외 상위 전파
+- **A1-01-02 (CRITICAL)**: `ws.ts:164-174` `_handleBinaryFrame` 루프가 try 내부 → 한 핸들러 throw 시 같은 바이너리 프레임 나머지 이벤트 손실
+- **A1-01-03 (MEDIUM)**: `ws.ts:172,181` catch 로그가 핸들러 예외를 "파싱 실패"로 잘못 분류
+- **A1-01-04 (HIGH)**: `binding.ts` 33개 핸들러 내부 try/catch 없음. F-02 fix는 listener 루프만 보호, 핸들러 본문은 미보호
+- **A1-01-05 (LOW)**: `ws.ts:132-136` 재연결 setTimeout 콜백 try/catch 없음
+- 수정은 별도 승인 세션에서 진행 (조사는 보고까지만)
 
 ### 프론트엔드 — profit-overview 통계 카드 avgRate 공식 일치 여부 — 해결됨 (2026-07-23 조사)
 - ~~`frontend/src/pages/profit-overview-mount.ts:57`가 `filteredSellHistory`를 사용하며, profit-overview 페이지에도 동일한 통계 카드(평균 수익률)가 있는지 확인 필요~~ → 해결 (조사 완료). profit-overview에는 평균 수익률 통계 카드 자체가 없음(avgRate/statAvgRate/updateSummaryCards 0건). profit-overview의 수익률 계산 3곳(도넛 차트/종목 행/업종 헤더) 모두 `computeWeightedRate(pnl, buy_total_amt)` 단일 공식 사용 — profit-detail의 avgRate와 동일. P22/P21 위반 잔존 없음.
