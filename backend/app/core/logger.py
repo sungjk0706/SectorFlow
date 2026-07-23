@@ -345,6 +345,48 @@ def log_progress_end() -> None:
     _progress_active = False
 
 
+def log_receive_rate_progress(
+    krx_received: int, krx_total: int,
+    nxt_received: int, nxt_total: int,
+    threshold_pct: float, *, waiting: bool,
+) -> None:
+    """수신율 갱신을 콘솔 1줄에 \r 갱신 + 파일은 DEBUG 기록.
+
+    log_progress와 동일 패턴 (P23 일관성). _progress_active 플래그 공유.
+    waiting=True: 임계값 대기 중 메시지, False: Phase 2 통과 후 메시지.
+    파일에는 DEBUG로 기록 (INFO 운영 시 파일에 수신 과정 누적 안 됨 → 용량 절감).
+    임계값 통과 시점은 호출측에서 별도 logger.info로 영구 기록 (P21 투명성).
+    """
+    global _progress_active
+    krx_pct = (krx_received / krx_total * 100) if krx_total > 0 else 0.0
+    nxt_pct = (nxt_received / nxt_total * 100) if nxt_total > 0 else 0.0
+    if waiting:
+        msg = (
+            f"[연산] 수신율 갱신 — KRX: {krx_received}/{krx_total} ({krx_pct:.1f}%)"
+            f" | NXT: {nxt_received}/{nxt_total} ({nxt_pct:.1f}%)"
+            f" — 임계값 대기 ({threshold_pct:.1f}%)"
+        )
+    else:
+        msg = (
+            f"[연산] 수신율 갱신 — KRX: {krx_received}/{krx_total} ({krx_pct:.1f}%)"
+            f" | NXT: {nxt_received}/{nxt_total} ({nxt_pct:.1f}%)"
+        )
+    try:
+        s = _get_stdout_utf8()
+        if sys.stdout.isatty():
+            s.write("\r" + msg)
+            s.flush()
+            _progress_active = True
+        else:
+            # 파이프/리다이렉트 시 \r 깨짐 방지 — 일반 줄 출력
+            s.write(msg + "\n")
+            s.flush()
+    except (ValueError, OSError):
+        pass
+    # 파일에는 DEBUG로 기록 (INFO 운영 시 파일에 수신 과정 누적 안 됨 → 용량 절감)
+    _loguru_logger.opt(depth=1).debug(msg)
+
+
 def setup_console_intercept(log_level: str = "INFO") -> None:
     """콘솔 싱크 + InterceptHandler 설치 — uvicorn.run() 이전에 호출 가능 (동기).
 

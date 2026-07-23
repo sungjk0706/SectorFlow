@@ -13,6 +13,7 @@ from typing import Optional
 import asyncio
 import time
 import logging
+from backend.app.core.logger import log_receive_rate_progress, log_progress_end
 from backend.app.services.engine_state import state
 from backend.app.services.engine_ws_dispatch import _check_realtime_latency
 from backend.app.services.engine_utils import LazyEvent
@@ -609,6 +610,8 @@ async def _phase1_wait_threshold() -> None:
                 continue
 
             if threshold_met:
+                # 1줄 갱신 종료 — 통과 시점 info 로그가 새 줄에서 시작하도록 줄바꿈 (커서 꼬임 방지)
+                log_progress_end()
                 logger.info(
                     "[연산] 실시간데이터 수신율 임계값 통과 (KRX: %.1f%%, NXT: %.1f%%, 임계값: %.1f%%). 업종순위 계산을 시작합니다.",
                     krx_pct, nxt_pct, threshold_pct
@@ -621,11 +624,9 @@ async def _phase1_wait_threshold() -> None:
                 await _send_receive_rate(_current_receive_rate)
                 # 수신 종목 수 증가 시에만 로그 출력 (P21 사용자 투명성)
                 if krx_received != _prev_krx_received or nxt_received != _prev_nxt_received:
-                    logger.info(
-                        "[연산] 수신율 갱신 — KRX: %d/%d (%.1f%%), NXT: %d/%d (%.1f%%) — 임계값 대기 중 (%.1f%%)",
-                        krx_received, krx_total, krx_pct,
-                        nxt_received, nxt_total, nxt_pct,
-                        threshold_pct
+                    log_receive_rate_progress(
+                        krx_received, krx_total, nxt_received, nxt_total,
+                        threshold_pct, waiting=True,
                     )
                     _prev_krx_received = krx_received
                     _prev_nxt_received = nxt_received
@@ -654,10 +655,10 @@ async def _phase2_batch_recompute_loop() -> None:
             _p2_krx_received = _current_receive_rate["krx"]["received"]
             _p2_nxt_received = _current_receive_rate["nxt"]["received"]
             if _p2_krx_received != _prev_p2_krx_received or _p2_nxt_received != _prev_p2_nxt_received:
-                logger.info(
-                    "[연산] 수신율 갱신 — KRX: %d/%d (%.1f%%), NXT: %d/%d (%.1f%%)",
-                    _p2_krx_received, _current_receive_rate["krx"]["total"], _current_receive_rate["krx"]["pct"],
-                    _p2_nxt_received, _current_receive_rate["nxt"]["total"], _current_receive_rate["nxt"]["pct"]
+                log_receive_rate_progress(
+                    _p2_krx_received, _current_receive_rate["krx"]["total"],
+                    _p2_nxt_received, _current_receive_rate["nxt"]["total"],
+                    0.0, waiting=False,
                 )
                 _prev_p2_krx_received = _p2_krx_received
                 _prev_p2_nxt_received = _p2_nxt_received

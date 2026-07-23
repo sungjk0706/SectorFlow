@@ -31,6 +31,7 @@ from backend.app.core.logger import (
     InterceptHandler,
     log_progress,
     log_progress_end,
+    log_receive_rate_progress,
 )
 
 
@@ -405,3 +406,76 @@ class TestLogProgress:
         assert mock_stdout.write.call_args_list[0].args[0] == "\n"
         assert mock_stdout.write.call_args_list[1].args[0] == "2026-07-18 20:00:00 [정보] 다른 로그\n"
         assert logger_mod._progress_active is False
+
+
+# ── log_receive_rate_progress ─────────────────────────────────────────────────────
+
+class TestLogReceiveRateProgress:
+    """수신율 갱신 1줄 헬퍼 — log_progress와 동일 패턴 (P23 일관성)."""
+
+    def test_tty_waiting_writes_carriage_return_with_threshold(self):
+        mock_stdout = MagicMock()
+        mock_stdout.isatty.return_value = True
+        logger_mod._progress_active = False
+        with (
+            patch("backend.app.core.logger._get_stdout_utf8", return_value=mock_stdout),
+            patch("backend.app.core.logger.sys.stdout", mock_stdout),
+            patch("backend.app.core.logger._loguru_logger.opt") as mock_opt,
+        ):
+            log_receive_rate_progress(45, 48, 131, 133, 95.0, waiting=True)
+        written = mock_stdout.write.call_args_list[0].args[0]
+        assert written.startswith("\r")
+        assert "KRX: 45/48" in written
+        assert "NXT: 131/133" in written
+        assert "임계값 대기" in written
+        assert "95.0%" in written
+        assert logger_mod._progress_active is True
+        # 파일은 DEBUG로 기록
+        mock_opt.return_value.debug.assert_called_once()
+
+    def test_tty_phase2_no_threshold_in_message(self):
+        mock_stdout = MagicMock()
+        mock_stdout.isatty.return_value = True
+        logger_mod._progress_active = False
+        with (
+            patch("backend.app.core.logger._get_stdout_utf8", return_value=mock_stdout),
+            patch("backend.app.core.logger.sys.stdout", mock_stdout),
+            patch("backend.app.core.logger._loguru_logger.opt"),
+        ):
+            log_receive_rate_progress(48, 48, 133, 133, 0.0, waiting=False)
+        written = mock_stdout.write.call_args_list[0].args[0]
+        assert written.startswith("\r")
+        assert "KRX: 48/48" in written
+        assert "NXT: 133/133" in written
+        # waiting=False → 임계값 미포함
+        assert "임계값 대기" not in written
+        assert logger_mod._progress_active is True
+
+    def test_non_tty_writes_newline_no_carriage_return(self):
+        mock_stdout = MagicMock()
+        mock_stdout.isatty.return_value = False
+        logger_mod._progress_active = False
+        with (
+            patch("backend.app.core.logger._get_stdout_utf8", return_value=mock_stdout),
+            patch("backend.app.core.logger.sys.stdout", mock_stdout),
+            patch("backend.app.core.logger._loguru_logger.opt"),
+        ):
+            log_receive_rate_progress(20, 48, 50, 133, 95.0, waiting=True)
+        written = mock_stdout.write.call_args_list[0].args[0]
+        assert not written.startswith("\r")
+        assert written.endswith("\n")
+        assert "KRX: 20/48" in written
+        assert logger_mod._progress_active is False
+
+    def test_zero_total_does_not_raise(self):
+        mock_stdout = MagicMock()
+        mock_stdout.isatty.return_value = True
+        with (
+            patch("backend.app.core.logger._get_stdout_utf8", return_value=mock_stdout),
+            patch("backend.app.core.logger.sys.stdout", mock_stdout),
+            patch("backend.app.core.logger._loguru_logger.opt"),
+        ):
+            log_receive_rate_progress(0, 0, 0, 0, 95.0, waiting=True)
+        written = mock_stdout.write.call_args_list[0].args[0]
+        assert "KRX: 0/0" in written
+        assert "NXT: 0/0" in written
