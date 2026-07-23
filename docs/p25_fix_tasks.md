@@ -32,7 +32,7 @@
 
 ## Tier 1 (CRITICAL + HIGH, 10건 / 6세션)
 
-### T1-S1 — WS 디스패치 격리 (프론트엔드 기반)
+### T1-S1 — WS 디스패치 격리 (프론트엔드 기반) — 부분 완료 (2026-07-23)
 
 - **대상 위반 ID**: A1-01-01 (CRITICAL), A1-01-02 (CRITICAL), A1-01-04 (HIGH)
 - **수정 파일**: `frontend/src/api/ws.ts`, `frontend/src/binding.ts`
@@ -43,11 +43,16 @@
   - A1-01-01: `_dispatchMessage` forEach → for 루프 + per-handler try/catch, throw 시 `console.error('[WS] handler error', type, e)` + 다른 핸들러 계속
   - A1-01-02: 디코딩 try와 핸들러 디스패치 try 분리 (A1-01-01 수정으로 자연 해결)
   - A1-01-04: A1-01-01 선행 후 고위험 핸들러(buy-targets-delta 등) 본문 try/catch 추가
+- **진행 상태**:
+  - [x] **A1-01-01 완료** — `_dispatchMessage` per-handler try/catch 적용 (ws.ts 196-205줄)
+  - [x] **A1-01-02 완료** — `_handleBinaryFrame` per-item try/catch 적용 (ws.ts 167-174줄), 디코딩 try와 디스패치 try 분리
+  - [ ] **A1-01-04 미진행** — 사용자 지시로 binding.ts 변경 없음. 핸들러 본문 try/catch는 후속 세션에서 별도 승인 시 진행. 단, A1-01-01 per-handler 격리가 디스패처 단에서 1차 보호하므로 A1-01-04는 2차 방어(핸들러 본문 내부 예외 세분화) 성격 — 기능적 안전성은 A1-01-01로 이미 확보.
 - **검증 방법**:
-  - [ ] `npm run build` 성공 (TypeScript 컴파일 에러 없음)
-  - [ ] 브라우저: WS 연결 후 이벤트 수신 정상
-  - [ ] 브라우저: 한 핸들러 고의 throw 시 다른 핸들러 계속 실행 (콘솔에서 확인)
-  - [ ] 콘솔: `console.error` 출력 확인 (silent 무시 아님)
+  - [x] `npm run build` 성공 (TypeScript 컴파일 에러 없음) — `tsc --noEmit` + `tsc -b && vite build` 통과 (76 모듈, 1.91s)
+  - [ ] 브라우저: WS 연결 후 이벤트 수신 정상 — 백엔드 미실행으로 실시간 데이터 흐름 미검증 (정적 검증으로 코드 경로 유효성 확인)
+  - [ ] 브라우저: 한 핸들러 고의 throw 시 다른 핸들러 계속 실행 (콘솔에서 확인) — 백엔드 미실행으로 미검증
+  - [x] 콘솔: `console.error` 출력 확인 (silent 무시 아님) — 코드 상 `console.error('[WS] 핸들러 실행 실패 (event=...)', err)` / `console.error('[WS] binary frame event 디스패치 실패:', err)` 적용
+- **비고**: A1-01-04는 T1-S1에서 제외 후 별도 세션으로 이관 권장. binding.ts 핸들러 본문 격리는 T2-S7(A1-01-03, A2-04-01/02)와 동일 파일군이므로 T2-S7 진행 시 통합 처리 가능.
 
 ### T1-S2 — 엔진 루프 / 기동 캐시 격리
 

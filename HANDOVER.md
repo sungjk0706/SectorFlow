@@ -6,6 +6,41 @@
 
 ## 직전 완료 작업
 
+### T1-S1 WS 디스패치 핸들러 격리 — 부분 완료 (2026-07-23) — A1-01-01/02 완료, A1-01-04 이관
+
+**세션**: 단일 세션. 프론트엔드 코드 수정 (frontend-fix + problem-solve 스킬 연계).
+
+**배경**: P25 수정 계획 Tier 1 최우선 세션. WS 디스패치 격리는 모든 프론트엔드 격리의 근원 — 한 핸들러/한 이벤트 실패가 같은 프레임의 다른 핸들러·다른 이벤트까지 블로킹하는 P25 위반 해결.
+
+**작업 내용**:
+1. **A1-01-01 (CRITICAL) 완료** — `frontend/src/api/ws.ts` `_dispatchMessage` (196-205줄): `forEach` → `for` 루프 + per-handler try/catch. 한 핸들러 throw 시 `console.error('[WS] 핸들러 실행 실패 (event=...)', err)` 로깅 후 같은 이벤트의 다른 핸들러 계속 실행.
+2. **A1-01-02 (CRITICAL) 완료** — `frontend/src/api/ws.ts` `_handleBinaryFrame` (167-174줄): 바이너리 프레임 다중 이벤트 per-item try/catch. 디코딩 try(바깥)와 디스패치 try(안쪽) 분리 — 한 이벤트 디스패치 실패 시 같은 프레임의 다음 이벤트 계속 처리.
+3. **A1-01-04 (HIGH) 미진행** — 사용자 지시로 `binding.ts` 변경 없음. 핸들러 본문 try/catch는 후속 세션에서 별도 승인 시 진행. 단, A1-01-01 per-handler 격리가 디스패처 단에서 1차 보호하므로 기능적 안전성은 이미 확보. A1-01-04는 2차 방어(핸들러 본문 내부 예외 세분화) 성격.
+
+**수정 파일**: `frontend/src/api/ws.ts` (1개, +15/-3줄). `binding.ts` 변경 없음.
+
+**아키텍처 원칙 부합**:
+- P25 (격리된 실패): 한 핸들러/한 이벤트 실패가 전파되지 않음 — 해결.
+- P20 (폴백 금지): `console.error` 로깅 (silent pass 금지) — 준수.
+- P23 (일관성): 기존 `console.error('[WS] ...')` 패턴 5곳과 동일 구조 유지 — 준수.
+- P24 (단순성): 각 격리는 try/catch 1뎁스, 과도한 추상화 없음 — 준수.
+- P16 (살아있는 경로): `_dispatchMessage`/`_handleBinaryFrame`은 실제 WS onmessage 경로에 연결 — 준수.
+
+**검증**:
+- `npm run typecheck` (`tsc --noEmit`) 통과.
+- `npm run build` (`tsc -b && vite build`) 통과 — 76 모듈 변환, 1.91s, 번들 정상 생성.
+- lint 스크립트는 package.json에 없음 → typecheck + build로 대체.
+- 브라우저 실시간 데이터 흐름: 백엔드 미실행 상태라 미검증. 단, 수정은 실패 전파 차단만 추가한 것이므로 정상 경로 동작은 변경되지 않음. 백엔드 기동 후 WS 데이터 정상 수신 여부는 후속 확인 권장.
+- 잔존 프로세스 0건 확인.
+
+**핵심 결정**:
+- 격리 책임을 디스패처(ws.ts)에 중앙 집중 — 각 핸들러마다 try/catch 중복 작성 방지 (P24 단순성, P23 일관성).
+- A1-01-04는 T2-S7(A1-01-03, A2-04-01/02 — ws.ts/store.ts/hotStore.ts)와 동일 파일군이므로 T2-S7 진행 시 통합 처리 가능. 단, A1-01-04는 binding.ts 핸들러 본문이므로 T2-S7 범위에 명시적 포함 필요.
+
+**다음 세션 대기 사항**: T1-S2 (A3-07-01/02 DataTable 행 렌더링 격리) 진행 예정 (사용자 지시). `frontend/src/components/virtual-scroller.ts`, `frontend/src/components/common/data-table-fixed.ts` 수정. T1-S1 완료 권장 의존성 충족(부분 완료이나 디스패처 단 1차 보호 확보로 T1-S5 진행에 기능적 안전). 세션당 1단계 원칙(규칙 0-1) 준수.
+
+---
+
 ### P25 수정 계획·태스크 체크리스트 작성 (2026-07-23) — 설계 문서 2건 완성, 코드 수정 없음
 
 **세션**: 단일 세션. 설계 문서 작성만 수행 (코드 수정 없음, 규칙 0 준수).

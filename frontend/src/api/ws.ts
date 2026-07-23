@@ -165,8 +165,12 @@ export class WSClient {
     try {
       // Protobuf 디코딩 (바이너리 스트림)
       const events = decodeProtobufEvents(buffer)
-      for (const event of events) {
-        this._dispatchMessage(event)
+      for (const evt of events) {
+        try {
+          this._dispatchMessage(evt)
+        } catch (err) {
+          console.error('[WS] binary frame event 디스패치 실패:', err)
+        }
       }
     } catch (err) {
       console.error('[WS] binary frame 디코딩 실패:', err)
@@ -190,7 +194,15 @@ export class WSClient {
       data = expandKeys(data as Record<string, unknown>)
     }
     const list = this.handlers.get(eventType)
-    if (list) list.forEach(h => h(data))
+    if (list) {
+      for (const h of list) {
+        try {
+          h(data)
+        } catch (err) {
+          console.error(`[WS] 핸들러 실행 실패 (event=${eventType}):`, err)
+        }
+      }
+    }
   }
 
   onEvent<T = unknown>(type: string, handler: EventHandler<T>): void {
