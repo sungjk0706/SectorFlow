@@ -99,7 +99,18 @@ function applyMarketPhaseChip(
     el.textContent = `${market} ${countdown}`
     return
   }
-  const s = PHASE_STYLE[phase] || PHASE_STYLE['장마감']
+  const s = PHASE_STYLE[phase]
+  if (!s) {
+    // 정상 경로의 폴백 금지 (P20). 알 수 없는 phase는 백엔드-프론트 불일치이므로
+    // 경고 로깅 후 칩만 neutral 기본 표시 — 나머지 헤더/화면은 정상 작동 (P21).
+    console.warn('[header] 알 수 없는 장 phase:', phase)
+    el.style.background = `${COLOR.neutralBg}`
+    el.style.color = `${COLOR.neutral}`
+    el.style.border = `1px solid ${COLOR.neutral}20`
+    el.style.fontWeight = '600'
+    el.textContent = `${market} ${phase}`
+    return
+  }
   el.style.background = s.bg
   el.style.color = s.color
   el.style.border = `1px solid ${s.color}20`

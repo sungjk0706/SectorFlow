@@ -34,8 +34,15 @@ export function createStore<T extends object>(initialState: T): StoreApi<T> {
 
     state = { ...state, ...nextPartial }
 
+    // listener throw가 다른 listener / setState 호출자에게 전파되어
+    // 앱 전체 렌더링이 중단되는 것을 차단 (P16/P21).
+    // silent pass가 아님 — 에러는 콘솔에 명시 로깅되고 다른 listener는 계속 실행.
     for (const listener of listeners) {
-      listener(state)
+      try {
+        listener(state)
+      } catch (e) {
+        console.error('[Store] listener error', e)
+      }
     }
   }
 

@@ -6,7 +6,98 @@
 
 ## 직전 완료 작업
 
-### header.ts 장 페이즈 폴백 제거 (F-02 경미) (2026-07-23)
+### header.ts 장 상태 칩 렌더링 실패 → 앱 전체 중단 구조 근본 수정 (F-02 해결) (2026-07-23)
+
+**세션**: 단일 세션. 프론트엔드 3파일. 사전조사 → 승인 → 수정 → 검증 → 커밋.
+
+**문제 현상**: `PHASE_STYLE[phase]`가 undefined일 때 TypeError가 header의 `onStateChange`에서 throw → `store.setState` listener 루프에서 다른 listener/호출자로 전파 → 앱 전체 렌더링 중단(하얀 화면). 이전 세션에서 긴급 폴백 복구로 증상만 덮어둔 상태.
+
+**근본 원인 (구조적)**:
+1. `frontend/src/stores/store.ts:37-39` — listener 루프에 try/catch 없음. 하나의 listener throw가 다른 listener와 setState 호출자(WS 핸들러)까지 전파 → 앱 전체 중단. "undefined 하나가 전체 앱을 죽이는" 구조의 핵심.
+2. `frontend/src/stores/uiStore.ts:85, 245` — 초기값/폴백값 `'CLOSED'`가 `PHASE_STYLE`에 없는 키. 부트스트랩 단계에서 항상 undefined 도달.
+3. `frontend/src/layout/header.ts:102` — `|| PHASE_STYLE['장마감']` 폴백은 P20 위반 (정상 경로의 undefined를 폴밭으로 덮음). 긴급 조치일 뿐 근본 해결 아님.
+
+**수정 내용 (3파일)**:
+- `frontend/src/stores/store.ts:37-46` — listener 루프 try/catch 전파 차단. throw 시 `console.error('[Store] listener error', e)` 로깅(silent pass 아님), 다른 listener는 계속 실행. P16/P21.
+- `frontend/src/stores/uiStore.ts:85, 245` — 초기값/폴백 `'CLOSED'` → `'장마감'` 통일 (안 B). P10/P23.
+- `frontend/src/layout/header.ts:102-117` — 폴백 제거. undefined 시 `console.warn` 경고 + neutral 기본 스타일로 phase 문자열 그대로 표시. 정상 경로 폴밭 금지(P20), 칩만 기본 표시하고 나머지 화면 정상 작동(P21).
+
+**아키텍처 원칙 부합**:
+- P20 (폴백 금지): 정상 경로 폴백 제거. 단, "알 수 없는 phase(백엔드-프론트 불일치)"에 대한 기본 표시는 폴백이 아닌 에러 복구 표시로定位 — 경고 로그 + neutral 스타일.
+- P21 (사용자 투명성): 칩 렌더링 실패 시 칩만 기본 표시, 나머지 헤더/화면 정상 작동.
+- P22 (데이터 정합성): 초기값 'CLOSED' → '장마감'으로 백엔드 phase 문자열과 일치.
+- P16 (살아있는 경로): store.ts try/catch는 silent except:pass 아님 — console.error 로깅.
+
+**수정 파일 3개**:
+- `frontend/src/stores/store.ts` — listener 루프 전파 차단
+- `frontend/src/stores/uiStore.ts` — 초기값/폴백 '장마감' 통일 (2곳)
+- `frontend/src/layout/header.ts` — 폴백 제거 + 명시적 안전 처리
+
+**검증**:
+- `npm run typecheck` exit 0
+- `npm run build` 1.94s exit 0 (76 modules transformed)
+- lint 스크립트 존재하지 않음 (package.json에 없음)
+- 잔존 프로세스 0건
+
+**화면 영향**:
+- 앱 기동 시 헤더 장 상태 칩이 '장마감' 스타일로 정상 표시 (이전과 동일 외관)
+- WS 수신 후 실제 phase로 갱신 (이전과 동일)
+- 향후 백엔드가 알 수 없는 phase를 보내도 칩만 neutral 표시, 앱 전체 중단 없음 (구조적 개선)
+
+**다음 세션 대기 사항**: 없음 (F-02 근본 해결 완료).
+
+---
+
+### header.ts 장 페이즈 폴백 제거 → 긴급 복구 (F-02 경미) (2026-07-23)
+
+**세션**: 단일 세션. 프론트엔드 1파일. 사전조사 생략 (간단 수정, 사용자 지시) → 잘못된 분석으로 인한 긴급 롤백 포함.
+
+**문제 현상**: `header.ts:102`의 `PHASE_STYLE[phase] || PHASE_STYLE['장마감']` 폴백 — 백엔드가 알려진 페이즈만 보내므로 "도달 불가능한 dead code"로 판단. P20(폴백 금지) + P16(살아있는 경로) 위반 (경미 등급).
+
+**사전 조사 결과** (승인 전 조사 — **누락 있음**):
+- 백엔드 `calc_timebased_market_phase()` + `_JIF_PHASE_MAP_KRX/NXT`가 보내는 phase = KRX 13개 + NXT 9개 (중복 제외 19개)
+- `PHASE_STYLE` 키 19개와 1:1 완전 일치 — 누락/과잉 없음
+- ~~실제 도달 가능성 0, 화면 영향 없음~~ → **잘못된 결론**. 프론트엔드 초기값/폴백값 `'CLOSED'`를 누락함.
+
+**1차 수정 (폴백 제거)**:
+- `frontend/src/layout/header.ts:102` — `PHASE_STYLE[phase] || PHASE_STYLE['장마감']` → `PHASE_STYLE[phase]`
+- 커밋 `ce9e137` "fix: header.ts 장 페이즈 폴백 제거 — 도달 불가능 dead code (P20/P16)"
+
+**긴급 롤백 사유** (사용자 보고: 하얀 화면):
+- `uiStore.ts:85` 초기값 `marketPhase: { krx: 'CLOSED', nxt: 'CLOSED', ... }`
+- `uiStore.ts:245` engine_status 폴백 `?? { krx: 'CLOSED', nxt: 'CLOSED', ... }`
+- 앱 기동 직후 `header.ts:488`이 `onStateChange(uiStore.getState())` 즉시 호출 → `applyMarketPhaseChip(el, 'KRX', 'CLOSED', ...)` → `PHASE_STYLE['CLOSED']` = undefined → `s.bg` 접근 시 TypeError → 렌더링 전체 중단 → 하얀 화면
+- **근본 원인**: 백엔드는 한국어 페이즈명(`장마감` 등)만 보내지만, 프론트엔드 초기값/폴백은 영문 `'CLOSED'` 사용 (P23 용어 통일 위반). 폴백은 "도달 불가능 dead code"가 아니라 **부트스트랩 단계에서 항상 도달 가능한 정상 분기**.
+
+**2차 수정 (폴백 복구)**:
+- `frontend/src/layout/header.ts:102` — `PHASE_STYLE[phase]` → `PHASE_STYLE[phase] || PHASE_STYLE['장마감']` (원복)
+- 커밋 `a5b357b` "revert: header.ts 장 페이즈 폴백 복구 — 부트스트랩 'CLOSED' phase 하얀 화면 원인"
+- 롤백 사유 기록 (규칙 0-3): 커밋 메시지에 잘못된 분석 인정 + 사유 + 되돌린 대상 + 영향 범위 명시
+
+**수정 파일 1개**:
+- `frontend/src/layout/header.ts:102` — 최종 상태: 폴백 복원 (원래 코드로 회귀)
+
+**검증**:
+- 1차: `npm run typecheck` exit 0, `npm run build` 1.88s exit 0 (하지만 런타임 TypeError 발생 — 빌드 통과가 런타임 안전성 보장 아님)
+- 2차: `npm run build` 631ms exit 0
+- 잔존 프로세스 0건
+
+**화면 영향**:
+- 1차 수정 후: 앱 기동 시 하얀 화면 (TypeError로 렌더링 중단)
+- 2차 복구 후: 정상 렌더링 복구. 부트스트랩 단계 'CLOSED' phase가 '장마감' 스타일로 표시 (기존 동작 회귀)
+
+**교훈**:
+- 빌드/typecheck 통과가 런타임 안전성을 보장하지 않음 — 부트스트랩 초기값/폴백값 경로는 별도 검증 필요
+- "도달 불가능" 판단 시 백엔드 값뿐 아니라 프론트엔드 초기값/폴백값/기본값도 포함해야 함
+- 사전조사 생략은 "간단 수정"이라도 위험 — 규칙 0-2(수정 전 사전조사 의무) 준수 필요
+
+**잔존 프로세스**: 없음.
+
+**다음 세션 대기 사항**: 안 B 사전조사 — `uiStore.ts` 초기값/폴백 `'CLOSED'` → `'장마감'` 통일 (P10/P23). 사전조사 항목: `'CLOSED'`를 비교/참조하는 다른 코드 전체 검색. 근본 해결 완료 시 header.ts 폴백 제거 재검토.
+
+---
+
+### header.ts 장 페이즈 폴백 제거 (F-02 경미) (2026-07-23, 롤백됨)
 
 **세션**: 단일 세션. 프론트엔드 1파일. 사전조사 생략 (간단 수정, 사용자 지시).
 
@@ -34,11 +125,11 @@
 
 **화면 영향**: 없음. 백엔드가 보내는 모든 phase가 PHASE_STYLE에 정의되어 있으므로 칩 스타일 표시 변화 없음.
 
-**커밋**: 미수행 (사용자 지시 시).
+**커밋**: `ce9e137` (이후 `a5b357b`로 롤백됨 — 상단 세션 참조).
 
 **잔존 프로세스**: 없음.
 
-**다음 세션 대기 사항**: 완료. 다음 우선순위 작업 진행.
+**다음 세션 대기 사항**: 롤백됨. 상단 "header.ts 장 페이즈 폴백 제거 → 긴급 복구" 세션 참조.
 
 ---
 
@@ -1160,7 +1251,7 @@ F-05-c(F05-08) 완료 후 작업 여력: **충분**. 잔여 profit-overview.ts/p
 
 ### F-02 발견 경미 사항 (정보만 기록, 수정 여부 사용자 판단)
 - **main.ts**: 주석 번호 중복 (이미 F-02에서 "6."→"7."로 정리 완료)
-- ~~**header.ts line 99**: `PHASE_STYLE[phase] || PHASE_STYLE['장마감']` — 알 수 없는 장 페이즈를 '장마감' 스타일로 처리하는 폴백 (P20 경미 — 백엔드가 알려진 페이즈만 보내므로 실제 발생 가능성 낮음)~~ → 해결 (2026-07-23). 폴백 제거 — `PHASE_STYLE[phase]` 직접 참조. 백엔드가 보내는 19개 phase(KRX 13 + NXT 9, 중복 제외)와 PHASE_STYLE 키가 1:1 일치하므로 도달 불가능한 dead code 제거 (P20/P16).
+- **header.ts line 99**: `PHASE_STYLE[phase] || PHASE_STYLE['장마감']` — 알 수 없는 장 페이즈를 '장마감' 스타일로 처리하는 폴백 (P20 경미). 2026-07-23 폴백 제거 시도 → 하얀 화면 발생으로 롤백 (커밋 `ce9e137` → `a5b357b`). 근본 원인: 프론트엔드 초기값/폴백값 `'CLOSED'`가 PHASE_STYLE 키에 없음. **안 B(초기값 'CLOSED' → '장마감' 통일) 사전조사 후 근본 해결 예정 — 상단 직전 완료 작업 참조**.
 
 ### B-13 보류 항목 (5건, LOW/INFO)
 - B-13 부분 완료. 잔여 5건은 LOW/INFO 등급으로 보류 중.
