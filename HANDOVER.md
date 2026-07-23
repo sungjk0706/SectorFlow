@@ -6,6 +6,42 @@
 
 ## 직전 완료 작업
 
+### header.ts 장 페이즈 폴백 제거 (F-02 경미) (2026-07-23)
+
+**세션**: 단일 세션. 프론트엔드 1파일. 사전조사 생략 (간단 수정, 사용자 지시).
+
+**문제 현상**: `header.ts:102`의 `PHASE_STYLE[phase] || PHASE_STYLE['장마감']` 폴백 — 백엔드가 알려진 페이즈만 보내므로 도달 불가능한 dead code. P20(폴백 금지) + P16(살아있는 경로) 위반 (경미 등급).
+
+**사전 조사 결과** (승인 전 조사):
+- 백엔드 `calc_timebased_market_phase()` + `_JIF_PHASE_MAP_KRX/NXT`가 보내는 phase = KRX 13개 + NXT 9개 (중복 제외 19개)
+- `PHASE_STYLE` 키 19개와 1:1 완전 일치 — 누락/과잉 없음
+- 실제 도달 가능성 0, 화면 영향 없음
+
+**수정 안**: 폴백 제거 → `PHASE_STYLE[phase]` 직접 참조.
+
+**수정 파일 1개**:
+- `frontend/src/layout/header.ts:102` — `PHASE_STYLE[phase] || PHASE_STYLE['장마감']` → `PHASE_STYLE[phase]`
+
+**원칙 부합**:
+- P16 살아있는 경로: 도달 불가능한 dead code 제거
+- P20 폴백 금지: 정상 경로의 누락을 폴백으로 덮는 패턴 제거
+- P24 단순성: 1줄 변경
+
+**검증**:
+- `npm run typecheck` (tsc --noEmit) — exit 0
+- `npm run build` (vite build) — 1.88s exit 0
+- 잔존 프로세스 0건
+
+**화면 영향**: 없음. 백엔드가 보내는 모든 phase가 PHASE_STYLE에 정의되어 있으므로 칩 스타일 표시 변화 없음.
+
+**커밋**: 미수행 (사용자 지시 시).
+
+**잔존 프로세스**: 없음.
+
+**다음 세션 대기 사항**: 완료. 다음 우선순위 작업 진행.
+
+---
+
 ### 수신율 갱신 로그 1줄 \r 갱신 통일 (2026-07-23)
 
 **세션**: 단일 세션. 백엔드 2파일 + 테스트 1파일.
@@ -743,8 +779,8 @@
 
 ## 미해결 문제 (발견 즉시 기록)
 
-### 프론트엔드 — profit-overview 통계 카드 avgRate 공식 일치 여부 확인 필요 (2026-07-22)
-- `frontend/src/pages/profit-overview-mount.ts:57`가 `filteredSellHistory`를 사용하며, profit-overview 페이지에도 동일한 통계 카드(평균 수익률)가 있는지 확인 필요. 있다면 동일한 가중 평균 공식으로 통일해야 P22/P21 일관성 유지. 수익상세 페이지 수정 세션에서 발견, 범위 밖이라 미진행.
+### 프론트엔드 — profit-overview 통계 카드 avgRate 공식 일치 여부 — 해결됨 (2026-07-23 조사)
+- ~~`frontend/src/pages/profit-overview-mount.ts:57`가 `filteredSellHistory`를 사용하며, profit-overview 페이지에도 동일한 통계 카드(평균 수익률)가 있는지 확인 필요~~ → 해결 (조사 완료). profit-overview에는 평균 수익률 통계 카드 자체가 없음(avgRate/statAvgRate/updateSummaryCards 0건). profit-overview의 수익률 계산 3곳(도넛 차트/종목 행/업종 헤더) 모두 `computeWeightedRate(pnl, buy_total_amt)` 단일 공식 사용 — profit-detail의 avgRate와 동일. P22/P21 위반 잔존 없음.
 
 ### 백엔드 버그 (F-05-a 조사 중 발견) — 해결됨 (2026-07-22)
 - ~~`backend/app/services/engine_account_rest.py:125-144` `build_account_snapshot_meta`가 응답 dict에서 `accumulated_investment`를 **누락**~~ → 해결 (백엔드 #3 세션에서 반환 dict에 키 추가).
@@ -1124,7 +1160,7 @@ F-05-c(F05-08) 완료 후 작업 여력: **충분**. 잔여 profit-overview.ts/p
 
 ### F-02 발견 경미 사항 (정보만 기록, 수정 여부 사용자 판단)
 - **main.ts**: 주석 번호 중복 (이미 F-02에서 "6."→"7."로 정리 완료)
-- **header.ts line 99**: `PHASE_STYLE[phase] || PHASE_STYLE['장마감']` — 알 수 없는 장 페이즈를 '장마감' 스타일로 처리하는 폴백 (P20 경미 — 백엔드가 알려진 페이즈만 보내므로 실제 발생 가능성 낮음)
+- ~~**header.ts line 99**: `PHASE_STYLE[phase] || PHASE_STYLE['장마감']` — 알 수 없는 장 페이즈를 '장마감' 스타일로 처리하는 폴백 (P20 경미 — 백엔드가 알려진 페이즈만 보내므로 실제 발생 가능성 낮음)~~ → 해결 (2026-07-23). 폴백 제거 — `PHASE_STYLE[phase]` 직접 참조. 백엔드가 보내는 19개 phase(KRX 13 + NXT 9, 중복 제외)와 PHASE_STYLE 키가 1:1 일치하므로 도달 불가능한 dead code 제거 (P20/P16).
 
 ### B-13 보류 항목 (5건, LOW/INFO)
 - B-13 부분 완료. 잔여 5건은 LOW/INFO 등급으로 보류 중.
