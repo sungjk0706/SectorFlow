@@ -82,7 +82,7 @@ const initialState: UIState = {
   engineReady: false,
   avgAmtProgress: null,
   bootstrapStage: null,
-  marketPhase: { krx: 'CLOSED', nxt: 'CLOSED', krx_alert: null, is_nxt_only: false },
+  marketPhase: { krx: '장마감', nxt: '장마감', krx_alert: null, is_nxt_only: false },
   buyLimitStatus: { daily_buy_spent: 0 },
   wsSubscribeStatus: { index_subscribed: false, quote_subscribed: false },
   sectorScoresDelta: null,
@@ -242,7 +242,7 @@ export function applyInitialSnapshotUI(data: Record<string, unknown>): void {
     orderTimeBlocked: null,
     riskBlockStatus: null,
     engineReady: !!(data.bootstrap_done),
-    marketPhase: (data.market_phase as UIState['marketPhase']) ?? { krx: 'CLOSED', nxt: 'CLOSED', krx_alert: null },
+    marketPhase: (data.market_phase as UIState['marketPhase']) ?? { krx: '장마감', nxt: '장마감', krx_alert: null },
     receiveRate: (() => {
       const r = data.receive_rate as { received: number; total: number; pct: number } | { krx: ReceiveRateEntry | null; nxt: ReceiveRateEntry | null } | undefined
       if (!r) return null
