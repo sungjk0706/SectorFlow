@@ -25,7 +25,7 @@
 ### GS-S3 일반설정 탭 재분류 다단계 워크플로우 3세션 — Step 1 파일 분할 (2026-07-24)
 - **작업**: `general-settings.ts` 1443줄 단일 파일 → 7개 파일로 분할 (순수 이동, 동작 변경 없음). 기존 `profit-*` 분할 패턴 준수 (pages/ 폴더 평행 파일, 상태 객체를 함수 인자로 전달 — P23/P10).
 - **수정**: 메인 272줄 + shared 243줄 + time-settings 210줄 + auto-trade 381줄 + telegram 104줄 + account 169줄 + api-settings 195줄 (모두 500줄 이하, P24). 모듈 상태를 `GeneralSettingsState` 객체로 래핑하여 shared에서 export, 각 탭 함수는 `state` 인자로 전달.
-- **검증**: typecheck exit 0 / build 성공 (1.53s) / vitest 116/116 통과 / UI 동작 변화 없음 (순수 이동) / 커밋 (대기)
+- **검증**: typecheck exit 0 / build 성공 (1.53s) / vitest 116/116 통과 / UI 동작 변화 없음 (순수 이동) / 커밋 77252ec
 - **다음 세션 인계**: Step 2 (4세션) — UI 변경: 자동매수/매도 토글을 시간 설정 탭으로 이동(통합 행), 자동매매 탭에 상태 배지 추가, 뉴스 설정 탭+화면 설정 탭 신설 (5→7개 탭). 태스크 파일 `docs/plan_general_settings_redesign.md` Step 2 참조.
 
 ### UI-01 매수설정 가산점 행 순서 교체 (2026-07-24)
