@@ -148,7 +148,7 @@
 
 ## Tier 2 (MEDIUM, 14건 / 5세션)
 
-### T2-S7 — WS 로그 분류 / store updater / hotStore dispatch 격리
+### T2-S7 — WS 로그 분류 / store updater / hotStore dispatch 격리 — 완료 (2026-07-23)
 
 - **대상 위반 ID**: A1-01-03 (MEDIUM), A2-04-01 (MEDIUM), A2-04-02 (MEDIUM)
 - **수정 파일**: `frontend/src/api/ws.ts`, `frontend/src/stores/store.ts`, `frontend/src/stores/hotStore.ts`
@@ -159,11 +159,16 @@
   - A1-01-03: 디코딩 catch와 핸들러 catch 분리 후 각각 목적에 맞는 로그 메시지
   - A2-04-01: setState updater `partial(state)` 호출을 try/catch 감싸고 throw 시 `console.error` + 기존 state 반환
   - A2-04-02: window.dispatchEvent CustomEvent per-dispatch try/catch (A2-04-01과 동일 패턴, P23)
+- **진행 상태**:
+  - [x] **A1-01-03 완료** — `ws.ts` `_handleTextFrame` (180-193줄): JSON.parse try와 `_dispatchMessage` try 분리. "JSON 파싱 실패" / "text frame event 디스패치 실패"로 분류 (binary frame 패턴과 일관, P23). 단, `_handleBinaryFrame`은 T1-S1에서 이미 디코딩/디스패치 try 분리 완료 — 본 세션 추가 수정 불필요.
+  - [x] **A2-04-01 완료** — `store.ts` `setState` (18-29줄): updater 함수 호출 `partial(state)` try/catch 격리. throw 시 `console.error('[Store] updater error', e)` + early return (기존 state 유지, P22). `createStore` 한 곳 수정으로 모든 store 자동 보호 (P24).
+  - [x] **A2-04-02 완료** — `hotStore.ts` 5곳 `window.dispatchEvent` try/catch 격리: `applyRealData` rank-0 변경 2곳 (367, 370줄) + 변경 알림 1곳 (390줄), `applyOrderbookUpdate` 1곳 (412줄), `applyProgramUpdate` 1곳 (431줄). 각 이벤트명을 로그 메시지에 명시 (P21, P23).
 - **검증 방법**:
-  - [ ] `npm run build` 성공
-  - [ ] 브라우저: WS 에러 로그 메시지 정확성 (디코딩 vs 핸들러 구분)
-  - [ ] 브라우저: store updater throw 시 화면 멈춤 없음
-  - [ ] P23 일관성: store.ts / hotStore.ts 동일 패턴 적용 확인
+  - [x] `npm run build` 성공 — `tsc -b && vite build` 통과 (76 모듈, 910ms, TS 오류 0건)
+  - [ ] 브라우저: WS 에러 로그 메시지 정확성 (디코딩 vs 핸들러 구분) — 백엔드 미기동으로 실시간 데이터 흐름 미검증 (정적 검증으로 코드 경로 유효성 확인)
+  - [ ] 브라우저: store updater throw 시 화면 멈춤 없음 — 백엔드 미기동으로 미검증
+  - [x] P23 일관성: store.ts / hotStore.ts 동일 패턴 적용 확인 — text frame = binary frame 패턴; hotStore 5곳 동일 패턴; store.ts 단일 수정으로 모든 store 보호
+- **커밋**: `bc920df fix(frontend): T2-S7 WS 로그 분류 / store updater / hotStore dispatch 격리 (A1-01-03, A2-04-01/02)`
 
 ### T2-S8 — 엔진 종료 finally / 파이프라인 서브루프 격리
 
