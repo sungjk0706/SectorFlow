@@ -8,6 +8,7 @@
 
 | 날짜 | 세션 | 작업 | 상태 |
 |------|------|------|------|
+| 2026-07-23 | T3-S25 | 업종순위 페이지 가운데·우측 패널 padding 16px→8px (컬럼 너비 확보) — P21/P23 (프론트엔드) | 완료 |
 | 2026-07-23 | T3-S24 | 매수/매도 상태 배지 판정 로직 공통 추출 (computeOrderBlockStatus) — P10/P23/P25 (프론트엔드) | 완료 |
 | 2026-07-23 | T3-S23 | 배지 폰트 위계 조정 + 보유종목 배지 라벨 축약 (P23/P21) (프론트엔드) | 완료 |
 | 2026-07-23 | T3-S22 | 보유종목 테이블 4번째 배지 "🚦 매도상태" 추가 (매수후보 T3-S21과 동일 패턴) — P21 (프론트엔드) | 완료 |
@@ -24,6 +25,42 @@
 ---
 
 ## 직전 완료 작업
+
+### T3-S25 업종순위 페이지 가운데·우측 패널 padding 16px→8px — 완료 (2026-07-23) — P21 가독성 + P23 일관성 (프론트엔드, frontend-fix)
+
+**세션**: 단일 세션. 업종순위 페이지(sector-ranking-page) 3패널 중 가운데(업종순위 테이블)·우측(종목시세) 패널의 padding을 shell 기본값 16px에서 8px로 축소. 좌측 설정 패널(8px)과 일치시켜 3패널 padding 통일 + 가운데 테이블 컬럼 약 16px 확보.
+
+**배경**: 업종순위 테이블의 외곽 테두리선은 이미 모두 제거된 상태(border:none, 셀/행 구분선 none). 컬럼 너비를 잡아먹는 주원인은 `tripleCenter` padding 16px(좌우 32px). 좌측 패널은 8px이므로 P23(일관성) 위반 상태. padding 축소로 컬럼 너비 확보 → 업종명/가산점/상승비율/평균거래 숫자 잘림 완화 (P21 가독성).
+
+**작업 내용** (3건, 1개 파일):
+1. **상수 추가** — `DEFAULT_TRIPLE_CENTER_PADDING`/`DEFAULT_TRIPLE_RIGHT_PADDING` (16px) — unmount 복원용.
+2. **mount 시 padding 오버라이드** — `tripleCenter.style.padding = '8px'`, `tripleRight.style.padding = '8px'`.
+3. **unmount 시 padding 복원** — 두 패널 padding을 16px 기본값으로 복원 (stock-classification 페이지 영향 방지).
+
+**수정 파일**: 1개 (프론트엔드).
+- `frontend/src/pages/sector-ranking-page.ts` (상수 2개 추가 + mount padding 오버라이드 2줄 + unmount padding 복원 2줄)
+
+**아키텍처 원칙 부합**:
+- P21 (사용자 투명성): padding 축소 → 컬럼 너비 확대 → 숫자/업종명 잘림 감소 → 가독성 향상.
+- P23 (일관성): 기존 좌측 8px / 가운데·우측 16px 불일치 해소 → 3패널 모두 8px 통일.
+- P24 (단순성): padding 수치 2개만 수정, 복잡도 증가 없음.
+- P25 (격리된 실패): CSS 수치 변경이라 다른 컴포넌트 영향 없음.
+
+**영향 범위**: 프론트엔드 1파일. 백엔드/DB/테스트 영향 없음. stock-classification 페이지는 shell 기본값 16px를 사용하며 unmount 시 복원되므로 영향 없음. 핵심 매매 로직 아님 → 규칙 0-4 해당 없음. 롤백 아님 (padding 축소) → 규칙 0-3 해당 없음.
+
+**UI 기준 화면 변화 (규칙 0-4)**:
+- 업종순위 페이지: 가운데(업종순위 테이블)·우측(종목시세) 패널의 좌우 여백이 16px → 8px로 줄어듦. 가운데 테이블 컬럼이 약 16px 더 넓어져 업종명·가산점·상승비율·평균거래 숫자 잘림 완화. 좌측 설정 패널(8px)과 시각적 일관성.
+- 다른 페이지(종목분류 등): 영향 없음 (unmount 시 16px 복원).
+
+**검증**:
+- `npm run build` (tsc -b + vite build) 통과 — 77 모듈 변환, 977ms, 타입 오류 없음 ✓
+- 브라우저 검증: 사용자 확인 대기
+
+**작업 중 발견 문제**:
+1. **업종순위 테이블 "평균거래(억)" 라벨 짤림 현상** — 임계치 수신율 달성 전에는 라벨이 잘리고, 달성 후에는 정상 표시. 조사 결과 아래 "다음 세션 진행 대기" 섹션 참조.
+2. **다른 페이지 패널 padding 8px 통일 검토** — stock-classification, buy-target, sell-position, profit-overview, profit-detail 페이지도 shell 기본값 16px를 사용 중. sector-ranking-page와 동일 패턴으로 8px 통일 검토 필요. 아래 "다음 세션 진행 대기" 섹션 참조.
+
+---
 
 ### T3-S24 매수/매도 상태 배지 판정 로직 공통 추출 — 완료 (2026-07-23) — P10 SSOT + P23 일관성 + P25 격리된 실패 (프론트엔드, frontend-fix)
 
@@ -439,6 +476,23 @@
 ## 다음 세션 진행 대기
 
 **T3-S24 매수/매도 상태 배지 로직 공통 추출 (P23 일관성)** — `buy-target.ts:247-281`의 매수상태 체인과 `sell-position.ts:146-186`의 매도상태 체인이 거의 동일 코드로 중복. 우선순위 구조(서킷브레이커 > 리스크 > 시간대 > 자동매매 OFF > 자동매수/매도 OFF > 시간대 외)와 색상·status 매핑이 동일. `computeBuyBlockStatus(uiState, settings)` / `computeSellBlockStatus(uiState, settings)`(또는 단일 `computeBlockStatus(side, ...)`)를 `badge.ts` 또는 별도 유틸로 추출하여 양쪽에서 호출. 사전조사 시 양쪽 로직 diff 상세 비교 + 추출 위치(`badge.ts` 확장 vs 신규 유틸) 결정 필요.
+
+**업종순위 테이블 "평균거래(억)" 라벨 짤림 원인 조사 (T3-S25 발견)** — 임계치 수신율 달성 전에는 "평균거래(억)" 라벨이 잘리고, 달성 후에는 정상 표시되는 현상. 코드 기반 조사 결과:
+
+- **컬럼 정의** (`sector-ranking-list.ts:173-181`): `avg_trade_amount` 컬럼, label "평균거래(억)", type `avg_amount` (minWidth 80, maxWidth 120 — `table-config.ts:68`).
+- **컬럼 폭 계산** (`data-table.ts:126-154` `createColumnWidthManager`): 첫 `updateRows` 시 1회만 `extractSamples`로 데이터 기반 폭 계산 후 `initialized=true`로 고정. 이후 어떤 데이터 변화에도 재계산하지 않음.
+- **초기 렌더링** (`sector-ranking-list.ts:324-331`): mount 시 `refreshRows(state.sectorScores)` → `updateRows` 호출. 임계치 전 `sectorScores`가 빈 배열이거나 0값 더미 데이터일 경우, `extractSamples`가 빈/짧은 샘플을 추출하여 컬럼 폭이 label 폭 기준으로만 산출됨.
+- **px 변환** (`data-table-virtual.ts:95-122` `applyGridTemplatePx`): `scrollContainer.clientWidth` 기준으로 px 변환. `w <= 0`이면 스킵. mount 시점에 scrollContainer가 아직 렌더링되지 않아 clientWidth=0이면 gridTemplateColumns가 적용되지 않고, ResizeObserver가 나중에 clientWidth 변화를 감지하여 재계산.
+- **추정 원인**: 임계치 전 빈 데이터로 `initFromRows`가 실행되어 컬럼 폭이 label 기준으로 고정되거나, mount 시점 clientWidth=0으로 gridTemplateColumns가 미적용된 상태에서 헤더가 균등 분배로 렌더링. 임계치 후 데이터/레이아웃 변화로 ResizeObserver가 재계산하면서 정상 폭 적용.
+- **정확한 원인 파악에 필요한 추가 검증**: 브라우저 개발자 도구로 임계치 전후의 computed `gridTemplateColumns` px 값과 `scrollContainer.clientWidth` 확인 필요.
+- **수정 방향 후보**: (1) `initFromRows`를 빈 데이터일 때 실행하지 않고 첫 유효 데이터까지 지연, (2) `initFromRows` 재계산 허용 (initialized 플래그 제거 또는 리셋 기능 추가), (3) label 폭에 안전 여백 추가. 어느 방향이든 P21(사용자 투명성) + P24(단순성) + P23(다른 DataTable과 일관성) 검토 필요.
+
+**다른 페이지 패널 padding 8px 통일 검토 (T3-S25 발견)** — T3-S25에서 sector-ranking-page의 가운데·우측 패널 padding을 16px→8px로 축소하여 좌측 패널(8px)과 일치시킴. 다른 페이지도 shell 기본값 16px를 사용 중이므로 동일 패턴으로 8px 통일 검토 필요.
+
+- **대상 페이지**: stock-classification, buy-target, sell-position, profit-overview, profit-detail
+- **현재 상태**: `shell.ts:96,99,102`에서 tripleLeft/tripleCenter/tripleRight 모두 `padding:16px` 기본값. dual 레이아웃의 `leftPanel`은 8px, `rightPanel`은 16px (`shell.ts:80,85`).
+- **검토 조건**: (1) 각 페이지에서 패널 padding을 8px로 오버라이드할지, (2) shell 기본값 자체를 8px로 변경할지 결정 필요. shell 기본값 변경 시 모든 페이지에 일괄 적용되므로 영향 범위 넓지만 P23 일관성 측면에서 단순. (3) unmount 시 기본값 복원 패턴 (sector-ranking-page와 동일).
+- **사전조사 필요**: 각 페이지의 패널 구조(dual vs triple), 기존 padding 오버라이드 여부, 시각적 영향(여백 축소로 인한 레이아웃 변화) 확인.
 
 **실전모드 수수료 대응 (P18 갭)** — 실전 전환 직전 별도 세션에서 처리 필요. 상세는 "미해결 문제" 섹션 참조.
 
