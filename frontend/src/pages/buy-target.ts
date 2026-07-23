@@ -98,6 +98,20 @@ const COLUMNS: ColumnDef<SectorStock>[] = [
     },
   },
   {
+    key: 'news_boost', label: '📰뉴스', align: 'center', type: 'news', maxWidth: 70,
+    render: (t) => {
+      const newsScore = Number(t.news_boost) || 0
+      if (newsScore <= 0) return ''
+      const span = document.createElement('span')
+      span.textContent = '📰'
+      span.style.color = COLOR.up
+      span.style.fontSize = FONT_SIZE.body
+      span.style.fontWeight = FONT_WEIGHT.bold
+      span.title = `뉴스 가산점 ${newsScore.toFixed(1)}점 부여됨`
+      return span
+    },
+  },
+  {
     key: 'high_5d', label: '5일고가', align: 'right', type: 'high', maxWidth: 96,
     render: (t) => {
       const cell = createNumberCell(Number(t.high_5d) || 0)

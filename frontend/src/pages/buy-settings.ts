@@ -51,6 +51,10 @@ let boostProgramToggle: ReturnType<typeof createToggleBtn> | null = null
 let boostProgramScoreInput: ReturnType<typeof createNumInput> | null = null
 let boostProgramControls: HTMLElement | null = null
 
+let boostNewsToggle: ReturnType<typeof createToggleBtn> | null = null
+let boostNewsScoreInput: ReturnType<typeof createNumInput> | null = null
+let boostNewsControls: HTMLElement | null = null
+
 // 재매수 차단 UI 참조
 let rebuyBlockToggle: ReturnType<typeof createToggleBtn> | null = null
 let rebuyBlockSelect: ReturnType<typeof createSelect> | null = null
@@ -102,6 +106,13 @@ function syncBoost(r: Record<string, unknown>, act: Element | null): void {
   if (boostProgramScoreInput && (!act || !boostProgramScoreInput.el.contains(act))) boostProgramScoreInput.setValue(Number(r.boost_program_net_buy_score) ?? 1.0)
   if (boostProgramControls) {
     setDisabled(boostProgramControls, !programOn)
+  }
+
+  const newsOn = !!r.boost_news_on
+  boostNewsToggle?.setOn(newsOn)
+  if (boostNewsScoreInput && (!act || !boostNewsScoreInput.el.contains(act))) boostNewsScoreInput.setValue(Number(r.boost_news_score) ?? 1.0)
+  if (boostNewsControls) {
+    setDisabled(boostNewsControls, !newsOn)
   }
 }
 
@@ -216,6 +227,19 @@ function buildBoostSection(root: HTMLElement): void {
       controlsChild: boostProgramScoreInput.el,
     })
     boostProgramToggle = r.toggle; boostProgramControls = r.controls
+    root.appendChild(r.el)
+  }
+
+  // --- 뉴스 호재 ---
+  {
+    boostNewsScoreInput = createNumInput({ value: 1.0, onChange: v => { vals.boost_news_score = v; saveHelper!.autoSave('boost_news_score', v) }, step: 1, name: 'boost_news_score' })
+    const r = createToggleLabelControlsRow({
+      labelText: '📰 뉴스 호재',
+      toggleOn: false,
+      onToggle: next => { vals.boost_news_on = next; saveHelper!.saveImmediate({ boost_news_on: next }) },
+      controlsChild: boostNewsScoreInput.el,
+    })
+    boostNewsToggle = r.toggle; boostNewsControls = r.controls
     root.appendChild(r.el)
   }
 
@@ -398,6 +422,7 @@ function unmount(): void {
   boostOrderDualSlider = null
   boostOrderScoreInput = null; boostOrderControls = null; boostOrderRow2 = null
   boostProgramToggle = null; boostProgramScoreInput = null; boostProgramControls = null
+  boostNewsToggle = null; boostNewsScoreInput = null; boostNewsControls = null
   rebuyBlockToggle = null; rebuyBlockSelect = null; rebuyBlockControls = null
   buyIntervalToggle = null; buyIntervalInput = null; buyIntervalControls = null
   vals = {}
