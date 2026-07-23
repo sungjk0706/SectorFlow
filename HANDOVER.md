@@ -6,6 +6,55 @@
 
 ## 직전 완료 작업
 
+### T2-S9 confirmed 빈 폴백 제거 / DB writer task_done 보장 / engine_cache 치명 오류 처리 — 완료 (2026-07-23) — B3-05-02, B4-06-01, B4-06-03 완료 (Tier 2 셋째 세션)
+
+**세션**: 단일 세션. 백엔드 코드 수정 (backend-fix + problem-solve 스킬). 세션 라벨 T2-S9 (Tier 2 셋째 세션, MEDIUM 3건).
+
+**배경**: P25 수정 계획 Tier 2 셋째 세션. 장마감 파이프라인 빈 폴백, DB writer 큐 미완료 누적, 엔진 캐시 치명 오류 삼킴 3건 해결. T1-S4 (B3-05-01, market_close_pipeline.py 같은 파일) 선행 완료 상태에서 진행.
+
+**작업 내용**:
+1. **B3-05-02 (MEDIUM) 완료** — `backend/app/services/market_close_pipeline.py` 896-908줄: `_step5_download_daily_confirmed`에서 전종목 1일봉 시세 다운로드 실패 시 빈 폴백 `confirmed = {}` 제거. `logger.error(..., exc_info=True)` + 화면에 "❌ 다운로드 실패 — 파이프라인 중단" 진행률 전송 (P21) + `return 0, total, False` early return. 빈 데이터로 후속 파이프라인(`_run_post_confirmed_pipeline`, `execute_unified_rolling_and_save`) 진행 차단 (P20).
+2. **B4-06-01 (MEDIUM) 완료** — `backend/app/db/db_writer.py` 76-84줄: `_db_writer_loop`에서 `_process_operation(op)`을 try/finally로 감싸 `task_done()` 항상 호출 보장 (P25). 실패 시 큐 미완료 카운트 누적 → graceful shutdown `queue.join()` 무한 대기 위험 제거. 예외는 기존대로 외부 except(81줄)에서 `logger.error(..., exc_info=True)` 로깅.
+3. **B4-06-03 (MEDIUM) 완료** — `backend/app/services/engine_cache.py` 148-153줄: `_load_caches_preboot` 치명 오류(`master_stocks_table` 없음 RuntimeError 포함)를 "무시, 기존 흐름으로 진행"에서 log-and-rethrow(`logger.error + raise`)로 변경 (P20). 예외가 호출자 `engine_loop.py:34`로 전파 → "감소 모드로 기동" 에러 로그 + `engine-ready` 화면 전송 (P21, 기존 설계된 경로 활성화).
+
+**수정 파일**: 6개.
+- `backend/app/services/market_close_pipeline.py` (+12/-4, 빈 폴백 제거 + early return)
+- `backend/app/db/db_writer.py` (+7/-2, task_done try/finally 보장)
+- `backend/app/services/engine_cache.py` (+5/-2, 치명 오류 log-and-rethrow)
+- `backend/tests/test_engine_cache.py` (+33/-27, 2 테스트 정정: warning → error + pytest.raises)
+- `backend/tests/test_market_close_pipeline.py` (+82/-15, 신규 2 테스트: step5 실패 early return + 성공 회귀)
+- `backend/tests/test_db_writer.py` (신규, 3 테스트: task_done 보장 실패/성공 + _process_operation 롤백)
+
+**아키텍처 원칙 부합**:
+- P20 (폴백 금지): B3-05-02 빈 `confirmed={}` 제거, B4-06-03 치명 오류 삼킴 제거. 모든 catch `exc_info=True`.
+- P25 (격리된 실패): B4-06-01 큐 미완료 누적 방지.
+- P21 (사용자 투명성): B3-05-02 실패 진행률 화면 전송, B4-06-03 감소 모드 전환 로그 + engine-ready 전송.
+- P16 (살아있는 경로): 모든 격리 코드가 실제 예외 경로에 연결.
+- P23 (일관성): log-and-rethrow / try-finally 패턴은 기존 코드베이스 패턴과 일관.
+
+**영향 범위**: 백엔드 3개 파일 + 테스트 3개 파일. 프론트엔드/DB 스키마 영향 없음. 정상 경로(다운로드 성공, 쓰기 성공, 캐시 로드 성공) 동작 변화 없음 — 예외 발생 시에만 early return / task_done 보장 / 예외 전파. 롤백 아님 (신규 격리/전파 로직 추가 및 빈 폴백 제거만, 규칙 0-3/0-4/0-5 해당 없음).
+
+**검증**:
+- `py_compile` — 3개 소스 + 3개 테스트 파일 전부 통과.
+- `ruff check` — 6개 파일 전부 통과 (초기 1건 F401 수정 후 0건).
+- `pytest backend/tests/` — **2819 passed, 0 failed** (10.75s). 신규/정정 테스트 7개 포함.
+- `python -W error::RuntimeWarning main.py` 기동 — RuntimeWarning/Traceback/Error 0건. `[데이터] 선행 캐시 로드 완료` (engine_cache 정상 경로), `[데이터] 시작됨` (db_writer 정상 시작) 확인. 15:29~15:30 로그 파일 에러/경고 0건.
+- 잔존 프로세스 0건 확인.
+
+**작업 중 발견 문제 (HANDOVER 미해결 문제에 기록)**:
+- B4-06-03 "감소 모드" 화면 명시 표시 추가 필요 — engine_loop.py:35 "감소 모드로 기동" 에러 로그는 활성화되었으나, 프론트엔드에 "감소 모드" 상태를 명시적으로 표시하려면 프론트엔드 변경이 별도로 필요. 본 세션 백엔드 3건 범위 밖. (P21 부분 충족 — 백엔드 로그 + engine-ready 전송은 유지.)
+
+**핵심 결정**:
+- B3-05-02에서 early return 선택 (빈 폴백 제거): 빈 confirmed로 후속 파이프라인 진행 시 빈 캐시 저장 시도 위험이 있으므로 파이프라인 중단이 안전. 호출자(1051줄)는 반환값 `(0, total, False)` 그대로 처리 — `cached=False` 분기와 7단계 재계산 동작은 기존과 동일.
+- B4-06-01에서 try/finally 선택 (task_done 보장): `_process_operation` 실패 시에도 큐 카운트 정합성 유지가 핵심. 예외 로깅은 기존 외부 except 경로 유지.
+- B4-06-03에서 log-and-rethrow 선택 (치명 오류 전파): 치명 오류를 삼키면 호출자의 "감소 모드" 처리가 발화하지 않으므로 전파가 필요. engine_loop.py:34의 기존 except가 이미 "감소 모드로 기동" 에러 로그 + engine-ready 전송을 처리하도록 설계되어 있어 호출자 변경 불필요.
+
+**다음 세션 대기 사항**:
+- **사용자 확정**: 다음 세션은 **T2-S10** (A3-07-03, A3-07-05, A3-07-06, A3-07-07 — 페이지 렌더링 루프 격리: 수익/분류/계좌). 프론트엔드 수정 (data-table.ts, profit-overview-sector-pnl.ts, stock-classification.ts, profit-overview-mount.ts). 선행 의존성: T1-S5 완료 권장 (패턴 일관성 확보) — 완료됨.
+- **Tier 2 진행 상태**: T2-S7, T2-S8, T2-S9 완료. 잔존 T2-S10, T2-S11 (2세션). MEDIUM 14건 중 9건 완료, 5건 잔존.
+
+---
+
 ### T2-S8 엔진 종료 finally / 파이프라인 서브루프 격리 — 완료 (2026-07-23) — B1-02-02/03, B2-03-02 완료 (Tier 2 둘째 세션)
 
 **세션**: 단일 세션. 백엔드 코드 수정 (backend-fix + problem-solve 스킬). 세션 라벨 T2-S8 (Tier 2 둘째 세션, MEDIUM 3건).
@@ -1637,6 +1686,12 @@
 **화면 영향**: 없음. 순수 파일 분할이며 외부 import 경로가 동일하게 유지되어 모든 페이지가 동일하게 동작.
 
 ## 미해결 문제 (발견 즉시 기록)
+
+### T2-S9 진행 중 발견 — B4-06-03 "감소 모드" 화면 명시 표시 미구현 (2026-07-23)
+- **파일**: `backend/app/services/engine_loop.py:35`, `backend/app/services/engine_lifecycle.py:162` (get_engine_status), 프론트엔드 `frontend/src/binding.ts:244` (engine-ready 핸들러)
+- **위반/부합 원칙**: P21 (사용자 투명성) 부분 충족 — 백엔드 log-and-rethrow로 engine_loop.py:35 "감소 모드로 기동" 에러 로그는 활성화되었으나, 화면에 "감소 모드" 상태를 명시적으로 표시하는 프론트엔드 경로 미구현.
+- **증상**: 종목 마스터 DB가 비어있는 치명 상황에서 백엔드는 감소 모드로 기동하나, 사용자 화면에는 정상 기동과 동일하게 `engine-ready`만 표시됨. 사용자가 "왜 종목이 안 보이지?" 의문 가능.
+- **수정 방향**: engine_loop.py:35 except 블록에서 `engine_state.state`에 감소 모드 플래그 설정 → get_engine_status() 반환값에 포함 → 프론트엔드 index-data 핸들러에서 UI 표시. 본 세션 백엔드 3건 범위 밖 — 프론트엔드 변경이 별도로 필요하므로 후속 세션에서 별도 승인 시 진행 권장.
 
 ### T1-S2 진행 중 발견 — virtual-scroller.ts renderRow 호출부 3곳 무보호 (2026-07-23)
 - **파일**: `frontend/src/components/virtual-scroller.ts`
