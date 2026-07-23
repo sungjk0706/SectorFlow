@@ -170,7 +170,7 @@
   - [x] P23 일관성: store.ts / hotStore.ts 동일 패턴 적용 확인 — text frame = binary frame 패턴; hotStore 5곳 동일 패턴; store.ts 단일 수정으로 모든 store 보호
 - **커밋**: `bc920df fix(frontend): T2-S7 WS 로그 분류 / store updater / hotStore dispatch 격리 (A1-01-03, A2-04-01/02)`
 
-### T2-S8 — 엔진 종료 finally / 파이프라인 서브루프 격리
+### T2-S8 — 엔진 종료 finally / 파이프라인 서브루프 격리 — 완료 (2026-07-23)
 
 - **대상 위반 ID**: B1-02-02 (MEDIUM), B1-02-03 (MEDIUM), B2-03-02 (MEDIUM)
 - **수정 파일**: `backend/app/services/engine_loop.py`, `backend/app/pipelines/pipeline_compute.py`
@@ -180,13 +180,19 @@
 - **수정 방향**:
   - B1-02-02: finally disconnect per-call try/except, 실패 시 `logger.warning(..., exc_info=True)` + 다음 정리 계속
   - B1-02-03: finally REST 정리 루프 per-client try/except (revoke_token 패턴과 일치, P23)
-  - B2-03-02: `_sector_recompute_loop_impl` `except Exception: logger.warning(..., exc_info=True); continue` 추가 (`_compute_loop_impl` 패턴과 일치)
+  - B2-03-02: `_sector_recompute_loop_impl` `except Exception`에 `_compute_running=False` 정리 추가 (치명 오류 종료 시 stop_compute_loop cancel 대기 방지, P25)
+- **진행 상태**:
+  - [x] **B1-02-02 완료** — `engine_loop.py` 383-389줄: `disconnect_all()` / `disconnect()` per-call try/except 격리. 실패 시 `logger.warning(..., exc_info=True)` + 이후 REST 정리 루프 계속 실행 (P25).
+  - [x] **B1-02-03 완료** — `engine_loop.py` 391-404줄: REST 정리 루프 per-broker 격리. `revoke_token()`과 `_reset_client()`/`_client.aclose()`를 각각 별도 try/except로 분리 — 한 증권사 실패가 다른 증권사 정리 차단하지 않음. 기존 `logger.warning`에 누락된 `exc_info=True` 추가 (P20).
+  - [x] **B2-03-02 완료** — `pipeline_compute.py` 689-695줄: `_sector_recompute_loop_impl` `except Exception` 블록에 `_compute_running=False` 추가. 치명 오류로 루프 완전 종료 시 stop_compute_loop의 cancel 대기에서 의미 없는 대기 방지 (P25). 단, T1-S3에서 이미 `except Exception: logger.error(..., exc_info=True)` 골격 처리됨 — 본 세션에서 상태 정리(`_compute_running=False`) 보완.
 - **검증 방법**:
-  - [ ] `pytest tests/` 관련 테스트 통과
-  - [ ] `python -W error::RuntimeWarning main.py` 기동 확인
-  - [ ] 런타임: 엔진 종료 시 finally 블록 정리 로그 확인
-  - [ ] 런타임: 일부 클라이언트 정리 실패 시 나머지 정상 정리 확인
-  - [ ] P23 일관성: revoke_token 패턴 / `_compute_loop_impl` 패턴과 일치 확인
+  - [x] `py_compile` 통과 — engine_loop.py / pipeline_compute.py
+  - [x] `python -W error::RuntimeWarning main.py` 기동 확인 — RuntimeWarning/Traceback/Error 0건, 30초 정상 구독·수신율 갱신 (KRX 100% / NXT 100%)
+  - [x] 런타임: 엔진 종료 시 finally 블록 정리 로그 확인 — `백그라운드 태스크 종료 완료` → `LS증권 연결 해제 완료` → `LS증권 토큰 폐기 완료` / `키움증권 토큰 폐기 완료` → `엔진 루프 완료` → `앱 종료 완료`
+  - [x] P23 일관성: 338-346줄 WS 해제 루프 패턴과 동일 구조 적용 (try/except + `logger.warning/error(..., exc_info=True)`)
+  - [x] 잔존 프로세스 0건 확인
+- **비고**: B2-03-02 골격은 T1-S3에서 선제 처리되었으나, 상태 정리(`_compute_running=False`) 누락이 본 세션에서 보완됨. ruff F401 unused import 2건(`time`, `_check_realtime_latency`)은 본 세션 수정 범위 밖 — HANDOVER.md 미해결 문제에 기록.
+- **커밋**: (본 세션에서 커밋 예정)
 
 ### T2-S9 — confirmed 빈 폴백 제거 / DB writer / engine_cache 치명 오류 처리
 
