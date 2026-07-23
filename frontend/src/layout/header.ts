@@ -99,7 +99,7 @@ function applyMarketPhaseChip(
     el.textContent = `${market} ${countdown}`
     return
   }
-  const s = PHASE_STYLE[phase] || PHASE_STYLE['장마감']
+  const s = PHASE_STYLE[phase]
   el.style.background = s.bg
   el.style.color = s.color
   el.style.border = `1px solid ${s.color}20`
