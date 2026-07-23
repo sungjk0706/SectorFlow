@@ -6,6 +6,45 @@
 
 ## 직전 완료 작업
 
+### T1-S2 DataTable 행 렌더링 격리 — 완료 (2026-07-23) — A3-07-01/02/03 완료
+
+**세션**: 단일 세션. 프론트엔드 코드 수정 (frontend-fix 스킬). 세션 라벨 T1-S2 (문서상 T1-S5와 동일 — `p25_fix_tasks.md`의 T1-S5 항목).
+
+**배경**: P25 수정 계획 Tier 1 세션. 가상 스크롤 / 고정 테이블 / 컬럼 너비 샘플링 루프에서 한 행/셀 렌더링 throw 시 전체 테이블 렌더링 루프 중단되는 P25 위반 해결. 사용자 추가 지시로 A3-07-03(extractSamples)도 본 세션에 포함.
+
+**작업 내용**:
+1. **A3-07-01 (HIGH) 완료** — `frontend/src/components/virtual-scroller.ts` `renderRange` 루프 (293-325줄): per-row try/catch. existing 경로는 throw 시 기존 내용 유지 + 로깅, new 경로는 throw 시 `releaseRow(el)` 풀 반환 + activeRows 미등록 → 해당 행 공백.
+2. **A3-07-02 (HIGH) 완료** — `frontend/src/components/common/data-table-fixed.ts` 3곳: (a) keyFn 경로 신규 키 추가 루프(229-240), (b) 인덱스 경로 신규 행 생성(308-323) — throw 시 placeholder tr 추가로 인덱스 정렬 유지, (c) 타입변경 교체(328-336) — throw 시 기존 rowEl 유지.
+3. **A3-07-03 (MEDIUM) 완료** — `frontend/src/components/common/data-table.ts` `extractSamples` (99-119줄): per-cell try/catch. throw 시 빈 문자열 push(기본 너비 사용) + 로깅.
+
+**수정 파일**: 3개 (+47/-16줄).
+- `frontend/src/components/virtual-scroller.ts` (+17/-7)
+- `frontend/src/components/common/data-table-fixed.ts` (+36/-12)
+- `frontend/src/components/common/data-table.ts` (+10/-4)
+
+**아키텍처 원칙 부합**:
+- P25 (격리된 실패): 한 행/셀 렌더링 throw 시 해당 행만 스킵/공백, 나머지 계속 — 해결.
+- P20 (폴백 금지): `console.error` 로깅 (silent pass 금지) — 준수. extractSamples 빈 문자열은 오류 경로의 안전 기본값(명시된 예외 경로)으로 P20 위반 아님.
+- P23 (일관성): 3개 파일 동일 `console.error('[DataTable/VirtualScroller] ... render error', e)` 패턴, 기존 cell 단위 격리 5곳과 동일 구조 — 준수.
+- P21 (사용자 투명성): 행 단위 실패 시 콘솔 로깅으로 원인 추적 가능 — 준수.
+- P24 (단순성): per-row try/catch 1뎁스만 추가, 구조 변경 없음 — 준수.
+
+**검증**:
+- `npm run typecheck` (`tsc --noEmit`) 통과.
+- `npm run build` (`tsc -b && vite build`) 통과 — 76 모듈 변환, 2.06s, 번들 정상 생성.
+- lint 스크립트는 package.json에 없음 → typecheck + build로 대체.
+- 브라우저 확인: 사용자 직접 확인 필요 (업종 순위 테이블, 매수 후보 테이블 정상 렌더링). 수정은 실패 전파 차단만 추가한 것이므로 정상 경로 동작은 변경되지 않음.
+- 잔존 프로세스 0건 확인.
+
+**핵심 결정**:
+- 인덱스 경로(305-323) placeholder 방식: 인덱스 기반 갱신 루프에서 `rowCaches[i]` 인덱스 정렬이 필수이므로, throw 시 빈 tr placeholder를 push하여 인덱스 정렬 유지. placeholder는 `display: none`으로 화면에 보이지 않음.
+- 타입변경 교체 경로(328-336): throw 시 `tbody.replaceChild` 미수행 → 기존 rowEl 유지. 타입 불일치 상태로 표시될 수 있으나 테이블 전체 중단보다 안전.
+- virtual-scroller.ts의 다른 renderRow 호출부(updateItems 444/451, updateItemByKey 468, updateItem 499)는 계획에 명시된 범위(renderRange 293-316)가 아니므로 본 세션에서 미수정 — 미해결 문제로 기록.
+
+**다음 세션 대기 사항**: T1-S3 (사용자 지시 시 결정) 또는 `p25_fix_tasks.md` 순서상 T1-S6 (A3-07-04 헤더 칩 순차 갱신 격리). 세션당 1단계 원칙(규칙 0-1) 준수.
+
+---
+
 ### T1-S1 WS 디스패치 핸들러 격리 — 부분 완료 (2026-07-23) — A1-01-01/02 완료, A1-01-04 이관
 
 **세션**: 단일 세션. 프론트엔드 코드 수정 (frontend-fix + problem-solve 스킬 연계).
@@ -1343,6 +1382,22 @@
 **화면 영향**: 없음. 순수 파일 분할이며 외부 import 경로가 동일하게 유지되어 모든 페이지가 동일하게 동작.
 
 ## 미해결 문제 (발견 즉시 기록)
+
+### T1-S2 진행 중 발견 — virtual-scroller.ts renderRow 호출부 3곳 무보호 (2026-07-23)
+- **파일**: `frontend/src/components/virtual-scroller.ts`
+- **위반/부합 원칙**: P25 (격리된 실패) 위반 소지, P23 (일관성) — 같은 파일 내 renderRange 루프는 격리했으나 다음 3곳은 무보호 상태로 잔존:
+  - `updateItems` 루프 내 renderRow 2곳 (444줄 existing 경로, 451줄 new 경로)
+  - `updateItemByKey` 내 renderRow (468줄)
+  - `updateItem` 내 renderRow (499줄)
+- **증상**: 가상 스크롤 아이템 증분 갱신 시 한 행 renderRow throw → updateItems/updateItemByKey/updateItem 루프 중단. renderRange와 동일 패턴 적용 시 해결.
+- **수정 범위**: 본 세션 계획은 A3-07-01이 `renderRange` 루프(293-316)만 명시하므로 미수정. 후속 세션에서 사용자 승인 시 동일 패턴 적용 권장 (P23 일관성).
+- **참고**: `p25_fix_plan.md` A3-07-01 위치 명시가 `virtual-scroller.ts:293-316`으로 renderRange만 지칭. 전체 renderRow 호출부 확장 여부는 별도 승인 필요.
+
+### T1-S2 진행 중 발견 — data-table-fixed.ts:290 셀 렌더 에러 로그 메시지 불일치 (2026-07-23)
+- **파일**: `frontend/src/components/common/data-table-fixed.ts:290`
+- **위반/부합 원칙**: P23 (일관성) — 사전 존재 불일치 (본 세션 수정 범위 아님).
+- **증상**: `console.error('[data-table] cell render error:', err)` — 다른 4곳은 `console.error('[DataTable] cell render error', e)` (대소문자/콜론/변수명 불일치).
+- **수정 방향**: 후속 세션에서 일관성 정비 시 통일 권장. 본 세션에서는 범위 외.
 
 ### P25 전수 조사 — 세션 8 (B5 매매·테스트모드 태스크) 위반 4건 식별 (2026-07-23)
 - 조사 파일: `backend/app/services/trading.py`, `backend/app/services/buy_order_executor.py`, `backend/app/services/dry_run.py`

@@ -105,8 +105,14 @@ function extractSamples<T>(
     const row = rows[i]
     if (isGroupRow(row)) continue
     for (let c = 0; c < columns.length; c++) {
-      const result = columns[c].render(row as T, i)
-      samplesByCol[c].push(typeof result === 'string' ? result : result.textContent || '')
+      // P25: 셀 단위 격리 — render throw 시 빈 문자열(기본 너비 사용) + 로깅, 다음 셀 계속
+      try {
+        const result = columns[c].render(row as T, i)
+        samplesByCol[c].push(typeof result === 'string' ? result : result.textContent || '')
+      } catch (e) {
+        console.error('[DataTable] sample render error', e)
+        samplesByCol[c].push('')
+      }
     }
   }
   return samplesByCol

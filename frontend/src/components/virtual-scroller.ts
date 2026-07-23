@@ -301,7 +301,10 @@ export function createVirtualScroller<T>(
           existing.index = i
           existing.el.style.transform = `translateY(${offsets[i]}px)`
           existing.el.style.height = getRowHeight(item, i) + 'px'
-          renderRow(item, i, existing.el)
+          // P25: 행 단위 격리 — renderRow throw 시 기존 내용 유지, 다음 행 계속
+          try {
+            renderRow(item, i, existing.el)
+          } catch (e) { console.error('[VirtualScroller] row render error', e) }
         }
       } else {
         // 새 행 필요
@@ -309,9 +312,15 @@ export function createVirtualScroller<T>(
         el.style.display = ''
         el.style.transform = `translateY(${offsets[i]}px)`
         el.style.height = getRowHeight(item, i) + 'px'
-        renderRow(item, i, el)
-        if (!el.parentNode) sentinel.appendChild(el)
-        activeRows.set(key, { el, index: i })
+        // P25: 행 단위 격리 — renderRow throw 시 풀로 반환, activeRows 미등록 → 해당 행 공백
+        try {
+          renderRow(item, i, el)
+          if (!el.parentNode) sentinel.appendChild(el)
+          activeRows.set(key, { el, index: i })
+        } catch (e) {
+          console.error('[VirtualScroller] row render error', e)
+          releaseRow(el)
+        }
       }
     }
 
