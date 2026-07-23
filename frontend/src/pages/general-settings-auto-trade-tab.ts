@@ -1,13 +1,12 @@
 // frontend/src/pages/general-settings-auto-trade-tab.ts
 // 일반설정 — 자동매매 탭 (F-04 분할, P24 단순성)
-// general-settings.ts에서 이관. 순수 이동, 동작 변경 없음.
+// general-settings.ts에서 이관. Step 2: 토글→시간 설정 탭 이관, 상태 배지 추가, 뉴스/화면 섹션→각 탭 이관.
 
 import { createToggleBtn, createMoneyInput, createNumInput, createToggleLabelControlsRow } from '../components/common/setting-row'
 import { sectionTitle, createDescText } from '../components/common/settings-common'
-import { createTagChip } from '../components/common/tag-chip'
-import { FONT_WEIGHT, setDisabled } from '../components/common/ui-styles'
+import { FONT_WEIGHT, setDisabled, COLOR, FONT_SIZE } from '../components/common/ui-styles'
 import { toastResult } from '../components/common/toast'
-import { type GeneralSettingsState, GS, createHolidayBadge } from './general-settings-shared'
+import { type GeneralSettingsState, GS, createHolidayBadge, updateHolidayBadges, state } from './general-settings-shared'
 
 /* ── 자동매매 탭 ── */
 function buildMasterToggleRow(state: GeneralSettingsState): HTMLElement {
@@ -27,48 +26,53 @@ function buildMasterToggleRow(state: GeneralSettingsState): HTMLElement {
   return row
 }
 
-function buildAutoBuyRow(state: GeneralSettingsState): HTMLElement {
+// 자동매수 상태 배지 — 읽기 전용 (Step 2: 토글은 시간 설정 탭으로 이관, P21 투명성)
+// 켜짐=COLOR.up/COLOR.upBg, 꺼짐=중립 회색 (기존 표준 색상 재사용 — P23)
+function buildAutoBuyBadgeRow(state: GeneralSettingsState): HTMLElement {
   const row = document.createElement('div')
   Object.assign(row.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, paddingLeft: '20px', borderBottom: GS.rowBorder })
   const label = document.createElement('span')
   Object.assign(label.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
   label.textContent = '자동매수'
   row.appendChild(label)
-  const right = document.createElement('span')
-  right.style.cssText = 'display:flex;align-items:center;'
-  state.autoBuyToggle = createToggleBtn({ on: false, onClick: async () => {
-    const next = !state.vals.auto_buy_on
-    state.vals.auto_buy_on = next; state.autoBuyToggle!.setOn(next)
-    const res = await state.settingsMgr!.saveSection({ auto_buy_on: next })
-    toastResult(res)
-    if (!res.ok) { state.vals.auto_buy_on = !next; state.autoBuyToggle!.setOn(!next) }
-  }})
-  right.appendChild(createHolidayBadge())
-  right.appendChild(state.autoBuyToggle.el)
-  row.appendChild(right)
+  state.autoBuyBadge = createStatusBadge()
+  row.appendChild(state.autoBuyBadge)
   return row
 }
 
-function buildAutoSellRow(state: GeneralSettingsState): HTMLElement {
+// 자동매도 상태 배지 — 읽기 전용 (Step 2: 토글은 시간 설정 탭으로 이관, P21 투명성)
+function buildAutoSellBadgeRow(state: GeneralSettingsState): HTMLElement {
   const row = document.createElement('div')
   Object.assign(row.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, paddingLeft: '20px', borderBottom: GS.rowBorder })
   const label = document.createElement('span')
   Object.assign(label.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
   label.textContent = '자동매도'
   row.appendChild(label)
-  const right = document.createElement('span')
-  right.style.cssText = 'display:flex;align-items:center;'
-  state.autoSellToggle = createToggleBtn({ on: false, onClick: async () => {
-    const next = !state.vals.auto_sell_on
-    state.vals.auto_sell_on = next; state.autoSellToggle!.setOn(next)
-    const res = await state.settingsMgr!.saveSection({ auto_sell_on: next })
-    toastResult(res)
-    if (!res.ok) { state.vals.auto_sell_on = !next; state.autoSellToggle!.setOn(!next) }
-  }})
-  right.appendChild(createHolidayBadge())
-  right.appendChild(state.autoSellToggle.el)
-  row.appendChild(right)
+  state.autoSellBadge = createStatusBadge()
+  row.appendChild(state.autoSellBadge)
   return row
+}
+
+// 상태 배지 생성 — '켜짐'/'꺼짐' 클릭 불가 (설계서 3.3)
+function createStatusBadge(): HTMLElement {
+  const badge = document.createElement('span')
+  Object.assign(badge.style, {
+    fontSize: FONT_SIZE.chip, borderRadius: '4px', padding: '1px 8px',
+    fontWeight: FONT_WEIGHT.normal, cursor: 'default', userSelect: 'none',
+  })
+  return badge
+}
+
+// 배지 텍스트/색상 업데이트 — syncAutoTradeTab에서 호출
+function updateStatusBadge(badge: HTMLElement, on: boolean): void {
+  badge.textContent = on ? '켜짐' : '꺼짐'
+  if (on) {
+    badge.style.color = COLOR.up
+    badge.style.background = COLOR.upBg
+  } else {
+    badge.style.color = COLOR.disabled
+    badge.style.background = COLOR.neutralBg
+  }
 }
 
 function buildRiskManagerMasterRow(state: GeneralSettingsState): HTMLElement {
@@ -273,103 +277,55 @@ function buildRiskManagerChildren(state: GeneralSettingsState): HTMLElement {
   return state.riskManagerChildren!
 }
 
-function buildUiFlashRow(state: GeneralSettingsState): HTMLElement {
-  const row = document.createElement('div')
-  Object.assign(row.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, borderBottom: GS.rowBorder })
-  const label = document.createElement('span')
-  Object.assign(label.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
-  label.textContent = '실시간 현재가 플래시 효과'
-  row.appendChild(label)
-  state.uiFlashToggle = createToggleBtn({ on: false, onClick: async () => {
-    const next = !state.vals.ui_price_flash_on
-    state.vals.ui_price_flash_on = next
-    state.uiFlashToggle!.setOn(next)
-    const res = await state.settingsMgr!.saveSection({ ui_price_flash_on: next })
-    toastResult(res)
-    if (!res.ok) { state.vals.ui_price_flash_on = !next; state.uiFlashToggle!.setOn(!next) }
-  }})
-  row.appendChild(state.uiFlashToggle.el)
-  return row
-}
-
 export function renderAutoTradeTab(state: GeneralSettingsState, container: HTMLElement): void {
   container.appendChild(buildMasterToggleRow(state))
   container.appendChild(createDescText('자동매매(매수/매도) 마스터 스위치 — OFF면 모든 매매 중단'))
-  container.appendChild(buildAutoBuyRow(state))
-  container.appendChild(buildAutoSellRow(state))
-  container.appendChild(createDescText('거래일 설정시간 내에서만 자동 매수/매도 실행. 공휴일·주말에는 자동매매가 항상 차단됩니다. 시간 설정은 "시간 설정" 탭에서'))
+  container.appendChild(buildAutoBuyBadgeRow(state))
+  container.appendChild(buildAutoSellBadgeRow(state))
+  container.appendChild(createDescText('자동매수/매도 켜짐/꺼짐 상태 표시 (읽기 전용). 켜고 끄는 조작은 "시간 설정" 탭의 시간 행 우측 토글에서'))
 
   // 전역매매설정 (매매 안전장치) 섹션 — 목표 수익/손실 도달 시 자동 매매 중단
   container.appendChild(sectionTitle('전역매매설정 (매매 안전장치)'))
   container.appendChild(createDescText('목표 수익/손실 도달 시 자동 매매 중단. 매매 안전장치 OFF 시 모든 조건이 적용되지 않습니다.'))
   container.appendChild(buildRiskManagerMasterRow(state))
   container.appendChild(buildRiskManagerChildren(state))
-
-  // 화면 표시 섹션 — 플래시 효과 (API 설정 탭에서 이동, Step 5, 설계서 5-3)
-  container.appendChild(sectionTitle('화면 표시'))
-  container.appendChild(buildUiFlashRow(state))
-  container.appendChild(createDescText('실시간 시세 변경 시 노란색 플래시 깜빡임 효과 적용 여부'))
-
-  // 실시간 뉴스 설정 섹션 — 호재 키워드 편집 + 가산점 유지 시간 (NWS-S6)
-  container.appendChild(sectionTitle('실시간 뉴스 설정'))
-  container.appendChild(createDescText('뉴스 제목에 포함된 호재 키워드 감지 시 매수 가산점 부여. 키워드는 쉼표로 구분하여 입력.'))
-  container.appendChild(buildNewsKeywordsRow(state))
-  container.appendChild(buildNewsTtlRow(state))
 }
 
-// 호재 키워드 칩 행 — news_keywords 쉼표 문자열 ↔ 칩 배열 변환
-function buildNewsKeywordsRow(state: GeneralSettingsState): HTMLElement {
-  const row = document.createElement('div')
-  Object.assign(row.style, { padding: GS.rowPad, borderBottom: GS.rowBorder })
-
-  const label = document.createElement('div')
-  Object.assign(label.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal, marginBottom: '4px' })
-  label.textContent = '호재 키워드'
-  row.appendChild(label)
-
-  const initialKeywords = String(state.vals.news_keywords ?? '')
-    .split(',')
-    .map(s => s.trim())
-    .filter(s => s.length > 0)
-  state.newsKeywordsTagChip = createTagChip({
-    initialTags: initialKeywords,
-    onChange: async (tags) => {
-      if (!state.settingsMgr) return
-      const joined = tags.join(',')
-      const dirty: Record<string, unknown> = { news_keywords: joined }
-      const res = await state.settingsMgr.saveSection(dirty)
-      toastResult(res)
-      if (res.ok) Object.assign(state.vals, dirty)
-    },
-  })
-  row.appendChild(state.newsKeywordsTagChip.el)
-  return row
+// 자동매매 탭 동기화 — Step 2 분할: 마스터 + 배지 + 안전장치만 (시간·뉴스·화면은 각 탭으로 이관)
+export function syncAutoTradeTab(r: Record<string, unknown>): void {
+  state.masterToggle?.setOn(!!r.time_scheduler_on)
+  updateHolidayBadges()
+  updateStatusBadge(state.autoBuyBadge!, !!r.auto_buy_on)
+  updateStatusBadge(state.autoSellBadge!, !!r.auto_sell_on)
+  syncRiskManager(state, r, document.activeElement)
 }
 
-// 뉴스 가산점 유지 시간(초) 행 — createNumInput 패턴 (subscribeMaxInput과 동일)
-function buildNewsTtlRow(state: GeneralSettingsState): HTMLElement {
-  const row = document.createElement('div')
-  Object.assign(row.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, borderBottom: GS.rowBorder })
-  const label = document.createElement('span')
-  Object.assign(label.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
-  label.textContent = '뉴스 가산점 유지 시간(초)'
-  row.appendChild(label)
+// 토글+입력+컨트롤 행 동기화 공통 패턴 (5회 반복 추출 — P23 DRY)
+function syncToggleInputRow(
+  toggle: { setOn: (v: boolean) => void } | null,
+  input: { el: HTMLElement; setValue: (v: number) => void } | null,
+  controls: HTMLElement | null,
+  on: boolean,
+  value: number,
+  act: Element | null,
+): void {
+  toggle?.setOn(on)
+  if (input && (!act || !input.el.contains(act))) {
+    input.setValue(value)
+  }
+  if (controls) setDisabled(controls, !on)
+}
 
-  const initTtl = Number(state.vals.news_boost_ttl_sec ?? 300) || 300
-  state.newsTtlInput = createNumInput({
-    value: initTtl,
-    min: 0, max: 3600, step: 60,
-    name: 'news_boost_ttl_sec',
-    onChange: async (v) => {
-      if (!state.settingsMgr) return
-      const dirty: Record<string, unknown> = { news_boost_ttl_sec: v }
-      const res = await state.settingsMgr.saveSection(dirty)
-      toastResult(res)
-      if (res.ok) Object.assign(state.vals, dirty)
-    },
-  })
-  row.appendChild(state.newsTtlInput.el)
-  return row
+function syncRiskManager(state: GeneralSettingsState, r: Record<string, unknown>, act: Element | null): void {
+  state.riskManagerToggle?.setOn(!!r.risk_manager_on)
+  if (state.riskManagerChildren) setDisabled(state.riskManagerChildren, !r.risk_manager_on)
+  syncToggleInputRow(state.dailyLossToggle, state.dailyLossInput, state.dailyLossControls, r.daily_loss_limit_on !== false, Number(r.daily_loss_limit ?? -500000), act)
+  syncToggleInputRow(state.dailyLossRateToggle, state.dailyLossRateInput, state.dailyLossRateControls, !!r.daily_loss_rate_limit_on, Number(r.daily_loss_rate_limit ?? -5), act)
+  syncToggleInputRow(state.dailyProfitToggle, state.dailyProfitInput, state.dailyProfitControls, !!r.daily_profit_limit_on, Number(r.daily_profit_limit ?? 500000), act)
+  syncToggleInputRow(state.dailyProfitRateToggle, state.dailyProfitRateInput, state.dailyProfitRateControls, !!r.daily_profit_rate_limit_on, Number(r.daily_profit_rate_limit ?? 5), act)
+  syncToggleInputRow(state.consecLossToggle, state.consecLossInput, state.consecLossControls, !!r.consecutive_loss_limit_on, Number(r.consecutive_loss_limit ?? 3), act)
+  state.riskBlockBuyToggle?.setOn(r.risk_block_buy_on !== false)
+  state.riskBlockSellToggle?.setOn(!!r.risk_block_sell_on)
 }
 
 async function handleMasterToggle(state: GeneralSettingsState): Promise<void> {
