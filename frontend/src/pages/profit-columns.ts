@@ -24,7 +24,7 @@ export const BUY_COLS: ColumnDef<Record<string, unknown>>[] = [
   ),
   { key: 'price', label: '매수가', align: 'right', type: 'buy_price', render: r => createNumberCell(Number(r.price ?? 0)) },
   { key: 'qty', label: '수량', align: 'right', type: 'qty', render: r => createNumberCell(Number(r.qty ?? 0)) },
-  { key: 'total_amt', label: '매수금액', align: 'right', type: 'total_amt', render: r => fmtWon(Number(r.total_amt ?? 0)) },
+  { key: 'total_amt', label: '매수 지출(수수료 포함)', align: 'right', type: 'total_amt', render: r => fmtWon(Number(r.total_amt ?? 0)) },
   { key: 'fee', label: '수수료', align: 'right', type: 'fee', render: r => fmtWon(Number(r.fee ?? 0)) },
 ]
 
@@ -55,8 +55,8 @@ export const SELL_COLS: ColumnDef<Record<string, unknown>>[] = [
     return span
   }},
   { key: 'qty', label: '수량', align: 'right', type: 'qty', render: r => createNumberCell(Number(r.qty ?? 0)) },
-  { key: 'buy_total_amt', label: '매수금액', align: 'right', type: 'total_amt', render: r => fmtWon(Number(r.buy_total_amt ?? 0)) },
-  { key: 'total_amt', label: '매도금액', align: 'right', type: 'total_amt', render: r => {
+  { key: 'buy_total_amt', label: '매수 지출(수수료 포함)', align: 'right', type: 'total_amt', render: r => fmtWon(Number(r.buy_total_amt ?? 0)) },
+  { key: 'total_amt', label: '매도 수령(실수령)', align: 'right', type: 'total_amt', render: r => {
     const v = Number(r.realized_pnl ?? 0)
     const span = document.createElement('span')
     span.style.color = pnlColor(v)

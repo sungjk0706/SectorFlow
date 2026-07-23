@@ -187,7 +187,7 @@ export function buildStatRow(state: ProfitDetailState): HTMLDivElement {
   Object.assign(statRow.style, { display: 'flex', gap: '8px', padding: '6px 4px', borderTop: '1px solid ' + COLOR.borderLight, flex: 'none' })
 
   const STAT_STYLE = `flex:1;background:${COLOR.surfaceLight};border:1px solid ${COLOR.borderLight};border-radius:4px;padding:4px 8px;display:flex;flex-direction:column;align-items:center;gap:2px;`
-  const STAT_LABELS = ['총 건수', '매수금액', '매도금액', '실현손익', '승률', '수익률']
+  const STAT_LABELS = ['총 건수', '당일 매수 지출(수수료 포함)', '당일 매도 수령(실수령)', '실현손익', '수익률', '승률']
   const statEls: HTMLSpanElement[] = []
   state.statCardEls = []
 
@@ -227,8 +227,8 @@ export function buildStatRow(state: ProfitDetailState): HTMLDivElement {
   state.statBuyAmtEl = statEls[1]
   state.statSellAmtEl = statEls[2]
   state.statPnlEl = statEls[3]
-  state.statWinRateEl = statEls[4]
-  state.statAvgRateEl = statEls[5]
+  state.statAvgRateEl = statEls[4]
+  state.statWinRateEl = statEls[5]
 
   return statRow
 }
