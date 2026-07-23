@@ -10,6 +10,7 @@ import { createSearchInput } from '../components/common/search-input'
 import { globalSettingsManager } from '../settings'
 import { createStockNameColumn, createSeqCell, makeCodeColumn, makeChangeColumn, makeRateColumn, makeStrengthColumn, createAmountCell, createPriceCell, createNumberCell, FONT_SIZE, FONT_WEIGHT, COLOR } from '../components/common/ui-styles'
 import { createBadgeRow, createBadge, updateBadge, type BadgeHandle, type BadgeStatus } from '../components/common/badge'
+import { computeOrderBlockStatus } from '../utils/order-block-status'
 import { filterStocksBySearch } from './sector-stock'
 import type { SectorStock } from '../types'
 
@@ -245,40 +246,17 @@ function updateBadges(): void {
   })
 
   // 매수상태 배지 — 전체 차단 게이트 집계 (P21 사용자 투명성)
-  // 우선순위: 서킷브레이커 > 리스크 > 시간대 > 자동매매/매수 OFF > 매수 시간대 외
-  // 데이터 소스: 기존 uiStore 상태 + globalSettingsManager (P10 SSOT — 신규 데이터 없음)
+  // 판정 로직은 computeOrderBlockStatus()로 추출 (P10 SSOT, P23 일관성 — sell-position.ts와 동일 패턴)
   // 미노출 4개 사유(daily_state, realtime_latency, test_cash, order_fail)는 백엔드 WS 미브로드캐스트 — 별도 후속 작업
-  let statusText = '매수 가능'
-  let statusBlocked = false
-  if (uiState.circuitBreakerOpen) {
-    statusText = '차단: 서킷브레이커'
-    statusBlocked = true
-  } else if (uiState.riskBlockStatus && uiState.riskBlockStatus.side === 'buy') {
-    statusText = `차단: 리스크(${uiState.riskBlockStatus.reason})`
-    statusBlocked = true
-  } else if (uiState.orderTimeBlocked) {
-    statusText = `차단: ${uiState.orderTimeBlocked.reason}`
-    statusBlocked = true
-  } else if (!settings || !settings.time_scheduler_on) {
-    statusText = '차단: 자동매매 OFF'
-    statusBlocked = true
-  } else if (!settings.auto_buy_on) {
-    statusText = '차단: 자동매수 OFF'
-    statusBlocked = true
-  } else {
-    // 매수 작동 시간 범위 체크 (KST HH:MM 기준 — 백엔드 auto_buy_effective와 동일 로직)
-    const nowKst = new Date().toLocaleTimeString('en-GB', { timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit' })
-    const buyStart = String(settings.buy_time_start ?? '09:00').slice(0, 5)
-    const buyEnd = String(settings.buy_time_end ?? '15:20').slice(0, 5)
-    if (nowKst < buyStart || nowKst > buyEnd) {
-      statusText = '차단: 매수 시간대 외'
-      statusBlocked = true
-    }
+  try {
+    const { text: statusText, blocked: statusBlocked } = computeOrderBlockStatus('buy', uiState, settings)
+    updateBadge(badgeEls.status, statusText, {
+      status: statusBlocked ? 'warn' : 'normal',
+      statusColor: statusBlocked ? COLOR.up : COLOR.down,
+    })
+  } catch (err) {
+    console.error('[buy-target] status badge update error', err)
   }
-  updateBadge(badgeEls.status, statusText, {
-    status: statusBlocked ? 'warn' : 'normal',
-    statusColor: statusBlocked ? COLOR.up : COLOR.down,
-  })
 }
 
 /* ── mount ── */

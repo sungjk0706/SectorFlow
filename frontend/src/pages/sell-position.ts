@@ -11,6 +11,7 @@ import { createCardHeaderWithMargin } from '../components/common/card-header'
 import { globalSettingsManager } from '../settings'
 import { rateColor, pnlColor, fmtComma, fmtRate, createCodeCell, createStockNameColumn, createNumberCell, createPriceCell, COLOR } from '../components/common/ui-styles'
 import { createBadgeRow, createBadge, updateBadge, type BadgeHandle } from '../components/common/badge'
+import { computeOrderBlockStatus } from '../utils/order-block-status'
 import { computeHoldingsSummary } from './profit-shared'
 import type { Position } from '../types'
 
@@ -140,42 +141,13 @@ function renderSummary(): void {
 }
 
 /** 매도상태 배지 업데이트 — 전체 차단 게이트 집계 (P21 사용자 투명성)
- *  buy-target.ts updateBadges()의 매수상태 로직과 동일 패턴 (P23 일관성)
- *  우선순위: 서킷브레이커 > 리스크(sell) > 시간대 > 자동매매/매도 OFF > 매도 시간대 외
- *  데이터 소스: 기존 uiStore 상태 + globalSettingsManager (P10 SSOT — 신규 데이터 없음) */
+ *  판정 로직은 computeOrderBlockStatus()로 추출 (P10 SSOT, P23 일관성 — buy-target.ts와 동일 패턴) */
 function updateSellStatusBadge(): void {
   if (!summaryStatusBadge) return
   try {
     const uiState = uiStore.getState()
     const settings = globalSettingsManager.getSettings()
-
-    let statusText = '매도 가능'
-    let statusBlocked = false
-    if (uiState.circuitBreakerOpen) {
-      statusText = '차단: 서킷브레이커'
-      statusBlocked = true
-    } else if (uiState.riskBlockStatus && uiState.riskBlockStatus.side === 'sell') {
-      statusText = `차단: 리스크(${uiState.riskBlockStatus.reason})`
-      statusBlocked = true
-    } else if (uiState.orderTimeBlocked) {
-      statusText = `차단: ${uiState.orderTimeBlocked.reason}`
-      statusBlocked = true
-    } else if (!settings || !settings.time_scheduler_on) {
-      statusText = '차단: 자동매매 OFF'
-      statusBlocked = true
-    } else if (!settings.auto_sell_on) {
-      statusText = '차단: 자동매도 OFF'
-      statusBlocked = true
-    } else {
-      // 매도 작동 시간 범위 체크 (KST HH:MM 기준 — 백엔드 auto_sell_effective와 동일 로직)
-      const nowKst = new Date().toLocaleTimeString('en-GB', { timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit' })
-      const sellStart = String(settings.sell_time_start ?? '09:00').slice(0, 5)
-      const sellEnd = String(settings.sell_time_end ?? '15:20').slice(0, 5)
-      if (nowKst < sellStart || nowKst > sellEnd) {
-        statusText = '차단: 매도 시간대 외'
-        statusBlocked = true
-      }
-    }
+    const { text: statusText, blocked: statusBlocked } = computeOrderBlockStatus('sell', uiState, settings)
     updateBadge(summaryStatusBadge, statusText, {
       status: statusBlocked ? 'warn' : 'normal',
       statusColor: statusBlocked ? COLOR.up : COLOR.down,
