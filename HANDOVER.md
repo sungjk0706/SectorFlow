@@ -6,6 +6,54 @@
 
 ## 직전 완료 작업
 
+### JIF 카운트다운 override datetime JSON 직렬화 오류 근본 해결 (2026-07-23)
+
+**세션**: 긴급 런타임 오류 수정 — 단일 세션. 백엔드 2파일.
+
+**문제 현상**: JIF 카운트다운 수신 시 `TypeError: Object of type datetime is not JSON serializable` 발생. 이후 10초 주기 장상태 브로드캐스트마다 override 만료 전까지 동일 오류 반복 (조용히 실패 — P21 위반).
+
+**근본 원인** (데이터 흐름):
+1. `engine_ws_dispatch.py:335` — `expires_at = now + timedelta(...)` 로 datetime 객체 생성 후 override dict에 그대로 저장
+2. `daily_time_scheduler.py:_get_active_override()` — 저장된 override dict를 expires_at 포함 그대로 반환
+3. `daily_time_scheduler.py:get_market_phase()` — `phase["krx_countdown"]`에 datetime 포함 dict 삽입
+4. `engine_ws_dispatch.py:343` — `_broadcast("market-phase", get_market_phase())` 가 datetime 포함 payload 전달
+5. `ws_manager.py:160` — `dumps(...)` 직렬화 실패 → TypeError
+
+**수정 안**: 안 A (P24 단순성, P10 SSOT) — `_get_active_override()` 반환 시 `expires_at` 제외, `{label, remaining_sec}`만 반환.
+- 저장은 datetime 그대로 유지 (만료 판정 `_kst_now() >= expires_at`에 필요)
+- 반환은 프론트엔드 타입과 정확 일치
+- 안 B(ISO 문자열 변환)는 매 호출 시 파싱 오버헤드로 P24 위반 → 비추천
+
+**수정 파일 2개**:
+- `backend/app/services/daily_time_scheduler.py` — `_get_active_override()` 반환 + docstring
+- `backend/app/services/engine_state.py` — 주석 보완 (expires_at 내부 전용 명시)
+
+**원칙 부합**:
+- P10 SSOT: 브로드캐스트 스키마 = 프론트엔드 타입 = {label, remaining_sec} 정합
+- P16 살아있는 경로: JIF 즉시 브로드캐스트 + 10초 주기 브로드캐스트 모두 정상 복구
+- P20 폴백 금지: 만료 판정 로직 유지, 폴백 도입 아님
+- P21 사용자 투명성: 10초 주기 브로드캐스트 조용히 실패 문제 함께 해결 — 화면 장상태 갱신 정상화
+- P24 단순성: 1줄 변경, 파싱 오버헤드 없음
+
+**검증**:
+- `pytest test_daily_time_scheduler.py test_engine_ws_dispatch.py` 286 passed
+- 런타임 기동 정상 (RuntimeWarning 없음, TypeError 없음, 수신율 100% 도달)
+- 잔존 프로세스 0건
+
+**화면 영향**:
+- 상단 헤더 카운트다운 칩: JIF 카운트다운 수신 시점(장개시 10분전/5분전/1분전/10초전 등)에 화면 갱신 정상 복구. 기존에는 카운트다운 수신 순간부터 만료 시까지 화면 장상태 갱신이 조용히 실패했음.
+- 매수/매도 동작: 영향 없음 (카운트다운은 표시 전용)
+
+**커밋**: `322b888` fix: JIF 카운트다운 override 반환 시 expires_at 제외 — datetime JSON 직렬화 오류 근본 해결
+
+**잔존 프로세스**: 없음.
+
+**다음 세션 대기 사항**: 긴급 오류 해결 완료. 이후 다음 우선순위 작업 진행.
+
+---
+
+## 직전 완료 작업 (이전 세션)
+
 ### JIF 카운트다운 복구 S-2 프론트엔드 + 테스트 보완 (2026-07-23)
 
 **세션**: 다단계 작업 워크플로우 4세션 — `plan_jif_countdown.md` 기반 S-2 구현. 프론트엔드 3파일 + 테스트 1파일. JIF 카운트다운 복구 최종 세션.
