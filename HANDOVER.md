@@ -8,6 +8,7 @@
 
 | 날짜 | 세션 | 작업 | 상태 |
 |------|------|------|------|
+| 2026-07-24 | NWS-S3 | 실시간 뉴스(NWS) 매수 가산점 백엔드 NWS 인프라 구현 (다단계 워크플로우 3세션) — P4/P7/P10/P11/P13/P16/P20/P21/P23/P25 | 완료 (4세션 대기) |
 | 2026-07-24 | NWS-S2 | 실시간 뉴스(NWS) 매수 가산점 심층 사전조사 + 태스크 파일 작성 (다단계 워크플로우 2세션) — P4/P7/P10/P11/P13/P15/P16/P20/P21/P22/P23/P24/P25 | 사전조사+태스크 완료 (구현 대기) |
 | 2026-07-23 | NWS-S1 | 실시간 뉴스(NWS) 매수 가산점 설계 — 디자인 파일 작성 (다단계 워크플로우 1세션) — P4/P7/P10/P11/P13/P15/P16/P20/P21/P22/P23/P24/P25 | 설계 완료 (구현 대기) |
 | 2026-07-23 | T4-S01 | 매수설정 거래대금 순위 가산점 + 매수후보 거래대금 컬럼 제거 — P16/P21/P24 | 완료 |
@@ -21,6 +22,13 @@
 ---
 
 ## 직전 완료 작업
+
+### NWS-S3 실시간 뉴스(NWS) 매수 가산점 백엔드 NWS 인프라 구현 (2026-07-24)
+- **작업**: 다단계 워크플로우 3세션(백엔드 NWS 인프라 구현). NWS 메시지 수신 → `news_boost_cache` 갱신 경로 구축. 사전조사 중 태스크 파일의 디스패치 위치 오류 발견 — NWS는 JIF와 동일하게 tick_queue 우회하여 `engine_ws_dispatch.py` 경로로 처리되나, 태스크 파일은 `pipeline_compute.py`에 분기를 넣도록 잘못 기재 (죽은 코드 P16 위반 발생). 설계서 섹션 3.7.1이 이미 "디스패치 위치 확인 필요"로 명시했으나 태스크 작성 시 확인 누락. 사용자 승인 하에 바로잡아 진행: `pipeline_compute.py` 제외, `engine_ws.py` + `engine_ws_dispatch.py` 추가.
+- **수정**: 백엔드 6파일 — `ls_connector.py` (NWS 구독/변환/우회/재연결 6곳), `pipeline_compute_tick_handlers.py` (`_handle_nws_news()` 핸들러), `engine_ws.py` (trnm 필터 NWS 추가), `engine_ws_dispatch.py` (NWS 디스패치), `engine_state.py` (캐시 필드 4개), `engine_radar.py` (`get_news_boost_cache()` getter)
+- **영향 범위**: NWS 수신 경로 구축만 (가산점 계산 연결은 4세션). 거래 로직 변경 없음 (P15). DB 스키마 변경 없음.
+- **사용자 결정**: 태스크 파일 디스패치 위치 오류 바로잛아 진행 승인
+- **검증**: py_compile 통과 / ruff 통과 / mypy 신규 에러 없음 / 런타임 기동 정상 (157ms, RuntimeWarning 없음) / 잔존 프로세스 0건 / 기존 테스트 2834개 통과 / NWS 핸들러 기능 테스트 6개 통과
 
 ### NWS-S2 실시간 뉴스(NWS) 매수 가산점 심층 사전조사 + 태스크 파일 작성 (2026-07-24)
 - **작업**: 다단계 워크플로우 2세션(설계 기반 심층 사전조사 + 태스크 파일 작성). 규칙 0-2 4항목 의존성/영향범위/원칙부합/공통자산 조사. 백엔드 10파일+프론트엔드 4파일+신규 1파일(tag-chip.ts)+테스트 1파일 변경점 식별. 기존 공통 자산 재사용 확인(subscribe_jif 패턴, get_program_net_buy_cache 패턴, calculate_boost_score 패턴, createToggleLabelControlsRow/createNumInput 등). tag-chip 컴포넌트는 기존에 없어 신규 생성 필요. 5세션(3~7세션) 단계 분할 확정.
@@ -54,9 +62,9 @@
 ## 다음 세션 진행 대기
 
 **다단계 작업 진행 중 — NWS 실시간 뉴스 매수 가산점 (설계 → 태스크 → 구현)**:
-- **현재 단계**: 2세션(사전조사+태스크) 완료. 3세션(백엔드 NWS 인프라 구현) 대기.
-- **다음 세션 작업**: 3세션 — 백엔드 NWS 인프라 (ls_connector.py 구독/변환/우회/재연결 + pipeline_compute_tick_handlers.py NWS 핸들러 + pipeline_compute.py 디스패치 + engine_state.py 캐시 필드 + engine_radar.py getter). NWS 수신→캐시 갱신 경로 구축.
-- **참조 문서**: `docs/architecture_news_boost_design.md` (설계서) + `docs/plan_news_boost.md` (태스크 파일 — 3~7세션 단계별 상세)
+- **현재 단계**: 3세션(백엔드 NWS 인프라) 완료. 4세션(백엔드 가산점 로직+설정) 대기.
+- **다음 세션 작업**: 4세션 — 백엔드 가산점 로직 + 설정 (buy_filter.py 4번째 가산점 + sector_data_provider.py 매수후보 news_boost 필드 + engine_settings.py NWS 설정 빌드 + settings_defaults.py 기본값 4개 + settings_store.py 검증 + engine_state.py 설정 동기화). `news_boost_cache` → 매수 가산점 반영 + 설정 기본값/검증/동기화.
+- **참조 문서**: `docs/architecture_news_boost_design.md` (설계서) + `docs/plan_news_boost.md` (태스크 파일 — 4~7세션 단계별 상세)
 
 **사용자 지시 시 진행 가능 항목 (audit 문서 잔여)**:
 - B-13 보류 5건 (B13-03/04/06/07/08, LOW/INFO 등급) — `docs/architecture_audit_plan.md` 섹션 7 참조

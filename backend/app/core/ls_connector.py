@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 _BROKER_DISPLAY = BROKER_DISPLAY_NAMES["ls"]
 
-_TR_KOR = {"UH1": "호가", "UPH": "프로그램매매", "US3": "체결", "JIF": "장운영정보", "IJ_": "업종지수"}
+_TR_KOR = {"UH1": "호가", "UPH": "프로그램매매", "US3": "체결", "JIF": "장운영정보", "IJ_": "업종지수", "NWS": "실시간뉴스"}
 
 try:
     import websockets
@@ -129,9 +129,9 @@ class _LsSocket:
                 internal_msg = self._convert_ls_to_internal(tr_cd, header, body)
 
                 if internal_msg:
-                    # JIF (장운영정보)는 tick_queue를 우회하고 직접 처리
-                    # Kiwoom 커넥터와 동일한 패턴: JIF는 큐 대기 없이 즉시 핸들러로 전달
-                    if internal_msg.get("trnm") == "JIF":
+                    # JIF (장운영정보)와 NWS (실시간뉴스)는 tick_queue를 우회하고 직접 처리
+                    # Kiwoom 커넥터와 동일한 패턴: 이벤트성 메시지는 큐 대기 없이 즉시 핸들러로 전달
+                    if internal_msg.get("trnm") in ("JIF", "NWS"):
                         await self._on_message(internal_msg)
                     else:
                         try:
@@ -296,6 +296,17 @@ class _LsSocket:
                     }
                 }]
             }
+        elif tr_cd == "NWS":
+            # 실시간 뉴스 제목 패킷 — title/code 추출 (code는 복수 종목코드 가능, 최대 240자)
+            title = str(body.get("title", "")).strip()
+            code_raw = str(body.get("code", "")).strip()
+            if not title:
+                return None
+            return {
+                "trnm": "NWS",
+                "title": title,
+                "code": code_raw,
+            }
         else:
             return None
 
@@ -382,6 +393,11 @@ class LsConnector(BrokerConnector):
                 await self.subscribe_jif()
             except Exception:
                 logger.warning("[구독] %s 장운영정보 구독 실패", _BROKER_DISPLAY, exc_info=True)
+            # 실시간 뉴스(NWS) 구독
+            try:
+                await self.subscribe_news()
+            except Exception:
+                logger.warning("[구독] %s 실시간뉴스 구독 실패", _BROKER_DISPLAY, exc_info=True)
             # 업종지수(IJ_) 구독은 REG 파이프라인(ws_subscribe_control)에서 통합 관리
             # 연결 상태 전송
             try:
@@ -649,6 +665,44 @@ class LsConnector(BrokerConnector):
                 success_all = False
         return success_all
 
+    async def subscribe_news(self) -> bool:
+        """실시간 뉴스(NWS) 구독 등록 — 단건 스트림 (tr_key=NWS001). JIF 패턴과 동일 구조."""
+        if not self.is_connected() or not self._socket:
+            logger.warning("[구독] %s 실시간뉴스 구독 실패 — 연결 없음", _BROKER_DISPLAY)
+            return False
+        payload = {
+            "header": {
+                "token": self._token,
+                "tr_type": "3"
+            },
+            "body": {
+                "tr_cd": "NWS",
+                "tr_key": "NWS001"
+            }
+        }
+        success = await self._socket.send(payload)
+        if success:
+            logger.info("[구독] %s 실시간뉴스 구독 완료", _BROKER_DISPLAY)
+        else:
+            logger.warning("[구독] %s 실시간뉴스 구독 실패", _BROKER_DISPLAY)
+        return success
+
+    async def unsubscribe_news(self) -> bool:
+        """실시간 뉴스(NWS) 구독 해지."""
+        if not self.is_connected() or not self._socket:
+            return False
+        payload = {
+            "header": {
+                "token": self._token,
+                "tr_type": "4"
+            },
+            "body": {
+                "tr_cd": "NWS",
+                "tr_key": "NWS001"
+            }
+        }
+        return await self._socket.send(payload)
+
     async def _on_ws_message(self, payload: dict) -> None:
         """_LsSocket 콜백 → 핸들러 직접 호출."""
         self._received_count += 1
@@ -739,6 +793,11 @@ class LsConnector(BrokerConnector):
                     await self.subscribe_jif()
                 except Exception:
                     logger.warning("[구독] %s 재연결 후 장운영정보 구독 실패", _BROKER_DISPLAY, exc_info=True)
+                # 실시간 뉴스(NWS) 재구독
+                try:
+                    await self.subscribe_news()
+                except Exception:
+                    logger.warning("[구독] %s 재연결 후 실시간뉴스 구독 실패", _BROKER_DISPLAY, exc_info=True)
                 # 업종지수(IJ_) 재구독은 ConnectorManager(_on_reconnect_success)에서 통합 관리
                 # 재연결 후 구독 복원은 ConnectorManager가 담당
                 if self._on_reconnect_success:

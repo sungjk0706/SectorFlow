@@ -71,6 +71,15 @@ class EngineState:
         }
         self.krx_circuit_breaker_active: bool = False
 
+        # ── 실시간 뉴스(NWS) 가산점 캐시 ──────────────────────────────────────
+        # news_boost_cache: {종목코드: (가산점, monotonic 타임스탬프)} — 5분 TTL (P10 SSOT)
+        # news_keywords_cache: 호재 키워드 메모리 상주 (P13 — 틱 단계 DB 조회 금지)
+        # news_boost_score / news_boost_ttl_sec: 설정 로더에서 갱신 (P13)
+        self.news_boost_cache: dict[str, tuple[float, float]] = {}
+        self.news_keywords_cache: list[str] = []
+        self.news_boost_score: float = 1.0
+        self.news_boost_ttl_sec: int = 300
+
         # ── 주문 간격 타이머 (매수/매도 공통 — order_interval.py 헬퍼가 갱신) ──
         self._last_global_buy_ts: float = 0.0
         self._last_global_sell_ts: float = 0.0

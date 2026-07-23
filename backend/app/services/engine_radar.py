@@ -35,6 +35,22 @@ def get_program_net_buy_cache() -> dict[str, int]:
     return {cd: int(stock.get("program_net_buy", 0) or 0) for cd, stock in engine_state.state.master_stocks_cache.items()}
 
 
+def get_news_boost_cache() -> dict[str, float]:
+    """뉴스 가산점 캐시 반환 — 만료된 항목 제외 (5분 TTL).
+
+    P7: 캐시 크기는 매수후보 종목 수(수십~수백)로 제한. 만료 항목은 lazy 제거.
+    P20: 만료된 항목은 폴백 없이 제거 후 유효 항목만 반환.
+    """
+    import time
+    now = time.monotonic()
+    ttl = engine_state.state.news_boost_ttl_sec
+    cache = engine_state.state.news_boost_cache
+    expired = [cd for cd, (_s, ts) in cache.items() if now - ts > ttl]
+    for cd in expired:
+        del cache[cd]
+    return {cd: s for cd, (s, _ts) in cache.items()}
+
+
 def get_orderbook_cache() -> dict[str, tuple[int, int]]:
     """호가잔량 캐시 반환 — (매수잔량, 매도잔량) 튜플. order_ratio=[bid, ask] 형식에서 변환."""
     result: dict[str, tuple[int, int]] = {}

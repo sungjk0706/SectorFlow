@@ -1,9 +1,9 @@
 # 태스크 파일: 실시간 뉴스(NWS) 매수 가산점 구현
 
-> **상태**: 태스크 작성 완료 (구현 대기)
-> **작성일**: 2026-07-24 (2세션)
+> **상태**: 3세션 구현 완료 (4~7세션 대기)
+> **작성일**: 2026-07-24 (2세션) / 3세션 구현 2026-07-24
 > **설계서**: `docs/architecture_news_boost_design.md`
-> **다단계 워크플로우**: 1세션(설계) ✅ → 2세션(사전조사+태스크) ✅ → 3~7세션(구현)
+> **다단계 워크플로우**: 1세션(설계) ✅ → 2세션(사전조사+태스크) ✅ → 3세션(백엔드 NWS 인프라) ✅ → 4~7세션(구현 대기)
 > **관련 원칙**: P4 · P7 · P10 · P11 · P13 · P15 · P16 · P20 · P21 · P22 · P23 · P24 · P25
 
 ---
@@ -57,21 +57,27 @@ P4 ✅ P7 ✅ P10 ✅ P11 ✅ P13 ✅ P15 ✅ P16 ✅ P20 ✅ P21 ✅ P22 ✅ P2
 
 ## 1. 단계 분할 (세션당 1단계, 규칙 0-1)
 
-### 3세션: 백엔드 NWS 인프라
+### 3세션: 백엔드 NWS 인프라 ✅
 
 **목표**: NWS 메시지 수신 → `news_boost_cache` 갱신까지의 경로 구축
 
-**수정 파일 (5파일)**:
+> **바로잡음 (3세션 구현 중 발견)**: 태스크 작성 시 NWS 디스패치 위치를 `pipeline_compute.py`로 잘못 기재.
+> NWS는 JIF와 동일하게 tick_queue를 우회하여 `engine_ws_dispatch.py` → `handle_ws_data()` 경로로 처리됨.
+> `pipeline_compute.py`에 분기를 넣으면 도달하지 않는 죽은 코드(P16 위반)가 됨.
+> 설계서 섹션 3.7.1이 이미 "디스패치 위치 확인 필요"로 명시했으나 태스크 작성 시 확인 누락.
+> 수정: `pipeline_compute.py` 제외, `engine_ws.py` + `engine_ws_dispatch.py` 추가 (6파일).
+
+**수정 파일 (6파일)**:
 1. `backend/app/core/ls_connector.py`
-   - 라인 24: `_TR_KOR`에 `"NWS": "실시간뉴스"` 추가
-   - 라인 298 앞: `_convert_ls_to_internal()`에 `elif tr_cd == "NWS":` 블록 추가 (title, code 추출, title 빈값 스킵)
-   - 라인 134: `_recv_loop()` JIF 우회 조건을 `if internal_msg.get("trnm") in ("JIF", "NWS"):`로 수정
-   - 라인 651 이후: `subscribe_news()` / `unsubscribe_news()` 메서드 추가 (JIF 패턴, tr_key="NWS001")
-   - 라인 384 이후: `connect()` 내 `subscribe_news()` 호출 추가 (try/except + logger.warning)
-   - 라인 741 이후: 재연결 루프 `_on_socket_disconnect()`에 `subscribe_news()` 재구독 추가
+   - `_TR_KOR`에 `"NWS": "실시간뉴스"` 추가
+   - `_convert_ls_to_internal()`에 `elif tr_cd == "NWS":` 블록 추가 (title, code 추출, title 빈값 스킵)
+   - `_recv_loop()` JIF 우회 조건을 `if internal_msg.get("trnm") in ("JIF", "NWS"):`로 수정
+   - `subscribe_news()` / `unsubscribe_news()` 메서드 추가 (JIF 패턴, tr_key="NWS001")
+   - `connect()` 내 `subscribe_news()` 호출 추가 (JIF 구독 직후, try/except + logger.warning)
+   - 재연결 루프에 `subscribe_news()` 재구독 추가 (JIF 재구독 직후)
 
 2. `backend/app/pipelines/pipeline_compute_tick_handlers.py`
-   - 라인 336 이후: `_handle_real_nws_tick()` 핸들러 추가
+   - `_handle_nws_news(item)` 핸들러 추가 (설계서 기준 함수명 — NWS는 values 구조가 아님)
      - title/code 추출, code 빈값 스킵 + `logger.debug()` (P20)
      - `engine_state.state.news_keywords_cache` 메모리 조회 (P13)
      - 키워드 매칭 (title에 키워드 포함 여부)
@@ -81,24 +87,26 @@ P4 ✅ P7 ✅ P10 ✅ P11 ✅ P13 ✅ P15 ✅ P16 ✅ P20 ✅ P21 ✅ P22 ✅ P2
      - `logger.info()`로 종목+제목 로깅 (P21)
      - try/except + `logger.error(exc_info=True)` (P25, P20)
 
-3. `backend/app/pipelines/pipeline_compute.py`
-   - 라인 33: import에 `_handle_real_nws_tick` 추가
-   - 라인 506 이후: 디스패치 분기 `if norm_type == "NWS": await _handle_real_nws_tick(item, vals)` 추가
+3. `backend/app/services/engine_ws.py` (태스크에서 누락됨 — 바로잛음)
+   - `_broker_message_handler()` trnm 필터에 `"NWS"` 추가 (JIF와 동일 경로)
 
-4. `backend/app/services/engine_state.py`
-   - 라인 68 이후: 신규 필드 4개 추가
+4. `backend/app/services/engine_ws_dispatch.py` (태스크에서 누락됨 — 바로잃음)
+   - `handle_ws_data()`에 `elif trnm == "NWS":` 분기 추가 → `_handle_nws_news(data)` 호출
+
+5. `backend/app/services/engine_state.py`
+   - 신규 필드 4개 추가
      - `news_boost_cache: dict[str, tuple[float, float]]` (score, timestamp_monotonic)
      - `news_keywords_cache: list[str]`
      - `news_boost_score: float`
      - `news_boost_ttl_sec: int`
 
-5. `backend/app/services/engine_radar.py`
-   - 라인 36 이후: `get_news_boost_cache()` getter 추가
+6. `backend/app/services/engine_radar.py`
+   - `get_news_boost_cache()` getter 추가
      - 만료 항목 lazy 제거 (monotonic 시간 비교)
      - `engine_state.state.news_boost_ttl_sec` 참조 (기본 300)
      - 만료된 항목 del 후 유효 항목만 반환
 
-**검증**: py_compile + ruff + typecheck + 런타임 기동 + 잔존 프로세스 0건
+**검증**: py_compile ✅ + ruff ✅ + mypy (신규 에러 없음) ✅ + 런타임 기동 정상 (157ms, RuntimeWarning 없음) ✅ + 잔존 프로세스 0건 ✅ + 기존 테스트 2834개 통과 ✅ + NWS 핸들러 기능 테스트 6개 통과 ✅
 
 ---
 
