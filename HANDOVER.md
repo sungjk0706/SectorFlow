@@ -6,6 +6,69 @@
 
 ## 직전 완료 작업
 
+### A3-07-08/09/10 통계 카드 / 라우트 변경 / addEventListener 격리 — 완료 (2026-07-23) — P25 격리된 실패 (Tier 3 다섯째 세션, LOW 3건, 프론트엔드)
+
+**세션**: 단일 세션. 프론트엔드 코드 수정 (frontend-fix 스킬). 세션 라벨 T3-S15 (사용자 지정 — 문서상 Tier 3 프론트엔드 3건).
+
+**배경**: P25 수정 계획 Tier 3 다섯째 세션. B3-05-03/04 완료 후 진행. 사전조사 → 수정 계획 보고(87개 addEventListener 전수 조사 + 고위험 분류) → 승인(옵션 A + createSummaryCards 포함) → 수정 진행.
+
+**작업 내용** (3건, 14개 파일):
+1. **A3-07-08 (LOW) 완료** — `profit-shared.ts:76-106` createSummaryCards 4카드 루프 per-card try/catch + 더미 push. buildStatRow는 T2-S10에서 이미 완료되었으나, 동일 패턴의 createSummaryCards가 누락되어 있었음 (T2-S10 누락분 보완).
+2. **A3-07-09 (LOW) 완료** — `router.ts:105-109` notifyRouteChange cb 루프 per-cb try/catch + console.error. 리스너 1(setActiveRoute) throw 시 리스너 2(settingsCard 마운트) 스킵 방지.
+3. **A3-07-10 (LOW) 완료** — 87개 addEventListener 전수 조사 → 고위험 46개 식별 → 옵션 A(공통 컴포넌트 chokepoint) 적용. 6개 공통 컴포넌트 + 6개 페이지 파일에서 try/catch 적용.
+   - **공통 컴포넌트 (6파일)**: button.ts(4개 click 핸들러), setting-row-inputs.ts(9개 input/change 핸들러), setting-row.ts(2개 spin 버튼), setting-row-controls.ts(2개 토글/라디오), settings-common.ts(3개 시간 선택), create-slider.ts(3개 input/commit 핸들러)
+   - **페이지 고위험 (6파일)**: profit-overview-mount.ts(1개 real-data-tick), sell-position.ts(1개 real-data-tick), buy-target.ts(3개 real-data-tick/orderbook/program), sector-stock.ts(1개 real-data-tick), header.ts(3개 매매 차단 상태 칩 해제), main.ts(3개 beforeunload WS disconnect)
+   - **저위험 41개 제외**: hover(mouseenter/mouseleave), scroll, mousemove, animationend, keydown-Enter/focusNext, 단순 DOM 제거 — P24 단순성 준수
+
+**수정 파일**: 14개 (프론트엔드).
+- `frontend/src/pages/profit-shared.ts` (createSummaryCards per-card try/catch + 더미 push)
+- `frontend/src/router.ts` (notifyRouteChange per-cb try/catch)
+- `frontend/src/components/common/button.ts` (4개 click 핸들러 try/catch)
+- `frontend/src/components/common/setting-row-inputs.ts` (9개 onChange/onEnter 핸들러 try/catch)
+- `frontend/src/components/common/setting-row.ts` (2개 spin 버튼 onUp/onDown try/catch)
+- `frontend/src/components/common/setting-row-controls.ts` (2개 토글/라디오 핸들러 try/catch)
+- `frontend/src/components/common/settings-common.ts` (3개 시간 선택 핸들러 try/catch)
+- `frontend/src/components/common/create-slider.ts` (3개 input/commit 핸들러 try/catch)
+- `frontend/src/pages/profit-overview-mount.ts` (real-data-tick try/catch)
+- `frontend/src/pages/sell-position.ts` (real-data-tick try/catch)
+- `frontend/src/pages/buy-target.ts` (3개 틱 핸들러 try/catch)
+- `frontend/src/pages/sector-stock.ts` (real-data-tick try/catch)
+- `frontend/src/layout/header.ts` (3개 칩 해제 핸들러 try/catch)
+- `frontend/src/main.ts` (beforeunload 3개 WS disconnect 개별 try/catch)
+
+**아키텍처 원칙 부합**:
+- P25 (격리된 실패): 핸들러 throw 시 console.error 로깅 + 다른 핸들러/이벤트 계속 동작. 공통 컴포넌트 chokepoint로 36개 핸들러를 6개 파일에서 보호.
+- P20 (폴백 금지): silent `except: pass` 없음 — 모든 catch에 `console.error` 명시 로깅.
+- P23 (일관성): T2-S10의 per-item try/catch + console.error 패턴과 동일. 공통 컴포넌트에서 일관된 에러 메시지 형식(`[컴포넌트명] 핸들러 error`).
+- P24 (단순성): 공통 컴포넌트 chokepoint로 수정 지점 최소화 (87개 → 14개 파일). 저위험 41개 제외로 범위 과대 방지.
+- P21 (사용자 투명성): 설정 변경 실패 시 콘솔 에러로 원인 추적 가능. 매매 차단 상태 칩 해제 실패 시 로깅.
+- P16 (살아있는 경로): 모든 try/catch는 실제 이벤트 핸들러 경로에 연결됨 (dead code 아님).
+
+**영향 범위**: 프론트엔드 14개 파일. 백엔드/테스트 영향 없음. 핵심 매매 로직 아님 (이벤트 핸들러 예외 처리만 추가) → 규칙 0-4 해당 없음. 롤백 아님 (신규 보호 코드 추가) → 규칙 0-3 해당 없음.
+
+**UI 기준 화면 변화 (규칙 0-4)**:
+- 정상 동작 변화 없음.
+- 비정상 상황에서만 개선:
+  - 수익 상세 페이지 요약 카드(당일/직전/당월/누적 손익) 생성 중 오류 시: 해당 카드만 '-' 표시, 나머지 카드 정상 표시 (기존에는 전체 카드 누락 가능).
+  - 페이지 이동 시 오류: 좌측 설정 패널이 정상 전환됨 (기존에는 첫 리스너 오류 시 좌측 패널 미갱신).
+  - 설정 입력 중 오류: 콘솔에 에러 기록, 다른 설정 입력 계속 가능 (기존에는 오류 전파로 입력 기능 중단 가능).
+  - 실시간 시세 갱신 중 오류: 해당 틱만 누락, 이후 틱 정상 처리 (기존에는 브라우저 전역 에러).
+  - 매매 차단 상태 칩 해제 클릭 오류: 콘솔에 에러 기록 (기존에는 브라우저 전역 에러).
+
+**검증**:
+- `npm run typecheck` (tsc --noEmit) 통과 ✓
+- `npm run build` (tsc -b + vite build) 통과 — 76 modules, 1.71s ✓
+- 브라우저 검증: 사용자 확인 대기
+
+**작업 중 발견 문제**: 없음.
+
+**다음 세션 대기 사항**:
+- **다음 세션: B5-08-01/02/04 trading.py 매매 로직 (백엔드)** — Tier 3 마지막 세션. safe-trade 스킬 필수 + 규칙 0-4 핵심 로직 변경 승인 필요.
+- **Tier 3 잔여**: B5-08-01/02/04(백엔드, safe-trade 필수 + 규칙 0-4 핵심 로직). 총 1세션.
+- **진행 순서**: 사용자 지시 — B5-08-01/02/04.
+
+---
+
 ### B3-05-03/04 silent except 제거 + exc_info 11곳 보강 — 완료 (2026-07-23) — P20 폴백 금지 (Tier 3 넷째 세션, LOW 2건, 백엔드)
 
 **세션**: 단일 세션. 백엔드 코드 수정 (backend-fix 스킬). 세션 라벨 B3-05-03/04 (사용자 지정 — 문서상 Tier 3 백엔드 2건).

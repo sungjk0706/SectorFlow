@@ -224,17 +224,21 @@ function mount(container: HTMLElement): void {
 
   // O(1) 초저지연 DOM 갱신 이벤트 리스너
   onRealDataTick = (e: Event) => {
-    const code = (e as CustomEvent<string>).detail
-    if (dataTable && dataTable.updateItemByKey) {
-      dataTable.updateItemByKey(code)
-    }
-    // 보유종목 틱 시 요약 배지 갱신 (rAF 배칭 — 개별 행과 동일 소스로 실시간 일치)
-    if (getPositionIndex(code) !== undefined && _summaryRafId === null) {
-      _summaryRafId = requestAnimationFrame(() => {
-        _summaryRafId = null
-        if (!_mounted) return
-        renderSummary()
-      })
+    try {
+      const code = (e as CustomEvent<string>).detail
+      if (dataTable && dataTable.updateItemByKey) {
+        dataTable.updateItemByKey(code)
+      }
+      // 보유종목 틱 시 요약 배지 갱신 (rAF 배칭 — 개별 행과 동일 소스로 실시간 일치)
+      if (getPositionIndex(code) !== undefined && _summaryRafId === null) {
+        _summaryRafId = requestAnimationFrame(() => {
+          _summaryRafId = null
+          if (!_mounted) return
+          renderSummary()
+        })
+      }
+    } catch (err) {
+      console.error('[sell-position] real-data-tick error', err)
     }
   }
   window.addEventListener('real-data-tick', onRealDataTick)

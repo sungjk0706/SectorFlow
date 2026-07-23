@@ -90,13 +90,17 @@ export function createSpinButtons(input: HTMLInputElement, onUp: () => void, onD
   upBtn.style.borderBottom = 'none'
   upBtn.style.borderTopRightRadius = '4px'
   upBtn.textContent = '▲'
-  upBtn.addEventListener('click', onUp)
+  upBtn.addEventListener('click', () => {
+    try { onUp() } catch (e) { console.error('[SpinBtn] up error', e) }
+  })
 
   const downBtn = document.createElement('button')
   applySpinBtn(downBtn)
   downBtn.style.borderBottomRightRadius = '4px'
   downBtn.textContent = '▼'
-  downBtn.addEventListener('click', onDown)
+  downBtn.addEventListener('click', () => {
+    try { onDown() } catch (e) { console.error('[SpinBtn] down error', e) }
+  })
 
   wrap.appendChild(upBtn)
   wrap.appendChild(downBtn)

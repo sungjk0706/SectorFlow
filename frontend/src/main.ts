@@ -263,10 +263,11 @@ function main(): void {
   })
 
   // 브라우저 종료/새로고침 시 WS graceful close — TCP RST (ECONNRESET) 방지
+  // P25: 각 disconnect를 개별 try/catch로 격리 — 하나 실패 시 나머지 정상 종료
   window.addEventListener('beforeunload', () => {
-    wsClient.disconnect()
-    wsSettingsClient.disconnect()
-    wsOrdersClient.disconnect()
+    try { wsClient.disconnect() } catch (e) { console.error('[Main] wsClient disconnect error', e) }
+    try { wsSettingsClient.disconnect() } catch (e) { console.error('[Main] wsSettingsClient disconnect error', e) }
+    try { wsOrdersClient.disconnect() } catch (e) { console.error('[Main] wsOrdersClient disconnect error', e) }
   })
 
   // FPS 모니터링 시작

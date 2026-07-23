@@ -377,10 +377,14 @@ export function subscribeProfitOverviewStore(state: ProfitOverviewState, initSta
 
   // 보유종목 실시간 틱 시 계좌현황 평가손익/수익률 갱신 (개별 종목 행과 동일 소스 — P22 데이터 정합성)
   state.onRealDataTick = (e: Event) => {
-    const code = (e as CustomEvent<string>).detail
-    if (getPositionIndex(code) !== undefined) {
-      state.dirtyAccount = true
-      if (state.rafId === null) flushRender(state)
+    try {
+      const code = (e as CustomEvent<string>).detail
+      if (getPositionIndex(code) !== undefined) {
+        state.dirtyAccount = true
+        if (state.rafId === null) flushRender(state)
+      }
+    } catch (err) {
+      console.error('[profit-overview] real-data-tick error', err)
     }
   }
   window.addEventListener('real-data-tick', state.onRealDataTick)

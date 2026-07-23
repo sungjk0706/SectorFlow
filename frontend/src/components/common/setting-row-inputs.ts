@@ -49,7 +49,7 @@ export function createNumInput(options: {
     if (clamped !== parsed) {
       input.value = String(clamped)
     }
-    options.onChange(clamped)
+    try { options.onChange(clamped) } catch (e) { console.error('[NumInput] onChange error', e) }
   })
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') { e.preventDefault(); focusNext(input) }
@@ -57,8 +57,8 @@ export function createNumInput(options: {
 
   const spinBtns = createSpinButtons(
     input,
-    () => { currentValue = Math.round(Math.min(maxVal, currentValue + numStep) * 100) / 100; input.value = String(currentValue); options.onChange(currentValue) },
-    () => { currentValue = Math.round(Math.max(minVal, currentValue - numStep) * 100) / 100; input.value = String(currentValue); options.onChange(currentValue) },
+    () => { currentValue = Math.round(Math.min(maxVal, currentValue + numStep) * 100) / 100; input.value = String(currentValue); try { options.onChange(currentValue) } catch (e) { console.error('[NumInput] spin up onChange error', e) } },
+    () => { currentValue = Math.round(Math.max(minVal, currentValue - numStep) * 100) / 100; input.value = String(currentValue); try { options.onChange(currentValue) } catch (e) { console.error('[NumInput] spin down onChange error', e) } },
   )
 
   wrap.appendChild(input)
@@ -120,7 +120,7 @@ export function createMoneyInput(options: {
   })
   input.addEventListener('input', () => {
     currentValue = Number(input.value.replace(/,/g, '')) || 0
-    options.onChange(currentValue)
+    try { options.onChange(currentValue) } catch (e) { console.error('[MoneyInput] onChange error', e) }
   })
   input.addEventListener('blur', () => {
     // 포커스 해제 시 콤마 포맷 복원
@@ -132,8 +132,8 @@ export function createMoneyInput(options: {
 
   const spinBtns = createSpinButtons(
     input,
-    () => { currentValue = Math.min(maxVal, currentValue + step); input.value = fmtMoney(currentValue); options.onChange(currentValue) },
-    () => { currentValue = Math.max(minVal, currentValue - step); input.value = fmtMoney(currentValue); options.onChange(currentValue) },
+    () => { currentValue = Math.min(maxVal, currentValue + step); input.value = fmtMoney(currentValue); try { options.onChange(currentValue) } catch (e) { console.error('[MoneyInput] spin up onChange error', e) } },
+    () => { currentValue = Math.max(minVal, currentValue - step); input.value = fmtMoney(currentValue); try { options.onChange(currentValue) } catch (e) { console.error('[MoneyInput] spin down onChange error', e) } },
   )
 
   wrap.appendChild(input)
@@ -187,13 +187,16 @@ export function createTextInput(options: {
   } as Partial<CSSStyleDeclaration>)
 
   if (onChange) {
-    input.addEventListener('input', () => onChange(input.value))
+    input.addEventListener('input', () => {
+      try { onChange(input.value) } catch (e) { console.error('[TextInput] onChange error', e) }
+    })
   }
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
       e.preventDefault()
-      if (onEnter) onEnter()
-      else focusNext(input)
+      if (onEnter) {
+        try { onEnter() } catch (err) { console.error('[TextInput] onEnter error', err) }
+      } else focusNext(input)
     }
   })
 
@@ -227,7 +230,7 @@ export function createSelect(options: {
   select.value = options.value
 
   select.addEventListener('change', () => {
-    options.onChange(select.value)
+    try { options.onChange(select.value) } catch (e) { console.error('[Select] onChange error', e) }
   })
 
   function setValue(v: string) {

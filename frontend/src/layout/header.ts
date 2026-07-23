@@ -317,21 +317,27 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
   const circuitBreakerChip = createChipEl()
   circuitBreakerChip.style.display = 'none'
   circuitBreakerChip.style.cursor = 'pointer'
-  circuitBreakerChip.addEventListener('click', () => clearCircuitBreakerOpen())
+  circuitBreakerChip.addEventListener('click', () => {
+    try { clearCircuitBreakerOpen() } catch (e) { console.error('[Header] circuitBreaker clear error', e) }
+  })
   header.appendChild(circuitBreakerChip)
 
   // 체결 불가 시간대 주문 일시중단 칩 (클릭 시 해제)
   const orderTimeBlockedChip = createChipEl()
   orderTimeBlockedChip.style.display = 'none'
   orderTimeBlockedChip.style.cursor = 'pointer'
-  orderTimeBlockedChip.addEventListener('click', () => clearOrderTimeBlocked())
+  orderTimeBlockedChip.addEventListener('click', () => {
+    try { clearOrderTimeBlocked() } catch (e) { console.error('[Header] orderTimeBlocked clear error', e) }
+  })
   header.appendChild(orderTimeBlockedChip)
 
   // 리스크 매니저 차단 칩 (빨간색 — 손실/수익 한도 도달, 클릭 시 해제)
   const riskBlockChip = createChipEl()
   riskBlockChip.style.display = 'none'
   riskBlockChip.style.cursor = 'pointer'
-  riskBlockChip.addEventListener('click', () => clearRiskBlockStatus())
+  riskBlockChip.addEventListener('click', () => {
+    try { clearRiskBlockStatus() } catch (e) { console.error('[Header] riskBlock clear error', e) }
+  })
   header.appendChild(riskBlockChip)
 
   // 앱준비 진행률 칩
