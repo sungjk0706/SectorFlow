@@ -113,6 +113,8 @@ AGENTS.md 섹션3 규칙 0-1 (세션당 1단계 원칙) 준수.
 | B2-03-03 | B2 파이프라인 연산 | `backend/app/pipelines/pipeline_compute.py:521-526` | `_handle_real_tick` for item 루프에 per-item try/except 없음. 한 item(00 체결 등) 실패 시 같은 REAL 틱의 나머지 item(01/0D/0J 등) 스킵. 루프 전체 try/except(519-528)는 compute 루프 전파는 차단하나 형제 item 손실은 막지 못함 | 한 종목 체결 처리 오류가 같은 프레임의 다른 종목 시세/호가/업종지수 갱신 누락. B1-02-05/06 형제 손실과 동일 경로 | LOW | P25, P7 | 세션 3 | 미승인 |
 | B2-03-04 | B2 파이프라인 연산 | `backend/app/pipelines/pipeline_compute_tick_handlers.py:92-104` | `_handle_real_0j_tick`에 try/except 없음. 다른 leaf 핸들러(`_handle_real_01_tick`/`_handle_real_0d_tick`/`_handle_real_pgm_tick`)는 try/except 있는데 0J만 없음 → P23 일관성 위반. `notify_index_data` 실패 시 상위 `_handle_real_tick`에 의존 | 업종지수 전송 실패 시 같은 REAL 틱의 나머지 item 스킵(B2-03-03 경로 합류). 영향도 국소적 | LOW | P25, P23 | 세션 3 | 미승인 |
 | B2-03-05 | B2 파이프라인 연산 | `backend/app/pipelines/pipeline_gateway.py:32` | `start_gateway_loop`가 `_gateway_task`에 done_callback 없음. compute 서브태스크(`pipeline_compute.py:210-218`)는 done_callback 있는데 게이트웨이는 없음 → P23 일관성 위반 | 루프 자체는 `_broadcast_loop` try/except로 격리되어 영향도 낮음. 단 태스크 예외 시 로깅 누락(P21) | LOW | P25, P21, P23 | 세션 3 | 미승인 |
+| A2-04-01 | A2 Store listener | `frontend/src/stores/store.ts:19` | `setState`의 updater 함수 `partial(state)`가 try/catch 밖. updater 본문 throw 시 listener 루프(40-46) 보호 우회, setState 호출자에게 즉시 전파 → binding.ts 핸들러(A1-01-04) → WS 디스패치(A1-01-01)로 전파 → 같은 이벤트 후속 핸들러 미실행 + 같은 바이너리 프레임 후속 이벤트 손실 | 고빈도 이벤트(real-data, buy-targets-delta, account-update)의 updater throw 시 화면 갱신 전체 중단 위험. throw 확률은 낮으나 구조적 보호 부재 | MEDIUM | P25, P16 | 세션 4 | 미승인 |
+| A2-04-02 | A2 Store listener | `frontend/src/stores/hotStore.ts:367-370,390,412,431` | `window.dispatchEvent(new CustomEvent(...))`가 try/catch 밖. CustomEvent 핸들러(real-data-tick/orderbook-tick/program-tick) throw 시 apply* 함수 호출자로 전파 → binding.ts 핸들러 → WS 디스패치로 전파. real-data-tick은 매 틱 발생 | 한 UI 컴포넌트 핸들러 오류가 같은 틱의 다른 종목 시세 갱신 중단. 핸들러 등록부는 A3(세션 7)에서 조사 예정 | MEDIUM | P25, P7 | 세션 4 | 미승인 |
 
 ### 등급 정의
 - **CRITICAL**: 한 구성요소 실패가 시스템 전체 중단 유발 (자동매매 정지, 화면 전체 멈춤)
@@ -533,19 +535,65 @@ app.py lifespan (62):
 
 ## 6. 세션 4: A2 Store listener 조사
 
-> 상태: 미시작
-> 조사 파일: `frontend/src/stores/store.ts`, `hotStore.ts`, `uiStore.ts`, `stockClassificationStore.ts`
+> 상태: 완료 (2026-07-23)
+> 조사 파일: `frontend/src/stores/store.ts` (57줄), `hotStore.ts` (607줄), `uiStore.ts` (256줄), `stockClassificationStore.ts` (54줄)
+> 보조 파일: `frontend/src/stores/index.ts` (5줄), `frontend/src/binding.ts` (338줄) — setState 호출부·updater 함수 본문 확인용
 > 조사 범위:
 > - `store.ts:40-46` listener 루프 try/catch 검증 (F-02 해결 시 추가됨)
-> - `hotStore.ts` apply* 함수들의 setState 경로 — listener throw 유발 가능성
-> - `uiStore.ts` apply* 함수들의 setState 경로
+> - `store.ts:19` updater 함수 `partial(state)` try/catch 외부 여부
+> - `hotStore.ts` apply* 함수 13개의 setState 경로 — listener throw 유발 가능성
+> - `uiStore.ts` apply* 함수 16개의 setState 경로
 > - `stockClassificationStore.ts` setState 경로
+> - `binding.ts` 직접 setState 호출 6곳 (sector-stocks-delta, buy-targets-delta, buy-history-append, sell-history-append, receive-rate, sector-scores) — updater 함수 본문 throw 가능성
+> - `hotStore.ts` CustomEvent dispatchEvent 4곳 — 핸들러 throw 시 전파 경로
 
 ### 6.1 조사 결과
-_작성 예정_
+
+**핵심 구조**: `createStore`(`store.ts:10-56`)는 단일 진실 소스 패턴. `setState`(18-47)는 (1) updater 함수 실행(19) → (2) shallow merge + Object.is 변경 감지(22-33) → (3) state 교체(35) → (4) listener 루프 통지(40-46) 순서. listener 루프(40-46)는 try/catch + `console.error('[Store] listener error', e)`로 보호 — **F-02 fix로 P25 준수**. silent pass 아님 (P20 준수).
+
+**위반 2건 식별**:
+
+- **A2-04-01 (MEDIUM)**: `store.ts:19` updater 함수 `partial(state)`가 try/catch **밖**. updater 함수 본문이 throw하면 listener 루프(40-46)에 도달하지 않고 setState 호출자에게 즉시 전파. setState 호출자는 `binding.ts` onEvent 핸들러(A1-01-04 — try/catch 없음) → WS 디스패치 `_dispatchMessage` `forEach(h => h(data))`(A1-01-01)로 전파 → 같은 이벤트의 후속 핸들러 미실행 + 같은 바이너리 프레임 후속 이벤트 손실. listener 루프 보호가 updater 단계에서 무력화되는 구조적 취약점.
+  - throw 유발 가능 updater 함수 (복잡도 높은 순):
+    - `binding.ts:116-160` buy-targets-delta — `normalizeStockCode`, `findIndex`, `recalcTradeAmountRank`, `rebuildBuyTargetIndex`, 중첩 property access. added/removed/changed 가드는 있으나 `state.sectorStocks[normalizeStockCode(item.code)]` 접근 중 `item.code` undefined 시 `normalizeStockCode` 내부 `code.includes('_')` throw
+    - `binding.ts:97-111` sector-stocks-delta — `stocksToMap(added)`, `normalizeStockCode(code)` 루프
+    - `hotStore.ts:134-166` applyAccountUpdate delta 경로 — `normalizeStockCode`, `splice`, `findIndex`, `rebuildPositionIndex`
+    - `hotStore.ts:453-482` applyRealtimeReset — `nullifyFields`, `Object.entries`, `rebuildPositionIndex`
+    - `uiStore.ts:206-221` applyIndexData — `data.upcode`/`data.broker_statuses`/`data.market_phase` 접근
+  - 실제 throw 확률은 낮으나(대부분 가드 존재), 구조적 보호 부재는 P25 위반. 한 updater throw가 전체 WS 디스패치 체인을 중단시킬 수 있음.
+
+- **A2-04-02 (MEDIUM)**: `hotStore.ts:367-370,390,412,431` `window.dispatchEvent(new CustomEvent(...))`가 try/catch **밖**. CustomEvent 핸들러(`real-data-tick`, `orderbook-tick`, `program-tick`)가 throw하면 `applyRealData`/`applyOrderbookUpdate`/`applyProgramUpdate` 호출자로 전파 → `binding.ts` 핸들러(170-180, try/catch 없음) → WS 디스패치로 전파. `real-data-tick`은 고빈도(매 틱마다 발생), 핸들러는 UI 컴포넌트에서 `addEventListener`로 등록하므로 한 컴포넌트 핸들러 오류가 같은 틱의 다른 종목 시세 갱신을 막을 수 있음.
+  - 발생 위치: `applyRealData`(390 — 매 틱, 367-370 — rank-0 변경 시), `applyOrderbookUpdate`(412), `applyProgramUpdate`(431)
+  - 단 이 위반의 핸들러 등록부는 A3(UI 컴포넌트 렌더링, 세션 7) 영역에서 본격 조사 예정. 본 세션에서는 dispatchEvent 호출부 전파 경로만 식별.
+
+**양호 항목**:
+- `store.ts:40-46` listener 루프 try/catch + `console.error('[Store] listener error', e)` — **P25 준수** (F-02 fix). silent pass 아님 (P20 준수).
+- `store.ts:22-33` shallow merge + Object.is 변경 감지 — 변경된 키가 있을 때만 state 교체 + listener 통지. 불필요한 리렌더 방지. **P24 단순성 준수**.
+- `store.ts:49-54` subscribe/unsubscribe — Set 기반, 반환된 unsubscribe 함수로 정리. **P25 준수** (listener 누적 방지).
+- `hotStore.ts` apply* 함수 13개(`applyAccountUpdate`, `applyRealData`, `applyOrderbookUpdate`, `applyProgramUpdate`, `applyRealtimeReset`, `applyBuyTargetsUpdate`, `applySectorScores`, `applySectorStocksRefresh`, `applyOrderFilled`, `applySellHistoryUpdate`, `applyBuyHistoryUpdate`, `applyDailySummaryUpdate`, `applyInitialSnapshotHot`) — 모두 `hotStore.setState()` 경유. setState 내부 listener 루프 보호됨. **P25 준수** (updater 본문 제외 — A2-04-01).
+- `uiStore.ts` apply* 함수 16개(`applyAvgAmtProgress`, `applyBootstrapStage`, `applySettingsChanged`, `applyEngineReloadComplete`, `applyCircuitBreakerOpen`, `clearCircuitBreakerOpen`, `applyOrderTimeBlocked`, `clearOrderTimeBlocked`, `applyRiskBlockStatus`, `clearRiskBlockStatus`, `applyBuyLimitStatus`, `applyTestDataResetCompleted`, `applyWsSubscribeStatus`, `applyMarketPhase`, `applyIndexData`, `setSelectedSector`, `applyInitialSnapshotUI`) — 모두 `uiStore.setState()` 경유. **P25 준수** (updater 본문 제외 — A2-04-01).
+- `stockClassificationStore.ts:34-45` `applyStockClassificationChanged` — `stockClassificationStore.setState()` 경유. **P25 준수**.
+- `hotStore.ts:98-109` `recalcTradeAmountRank` — `targets.filter().sort()` 후 rank 할당. 순수 함수, throw 가능성 낮음. 다만 `binding.ts:157` buy-targets-delta updater 내부에서 호출되므로 A2-04-01 경로에 포함.
+- `hotStore.ts:71-95` `rebuildBuyTargetIndex`/`rebuildPositionIndex` — Map 구축. 순수 함수. `binding.ts:158`에서 updater 내부 호출 — A2-04-01 경로 포함.
+- `hotStore.ts:15-23` `normalizeStockCode` — `code.includes('_')`에서 code undefined 시 throw. 다수 apply* 함수에서 호출. A2-04-01 경로의 주요 throw 소스 후보.
+
+**교차 원칙 점검**:
+- **P25**: listener 루프 자체는 준수. updater 함수(19)와 dispatchEvent(367-431)가 보호 우회 경로.
+- **P20**: `console.error` 로깅으로 silent pass 아님. 양호.
+- **P23**: 3개 store(hot/ui/stockClassification) 모두 동일 `createStore` 패턴 사용 — 일관성 준수. 단 updater 보호 부재가 3개 store에 공통 적용되어 일관된 취약점.
+- **P16**: listener 루프 보호는 살아있는 경로. updater 보호 부재는 실제 throw 시에만 발현.
+- **P21**: listener 오류 시 `console.error`로 개발자 알림. 사용자 직접 투명성은 A3(세션 7)에서 UI 표시 여부 점검 예정.
+
+**수정 방향 (참고용, 승인 시 별도 세션)**:
+- A2-04-01: `setState` 본문을 try/catch로 감싸거나, updater 함수 호출(19)을 try/catch로 감싸고 실패 시 로깅 후 early return. `store.ts` 단일 파일 수정으로 3개 store 모두 보호. P24 단순성 — `createStore` 한 곳에서 보호하므로 중복 추상화 아님.
+- A2-04-02: `applyRealData`/`applyOrderbookUpdate`/`applyProgramUpdate` 내 `window.dispatchEvent`를 try/catch로 감싸거나, CustomEvent 핸들러 등록부(A3 영역)에서 try/catch 추가. dispatchEvent 호출부 보호가 더 근본적. 단 A3(세션 7)에서 핸들러 등록 패턴 조사 후 결정 권장.
 
 ### 6.2 위반 목록
-_작성 예정_
+
+| ID | 영역 | 파일:줄 | 위반 내용 | 영향 범위 | 등급 | 관련 원칙 | 조사 세션 | 수정 승인 |
+|----|------|---------|-----------|-----------|------|-----------|-----------|-----------|
+| A2-04-01 | A2 Store listener | `frontend/src/stores/store.ts:19` | `setState`의 updater 함수 `partial(state)`가 try/catch 밖. updater 본문 throw 시 listener 루프(40-46) 보호 우회, setState 호출자에게 즉시 전파 → binding.ts 핸들러(A1-01-04) → WS 디스패치(A1-01-01)로 전파 → 같은 이벤트 후속 핸들러 미실행 + 같은 바이너리 프레임 후속 이벤트 손실 | 고빈도 이벤트(real-data, buy-targets-delta, account-update)의 updater throw 시 화면 갱신 전체 중단 위험. throw 확률은 낮으나 구조적 보호 부재 | MEDIUM | P25, P16 | 세션 4 | 미승인 |
+| A2-04-02 | A2 Store listener | `frontend/src/stores/hotStore.ts:367-370,390,412,431` | `window.dispatchEvent(new CustomEvent(...))`가 try/catch 밖. CustomEvent 핸들러(real-data-tick/orderbook-tick/program-tick) throw 시 apply* 함수 호출자로 전파 → binding.ts 핸들러 → WS 디스패치로 전파. real-data-tick은 매 틱 발생 | 한 UI 컴포넌트 핸들러 오류가 같은 틱의 다른 종목 시세 갱신 중단. 핸들러 등록부는 A3(세션 7)에서 조사 예정 | MEDIUM | P25, P7 | 세션 4 | 미승인 |
 
 ---
 

@@ -6,6 +6,36 @@
 
 ## 직전 완료 작업
 
+### P25 전수 조사 세션 4: A2 Store listener 조사 완료 (2026-07-23)
+
+**세션**: 단일 세션. 조사 보고서 1파일 갱신. 조사만 수행 (코드 수정 없음).
+
+**배경**: P25 전수 조사 9세션 중 세션 4. A2 Store listener 영역(`store.ts`, `hotStore.ts`, `uiStore.ts`, `stockClassificationStore.ts` 4개) 조사. 우선순위 4위 — 화면 갱신 최종 경로. 세션 1(A1 WS 디스패치)에서 식별한 A1-01-04(binding.ts 핸들러 try/catch 없음)의 후속 경로 검증.
+
+**조사 파일**: 4개 메인 파일 (store 57줄, hotStore 607줄, uiStore 256줄, stockClassification 54줄) + 2개 보조 파일 (stores/index 5줄, binding 338줄 — setState 호출부·updater 함수 본문 확인용)
+
+**식별 위반 2건**:
+- **A2-04-01 (MEDIUM)**: `store.ts:19` `setState`의 updater 함수 `partial(state)`가 try/catch 밖. updater 본문 throw 시 listener 루프(40-46) 보호 우회, setState 호출자에게 즉시 전파 → binding.ts 핸들러(A1-01-04) → WS 디스패치(A1-01-01)로 전파. 고빈도 이벤트(real-data, buy-targets-delta, account-update)의 updater throw 시 화면 갱신 전체 중단 위험. throw 확률은 낮으나 구조적 보호 부재.
+- **A2-04-02 (MEDIUM)**: `hotStore.ts:367-370,390,412,431` `window.dispatchEvent(new CustomEvent(...))`가 try/catch 밖. CustomEvent 핸들러(real-data-tick/orderbook-tick/program-tick) throw 시 apply* 함수 호출자로 전파 → binding.ts 핸들러 → WS 디스패치로 전파. real-data-tick은 매 틱 발생. 핸들러 등록부는 A3(세션 7)에서 조사 예정.
+
+**핵심 발견**:
+- `store.ts:40-46` listener 루프는 try/catch + `console.error('[Store] listener error', e)`로 보호 — **F-02 fix로 P25 준수**. silent pass 아님 (P20 준수).
+- 하지만 updater 함수(19)와 dispatchEvent(367-431)가 listener 루프 보호를 우회하는 2개 경로. 한 예외가 WS 디스패치 체인 전체로 전파될 수 있음.
+- 3개 store(hot/ui/stockClassification) 모두 동일 `createStore` 패턴 — P23 일관성 준수. 단 updater 보호 부재가 3개 store에 공통 적용.
+- 양호 항목 다수: apply* 함수 30개(hotStore 13 + uiStore 16 + stockClassification 1) 모두 setState 경유로 listener 루프 보호됨. shallow merge + Object.is 변경 감지로 불필요한 리렌더 방지(P24). subscribe/unsubscribe Set 기반 정리(P25).
+
+**수정 방향 (참고용, 승인 시 별도 세션)**:
+- A2-04-01: `setState` 본문을 try/catch로 감싸거나 updater 함수 호출(19)을 try/catch로 감싸고 실패 시 로깅 후 early return. `store.ts` 단일 파일 수정으로 3개 store 모두 보호.
+- A2-04-02: `applyRealData`/`applyOrderbookUpdate`/`applyProgramUpdate` 내 `window.dispatchEvent`를 try/catch로 감싸거나, CustomEvent 핸들러 등록부(A3 영역)에서 try/catch 추가. A3(세션 7) 조사 후 결정 권장.
+
+**검증**: 조사만 수행 — typecheck/build 불필요. 잔존 프로세스 0건.
+
+**화면 영향**: 없음 (조사 보고서 작성).
+
+**다음 세션 대기 사항**: 세션 5 (B3 대형 스케줄러·파이프라인 조사) 진행 대기. 조사 보고서 `docs/p25_isolated_failure_investigation.md` 섹션 7에 결과 누적 예정. 조사 파일: `daily_time_scheduler.py`, `market_close_pipeline.py`.
+
+---
+
 ### P25 전수 조사 세션 3: B2 파이프라인 연산 루프 조사 완료 (2026-07-23)
 
 **세션**: 단일 세션. 조사 보고서 1파일 갱신. 조사만 수행 (코드 수정 없음).
