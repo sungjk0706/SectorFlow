@@ -6,6 +6,56 @@
 
 ## 직전 완료 작업
 
+### P25 전수 조사 세션 6: B4 워커·IO·재시도 루프 조사 완료 (2026-07-23)
+
+**세션**: 단일 세션. 조사만 수행 (코드 수정 없음). HANDOVER 미해결 문제 3건 기록.
+
+**배경**: P25 전수 조사 9세션 중 세션 6. B4 워커·IO·재시도 루프 영역 조사. 우선순위 6위 — 알림 워커, DB Writer, 텔레그램 폴링, 키움 REST 재시도, 엔진 캐시 오케스트레이션, WS 서버 루프. 한 번 중단 시 알림 누락/DB 쓰기 누락/REST 호출 실패 위험이나 다른 구성요소는 정상 작동 유지 필요.
+
+**조사 파일**: 10개 (`notification_worker.py`, `db_writer.py`, `telegram_bot.py`, `kiwoom_rest.py`, `kiwoom_stock_rest.py`, `engine_cache.py`, `app.py`, `ws.py`, `ws_settings.py`, `ws_orders.py`)
+
+**조사 항목 3가지 결과**:
+
+1. **while 루프 예외 격리**:
+   - `notification_worker._consume_loop`: 예외 시 로깅 후 계속 + finally task_done → P25 OK
+   - `telegram_bot._poll_loop`: had_error 플래그 + 2초 sleep 재시도 → P25 OK
+   - `kiwoom_rest._paginated_request`: 부분 결과 반환 → P25 OK
+   - `kiwoom_stock_rest.fetch_ka10081_daily_5d_data`: 예외 시 break → P25 OK
+   - `ws.py/ws_settings.py/ws_orders.py` 수신 루프: WebSocketDisconnect pass + 기타 예외 로깅 + finally unregister → P25 OK
+   - `db_writer._db_writer_loop`: 예외 시 로깅 후 계속 → P25 OK이나 task_done 스킵 이슈 (B4-06-01)
+
+2. **재시도 루프 실패 전파**:
+   - `kiwoom_rest._call_api`: 429 adaptive backoff + 예외 시 재시도 + 모두 실패 시 (None, hit_429) → 양호
+   - `kiwoom_rest._issue_token`: 3회 재시도 → 양호
+   - `kiwoom_rest._request`: 예외 시 재시도 없이 즉시 return None → `_call_api`와 일관성 부족 (B4-06-02)
+   - `telegram_bot._poll_one`: 예외 시 return 후 다음 폴링에서 재시도 → 양호
+
+3. **IO 블로킹 여부**:
+   - **발견 없음**. 모든 I/O는 async(httpx.AsyncClient, aiosqlite, asyncio.Queue/Event) 기반. 동기 `requests`, `sqlite3`, `time.sleep`, `threading` 사용 없음. P1-P3 준수.
+
+**식별 위반 3건** (미해결 문제에 기록):
+- **B4-06-01 (MEDIUM)**: `db_writer.py:79` `_process_operation` 실패 시 `task_done()` 스킵 → 큐 미완료 카운트 누적, graceful shutdown 시 `queue.join()` 무한 대기 위험. 단 `stop_db_writer`는 cancel + 큐 비우기로 회피하므로 실제 발현은 제한적 → **P25 부분 위반**
+- **B4-06-02 (LOW)**: `kiwoom_rest.py:353-356` `_request` 예외 시 재시도 없이 즉시 `return None` — `_call_api`는 예외 시 재시도하는데 일관성 부족 → **P23(일관성) 위반**. 의도적일 수 있으나 확인 필요
+- **B4-06-03 (MEDIUM)**: `engine_cache.py:148-149` 치명적 오류(RuntimeError 포함, line 28 `master_stocks_table 테이블에 데이터가 없습니다`)를 "무시, 기존 흐름으로 진행"으로 처리 → **P20(폴백 금지) 위반 소지** — master_stocks_table 없음이 치명적인데 폴백으로 덮음
+
+**핵심 발견**:
+- IO 블로킹 전무 — P1-P3(async 일관성) 전면 준수. 동기 I/O 사용 0건.
+- 백그라운드 태스크(app.py 3곳, engine_cache.py 2곳) 전부 add_done_callback로 조용히 사망 시 로깅 → P25 준수
+- WS 서버 3개 루프 동일 패턴(WebSocketDisconnect pass + 기타 예외 로깅 + finally unregister) → P25 일관적
+- notification_worker/telegram_bot/kiwoom_rest 재시도 루프는 예외 격리 잘 되어 있음
+- 양호 항목 다수: 10개 파일 중 7개는 위반 없음. 위반 3건 모두 경계 케이스(실제 발현 제한적 또는 의도적 가능성)
+
+**수정 방향 (참고용, 승인 시 별도 세션)**:
+- B4-06-01: `_db_writer_loop` line 78-79를 try/finally로 감싸 `task_done()`을 항상 호출하도록. 또는 `_process_operation` 실패 시에도 task_done 호출
+- B4-06-02: `_request` 예외 시 `_call_api`와 동일하게 재시도 추가, 또는 의도적일 경우 주석 명시
+- B4-06-03: line 148-149에서 RuntimeError(치명적)와 일반 Exception 분리 — RuntimeError는 raise 전파, 일반 Exception만 로깅 후 진행
+
+**검증**: 조사만 수행 — typecheck/build 불필요. 잔존 프로세스 0건.
+
+**다음 세션 대기 사항**: 세션 7 (A3 UI 컴포넌트 렌더링 조사) 진행 대기. 조사 보고서 `docs/p25_isolated_failure_investigation.md` 섹션 9에 결과 누적 예정. 조사 파일: 36개 파일 (pages/*, components/common/*, layout/*). 조사 범위: subscribe() 리스너 내부 렌더링 실패 시 전파, addEventListener 콜백 실패 시 전파, 컴포넌트 팩토리 내부 DOM 조작 예외 처리, 개별 칩/컴포넌트 렌더링 실패가 전체 화면 중단 유발 여부 (F-02 사례와 동일 패턴).
+
+---
+
 ### P25 전수 조사 세션 5: B3 대형 스케줄러·파이프라인 조사 완료 (2026-07-23)
 
 **세션**: 단일 세션. 조사만 수행 (코드 수정 없음). HANDOVER 미해결 문제 1건 기록.
