@@ -41,7 +41,6 @@ class TestBuildEngineSettingsDictDefaults:
         result = build_engine_settings_dict({})
         assert result["buy_block_rise_on"] is True
         assert result["buy_block_fall_on"] is True
-        assert result["buy_block_strength_on"] is False  # 기본값 0 → 비활성
 
     def test_buy_amt_on_migration_from_zero(self):
         # 기존 buy_amt=0 → buy_amt_on=False (한도 없음)

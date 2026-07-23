@@ -51,7 +51,6 @@ BUY_REJECT_SIGNAL_INTERVAL = "signal_interval"   # 30초 연속신호 차단
 BUY_REJECT_PRICE_ZERO = "price_zero"             # 현재가 ≤ 0
 BUY_REJECT_RISE_GUARD = "rise_guard"             # 등락률 상승 가드
 BUY_REJECT_FALL_GUARD = "fall_guard"             # 등락률 하락 가드
-BUY_REJECT_STRENGTH_GUARD = "strength_guard"     # 체결강도 가드
 BUY_REJECT_SYMBOL_LIMIT = "symbol_limit"         # 종목당 한도 초과
 BUY_REJECT_RISK_SINGLE = "risk_single"           # 단일 종목 비중 초과
 
@@ -336,23 +335,6 @@ class AutoTradeManager:
                 stk_nm_g = data_manager.get_stock_name(stk_cd, access_token)
                 logger.info("[매매] [등락률가드] %s(%s) 등락률 %s — 매수 차단", stk_nm_g, stk_cd, _block_reason)
                 return False, _reject_code
-
-        # 체결강도 가드 (토글 기반)
-        _strength_on = bool(raw_all.get("buy_block_strength_on", False))
-        _min_strength = float(raw_all.get("buy_min_strength", 0))
-        if _strength_on and _min_strength > 0:
-            _strength_raw = state.master_stocks_cache.get(stk_cd, {}).get("strength")
-            if _strength_raw is not None and _strength_raw != "-":
-                try:
-                    _strength_val = float(_strength_raw)
-                except (ValueError, TypeError):
-                    stk_nm_s = data_manager.get_stock_name(stk_cd, access_token)
-                    logger.warning("[매매] [체결강도가드] %s(%s) 체결강도 값 해석 실패 (원본=%r) — 매수 차단", stk_nm_s, stk_cd, _strength_raw)
-                    return False, BUY_REJECT_STRENGTH_GUARD
-                if _strength_val < _min_strength:
-                    stk_nm_s = data_manager.get_stock_name(stk_cd, access_token)
-                    logger.info("[매매] [체결강도가드] %s(%s) 체결강도 %.0f < %.0f — 매수 차단", stk_nm_s, stk_cd, _strength_val, _min_strength)
-                    return False, BUY_REJECT_STRENGTH_GUARD
 
         # ── 주문가능 금액 내에서 최대한 매수 (buy_amt는 한도, 의무 지출액 아님) ──
         _orderable = get_risk_manager().get_withdrawable_deposit()

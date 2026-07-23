@@ -38,7 +38,6 @@ from backend.app.services.trading import (  # noqa: E402
     BUY_REJECT_RISK_PROFIT_RATE,
     BUY_REJECT_RISK_SINGLE,
     BUY_REJECT_SIGNAL_INTERVAL,
-    BUY_REJECT_STRENGTH_GUARD,
     _map_risk_reason_to_code,
 )
 
@@ -407,23 +406,6 @@ class TestExecuteBuyReasonCodes:
             result, reason = await mgr.execute_buy("005930", 70000, "token")
         assert result is False
         assert reason == BUY_REJECT_RISE_GUARD
-
-    @pytest.mark.asyncio
-    async def test_strength_guard_returns_strength_guard_reason(self):
-        """체결강도 미달 시 사유코드 BUY_REJECT_STRENGTH_GUARD 반환."""
-        mgr = _make_manager(_raw_settings(buy_block_strength_on=True, buy_min_strength=100))
-        with patch("backend.app.services.trading.auto_buy_effective", return_value=True), \
-             patch("backend.app.services.engine_state.state") as mock_state, \
-             patch("backend.app.services.engine_account.get_positions", new_callable=AsyncMock, return_value=[]), \
-             patch("backend.app.services.trading.is_test_mode", return_value=True), \
-             patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock, return_value=[]), \
-             patch("backend.app.services.data_manager.get_stock_name", return_value="삼성전자"):
-            mock_state.realtime_latency_exceeded = False
-            mock_state.integrated_system_settings_cache = _raw_settings(buy_block_strength_on=True, buy_min_strength=100)
-            mock_state.master_stocks_cache = {"005930": {"strength": 50.0}}  # 체결강도 50 < 한도 100
-            result, reason = await mgr.execute_buy("005930", 70000, "token")
-        assert result is False
-        assert reason == BUY_REJECT_STRENGTH_GUARD
 
     @pytest.mark.asyncio
     async def test_risk_circuit_returns_risk_circuit_reason(self):

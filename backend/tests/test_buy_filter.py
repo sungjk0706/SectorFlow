@@ -73,7 +73,7 @@ def _sector(
 class TestCheckStockGuards:
     def test_pass_all_guards(self):
         stock = _stock(change_rate=2.0, strength=100.0)
-        result = check_stock_guards(stock, block_rise_pct=7.0, block_fall_pct=7.0, min_strength=0.0)
+        result = check_stock_guards(stock, block_rise_pct=7.0, block_fall_pct=7.0)
         assert result.guard_pass is True
         assert result.guard_reason == ""
 
@@ -109,32 +109,6 @@ class TestCheckStockGuards:
     def test_pass_just_above_fall_threshold(self):
         stock = _stock(change_rate=-6.9)
         result = check_stock_guards(stock, block_fall_pct=7.0)
-        assert result.guard_pass is True
-
-    def test_block_by_min_strength(self):
-        stock = _stock(strength=50.0)
-        result = check_stock_guards(stock, min_strength_on=True, min_strength=80.0)
-        assert result.guard_pass is False
-        assert result.guard_reason == "체결강도"
-
-    def test_pass_min_strength_equal(self):
-        stock = _stock(strength=80.0)
-        result = check_stock_guards(stock, min_strength_on=True, min_strength=80.0)
-        assert result.guard_pass is True
-
-    def test_min_strength_on_false_disables_check(self):
-        stock = _stock(strength=10.0)
-        result = check_stock_guards(stock, min_strength_on=False, min_strength=80.0)
-        assert result.guard_pass is True
-
-    def test_min_strength_zero_disables_check(self):
-        stock = _stock(strength=10.0)
-        result = check_stock_guards(stock, min_strength_on=True, min_strength=0.0)
-        assert result.guard_pass is True
-
-    def test_strength_minus_one_skips_strength_check(self):
-        stock = _stock(strength=-1.0)
-        result = check_stock_guards(stock, min_strength_on=True, min_strength=80.0)
         assert result.guard_pass is True
 
     def test_rise_takes_priority_over_fall(self):

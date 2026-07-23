@@ -8,6 +8,9 @@
 
 | 날짜 | 세션 | 작업 | 상태 |
 |------|------|------|------|
+| 2026-07-23 | T3-S30 | 체결강도 매수차단 제거 백엔드 구현 (다단계 워크플로우 세션 3) — Step 3-1~3-9 (백엔드 5파일 + 테스트 3파일) — safe-trade/P15/P16/P18/P20/P21/P22/P23/P24/P25 | 완료 |
+| 2026-07-23 | T3-S29 | 체결강도 제거 심층 사전조사 + 태스크 파일 작성 (다단계 워크플로우 세션 2) — safe-trade/P15/P16/P20/P21/P22/P23/P24/P25 (태스크 작성만, 코드 수정 없음) | 태스크 완료 |
+| 2026-07-23 | T3-S28 | 체결강도 제거 사전조사 + 사용자 방향 확정 + 설계 문서 작성 (구현은 다음 세션) — safe-trade/P15/P16/P20/P21/P22/P23/P24/P25 (설계만, 코드 수정 없음) | 설계 완료 |
 | 2026-07-23 | T3-S27 | DataTable 빈 데이터 시 헤더 라벨 잘림 방지 (initFromRows 빈 데이터 분기 호출) — P21/P16/P20 (프론트엔드) | 완료 |
 | 2026-07-23 | T3-S26 | 전 페이지 패널 padding 8px 통일 (shell 기본값 변경 + sector-ranking 중복 오버라이드 제거) — P23/P24/P10 (프론트엔드) | 완료 |
 | 2026-07-23 | T3-S25 | 업종순위 페이지 가운데·우측 패널 padding 16px→8px (컬럼 너비 확보) — P21/P23 (프론트엔드) | 완료 |
@@ -27,6 +30,111 @@
 ---
 
 ## 직전 완료 작업
+
+### T3-S30 체결강도 매수차단 제거 백엔드 구현 — 완료 (2026-07-23) — safe-trade + P15/P16/P18/P20/P21/P22/P23/P24/P25 (다단계 워크플로우 세션 3, 백엔드 구현)
+
+**세션**: 다단계 워크플로우 세션 3 (백엔드 구현). 세션 2(태스크 작성) 산출물 `docs/plan_strength_removal.md` 섹션 2의 Step 3-1~3-9 수행. safe-trade 스킬 적용 (거래 로직 제거). 사용자 명시적 실행 지시어("세션 3 백엔드 구현 시작해줘")로 승인.
+
+**배경**: 세션 1(설계) + 세션 2(태스크 작성) 완료. 본 세션에서 체결강도 매수차단 기능의 백엔드 구현(거래 로직 + 설정 + 테스트) 수행.
+
+**작업 내용** (9 Step, 8개 파일):
+1. **Step 3-1** `buy_filter.py` — `check_stock_guards`에서 `min_strength_on`/`min_strength` 파라미터 + 체결강도 가드 if 블록 + docstring 설명 제거
+2. **Step 3-2** `buy_filter.py` — `create_buy_targets` 파라미터 + `check_stock_guards` 호출부 인수 + `build_buy_targets_from_settings`의 settings.get 2줄 제거
+3. **Step 3-3** `trading.py` — `BUY_REJECT_STRENGTH_GUARD` 상수 + 체결강도 가드 블록(16줄) 제거
+4. **Step 3-4** `settings_defaults.py` — `buy_block_strength_on`/`buy_min_strength` 기본값 2줄 제거
+5. **Step 3-5** `engine_settings.py` — `_strength` 변수 파싱(2줄) + 결과 dict 2개 키 제거
+6. **Step 3-6** `engine_service.py` — `_SECTOR_UI_KEYS` 세트에서 2개 키 제거
+7. **Step 3-7** `test_trading.py` — `BUY_REJECT_STRENGTH_GUARD` import + `test_strength_guard_returns_strength_guard_reason` 테스트 함수 제거
+8. **Step 3-8** `test_buy_filter.py` — `min_strength=0.0` 인수 + 체결강도 테스트 5개 제거
+9. **Step 3-9** `test_engine_settings.py` — `buy_block_strength_on` 기본값 검증 줄 제거
+
+**수정 파일**: 8개 (백엔드 5 + 테스트 3).
+- `backend/app/domain/buy_filter.py` (가드 블록 + 파라미터 3곳 제거)
+- `backend/app/services/trading.py` (상수 + 가드 블록 제거)
+- `backend/app/core/settings_defaults.py` (기본값 2줄 제거)
+- `backend/app/core/engine_settings.py` (파싱 로직 + dict 키 제거)
+- `backend/app/services/engine_service.py` (UI 키 세트 제거)
+- `backend/tests/test_trading.py` (import + 테스트 함수 제거)
+- `backend/tests/test_buy_filter.py` (인수 + 테스트 5개 제거)
+- `backend/tests/test_engine_settings.py` (검증 줄 제거)
+
+**아키텍처 원칙 부합**:
+- P15 (단일 주문 경로): `execute_buy()` 경로 유지, 분기/우회 없음 — 가드 검사만 제거
+- P16 (살아있는 경로): `BUY_REJECT_STRENGTH_GUARD` 상수·미사용 파라미터 완전 제거, dead code 잔존 없음
+- P18 (테스트모드 동등성): 모드 분기 변경 없음
+- P20 (폴백 금지): 가드 제거 후 폴백 분기 신규 생성 없음
+- P22 (데이터 정합성): strength 데이터 자체 유지 → 정합성 영향 없음
+- P23 (일관성): 설정 키 백엔드에서 제거 (프론트엔드는 세션 4에서 처리)
+- P24 (단순성): 가드 로직·미사용 파라미터/상수 제거로 단순화
+- P25 (격리된 실패): 각 가드는 독립 if 블록 → 제거 시 다른 가드 영향 없음
+
+**영향 범위**: 백엔드 거래 로직 + 설정 + 테스트. 프론트엔드는 세션 4에서 처리 (매수 설정 화면 토글/입력란 제거, 매수 후보 화면 컬럼 제거). 업종 순위 화면·텔레그램의 체결강도 표시는 유지.
+
+**UI 기준 화면 변화 (규칙 0-4)** — 본 세션은 백엔드만 수정하여 화면 변화 없음. 프론트엔드 화면 변화는 세션 4에서 발생:
+- 매수 설정 화면: 체결강도 토글+입력란 사라짐 (세션 4)
+- 매수 후보 화면: 체결강도 컬럼 사라짐 (세션 4)
+- 업종 순위 화면, 텔레그램: 체결강도 표시 유지 (변화 없음)
+
+**검증**:
+- 잔존 참조 검색 (백엔드): `min_strength_on`, `buy_block_strength_on`, `buy_min_strength`, `BUY_REJECT_STRENGTH_GUARD`, `strength_guard`, `min_strength` 모두 **0건**
+- pytest (3개 파일): **176개 통과**
+- pytest (전체): **2839개 통과**
+- 런타임 기동 (`-W error::RuntimeWarning`): **정상 기동** — RuntimeWarning 에러 없음 (await 누락 없음), 체결강도 가드 메시지 없음, 정산 대조 정상
+- 잔존 프로세스: **0건**
+- safe-trade: 거래 모드(test/simulation) 변경 없음, P15 단일 주문 경로 유지, P16 dead code 잔존 없음, P18 테스트모드 동등성 유지
+
+**작업 중 발견 문제**: 없음.
+
+**다음 세션 인계**:
+- **세션 4 (프론트엔드 구현)**: `docs/plan_strength_removal.md` 섹션 3의 Step 4-1~4-3 수행. 프론트엔드 3개 파일 수정 (buy-target.ts, buy-settings.ts, types/index.ts). frontend-fix 스킬 적용. 검증: npm run build + 브라우저 확인 + 잔존 참조 검색.
+- 참조 문서: `docs/strength_removal_design.md` (설계), `docs/plan_strength_removal.md` (태스크)
+- 승인 상태: 세션 4 진행 시 사용자 명시적 실행 지시어 필요 (규칙 0)
+
+---
+
+### T3-S29 체결강도 제거 심층 사전조사 + 태스크 파일 작성 — 완료 (2026-07-23) — safe-trade + P15/P16/P20/P21/P22/P23/P24/P25 (태스크 작성만, 코드 수정 없음)
+
+**세션**: 다단계 워크플로우 세션 2 (태스크 작성). 세션 1(설계) 산출물 `docs/strength_removal_design.md` 기반 심층 사전조사 + 태스크 파일 작성. 코드 수정 없음 (AGENTS.md 섹션3 규칙 0 준수). safe-trade 스킬 적용 (거래 로직 제거).
+
+**배경**: 세션 1에서 체결강도 제거 설계 문서 작성 완료. 세션 2에서는 설계 문서 기반 심층 사전조사(규칙 0-2 4항목) 수행 후 구현 단계별 태스크 파일 작성.
+
+**작업 내용** (3건, 코드 수정 없음):
+1. **심층 사전조사** — 규칙 0-2 4항목 수행:
+   - 의존성: `buy_filter` 호출부 전수 추적 (체결강도 가드는 buy_filter.py + trading.py 2곳 존재). `build_buy_targets_from_settings` 호출처(sector_data_provider.py, engine_sector_confirm.py)는 settings dict 전달 방식이라 호출처 수정 불필요.
+   - 영향범위: 백엔드 5 + 프론트엔드 3 + 테스트 3 + 문서 2 = 13개 파일.
+   - 아키텍처 원칙 부합: P15/P16/P20/P21/P22/P23/P24/P25 각각 확인.
+   - 기존 공통 자산 확인: `makeStrengthColumn`, `strengthColor`, `createStrengthCell` 등은 업종순위 화면이 사용하므로 유지.
+2. **설계 문서 대비 6건 정정 발견** — 심층 조사로 설계 문서의 부정확 항목 정정:
+   - `buy-target.ts`에 "strength 정렬 옵션" 실제 없음 → 수정 불필요
+   - `sector_sort_keys`의 "strength"는 유지 (체결강도 데이터 유지, 정렬 기준 사용 가능)
+   - `BUY_GLOBAL_REJECT_REASONS` frozenset에 `BUY_REJECT_STRENGTH_GUARD` 미포함 → 수정 불필요
+   - `test_trading.py` `_raw_settings` 헬퍼는 수정 불필요 (기본값 미포함)
+   - `test_buy_filter.py:76`의 `min_strength=0.0` 인수 추가 제거 대상 발견
+   - `engine_service.py` 설정 키 목록 제거 대상 확인 (218줄)
+3. **태스크 파일 작성** — `docs/plan_strength_removal.md` (352줄). 심층 사전조사 결과, 설계 문서 정정 사항, 세션 3~5 상세 Step, 검증 계획, 잔존 참조 최종 검색 목록, safe-trade 체크리스트 포함.
+
+**수정 파일**: 1개 (문서).
+- `docs/plan_strength_removal.md` (신규 작성, 352줄)
+
+**아키텍처 원칙 부합**: P15/P16/P20/P21/P22/P23/P24/P25 — 세션 1 설계 문서와 동일. 태스크 파일에 상세 기록.
+
+**영향 범위**: 본 세션은 태스크 작성만. 코드 수정 없음. 다음 세션에서 세션 3(백엔드 구현, 9단계) → 세션 4(프론트엔드 구현, 3단계) → 세션 5(문서 수정, 3단계) 순서로 진행.
+
+**UI 기준 화면 변화 (규칙 0-4)** — 세션 1 설계 문서와 동일:
+- 매수 설정 화면: 체결강도 토글+입력란 사라짐.
+- 매수 후보 화면: 체결강도 컬럼 사라짐.
+- 업종 순위 화면, 텔레그램: 체결강도 표시 유지 (변화 없음).
+
+**검증**: 본 세션은 태스크 작성만이므로 코드 검증 없음. 태스크 파일 작성 완료.
+
+**작업 중 발견 문제**: 본 세션에서 발견 문제 없음.
+
+**다음 세션 인계**:
+- **세션 3 (백엔드 구현)**: `docs/plan_strength_removal.md` 섹션 2의 Step 3-1~3-9 수행. 백엔드 5개 파일 + 테스트 3개 파일 수정. safe-trade 스킬 적용 (P15/P16/P18). 검증: pytest + 런타임 기동 + 잔존 참조 검색.
+- 참조 문서: `docs/strength_removal_design.md` (설계), `docs/plan_strength_removal.md` (태스크)
+- 승인 상태: 태스크 파일 작성 완료. 다음 세션(백엔드 구현) 진행 시 사용자 명시적 실행 지시어 필요(규칙 0).
+
+---
 
 ### T3-S27 DataTable 빈 데이터 시 헤더 라벨 잘림 방지 — 완료 (2026-07-23) — P21 사용자 투명성 + P16 살아있는 경로 + P20 폴백 금지 (프론트엔드, frontend-fix)
 
@@ -549,6 +657,27 @@
 ---
 
 ## 다음 세션 진행 대기
+
+**체결강도 매수차단 기능 제거 — 다단계 워크플로우 (백엔드 + 프론트엔드 + 문서)** — 2026-07-23 세션 1(설계) + 세션 2(태스크 작성) + 세션 3(백엔드 구현) 완료. 세션 4(프론트엔드 구현) 대기 중. 규칙 0(승인 전 수정 금지) 적용 — 사용자 명시적 실행 지시어 대기.
+
+**진행 상황**:
+- 세션 1 (설계) ☑ — `docs/strength_removal_design.md` 작성
+- 세션 2 (태스크 작성) ☑ — `docs/plan_strength_removal.md` 작성 (심층 사전조사 완료, 설계 문서 대비 6건 정정)
+- 세션 3 (백엔드 구현) ☑ — Step 3-1~3-9 완료 (백엔드 5파일 + 테스트 3파일). 검증: pytest 2839개 통과 + 런타임 기동 정상 + 잔존 참조 0건
+- 세션 4 (프론트엔드 구현) ◐ 대기 — Step 4-1~4-3 (프론트엔드 3파일)
+- 세션 5 (문서 수정) ☐ — Step 5-1~5-3 (문서 2파일 + HANDOVER.md 갱신 + 계획서 삭제)
+
+**세션 4 수행 항목** (`docs/plan_strength_removal.md` 섹션 3 참조):
+- Step 4-1: `buy-target.ts` — 체결강도 컬럼 제거 (makeStrengthColumn 호출 제거)
+- Step 4-2: `buy-settings.ts` — 체결강도 설정 UI 제거 (변수 선언 + syncBuyBlock + buildBuyBlockSection + cleanup)
+- Step 4-3: `types/index.ts` — 타입 필드 2개 제거 (buy_block_strength_on, buy_min_strength)
+- 검증: npm run build + 브라우저 확인(매수 설정/매수 후보/업종 순위 화면) + 잔존 참조 검색
+- 주의: strength 데이터 자체는 유지 (업종순위 화면·텔레그램 표시용)
+
+**참조 문서**: `docs/strength_removal_design.md` (설계), `docs/plan_strength_removal.md` (태스크)
+**승인 상태**: 세션 4 진행 시 사용자 명시적 실행 지시어 필요 (규칙 0)
+
+---
 
 **T3-S24 매수/매도 상태 배지 로직 공통 추출 (P23 일관성)** — `buy-target.ts:247-281`의 매수상태 체인과 `sell-position.ts:146-186`의 매도상태 체인이 거의 동일 코드로 중복. 우선순위 구조(서킷브레이커 > 리스크 > 시간대 > 자동매매 OFF > 자동매수/매도 OFF > 시간대 외)와 색상·status 매핑이 동일. `computeBuyBlockStatus(uiState, settings)` / `computeSellBlockStatus(uiState, settings)`(또는 단일 `computeBlockStatus(side, ...)`)를 `badge.ts` 또는 별도 유틸로 추출하여 양쪽에서 호출. 사전조사 시 양쪽 로직 diff 상세 비교 + 추출 위치(`badge.ts` 확장 vs 신규 유틸) 결정 필요.
 
