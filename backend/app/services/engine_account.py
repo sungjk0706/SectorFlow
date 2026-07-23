@@ -62,15 +62,6 @@ async def get_total_buy_amount() -> int:
     return int(state.broker_rest_totals.get("total_buy", 0) or 0)
 
 
-async def get_total_eval_amount() -> int:
-    """총 평가금액 반환."""
-    from backend.app.services import dry_run
-
-    if is_test_mode(state.integrated_system_settings_cache):
-        return sum(int(p.get("eval_amt", 0) or 0) for p in await dry_run.get_positions())
-    return int(state.broker_rest_totals.get("total_eval", 0) or 0)
-
-
 async def get_total_pnl() -> int:
     """총 손익 반환."""
     from backend.app.services import dry_run
@@ -78,15 +69,6 @@ async def get_total_pnl() -> int:
     if is_test_mode(state.integrated_system_settings_cache):
         return sum(int(p.get("pnl_amount", 0) or 0) for p in await dry_run.get_positions())
     return int(state.broker_rest_totals.get("total_pnl", 0) or 0)
-
-
-async def get_total_pnl_rate() -> float:
-    """총 수익률 반환."""
-    if is_test_mode(state.integrated_system_settings_cache):
-        total_buy = await get_total_buy_amount()
-        total_pnl = await get_total_pnl()
-        return round((total_pnl / total_buy) * 100, 2) if total_buy > 0 else 0.0
-    return float(state.broker_rest_totals.get("total_rate", 0.0) or 0.0)
 
 
 async def get_buy_limit_status() -> dict:
@@ -350,27 +332,6 @@ async def _refresh_account_snapshot_meta() -> None:
     state.account_snapshot = snap
 
 
-
-async def _apply_last_price_to_positions(stk_cd: str, price: int) -> bool:
-    """실시간 체결(REAL 01) — 체결가 반영 + 평가손익·수익률·평가금액 실시간 재계산. 보유에 반영되면 True."""
-    from backend.app.services.engine_account_rest import (
-        apply_last_price_to_positions_inplace,
-        recalc_broker_totals_from_positions,
-    )
-    from backend.app.services.engine_symbol_utils import _base_stk_cd
-    from backend.app.services import dry_run
-    
-    # 테스트모드: 모의투자 가상 잔고에 현재가 반영 (6자리 정규화)
-    if is_test_mode(state.integrated_system_settings_cache):
-        nk = _base_stk_cd(str(stk_cd or "").strip())
-        return await dry_run.update_price(nk, price) if nk else False
-    
-    hit = apply_last_price_to_positions_inplace(state.positions, stk_cd, price)
-    if hit:
-        state.broker_rest_totals = recalc_broker_totals_from_positions(state.positions, state.broker_rest_totals)
-    return hit
-
-
 async def _apply_balance_realtime(item: dict, vals: dict) -> None:
     """
     실시간 잔고(04) — item 필드로 계좌/종목 레코드 구분 후 처리.
@@ -473,23 +434,6 @@ async def get_held_codes() -> set[str]:
             cd = str(s.get("stk_cd", "")).strip()
             if cd and int(s.get("qty", 0) or 0) > 0:
                 out.add(_base_stk_cd(cd))
-        except (TypeError, ValueError):
-            continue
-    return out
-
-
-async def _position_codes_with_qty() -> set[str]:
-    """보유 수량이 있는 종목 코드(레이더·작전 REG 해제 시 유지 대상)."""
-    from backend.app.services import dry_run
-
-    if is_test_mode(state.integrated_system_settings_cache):
-        return await dry_run.position_codes()
-    out: set[str] = set()
-    for s in list(state.positions):
-        try:
-            cd = str(s.get("stk_cd", "")).strip()
-            if cd and int(s.get("qty", 0) or 0) > 0:
-                out.add(cd)
         except (TypeError, ValueError):
             continue
     return out

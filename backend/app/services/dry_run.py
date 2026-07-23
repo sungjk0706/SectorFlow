@@ -299,15 +299,6 @@ async def get_position(code: str) -> Optional[dict]:
     return _test_positions.get(norm_code)
 
 
-async def has_position(code: str) -> bool:
-    from backend.app.services.engine_symbol_utils import _base_stk_cd
-
-    await _refresh_positions_if_dirty()
-    norm_code = _base_stk_cd(code)
-    pos = _test_positions.get(norm_code)
-    return pos is not None and int(pos.get("qty", 0)) > 0
-
-
 async def position_codes() -> set[str]:
     await _refresh_positions_if_dirty()
     return {cd for cd, p in _test_positions.items() if int(p.get("qty", 0)) > 0}

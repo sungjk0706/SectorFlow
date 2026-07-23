@@ -7,7 +7,6 @@
 - 실시간 필드 초기화
 """
 import asyncio
-import time
 import logging
 from backend.app.services import engine_state
 
@@ -43,7 +42,6 @@ async def build_initial_snapshot() -> dict:
             logger.warning("[시스템] %s 호출 실패 — 기본값 사용: %s", fn.__name__, exc, exc_info=True)
             return default
 
-    _snapshot_t0 = time.perf_counter()
     await _safe(_refresh_account_snapshot_meta, None)
     positions = await _safe(get_positions, [])
     account_snap = await _safe(get_account_snapshot, {})

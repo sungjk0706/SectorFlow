@@ -45,7 +45,6 @@ from backend.app.services.daily_time_scheduler import (  # noqa: E402
     _kst_now,
     _parse_hm,
     is_ws_subscribe_window,
-    is_edit_window_open,
     _fire_unified_confirmed_fetch,
     _do_unified_confirmed_fetch,
     _broadcast_market_phase,
@@ -928,26 +927,6 @@ class TestIsWsSubscribeWindow:
             assert result is False
 
 
-# ── is_edit_window_open ───────────────────────────────────────────────────────
-
-class TestIsEditWindowOpen:
-    @pytest.mark.asyncio
-    async def test_ws_window_closed_edit_open(self):
-        mock_state = MagicMock()
-        mock_state.market_phase = {"krx": "장개시전", "nxt": "장개시전"}
-        with patch("backend.app.services.engine_state.state", mock_state):
-            result = await is_edit_window_open({"timetable.confirmed_download": "20:40"})
-            assert result is True
-
-    @pytest.mark.asyncio
-    async def test_ws_window_open_edit_closed(self):
-        mock_state = MagicMock()
-        mock_state.market_phase = {"krx": "정규장", "nxt": "메인마켓"}
-        with patch("backend.app.services.engine_state.state", mock_state):
-            result = await is_edit_window_open({"timetable.confirmed_download": "20:40"})
-            assert result is False
-
-
 # ── is_heavy_operation_allowed ────────────────────────────────────────────────
 
 class TestIsHeavyOperationAllowed:
@@ -1230,11 +1209,9 @@ class TestOnWsSubscribeStart:
         with patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(8, 0, weekday=5)), \
              patch("backend.app.services.daily_time_scheduler.gc"):
             mock_state = MagicMock()
-            mock_state.ws_subscribe_window_active = False
             with patch("backend.app.services.engine_state.state", mock_state):
                 await _on_ws_subscribe_start()
-                # Weekend: function returns early without setting ws_subscribe_window_active to True
-                assert mock_state.ws_subscribe_window_active is False
+                # Weekend: function returns early without subscribing
 
     @pytest.mark.asyncio
     async def test_trading_day_starts_subscription(self):
@@ -1252,7 +1229,6 @@ class TestOnWsSubscribeStart:
              patch("backend.app.services.engine_account_notify.notify_cache"), \
              patch("backend.app.services.daily_time_scheduler._broadcast_market_phase"):
             await _on_ws_subscribe_start()
-            assert mock_state.ws_subscribe_window_active is True
             mock_state.ws_window_changed_event.set.assert_called_once()
 
 
@@ -1428,7 +1404,6 @@ class TestOnWsSubscribeStartIdempotency:
             await _on_ws_subscribe_start()
             # 멱등성 가드로 스킵 — 필드 초기화 호출 없음
             mock_reset.assert_not_awaited()
-            # ws_subscribe_window_active는 이미 True로 설정되지 않음 (가드 통과 못함)
             mock_state.ws_window_changed_event.set.assert_not_called()
 
     @pytest.mark.asyncio
@@ -1446,7 +1421,6 @@ class TestOnWsSubscribeStartIdempotency:
             await _on_ws_subscribe_start()
             # 보완 경로 — _on_realtime_fields_reset() 호출 (GC+필드+게이트+캐시 통합)
             mock_reset.assert_awaited_once()
-            assert mock_state.ws_subscribe_window_active is True
 
     @pytest.mark.asyncio
     async def test_skips_fields_reset_if_already_done(self):
@@ -1463,7 +1437,6 @@ class TestOnWsSubscribeStartIdempotency:
             await _on_ws_subscribe_start()
             # 보완 스킵 — _on_realtime_fields_reset() 호출 없음
             mock_reset.assert_not_awaited()
-            assert mock_state.ws_subscribe_window_active is True
 
 
 # ── _on_ws_subscribe_end ──────────────────────────────────────────────────────
@@ -1482,7 +1455,6 @@ class TestOnWsSubscribeEnd:
              patch("backend.app.services.ws_subscribe_control._set_status"), \
              patch("backend.app.services.daily_time_scheduler._broadcast_market_phase"):
             await _on_ws_subscribe_end()
-            assert mock_state.ws_subscribe_window_active is False
             assert mock_state.confirmed_done is False
             mock_state.ws_window_changed_event.set.assert_called_once()
 
@@ -1552,7 +1524,6 @@ class TestInitWsSubscribeState:
              patch("backend.app.services.engine_account_notify.notify_cache"), \
              patch("backend.app.services.daily_time_scheduler._broadcast_market_phase"):
             await _init_ws_subscribe_state()
-            assert mock_state.ws_subscribe_window_active is True
 
     @pytest.mark.asyncio
     async def test_outside_window_sets_inactive(self):
@@ -1562,7 +1533,6 @@ class TestInitWsSubscribeState:
              patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock, return_value=False), \
              patch("backend.app.services.ws_subscribe_control._set_status"):
             await _init_ws_subscribe_state()
-            assert mock_state.ws_subscribe_window_active is False
 
     @pytest.mark.asyncio
     async def test_empty_settings_raises(self):
@@ -1587,7 +1557,6 @@ class TestInitWsSubscribeState:
              patch("backend.app.services.engine_account_notify.notify_cache") as mock_notify_cache, \
              patch("backend.app.services.daily_time_scheduler._broadcast_market_phase"):
             await _init_ws_subscribe_state()
-            assert mock_state.ws_subscribe_window_active is True
             mock_gc.disable.assert_called_once()
             mock_reset.assert_awaited_once()
             mock_notify_cache.prev_scores = []

@@ -136,8 +136,6 @@ async def _load_broker_spec_async(broker_nm: str, settings: dict) -> list:
 
 async def run_engine_loop() -> None:
 
-    _t0 = time.perf_counter()
-
     engine_state.state.login_ok = False
     engine_state.state.connector_manager = None
     engine_state.state.broker_tokens.clear()

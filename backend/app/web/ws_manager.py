@@ -48,7 +48,6 @@ def _encode_realdata(data: dict, subscribed_fids: frozenset[str] | None = None) 
     cache_key = (data_hash, fids_tuple)
 
     # 캐시 확인
-    global _encoding_cache
     if cache_key in _encoding_cache:
         return _encoding_cache[cache_key]
 
@@ -139,10 +138,6 @@ class WSManager:
     def set_subscribed_fids(self, ws: WebSocket, fids: list[str]) -> None:
         """클라이언트의 구독 FID 설정."""
         self._client_subscribed_fids[ws] = frozenset(fids)
-
-    def clear_subscribed_fids(self, ws: WebSocket) -> None:
-        """클라이언트의 구독 FID 해제 (기본 ALLOWED_FIDS 사용)."""
-        self._client_subscribed_fids.pop(ws, None)
 
     # ------------------------------------------------------------------
     # 메시지 전송

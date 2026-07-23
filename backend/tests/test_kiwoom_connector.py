@@ -382,7 +382,6 @@ class TestKiwoomConnectorInit:
         assert conn._socket is None
         assert conn._token is None
         assert conn._connected is False
-        assert conn._received_count == 0
         assert conn._reconnecting is False
         assert conn._stop_reconnect is False
         assert conn._ws_queue is None
@@ -748,7 +747,6 @@ class TestKiwoomConnectorOnWsMessage:
         cb = AsyncMock()
         conn._receive_callback = cb
         await conn._on_ws_message({"trnm": "REAL"})
-        assert conn._received_count == 1
         cb.assert_called_once_with({"trnm": "REAL"})
 
     async def test_sync_callback_called(self):
@@ -756,14 +754,12 @@ class TestKiwoomConnectorOnWsMessage:
         cb = MagicMock()
         conn._receive_callback = cb
         await conn._on_ws_message({"trnm": "REG"})
-        assert conn._received_count == 1
         cb.assert_called_once_with({"trnm": "REG"})
 
     async def test_no_callback_no_error(self):
         conn = _make_kiwoom_connector()
         conn._receive_callback = None
         await conn._on_ws_message({"trnm": "REAL"})
-        assert conn._received_count == 1
 
 
 # ── KiwoomConnector._on_socket_disconnect ──────────────────────────────────────

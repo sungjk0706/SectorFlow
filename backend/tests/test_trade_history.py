@@ -2,9 +2,9 @@
 
 기존: get_daily_summary buy_total 중복 합산 회귀 테스트 4건
 추가: _ensure_loaded, _insert_trade, _trim_expired,
-      record_buy, record_sell, _calc_avg_buy_price, _lookup_sector,
+      record_buy, record_sell, _lookup_sector,
       get_buy/sell_history, get_total_realized_pnl, get_daily_summary 확장,
-      clear_test_history, build_positions_from_trades, get_earliest_buy_date,
+      clear_test_history, build_positions_from_trades,
       _reset_global_state, 브로드캐스트 함수들
 """
 from __future__ import annotations
@@ -604,42 +604,6 @@ class TestRecordSell:
         assert rec["sector"] == "미분류"
 
 
-# ── _calc_avg_buy_price ───────────────────────────────────────────────────────
-
-class TestCalcAvgBuyPrice:
-    """_calc_avg_buy_price: 매수 이력에서 가중평균 매입가 역산."""
-
-    async def test_weighted_average(self):
-        from backend.app.services import trade_history
-        trade_history._buy_history.clear()
-        trade_history._buy_history.extend([
-            _make_buy_rec(price=70000, qty=10),
-            _make_buy_rec(price=72000, qty=10),
-        ])
-        with patch("backend.app.services.trade_history._history_lock"):
-            avg = await trade_history._calc_avg_buy_price("005930")
-        assert avg == round((700000 + 720000) / 20)
-
-    async def test_no_buy_history_returns_zero(self):
-        from backend.app.services import trade_history
-        trade_history._buy_history.clear()
-        with patch("backend.app.services.trade_history._history_lock"):
-            avg = await trade_history._calc_avg_buy_price("999999")
-        assert avg == 0
-
-    async def test_multi_stock_mixed(self):
-        from backend.app.services import trade_history
-        trade_history._buy_history.clear()
-        trade_history._buy_history.extend([
-            _make_buy_rec(stk_cd="005930", price=70000, qty=10),
-            _make_buy_rec(stk_cd="000660", price=120000, qty=5),
-            _make_buy_rec(stk_cd="005930", price=71000, qty=10),
-        ])
-        with patch("backend.app.services.trade_history._history_lock"):
-            avg = await trade_history._calc_avg_buy_price("005930")
-        assert avg == round((700000 + 710000) / 20)
-
-
 # ── _lookup_sector ────────────────────────────────────────────────────────────
 
 class TestLookupSector:
@@ -982,46 +946,6 @@ class TestBuildPositionsFromTrades:
         assert "000660" not in positions
 
 
-# ── get_earliest_buy_date ─────────────────────────────────────────────────────
-
-class TestGetEarliestBuyDate:
-    """get_earliest_buy_date: 해당 종목의 최초 매수일 조회."""
-
-    async def test_tracks_earliest(self):
-        from backend.app.services import trade_history
-        trade_history._loaded = True
-        trade_history._buy_history.clear()
-        trade_history._buy_history.extend([
-            _make_buy_rec(date="2026-07-10"),
-            _make_buy_rec(date="2026-07-05"),
-            _make_buy_rec(date="2026-07-08"),
-        ])
-        with patch("backend.app.services.trade_history._history_lock"):
-            result = await trade_history.get_earliest_buy_date("005930", "test")
-        assert result == "2026-07-05"
-
-    async def test_no_buy_returns_empty(self):
-        from backend.app.services import trade_history
-        trade_history._loaded = True
-        trade_history._buy_history.clear()
-        with patch("backend.app.services.trade_history._history_lock"):
-            result = await trade_history.get_earliest_buy_date("999999", "test")
-        assert result == ""
-
-    async def test_multi_stock_isolated(self):
-        from backend.app.services import trade_history
-        trade_history._loaded = True
-        trade_history._buy_history.clear()
-        trade_history._buy_history.extend([
-            _make_buy_rec(stk_cd="005930", date="2026-07-10"),
-            _make_buy_rec(stk_cd="000660", date="2026-07-01"),
-            _make_buy_rec(stk_cd="005930", date="2026-07-05"),
-        ])
-        with patch("backend.app.services.trade_history._history_lock"):
-            result = await trade_history.get_earliest_buy_date("005930", "test")
-        assert result == "2026-07-05"
-
-
 # ── _reset_global_state ───────────────────────────────────────────────────────
 
 class TestResetGlobalState:
@@ -1086,14 +1010,6 @@ class TestBroadcastFunctions:
             with patch("backend.app.services.trade_history.get_buy_history", new_callable=AsyncMock, return_value=[]):
                 await trade_history._broadcast_full_buy_history("test")
         mock_ws.broadcast.assert_called_once()
-
-    async def test_broadcast_order_filled(self):
-        from backend.app.services import trade_history
-        mock_ws = MagicMock()
-        mock_ws.broadcast = AsyncMock()
-        with patch("backend.app.web.ws_manager.ws_manager", mock_ws):
-            await trade_history._broadcast_order_filled({"test": True})
-        mock_ws.broadcast.assert_called_once_with("order-filled", {"test": True})
 
     async def test_broadcast_exception_ignored(self):
         from backend.app.services import trade_history

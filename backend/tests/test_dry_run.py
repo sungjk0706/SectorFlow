@@ -7,7 +7,7 @@
   - update_price (가격 변경/동일/미보유/손익 재계산)
   - set_stock_name (설정/미보유)
   - get_positions / get_position (전체/단일/미보유)
-  - has_position / position_codes (보유/수량0/codes)
+  - position_codes (보유/codes)
   - clear (포지션 클리어)
   - _recalc_pnl (손익 계산/buy_amt=0)
   - 가상 예수금 (set_virtual_deposit)
@@ -215,18 +215,10 @@ class TestGetPositions:
         assert pos is None
 
 
-# ── has_position / position_codes ─────────────────────────────────────────────
+# ── position_codes ────────────────────────────────────────────────────────────
 
-class TestHasPosition:
-    """has_position / position_codes: 보유 여부, codes 집합."""
-
-    async def test_has_position_true(self):
-        dry_run._test_positions[_TEST_CODE] = _make_position(qty=10)
-        assert await dry_run.has_position(_TEST_CODE) is True
-
-    async def test_has_position_zero_qty_false(self):
-        dry_run._test_positions[_TEST_CODE] = _make_position(qty=0)
-        assert await dry_run.has_position(_TEST_CODE) is False
+class TestPositionCodes:
+    """position_codes: 보유 종목 codes 집합."""
 
     async def test_position_codes(self):
         dry_run._test_positions[_TEST_CODE] = _make_position(qty=10)

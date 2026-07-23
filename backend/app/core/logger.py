@@ -23,7 +23,6 @@ from pathlib import Path
 import aiofiles
 from loguru import logger as _loguru_logger
 LOG_DIR = Path(__file__).resolve().parents[2] / "logs"
-LOG_FILE = LOG_DIR / "trading.log"
 
 _configured = False
 
@@ -66,13 +65,6 @@ async def _rotate_old_logs(pattern: str, keep_days: int) -> None:
                 await asyncio.to_thread(f.unlink, missing_ok=True)
     except Exception as e:
         sys.stderr.write(f"[logger] _rotate_old_logs 실패: {e}\n")
-
-
-def _get_daily_log_path(base_name: str) -> Path:
-    """일별 로그 파일 경로 반환 — trading_2026-04-08.log 형식."""
-    today = datetime.now().strftime("%Y-%m-%d")
-    stem = base_name.replace(".log", "")
-    return LOG_DIR / f"{stem}_{today}.log"
 
 
 async def _async_file_writer_loop(base_name: str, keep_days: int) -> None:

@@ -735,12 +735,6 @@ async def _step2_filter_eligible(
             logger.warning("%s 전종목 통합 조회(ka10099) 동일 종목코드 판정 충돌 — %d종목, 예시=%s", tag, len(conflict_codes), conflict_preview)
         _broadcast_confirmed_progress(0, 0, message=f"✅ 2단계 완료: 총 {unique_codes}종목 중 {len(confirmed_codes)}종목 적격 판정", step=2)
 
-        # UI 표시용 요약 문자열 — 일반 용어 사용 (P21 사용자 투명성)
-        summary_str = f"전체 {unique_codes}종목 → 매매 가능 {len(confirmed_codes)}종목 (제외 {excluded_count}종목, {pct_int}%)"
-        if filter_reasons:
-            top_reasons = sorted(filter_reasons.items(), key=lambda x: x[1], reverse=True)[:5]
-            reason_strs = [f"{k} {v}개" for k, v in top_reasons]
-            summary_str += " | 주요 제외: " + ", ".join(reason_strs)
         _meta_top = [
             {"k": k, "v": v}
             for k, v in sorted(filter_reasons.items(), key=lambda x: x[1], reverse=True)[:5]
@@ -997,7 +991,6 @@ async def _run_confirmed_pipeline(
         logger.info("%s 확정 조회 이미 진행 중 — 생략", tag)
         return {"fetched": 0, "failed": 0, "cached": False, "skipped": True}
     engine_state.state.confirmed_refresh_running_confirmed = True
-    engine_state.state.confirmed_refresh_message = ""
 
     _broker_token_registered = False
 
@@ -1070,7 +1063,6 @@ async def _run_confirmed_pipeline(
             from backend.app.services.engine_lifecycle import broadcast_engine_status
             await broadcast_engine_status()
         engine_state.state.confirmed_refresh_running_confirmed = False
-        engine_state.state.confirmed_refresh_message = ""
 
 
 # ---------------------------------------------------------------------------
@@ -1185,7 +1177,6 @@ async def fetch_5d_data_only() -> dict:
         logger.info("[다운로드] 다운로드 이미 진행 중 — 생략")
         return {"fetched": 0, "failed": 0, "cached": False, "skipped": True}
     engine_state.state.confirmed_refresh_running_5d = True
-    engine_state.state.confirmed_refresh_message = ""
 
     _broker_token_registered = False
 
@@ -1213,7 +1204,6 @@ async def fetch_5d_data_only() -> dict:
         if total == 0:
             logger.warning("[다운로드] 대상 종목 없음 — 중단")
             engine_state.state.confirmed_refresh_running_5d = False
-            engine_state.state.confirmed_refresh_message = ""
             return {"fetched": 0, "failed": 0, "cached": False}
 
         # ── DB 연결 (INSERT OR REPLACE 기반 — 전체 DELETE 제거로 부분 실패 시 기존 데이터 보존) ──
@@ -1413,4 +1403,3 @@ async def fetch_5d_data_only() -> dict:
             from backend.app.services.engine_lifecycle import broadcast_engine_status
             await broadcast_engine_status()
         engine_state.state.confirmed_refresh_running_5d = False
-        engine_state.state.confirmed_refresh_message = ""

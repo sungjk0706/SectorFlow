@@ -103,8 +103,4 @@ class LsOrderProvider(OrderProvider):
 # ── WebSocket Provider ────────────────────────────────────────────────
 class LsWebSocketProvider(WebSocketProvider):
     def __init__(self, auth_provider: AuthProvider):
-        self._auth = auth_provider
-
-    def get_ws_uri(self) -> str:
-        from backend.app.core.broker_urls import build_broker_urls
-        return build_broker_urls("ls")["ws_uri"]
+        pass

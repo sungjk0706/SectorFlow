@@ -257,23 +257,6 @@ async def migrate_add_hidden_to_custom_sectors():
         logger.debug("[데이터] 사용자 업종 숨김 컬럼 이미 존재 - 생략")
 
 
-async def migrate_add_nxt_enable_column():
-    """기존 master_stocks_table에 nxt_enable 컬럼 추가 (마이그레이션).
-    앱 기동 시마다 1회 실행하여 구 버전 DB에서도 nxt_enable 컬럼이 보장되도록 한다."""
-    conn = await get_db_connection()
-
-    cursor = await conn.execute("PRAGMA table_info(master_stocks_table)")
-    columns = await cursor.fetchall()
-    column_names = {col["name"] for col in columns}
-
-    if "nxt_enable" not in column_names:
-        await conn.execute("ALTER TABLE master_stocks_table ADD COLUMN nxt_enable INTEGER DEFAULT 0")
-        await conn.commit()
-        logger.info("[데이터] 전종목 마스터 테이블에 NXT 거래 가능 컬럼 추가 완료")
-    else:
-        logger.debug("[데이터] NXT 거래 가능 컬럼 이미 존재 - 생략")
-
-
 async def migrate_add_buy_date_to_trades():
     """기존 trades에 buy_date 컬럼 추가 (마이그레이션).
 

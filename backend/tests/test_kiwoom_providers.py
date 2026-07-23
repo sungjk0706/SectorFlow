@@ -2,9 +2,9 @@
 
 KiwoomAuthProvider: __init__ 캐싱, get_access_token, ensure_token, broker_name, rest_api
 KiwoomOrderProvider: send_order 위임
-KiwoomStockProvider: __init__ 타입 검증, fetch_all_stocks, fetch_stock_daily_price, fetch_stock_5day_data,
-  fetch_all_stocks_5day, fetch_all_stocks_daily_confirmed
-KiwoomWebSocketProvider: get_ws_uri
+KiwoomStockProvider: __init__ 타입 검증, fetch_all_stocks, fetch_stock_5day_data,
+  fetch_all_stocks_daily_confirmed
+KiwoomWebSocketProvider: __init__
 
 의존성: state (lazy import), KiwoomRestAPI, kiwoom_order.send_order, kiwoom_stock_rest, build_broker_urls
 → 모두 mock으로 대체 (conftest hang 방지 원칙 준수)
@@ -174,12 +174,10 @@ class TestKiwoomOrderProvider:
         auth = MagicMock()
         from backend.app.core.kiwoom_providers import KiwoomOrderProvider
         provider = KiwoomOrderProvider(auth)
-        assert provider._auth is auth
 
     def test_init_no_auth(self):
         from backend.app.core.kiwoom_providers import KiwoomOrderProvider
         provider = KiwoomOrderProvider(None)
-        assert provider._auth is None
 
     async def test_send_order_delegates_to_kiwoom_order(self):
         from backend.app.core.kiwoom_providers import KiwoomOrderProvider
@@ -214,13 +212,11 @@ class TestKiwoomStockProvider:
         mock_api = MagicMock()
         auth.rest_api = mock_api
         provider = KiwoomStockProvider(auth)
-        assert provider._auth is auth
         assert provider._rest_api is mock_api
 
     def test_init_no_auth(self):
         from backend.app.core.kiwoom_providers import KiwoomStockProvider
         provider = KiwoomStockProvider(None)
-        assert provider._auth is None
         assert provider._rest_api is None
 
     def test_init_wrong_auth_type_raises(self):
@@ -246,23 +242,6 @@ class TestKiwoomStockProvider:
         assert result == [{"code": "005930"}]
         mock_fetch.assert_called_once_with(mock_api, http_timeout=30.0)
 
-    async def test_fetch_stock_daily_price_no_rest_api(self):
-        from backend.app.core.kiwoom_providers import KiwoomStockProvider
-        provider = KiwoomStockProvider(None)
-        result = await provider.fetch_stock_daily_price("005930", "20260711")
-        assert result is None
-
-    async def test_fetch_stock_daily_price_delegates(self):
-        from backend.app.core.kiwoom_providers import KiwoomAuthProvider, KiwoomStockProvider
-        auth = MagicMock(spec=KiwoomAuthProvider)
-        mock_api = MagicMock()
-        auth.rest_api = mock_api
-        provider = KiwoomStockProvider(auth)
-        with patch("backend.app.core.kiwoom_stock_rest.fetch_ka10081_daily_price", new_callable=AsyncMock, return_value={"close": "70000"}) as mock_fetch:
-            result = await provider.fetch_stock_daily_price("005930", "20260711")
-        assert result == {"close": "70000"}
-        mock_fetch.assert_called_once_with(mock_api, "005930", "20260711")
-
     async def test_fetch_stock_5day_data_no_rest_api(self):
         from backend.app.core.kiwoom_providers import KiwoomStockProvider
         provider = KiwoomStockProvider(None)
@@ -279,24 +258,6 @@ class TestKiwoomStockProvider:
             result = await provider.fetch_stock_5day_data("005930", "20260711")
         assert result == {"avg_vol": "100000"}
         mock_fetch.assert_called_once_with(mock_api, "005930", "20260711")
-
-    async def test_fetch_all_stocks_5day_no_rest_api(self):
-        from backend.app.core.kiwoom_providers import KiwoomStockProvider
-        provider = KiwoomStockProvider(None)
-        result = await provider.fetch_all_stocks_5day(["005930"], "20260711")
-        assert result == {}
-
-    async def test_fetch_all_stocks_5day_delegates(self):
-        from backend.app.core.kiwoom_providers import KiwoomAuthProvider, KiwoomStockProvider
-        auth = MagicMock(spec=KiwoomAuthProvider)
-        mock_api = MagicMock()
-        auth.rest_api = mock_api
-        provider = KiwoomStockProvider(auth)
-        on_progress = MagicMock()
-        with patch("backend.app.core.kiwoom_stock_rest.fetch_ka10081_all_stocks_5day", new_callable=AsyncMock, return_value={"005930": {}}) as mock_fetch:
-            result = await provider.fetch_all_stocks_5day(["005930"], "20260711", interval_sec=0.5, on_progress=on_progress)
-        assert result == {"005930": {}}
-        mock_fetch.assert_called_once_with(mock_api, ["005930"], "20260711", interval_sec=0.5, on_progress=on_progress)
 
     async def test_fetch_all_stocks_daily_confirmed_no_rest_api(self):
         from backend.app.core.kiwoom_providers import KiwoomStockProvider
@@ -324,23 +285,7 @@ class TestKiwoomWebSocketProvider:
         auth = MagicMock()
         from backend.app.core.kiwoom_providers import KiwoomWebSocketProvider
         provider = KiwoomWebSocketProvider(auth)
-        assert provider._auth is auth
 
     def test_init_no_auth(self):
         from backend.app.core.kiwoom_providers import KiwoomWebSocketProvider
         provider = KiwoomWebSocketProvider(None)
-        assert provider._auth is None
-
-    def test_get_ws_uri_returns_broker_urls(self):
-        from backend.app.core.kiwoom_providers import KiwoomWebSocketProvider
-        provider = KiwoomWebSocketProvider(None)
-        with patch("backend.app.core.broker_urls.build_broker_urls", return_value={"ws_uri": "wss://kiwoom.example.com/ws"}):
-            uri = provider.get_ws_uri()
-        assert uri == "wss://kiwoom.example.com/ws"
-
-    def test_get_ws_uri_calls_with_kiwoom(self):
-        from backend.app.core.kiwoom_providers import KiwoomWebSocketProvider
-        provider = KiwoomWebSocketProvider(None)
-        with patch("backend.app.core.broker_urls.build_broker_urls", return_value={"ws_uri": "wss://test"}) as mock_fn:
-            provider.get_ws_uri()
-            mock_fn.assert_called_once_with("kiwoom")

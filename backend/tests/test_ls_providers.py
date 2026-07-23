@@ -2,7 +2,6 @@
 
 LsAuthProvider: __init__ 캐싱, get_access_token, ensure_token, broker_name, rest_api
 LsOrderProvider: send_order (buy/sell/unsupported), 성공/실패
-LsWebSocketProvider: get_ws_uri
 
 의존성: state (lazy import), LsRestAPI, build_broker_urls
 → 모두 mock으로 대체 (conftest hang 방지 원칙 준수)
@@ -278,23 +277,3 @@ class TestLsOrderProvider:
         await provider.send_order({}, "token", "sell", "035420", 5, price=200000)
         call_kwargs = mock_api.sell_order.call_args.kwargs
         assert call_kwargs["stock_code"] == "A035420"
-
-
-# ── LsWebSocketProvider ────────────────────────────────────────────────────────
-
-class TestLsWebSocketProvider:
-    def test_get_ws_uri_returns_broker_urls(self):
-        auth = MagicMock()
-        from backend.app.core.ls_providers import LsWebSocketProvider
-        provider = LsWebSocketProvider(auth)
-        with patch("backend.app.core.broker_urls.build_broker_urls", return_value={"ws_uri": "wss://ls.example.com/ws"}):
-            uri = provider.get_ws_uri()
-        assert uri == "wss://ls.example.com/ws"
-
-    def test_get_ws_uri_calls_with_ls(self):
-        auth = MagicMock()
-        from backend.app.core.ls_providers import LsWebSocketProvider
-        provider = LsWebSocketProvider(auth)
-        with patch("backend.app.core.broker_urls.build_broker_urls", return_value={"ws_uri": "wss://test"}) as mock_fn:
-            provider.get_ws_uri()
-            mock_fn.assert_called_once_with("ls")

@@ -4,14 +4,11 @@ TokenInfo: is_expired_soon (정상/만료임박/짧은dt/파싱예외)
 KiwoomRestAPI: __init__, __aenter__/__aexit__, _get_client, _reset_client,
   _ensure_token, _call_api (429/성공/HTTP오류/예외/토큰없음),
   _issue_token (성공/429/HTTP실패/토큰필드없음/크리덴셜없음),
-  revoke_token, get_access_token, get_auth_headers,
+  revoke_token, get_access_token,
   _request (성공/429/예외), _paginated_request (단일/연속조회/토큰없음),
-  get_account_number, get_deposit_detail, get_balance_detail,
-  fetch_ka10081_daily_price, fetch_ka10081_sector_all, fetch_market_stock_name_map,
-  fetch_ka20001_index (정상/부호처리/None), fetch_ka10099_full (정상/숫자/알파벳/빈),
-  fetch_ka10099_market_code_list, fetch_market_stock_list,
-  fetch_ka10001_nxt_enable (정상/중첩/실패), fetch_nxt_enable_map
-kiwoom_try_token: 성공/크리덴셜없음/HTTP실패/토큰필드없음/예외
+  get_deposit_detail, get_balance_detail,
+  fetch_ka10099_full (정상/숫자/알파벳/빈),
+  fetch_ka10001_nxt_enable (정상/중첩/실패)
 
 의존성: httpx, broker_urls, broker_factory, kiwoom_stock_rest
 → 모두 mock으로 대체 (conftest hang 방지 원칙 준수)
@@ -375,7 +372,7 @@ class TestKiwoomRestRevokeToken:
             assert api._token_info is None
 
 
-# ── KiwoomRestAPI.get_access_token / get_auth_headers ──────────────────────────
+# ── KiwoomRestAPI.get_access_token ─────────────────────────────────────────────
 
 class TestKiwoomRestAccess:
     async def test_get_access_token_success(self):
@@ -390,21 +387,6 @@ class TestKiwoomRestAccess:
         with patch.object(api, "_ensure_token", AsyncMock(return_value=False)):
             token = await api.get_access_token()
             assert token is None
-
-    async def test_get_auth_headers_success(self):
-        api = _make_kiwoom_rest()
-        api._token_info = _make_token_info()
-        with patch.object(api, "_ensure_token", AsyncMock(return_value=True)):
-            headers = await api.get_auth_headers("ka00001")
-            assert headers is not None
-            assert "authorization" in headers
-            assert headers["api-id"] == "ka00001"
-
-    async def test_get_auth_headers_failure(self):
-        api = _make_kiwoom_rest()
-        with patch.object(api, "_ensure_token", AsyncMock(return_value=False)):
-            headers = await api.get_auth_headers("ka00001")
-            assert headers is None
 
 
 # ── KiwoomRestAPI._request ─────────────────────────────────────────────────────
@@ -521,27 +503,9 @@ class TestKiwoomRestPaginatedRequest:
             assert data is None
 
 
-# ── KiwoomRestAPI.get_account_number / get_deposit_detail / get_balance_detail ─
+# ── KiwoomRestAPI.get_deposit_detail / get_balance_detail ──────────────────────
 
 class TestKiwoomRestAccount:
-    async def test_get_account_number_success(self):
-        api = _make_kiwoom_rest()
-        with patch.object(api, "_request", AsyncMock(return_value={"acctNo": "12345"})):
-            result = await api.get_account_number()
-            assert result == "12345"
-
-    async def test_get_account_number_from_body(self):
-        api = _make_kiwoom_rest()
-        with patch.object(api, "_request", AsyncMock(return_value={"body": {"acctNo": "67890"}})):
-            result = await api.get_account_number()
-            assert result == "67890"
-
-    async def test_get_account_number_no_data(self):
-        api = _make_kiwoom_rest()
-        with patch.object(api, "_request", AsyncMock(return_value=None)):
-            result = await api.get_account_number()
-            assert result is None
-
     async def test_get_deposit_detail_success(self):
         api = _make_kiwoom_rest()
         with patch.object(api, "_request", AsyncMock(return_value={"data": "ok"})) as mock_req:
@@ -567,100 +531,7 @@ class TestKiwoomRestAccount:
             mock_pag.assert_called_once()
 
 
-# ── KiwoomRestAPI.fetch_ka10081_* / fetch_market_stock_name_map ────────────────
-
-class TestKiwoomRestFetch:
-    async def test_fetch_ka10081_daily_price_delegates(self):
-        api = _make_kiwoom_rest()
-        with patch("backend.app.core.kiwoom_rest._ka10081_fetch_single", AsyncMock(return_value={"close": 70000})) as mock_fn:
-            result = await api.fetch_ka10081_daily_price("005930", "20260711")
-            assert result == {"close": 70000}
-            mock_fn.assert_called_once_with(api, "005930", "20260711")
-
-    async def test_fetch_ka10081_sector_all_delegates(self):
-        api = _make_kiwoom_rest()
-        with patch("backend.app.core.kiwoom_rest._ka10081_fetch_all", AsyncMock(return_value={"005930": {}})) as mock_fn:
-            result = await api.fetch_ka10081_sector_all(["005930"], "20260711")
-            assert result == {"005930": {}}
-            mock_fn.assert_called_once()
-
-    async def test_fetch_market_stock_name_map_raises(self):
-        api = _make_kiwoom_rest()
-        with pytest.raises(NotImplementedError):
-            await api.fetch_market_stock_name_map()
-
-
-# ── KiwoomRestAPI.fetch_ka20001_index ──────────────────────────────────────────
-
-class TestKiwoomRestFetchIndex:
-    async def test_success(self):
-        api = _make_kiwoom_rest()
-        api._token_info = _make_token_info()
-        mock_resp = _mock_httpx_response(200, {
-            "cur_prc": "2,500", "pred_pre": "10", "flu_rt": "0.4",
-            "pred_pre_sig": "2", "rising": "500", "fall": "300",
-        })
-        with patch.object(api, "_call_api", AsyncMock(return_value=(mock_resp, False))):
-            result = await api.fetch_ka20001_index("0", "001")
-            assert result is not None
-            assert result["price"] == 2500.0
-            assert result["change"] == 10.0
-            assert result["rate"] == 0.4
-            assert result["up_count"] == 500
-            assert result["down_count"] == 300
-
-    async def test_negative_sign_4(self):
-        api = _make_kiwoom_rest()
-        api._token_info = _make_token_info()
-        mock_resp = _mock_httpx_response(200, {
-            "cur_prc": "2,500", "pred_pre": "10", "flu_rt": "0.4",
-            "pred_pre_sig": "4", "rising": "300", "fall": "500",
-        })
-        with patch.object(api, "_call_api", AsyncMock(return_value=(mock_resp, False))):
-            result = await api.fetch_ka20001_index("0", "001")
-            assert result["change"] == -10.0
-            assert result["rate"] == -0.4
-
-    async def test_negative_sign_5(self):
-        api = _make_kiwoom_rest()
-        api._token_info = _make_token_info()
-        mock_resp = _mock_httpx_response(200, {
-            "cur_prc": "2,500", "pred_pre": "10", "flu_rt": "0.4",
-            "pred_pre_sig": "5", "rising": "300", "fall": "500",
-        })
-        with patch.object(api, "_call_api", AsyncMock(return_value=(mock_resp, False))):
-            result = await api.fetch_ka20001_index("0", "001")
-            assert result["change"] < 0
-
-    async def test_resp_none(self):
-        api = _make_kiwoom_rest()
-        api._token_info = _make_token_info()
-        with patch.object(api, "_call_api", AsyncMock(return_value=(None, False))):
-            result = await api.fetch_ka20001_index("0", "001")
-            assert result is None
-
-    async def test_json_parse_failure(self):
-        api = _make_kiwoom_rest()
-        api._token_info = _make_token_info()
-        mock_resp = MagicMock()
-        mock_resp.json.side_effect = Exception("parse error")
-        with patch.object(api, "_call_api", AsyncMock(return_value=(mock_resp, False))):
-            result = await api.fetch_ka20001_index("0", "001")
-            assert result is None
-
-    async def test_pric_fallback(self):
-        api = _make_kiwoom_rest()
-        api._token_info = _make_token_info()
-        mock_resp = _mock_httpx_response(200, {
-            "pric": "3,000", "pred_pre": "20", "flu_rt": "0.7",
-            "pred_pre_sig": "2", "rising": "100", "fall": "50",
-        })
-        with patch.object(api, "_call_api", AsyncMock(return_value=(mock_resp, False))):
-            result = await api.fetch_ka20001_index("0", "001")
-            assert result["price"] == 3000.0
-
-
-# ── KiwoomRestAPI.fetch_ka10099_full / fetch_ka10099_market_code_list / fetch_market_stock_list ─
+# ── KiwoomRestAPI.fetch_ka10099_full ───────────────────────────────────────────
 
 class TestKiwoomRestFetchMarketCode:
     async def test_success_numeric(self):
@@ -733,20 +604,8 @@ class TestKiwoomRestFetchMarketCode:
             result = await api.fetch_ka10099_full("0")
             assert result == []
 
-    async def test_market_code_list_delegates(self):
-        api = _make_kiwoom_rest()
-        with patch.object(api, "fetch_ka10099_full", AsyncMock(return_value=[("005930", True, "0"), ("000660", False, "0")])):
-            result = await api.fetch_ka10099_market_code_list("0")
-            assert result == ["005930", "000660"]
 
-    async def test_market_stock_list_delegates(self):
-        api = _make_kiwoom_rest()
-        with patch.object(api, "fetch_ka10099_full", AsyncMock(return_value=[("005930", True, "0")])):
-            result = await api.fetch_market_stock_list("0")
-            assert result == [("005930", True, "0")]
-
-
-# ── KiwoomRestAPI.fetch_ka10001_nxt_enable / fetch_nxt_enable_map ──────────────
+# ── KiwoomRestAPI.fetch_ka10001_nxt_enable ────────────────────────────────────
 
 class TestKiwoomRestFetchNxtEnable:
     async def test_success_direct(self):
@@ -796,99 +655,3 @@ class TestKiwoomRestFetchNxtEnable:
         with patch.object(api, "_call_api", AsyncMock(return_value=(mock_resp, False))):
             result = await api.fetch_ka10001_nxt_enable("005930")
             assert result == "N"
-
-    async def test_fetch_nxt_enable_map(self):
-        api = _make_kiwoom_rest()
-        with (
-            patch.object(api, "fetch_ka10001_nxt_enable", AsyncMock(side_effect=["Y", "N"])),
-            patch("backend.app.core.kiwoom_rest.asyncio.sleep", new_callable=AsyncMock),
-        ):
-            result = await api.fetch_nxt_enable_map(["005930", "000660"])
-            assert result == {"005930": True, "000660": False}
-
-    async def test_fetch_nxt_enable_map_empty(self):
-        api = _make_kiwoom_rest()
-        result = await api.fetch_nxt_enable_map([])
-        assert result == {}
-
-
-# ── kiwoom_try_token ───────────────────────────────────────────────────────────
-
-class TestKiwoomTryToken:
-    async def test_success(self):
-        mock_resp = _mock_httpx_response(200, {"token": "new_tok"})
-        mock_client = _mock_httpx_client(post_return=mock_resp)
-        with (
-            patch("backend.app.core.kiwoom_rest.build_broker_urls", MagicMock(return_value={"token_url": "https://api/token"})),
-            patch("backend.app.core.kiwoom_rest.httpx.AsyncClient") as mock_cls,
-        ):
-            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_cls.return_value.__aexit__ = AsyncMock(return_value=None)
-            from backend.app.core.kiwoom_rest import kiwoom_try_token
-            success, token, err = await kiwoom_try_token("key", "secret")
-            assert success is True
-            assert token == "new_tok"
-            assert err is None
-
-    async def test_no_credentials(self):
-        from backend.app.core.kiwoom_rest import kiwoom_try_token
-        with patch("backend.app.core.kiwoom_rest.build_broker_urls", MagicMock(return_value={"token_url": "https://api/token"})):
-            success, token, err = await kiwoom_try_token("", "")
-            assert success is False
-            assert token is None
-            assert "App Key" in err["err_msg"]
-
-    async def test_http_failure(self):
-        mock_resp = _mock_httpx_response(500, {"error": "server error"})
-        mock_client = _mock_httpx_client(post_return=mock_resp)
-        with (
-            patch("backend.app.core.kiwoom_rest.build_broker_urls", MagicMock(return_value={"token_url": "https://api/token"})),
-            patch("backend.app.core.kiwoom_rest.httpx.AsyncClient") as mock_cls,
-        ):
-            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_cls.return_value.__aexit__ = AsyncMock(return_value=None)
-            from backend.app.core.kiwoom_rest import kiwoom_try_token
-            success, token, err = await kiwoom_try_token("key", "secret")
-            assert success is False
-            assert token is None
-            assert err["status"] == 500
-
-    async def test_token_field_missing(self):
-        mock_resp = _mock_httpx_response(200, {"return_msg": "8030 error", "return_code": "8030"})
-        mock_client = _mock_httpx_client(post_return=mock_resp)
-        with (
-            patch("backend.app.core.kiwoom_rest.build_broker_urls", MagicMock(return_value={"token_url": "https://api/token"})),
-            patch("backend.app.core.kiwoom_rest.httpx.AsyncClient") as mock_cls,
-        ):
-            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_cls.return_value.__aexit__ = AsyncMock(return_value=None)
-            from backend.app.core.kiwoom_rest import kiwoom_try_token
-            success, token, err = await kiwoom_try_token("key", "secret")
-            assert success is False
-            assert token is None
-            assert "8030" in err["err_msg"]
-
-    async def test_access_token_field(self):
-        mock_resp = _mock_httpx_response(200, {"access_token": "alt_tok"})
-        mock_client = _mock_httpx_client(post_return=mock_resp)
-        with (
-            patch("backend.app.core.kiwoom_rest.build_broker_urls", MagicMock(return_value={"token_url": "https://api/token"})),
-            patch("backend.app.core.kiwoom_rest.httpx.AsyncClient") as mock_cls,
-        ):
-            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_cls.return_value.__aexit__ = AsyncMock(return_value=None)
-            from backend.app.core.kiwoom_rest import kiwoom_try_token
-            success, token, err = await kiwoom_try_token("key", "secret")
-            assert success is True
-            assert token == "alt_tok"
-
-    async def test_exception(self):
-        with (
-            patch("backend.app.core.kiwoom_rest.build_broker_urls", MagicMock(return_value={"token_url": "https://api/token"})),
-            patch("backend.app.core.kiwoom_rest.httpx.AsyncClient", side_effect=Exception("conn error")),
-        ):
-            from backend.app.core.kiwoom_rest import kiwoom_try_token
-            success, token, err = await kiwoom_try_token("key", "secret")
-            assert success is False
-            assert token is None
-            assert "conn error" in err["err_msg"]

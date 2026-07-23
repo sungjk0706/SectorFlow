@@ -325,7 +325,7 @@ class TestActivePage:
 # ── subscribed FID 관리 ────────────────────────────────────────────────────────
 
 class TestSubscribedFids:
-    """WSManager set/clear_subscribed_fids."""
+    """WSManager set_subscribed_fids."""
 
     def test_set_subscribed_fids(self):
         from backend.app.web.ws_manager import WSManager
@@ -333,21 +333,6 @@ class TestSubscribedFids:
         ws = _make_ws()
         mgr.set_subscribed_fids(ws, ["10", "11"])
         assert mgr._client_subscribed_fids[ws] == frozenset({"10", "11"})
-
-    def test_clear_subscribed_fids(self):
-        from backend.app.web.ws_manager import WSManager
-        mgr = WSManager()
-        ws = _make_ws()
-        mgr._client_subscribed_fids[ws] = frozenset({"10"})
-        mgr.clear_subscribed_fids(ws)
-        assert ws not in mgr._client_subscribed_fids
-
-    def test_clear_subscribed_fids_not_set(self):
-        from backend.app.web.ws_manager import WSManager
-        mgr = WSManager()
-        ws = _make_ws()
-        mgr.clear_subscribed_fids(ws)  # 없어도 에러 없음
-        assert ws not in mgr._client_subscribed_fids
 
 
 # ── _stamp ─────────────────────────────────────────────────────────────────────

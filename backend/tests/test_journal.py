@@ -1,6 +1,6 @@
 """journal.py 단위 테스트 — 메모리 기반 저널링 API 검증.
 
-_append_entry: 엔트리 추가 + seq 반환 + JournalEntry dataclass 호환
+_append_entry: 엔트리 추가 + seq 반환
 record_settings_change / record_order_request: 공개 API
 start_consumer_task / stop_consumer_task: 생명주기 (no-op)
 
@@ -14,7 +14,6 @@ from contextlib import asynccontextmanager
 
 from backend.app.core.journal import (
     JournalEventType,
-    JournalEntry,
     _append_entry,
     record_settings_change,
     record_order_request,
@@ -46,27 +45,9 @@ class TestJournalEventType:
     def test_values(self):
         assert JournalEventType.SETTINGS_CHANGE.value == "settings_change"
         assert JournalEventType.ORDER_REQUEST.value == "order_request"
-        assert JournalEventType.FILL_EVENT.value == "fill_event"
-        assert JournalEventType.ORDER_STATUS_UPDATE.value == "order_status_update"
 
     def test_is_str_enum(self):
         assert isinstance(JournalEventType.SETTINGS_CHANGE, str)
-
-
-# ── JournalEntry ────────────────────────────────────────────────────────────────
-
-class TestJournalEntry:
-    def test_dataclass_fields(self):
-        entry = JournalEntry(
-            event_type=JournalEventType.SETTINGS_CHANGE,
-            timestamp=1234567890.0,
-            data={"key": "value"},
-            seq=1,
-        )
-        assert entry.event_type == JournalEventType.SETTINGS_CHANGE
-        assert entry.timestamp == 1234567890.0
-        assert entry.data == {"key": "value"}
-        assert entry.seq == 1
 
 
 # ── No-op 함수 ──────────────────────────────────────────────────────────────────
@@ -98,28 +79,13 @@ class TestAppendEntry:
         assert seq == 2
 
     @pytest.mark.asyncio
-    async def test_append_journal_entry_dataclass(self):
-        entry = JournalEntry(
-            event_type=JournalEventType.FILL_EVENT,
-            timestamp=3000.0,
-            data={"fill": "data"},
-            seq=0,
-        )
-        with patch("backend.app.core.journal._journal_lock", _fake_lock_ctx()):
-            seq = await _append_entry(entry)
-        assert seq == 1
-        from backend.app.core import journal
-        assert journal._journal_entries[0]["event_type"] == "fill_event"
-        assert journal._journal_entries[0]["data"] == {"fill": "data"}
-
-    @pytest.mark.asyncio
     async def test_append_stores_correct_fields(self):
         with patch("backend.app.core.journal._journal_lock", _fake_lock_ctx()):
-            await _append_entry("fill_event", 5000.0, {"price": 70000})
+            await _append_entry("settings_change", 5000.0, {"price": 70000})
         from backend.app.core import journal
         row = journal._journal_entries[0]
         assert row["id"] == 1
-        assert row["event_type"] == "fill_event"
+        assert row["event_type"] == "settings_change"
         assert row["timestamp"] == 5000.0
         assert row["data"] == {"price": 70000}
 

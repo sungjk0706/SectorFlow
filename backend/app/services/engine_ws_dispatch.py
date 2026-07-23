@@ -15,42 +15,6 @@ from backend.app.services.engine_symbol_utils import (
 
 logger = logging.getLogger(__name__)
 
-# ── _wl_codes 캐시 (매 틱마다 Set 재생성 방지) ──
-_wl_codes_cache: set[str] = set()
-_wl_codes_layout_len: int = -1
-
-
-def _get_wl_codes_cached() -> set[str]:
-    """sector_stock_layout → code Set 캐시. 레이아웃 길이가 바뀔 때만 재생성."""
-    global _wl_codes_cache, _wl_codes_layout_len
-    cur_len = len(engine_state.state.integrated_system_settings_cache["sector_stock_layout"])
-    if cur_len != _wl_codes_layout_len:
-        _wl_codes_cache = {v for t, v in engine_state.state.integrated_system_settings_cache["sector_stock_layout"] if t == "code"}
-        _wl_codes_layout_len = cur_len
-    return _wl_codes_cache
-
-
-
-
-
-
-
-
-def _update_trade_amount_fid14(
-    base_nk: str,
-    amt14: int,
-) -> int:
-    """
-    FID 14(누적거래대금, 백만원 단위) -- _AL 구독 시 KRX+NXT 통합값.
-    키움이 내려주는 당일 누적값(백만원) -> 원 단위로 변환 후 반환.
-    저장하지 않고 순간 계산만 수행.
-    """
-    if amt14 <= 0:
-        return 0
-
-    amt_won = amt14 * 1_000_000
-    return amt_won
-
 
 def _handle_login(data: dict) -> None:
     if str(data.get("return_code", "")) == "0":

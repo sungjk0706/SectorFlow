@@ -194,7 +194,6 @@ class KiwoomConnector(BrokerConnector):
         self._receive_callback: Callable | None = None
         self._on_reconnect_success: Callable | None = None
         self._lock: Optional[asyncio.Lock] = None
-        self._received_count = 0
         self._reconnecting: bool = False
         self._stop_reconnect: bool = False
         self._ws_queue: asyncio.Queue | None = None  # Producer-Consumer Queue
@@ -375,7 +374,6 @@ class KiwoomConnector(BrokerConnector):
 
     async def _on_ws_message(self, payload: dict) -> None:
         """_KiwoomSocket 콜백 → 핸들러 직접 호출."""
-        self._received_count += 1
         if self._receive_callback:
             if asyncio.iscoroutinefunction(self._receive_callback):
                 await self._receive_callback(payload)

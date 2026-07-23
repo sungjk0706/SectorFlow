@@ -12,7 +12,6 @@ from backend.app.db.stock_tables import (
     create_master_stocks_table,
     migrate_master_stocks_table_pk,
     migrate_add_hidden_to_custom_sectors,
-    migrate_add_nxt_enable_column,
     create_stock_5d_bars_table,
     save_trading_days_cache,
     load_trading_days_cache,
@@ -176,33 +175,6 @@ class TestMigrateAddHidden:
         _mock_db_connection.execute = AsyncMock(return_value=mock_cursor)
         await migrate_add_hidden_to_custom_sectors()
         # PRAGMA만 호출
-        assert _mock_db_connection.execute.call_count == 1
-
-
-# ── migrate_add_nxt_enable_column ───────────────────────────────────
-
-class TestMigrateAddNxtEnable:
-    @pytest.mark.asyncio
-    async def test_column_missing_adds_it(self, _mock_db_connection):
-        mock_cursor = AsyncMock()
-        mock_cursor.fetchall = AsyncMock(return_value=[
-            {"name": "code"},
-            {"name": "name"},
-        ])
-        _mock_db_connection.execute = AsyncMock(return_value=mock_cursor)
-        await migrate_add_nxt_enable_column()
-        assert _mock_db_connection.execute.call_count == 2
-        _mock_db_connection.commit.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_column_exists_skip(self, _mock_db_connection):
-        mock_cursor = AsyncMock()
-        mock_cursor.fetchall = AsyncMock(return_value=[
-            {"name": "code"},
-            {"name": "nxt_enable"},
-        ])
-        _mock_db_connection.execute = AsyncMock(return_value=mock_cursor)
-        await migrate_add_nxt_enable_column()
         assert _mock_db_connection.execute.call_count == 1
 
 

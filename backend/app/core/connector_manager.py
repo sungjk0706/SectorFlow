@@ -25,7 +25,6 @@ class ConnectorManager:
 
     def __init__(self) -> None:
         self._connectors: dict[str, BrokerConnector] = {}
-        self._callback: Callable | None = None
         self._sub_codes: dict[str, set[str]] = {}  # {broker_id: {code, ...}}
         self._build()
 
@@ -73,7 +72,6 @@ class ConnectorManager:
 
     def set_message_callback(self, callback: Callable) -> None:
         """모든 Connector의 메시지를 받을 단일 콜백 설정."""
-        self._callback = callback
         for connector in self._connectors.values():
             connector.set_message_callback(callback)
 

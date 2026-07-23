@@ -11,11 +11,9 @@ tick_queue에서 데이터를 꺼내어 연산 수행:
 from __future__ import annotations
 from typing import Optional
 import asyncio
-import time
 import logging
 from backend.app.core.logger import log_receive_rate_progress, log_progress_end
 from backend.app.services.engine_state import state
-from backend.app.services.engine_ws_dispatch import _check_realtime_latency
 from backend.app.services.engine_utils import LazyEvent
 from backend.app.services.core_queues import (
     get_tick_queue,
@@ -189,7 +187,6 @@ def get_current_receive_rate() -> dict:
 
     분리 구조: {krx: {received, total, pct}, nxt: {received, total, pct}}
     """
-    global _current_receive_rate
     return {
         "krx": dict(_current_receive_rate["krx"]),
         "nxt": dict(_current_receive_rate["nxt"]),

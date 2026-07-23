@@ -152,7 +152,6 @@ async def _apply_5d_download_toggle(changed_keys: set[str]) -> None:
     _5d_on = bool(get_settings_snapshot().get("scheduler_5d_download_on", True))
     if _5d_on:
         try:
-            engine_state.state.avg_amt_needs_bg_refresh = True
             logger.info("[설정] 5일봉 다운로드 설정=ON → 5일봉 다운로드 트리거")
         except Exception:
             logger.warning("[설정] 5일봉 다운로드 트리거 실패", exc_info=True)

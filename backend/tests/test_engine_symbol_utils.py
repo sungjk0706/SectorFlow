@@ -9,7 +9,6 @@ from unittest.mock import patch
 
 from backend.app.services.engine_symbol_utils import (
     _base_stk_cd,
-    _resolve_bucket_key,
     _dict_get_fid,
     _fid9001_to_stk_cd,
     _parse_real_item_field,
@@ -49,31 +48,6 @@ class TestBaseStkCd:
 
     def test_truncated_to_6(self):
         assert _base_stk_cd("00005930") == "005930"
-
-
-# ── _resolve_bucket_key ──────────────────────────────────────────────────────────
-
-class TestResolveBucketKey:
-    def test_exact_match(self):
-        assert _resolve_bucket_key("005930", {"005930": 1}) == "005930"
-
-    def test_base_match(self):
-        assert _resolve_bucket_key("005930_AL", {"005930": 1}) == "005930"
-
-    def test_reverse_base_match(self):
-        assert _resolve_bucket_key("005930", {"005930_AL": 1}) == "005930_AL"
-
-    def test_no_match(self):
-        assert _resolve_bucket_key("999999", {"005930": 1}) is None
-
-    def test_empty_raw(self):
-        assert _resolve_bucket_key("", {"005930": 1}) is None
-
-    def test_empty_bucket(self):
-        assert _resolve_bucket_key("005930", {}) is None
-
-    def test_none_bucket(self):
-        assert _resolve_bucket_key("005930", None) is None
 
 
 # ── _dict_get_fid ─────────────────────────────────────────────────────────────────

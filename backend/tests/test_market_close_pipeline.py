@@ -52,7 +52,6 @@ def _mock_state(**overrides):
     ms.broker_tokens = {}
     ms.confirmed_refresh_running_confirmed = False
     ms.confirmed_refresh_running_5d = False
-    ms.confirmed_refresh_message = ""
     ms.confirmed_done = False
     ms.latest_filter_summary_meta = ""
     ms.connector_manager = None

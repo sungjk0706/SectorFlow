@@ -65,7 +65,6 @@ async def _gateway_loop_impl() -> None:
 
 async def _broadcast_loop() -> None:
     """broadcast_queue 구독 반복 — sector-scores 등 연산 결과 전송."""
-    global _gateway_running
     broadcast_queue = get_broadcast_queue()
 
     try:

@@ -2,7 +2,7 @@
 
 _LsSocket: __init__, connect, disconnect, send, _recv_loop, _convert_ls_to_internal
 LsConnector: __init__, broker_id, is_connected, supports_ack, realtime/auto_trade 설정,
-  connect, disconnect, send_message, subscribe/unsubscribe 계열, register/unregister_account,
+  connect, disconnect, send_message, subscribe/unsubscribe 계열,
   subscribe_jif, subscribe_index, _on_ws_message, _on_socket_disconnect, _reconnect_loop,
   set_*_callback, _format_code, _get_token_async
 create_ls_connector: 정상 생성, app_key/secret 없음
@@ -780,58 +780,6 @@ class TestLsConnectorSubscribeDynamic:
             mock_unsub.assert_not_called()
 
 
-# ── LsConnector.register_account / unregister_account ──────────────────────────
-
-class TestLsConnectorRegisterAccount:
-    async def test_register_account_success(self):
-        conn = _make_ls_connector()
-        conn._connected = True
-        conn._token = "tok"
-        mock_socket = AsyncMock()
-        mock_socket.send.return_value = True
-        conn._socket = mock_socket
-        result = await conn.register_account("SC0")
-        assert result is True
-        payload = mock_socket.send.call_args[0][0]
-        assert payload["header"]["tr_type"] == "1"
-        assert payload["body"]["tr_cd"] == "SC0"
-
-    async def test_register_account_not_connected(self):
-        conn = _make_ls_connector()
-        conn._connected = False
-        result = await conn.register_account()
-        assert result is False
-
-    async def test_register_account_default_tr_cd(self):
-        conn = _make_ls_connector()
-        conn._connected = True
-        conn._token = "tok"
-        mock_socket = AsyncMock()
-        mock_socket.send.return_value = True
-        conn._socket = mock_socket
-        await conn.register_account()
-        payload = mock_socket.send.call_args[0][0]
-        assert payload["body"]["tr_cd"] == "SC0"
-
-    async def test_unregister_account_success(self):
-        conn = _make_ls_connector()
-        conn._connected = True
-        conn._token = "tok"
-        mock_socket = AsyncMock()
-        mock_socket.send.return_value = True
-        conn._socket = mock_socket
-        result = await conn.unregister_account("SC1")
-        assert result is True
-        payload = mock_socket.send.call_args[0][0]
-        assert payload["header"]["tr_type"] == "2"
-
-    async def test_unregister_account_not_connected(self):
-        conn = _make_ls_connector()
-        conn._connected = False
-        result = await conn.unregister_account()
-        assert result is False
-
-
 # ── LsConnector.subscribe_jif / subscribe_index ────────────────────────────────
 
 class TestLsConnectorSubscribeJifIndex:
@@ -913,7 +861,6 @@ class TestLsConnectorOnWsMessage:
         conn._receive_callback = cb
         await conn._on_ws_message({"trnm": "REAL"})
         cb.assert_called_once_with({"trnm": "REAL"})
-        assert conn._received_count == 1
 
     async def test_sync_callback(self):
         conn = _make_ls_connector()
@@ -926,7 +873,6 @@ class TestLsConnectorOnWsMessage:
         conn = _make_ls_connector()
         conn._receive_callback = None
         await conn._on_ws_message({"trnm": "REAL"})
-        assert conn._received_count == 1
 
 
 # ── LsConnector._on_socket_disconnect ──────────────────────────────────────────

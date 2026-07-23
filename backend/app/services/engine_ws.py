@@ -111,62 +111,10 @@ async def _handle_ws_data(data: dict) -> None:
 
 # ── 실시간 구독 ─────────────────────────────────────────────────────────
 
-async def _subscribe_stock_realtime_when_ready(stk_cd: str) -> None:
-    """
-    모니터링 등록 시점이 LOGIN 이전이면 REG가 무력화될 수 있어,
-    실시간 통신 연결·로그인 성공 후 REG를 보내도록 짧게 재시도한다.
-    기동 시 배치 파이프라인(_run_sector_reg_pipeline) 완료 전에는
-    단건 REG를 보내지 않음 — 배치가 이미 커버하므로 중복 블로킹 방지.
-    시장가 운용으로 호가(02) REG 제거됨 — 0B는 배치에서 커버.
-    """
-    from backend.app.services.engine_symbol_utils import _base_stk_cd
-    
-    stk_cd = str(stk_cd).strip()
-    if not stk_cd:
-        return
-    
-    # 배치 파이프라인 완료 대기 (이벤트 구동 - 시간 초과 제거)
-    if engine_state.state.ws_reg_pipeline_done:
-        await engine_state.state.ws_reg_pipeline_done.wait()
-
-    # 배치에서 이미 구독됐으면 단건 불필요 (0B 기준)
-    item_cd = _base_stk_cd(stk_cd)
-    if engine_state.state.master_stocks_cache.get(item_cd, {}).get("_subscribed"):
-        return
-
-    # 배치에 포함되지 않은 신규 모니터링 종목 — 단건 0B REG 전송
-    ws = engine_state.state.connector_manager or engine_state.state.active_connector
-    if not ws or not ws.is_connected():
-        return
-
-    if item_cd in engine_state.state.master_stocks_cache:
-        engine_state.state.master_stocks_cache[item_cd]["_subscribed"] = True
-
-    ok = await ws.subscribe_stocks([item_cd])
-    if ok:
-        pass
-    else:
-        if item_cd in engine_state.state.master_stocks_cache:
-            engine_state.state.master_stocks_cache[item_cd].pop("_subscribed", None)
-        logger.warning("[구독] 단건 종목 구독 실패 — %s", item_cd)
-
-
 async def _subscribe_account_realtime() -> None:
     """계좌 실시간 구독(주문체결·잔고) — engine_ws_reg 모듈로 위임."""
     from backend.app.services import engine_ws_reg
     await engine_ws_reg.subscribe_account_realtime()
-
-
-def _log_reg_stock_chunk(scope: str, start_ord: int, end_ord: int, ca: int, cs: int, cf: int) -> None:
-    logger.info(
-        "[구독] %s %d~%d번 처리 완료 — 성공 %d건, 이미 구독 생략 %d건, 실패 %d건",
-        scope,
-        start_ord,
-        end_ord,
-        ca,
-        cs,
-        cf,
-    )
 
 
 async def _subscribe_positions_stocks_realtime() -> None:
@@ -176,18 +124,6 @@ async def _subscribe_positions_stocks_realtime() -> None:
     # REG 실행 후 인메모리 상태 동기화
     if any(entry.get("_subscribed", False) for entry in engine_state.state.master_stocks_cache.values()):
         ws_subscribe_control._set_status(quote=True)
-
-
-async def _subscribe_sector_stocks_0b() -> None:
-    """필터 통과 종목 + 보유종목 0B REG — engine_ws_reg 모듈로 위임.
-
-    REG 성공 후 ws_subscribe_control 상태를 동기화하여
-    프론트엔드 구독 표시가 실제 상태와 일치하도록 한다.
-    """
-    from backend.app.services import engine_ws_reg, ws_subscribe_control
-    await engine_ws_reg.subscribe_sector_stocks_0b()
-    # REG 실행 후 인메모리 상태 동기화 → 실시간 통신 전송
-    ws_subscribe_control._set_status(quote=True)
 
 
 async def _ensure_ws_subscriptions_for_positions() -> None:

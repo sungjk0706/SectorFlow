@@ -6,8 +6,7 @@ LsRestAPI: __init__, __aenter__/__aexit__, ensure_client, ensure_token, get_toke
   revoke_token (정상/HTTP실패/토큰없음/예외),
   call_api (GET/POST/429/예외/토큰없음),
   buy_order (성공/HTTP실패/429/예외),
-  sell_order (성공/HTTP실패/예외),
-  get_balance (call_api 위임)
+  sell_order (성공/HTTP실패/예외)
 
 의존성: httpx, broker_urls
 → 모두 mock으로 대체 (conftest hang 방지 원칙 준수)
@@ -544,17 +543,4 @@ class TestLsRestSellOrder:
         ):
             result = await api.sell_order("A005930", 10, 70000)
             assert result is None
-
-
-# ── LsRestAPI.get_balance ─────────────────────────────────────────────────────
-
-class TestLsRestAccountQueries:
-    async def test_get_balance_delegates(self):
-        api = _make_ls_rest()
-        with patch.object(api, "call_api", AsyncMock(return_value={"data": "ok"})) as mock_call:
-            result = await api.get_balance()
-            assert result == {"data": "ok"}
-            mock_call.assert_called_once()
-            call_kwargs = mock_call.call_args[1]
-            assert call_kwargs["method"] == "POST"
 

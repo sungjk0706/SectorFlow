@@ -68,8 +68,6 @@ async def _flush_sector_recompute_impl() -> None:
 
     비동기 함수. 순수 계산 + 알림 + 구독 갱신만 수행.
     """
-    global _dirty_codes
-
     if not _dirty_codes:
         return
 
@@ -271,8 +269,6 @@ def sync_dynamic_subscriptions(new_buy_targets) -> None:
     guard_pass 경계값 진동으로 인한 빈번한 REG/REMOVE 반복을 방지한다.
     특정 증권사에 종속되지 않도록 DYNAMIC_REG 이벤트를 제어 큐로 발행한다.
     """
-    global _PENDING_UNREG_TIMERS
-
     from backend.app.services.core_queues import get_control_queue
     import time
 
@@ -410,7 +406,7 @@ def cancel_all_dynamic_unreg_timers() -> None:
     동적 구독 해지 타이머는 별도로 취소해야 함.
     잔존 타이머가 신규 세션에서 발화하면 DYNAMIC_UNREG가 신규 증권사에 전송됨 (원칙 22 위반).
     """
-    global _PENDING_UNREG_TIMERS, _UNREG_READY_CODES, _UNREG_BATCH_PENDING
+    global _UNREG_BATCH_PENDING
     for timer in _PENDING_UNREG_TIMERS.values():
         timer.cancel()
     _PENDING_UNREG_TIMERS.clear()

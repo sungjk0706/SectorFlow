@@ -115,6 +115,5 @@ def get_circuit_breaker() -> CircuitBreaker:
 
 def reset_circuit_breaker() -> None:
     """서킷브레이커 초기화."""
-    global _circuit_breaker
     if _circuit_breaker is not None:
         _circuit_breaker.reset()

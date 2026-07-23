@@ -19,7 +19,6 @@ from backend.app.services.settlement_engine import (
     get_available_cash,
     get_accumulated_investment,
     get_orderable,
-    get_initial_deposit,
     check_buy_power,
     reserve_buy_power,
     release_buy_power,
@@ -69,7 +68,7 @@ class TestLoad:
                    new_callable=AsyncMock, return_value=None), \
              patch.object(settlement_engine, "_persist", new_callable=AsyncMock):
             await settlement_engine._load(initial_deposit=5_000_000)
-        assert get_initial_deposit() == 5_000_000
+        assert settlement_engine._initial_deposit == 5_000_000
         assert settlement_engine._accumulated_investment == 5_000_000
         assert settlement_engine._orderable == 5_000_000
         assert settlement_engine._loaded is True
@@ -97,7 +96,7 @@ class TestLoad:
              patch.object(settlement_engine, "_persist", new_callable=AsyncMock):
             mock_state.integrated_system_settings_cache = {"test_virtual_deposit": 7_000_000}
             await settlement_engine._load()
-        assert get_initial_deposit() == 7_000_000
+        assert settlement_engine._initial_deposit == 7_000_000
         assert settlement_engine._accumulated_investment == 7_000_000
         assert settlement_engine._orderable == 7_000_000
 
@@ -127,10 +126,6 @@ class TestGetters:
     def test_get_orderable(self, fresh_engine):
         settlement_engine._orderable = 3_000_000
         assert get_orderable() == 3_000_000
-
-    def test_get_initial_deposit(self, fresh_engine):
-        settlement_engine._initial_deposit = 8_000_000
-        assert get_initial_deposit() == 8_000_000
 
 
 # ── check_buy_power ────────────────────────────────────────────────────────────

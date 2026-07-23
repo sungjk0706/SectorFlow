@@ -147,7 +147,6 @@ async def evaluate_buy_candidates() -> None:
         return
 
     # ── 전역 조건 스냅샷: 변화 없으면 매수 시도 스킵 (원칙 11 이벤트 기반) ──
-    _rebuy_block_on = bool(state.integrated_system_settings_cache.get("rebuy_block_on", True))
     _is_test = is_test_mode(state.integrated_system_settings_cache)
 
     # ── 매수 가능 종목 집합: guard_pass + 장외 + 재매수 + 주문가능금액/가격 ──

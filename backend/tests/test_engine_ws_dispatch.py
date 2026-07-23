@@ -10,8 +10,6 @@ from unittest.mock import patch, AsyncMock, MagicMock
 import pytest
 
 from backend.app.services.engine_ws_dispatch import (
-    _get_wl_codes_cached,
-    _update_trade_amount_fid14,
     _handle_login,
     _reg_response_item_val,
     _reg_data_rows,
@@ -28,56 +26,6 @@ from backend.app.services.engine_ws_dispatch import (
     _JIF_COUNTDOWN_KRX,
     _JIF_COUNTDOWN_NXT,
 )
-
-
-# ── _get_wl_codes_cached ──────────────────────────────────────────────────────────
-
-class TestGetWlCodesCached:
-    def test_first_call(self):
-        with patch("backend.app.services.engine_state.state") as mock_state:
-            mock_state.integrated_system_settings_cache = {
-                "sector_stock_layout": [("code", "005930"), ("name", "삼성전자"), ("code", "000660")]
-            }
-            import backend.app.services.engine_ws_dispatch as mod
-            mod._wl_codes_cache = set()
-            mod._wl_codes_layout_len = -1
-            result = _get_wl_codes_cached()
-            assert result == {"005930", "000660"}
-
-    def test_cached_same_len(self):
-        with patch("backend.app.services.engine_state.state") as mock_state:
-            mock_state.integrated_system_settings_cache = {
-                "sector_stock_layout": [("code", "005930"), ("code", "000660")]
-            }
-            import backend.app.services.engine_ws_dispatch as mod
-            mod._wl_codes_cache = {"005930", "000660"}
-            mod._wl_codes_layout_len = 2
-            result = _get_wl_codes_cached()
-            assert result == {"005930", "000660"}
-
-    def test_layout_changed_rebuilds(self):
-        with patch("backend.app.services.engine_state.state") as mock_state:
-            mock_state.integrated_system_settings_cache = {
-                "sector_stock_layout": [("code", "005930"), ("code", "000660"), ("code", "035420")]
-            }
-            import backend.app.services.engine_ws_dispatch as mod
-            mod._wl_codes_cache = {"005930"}
-            mod._wl_codes_layout_len = 1
-            result = _get_wl_codes_cached()
-            assert result == {"005930", "000660", "035420"}
-
-
-# ── _update_trade_amount_fid14 ────────────────────────────────────────────────────
-
-class TestUpdateTradeAmountFid14:
-    def test_positive(self):
-        assert _update_trade_amount_fid14("005930", 500) == 500_000_000
-
-    def test_zero(self):
-        assert _update_trade_amount_fid14("005930", 0) == 0
-
-    def test_negative(self):
-        assert _update_trade_amount_fid14("005930", -1) == 0
 
 
 # ── _handle_login ──────────────────────────────────────────────────────────────────
@@ -158,7 +106,6 @@ class TestHandleReg:
         with patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.services.engine_state._notify_reg_ack") as mock_notify:
             mock_state.master_stocks_cache = {}
-            mock_state.REG_REAL_DEBUG_EXTRA_LOG = False
             _handle_reg({"trnm": "REG", "return_code": "0", "data": [{"item": "005930", "type": "0B"}]})
             mock_notify.assert_called_once_with(return_code="0")
 
@@ -166,7 +113,6 @@ class TestHandleReg:
         with patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.services.engine_state._notify_reg_ack") as mock_notify:
             mock_state.master_stocks_cache = {}
-            mock_state.REG_REAL_DEBUG_EXTRA_LOG = False
             _handle_reg({"trnm": "UNREG", "return_code": "0", "data": [{"item": "005930", "type": "0B"}]})
             mock_notify.assert_called_once_with(return_code="0")
 
@@ -174,7 +120,6 @@ class TestHandleReg:
         with patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.services.engine_state._notify_reg_ack"):
             mock_state.master_stocks_cache = {"005930": {"_subscribed": True}}
-            mock_state.REG_REAL_DEBUG_EXTRA_LOG = False
             _handle_reg({"trnm": "REG", "return_code": "105110", "data": [{"item": "005930", "type": "0B"}]})
             assert "_subscribed" not in mock_state.master_stocks_cache["005930"]
 
@@ -182,7 +127,6 @@ class TestHandleReg:
         with patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.services.engine_state._notify_reg_ack"):
             mock_state.master_stocks_cache = {"005930": {"_subscribed": True}}
-            mock_state.REG_REAL_DEBUG_EXTRA_LOG = False
             _handle_reg({"trnm": "REG", "return_code": "999", "data": [{"item": "005930", "type": "0B"}]})
             assert "_subscribed" not in mock_state.master_stocks_cache["005930"]
 

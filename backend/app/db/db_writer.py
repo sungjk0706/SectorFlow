@@ -172,13 +172,3 @@ async def execute_db_write(op: DBWriteOperation, wait: bool = False) -> Any:
     await enqueue_db_write(op)
     if wait and op.future:
         return await op.future
-
-
-def get_db_write_queue() -> asyncio.Queue:
-    """DB 쓰기 큐 반환"""
-    return _db_write_queue
-
-
-def is_writer_running() -> bool:
-    """DB Writer 실행 상태 확인"""
-    return _running

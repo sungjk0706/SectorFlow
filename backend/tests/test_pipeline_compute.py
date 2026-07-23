@@ -8,7 +8,6 @@ hang 방지 원칙:
 from __future__ import annotations
 
 import asyncio
-import time
 import pytest
 from unittest.mock import AsyncMock, DEFAULT, MagicMock, patch
 
@@ -39,7 +38,6 @@ from backend.app.pipelines.pipeline_compute import (  # noqa: E402
     _handle_real_01_tick,
     _handle_real_0d_tick,
     _handle_real_pgm_tick,
-    _check_realtime_latency,
     start_compute_loop,
     stop_compute_loop,
     _compute_loop_impl,
@@ -642,40 +640,6 @@ class TestHandleRealPgmTick:
             await _handle_real_pgm_tick(item, vals, AsyncMock())
 
 
-# ── _check_realtime_latency ───────────────────────────────────────────────────
-
-class TestCheckRealtimeLatency:
-    def test_under_50ms_no_flag(self):
-        mock_state = MagicMock()
-        mock_state.realtime_latency_exceeded = False
-        with patch("backend.app.services.engine_state.state", mock_state):
-            _check_realtime_latency(int(time.time() * 1000))
-            assert mock_state.realtime_latency_exceeded is False
-
-    def test_over_200ms_sets_flag(self):
-        mock_state = MagicMock()
-        mock_state.realtime_latency_exceeded = False
-        old_ts = int(time.time() * 1000) - 250
-        with patch("backend.app.services.engine_state.state", mock_state):
-            _check_realtime_latency(old_ts)
-            assert mock_state.realtime_latency_exceeded is True
-
-    def test_recovery_clears_flag(self):
-        mock_state = MagicMock()
-        mock_state.realtime_latency_exceeded = True
-        with patch("backend.app.services.engine_state.state", mock_state):
-            _check_realtime_latency(int(time.time() * 1000))
-            assert mock_state.realtime_latency_exceeded is False
-
-    def test_50ms_warning_does_not_set_flag(self):
-        mock_state = MagicMock()
-        mock_state.realtime_latency_exceeded = False
-        old_ts = int(time.time() * 1000) - 60
-        with patch("backend.app.services.engine_state.state", mock_state):
-            _check_realtime_latency(old_ts)
-            assert mock_state.realtime_latency_exceeded is False
-
-
 # ── start_compute_loop / stop_compute_loop ────────────────────────────────────
 
 class TestStartComputeLoop:
@@ -921,7 +885,6 @@ class TestHandleReal01Tick:
              patch("backend.app.services.engine_ws_parsing._parse_fid10_price", return_value=50000), \
              patch("backend.app.services.engine_ws_parsing.parse_change_rate_to_percent", return_value=2.0), \
              patch("backend.app.services.engine_ws_parsing._ws_fid_int", return_value=1000), \
-             patch("backend.app.services.engine_ws_parsing._ws_fid_key_present", return_value=True), \
              patch("backend.app.services.engine_ws_parsing._ws_fid_raw", return_value="2.0"), \
              patch("backend.app.core.trade_mode.is_test_mode", return_value=False), \
              patch("backend.app.services.engine_account_rest.apply_last_price_to_positions_inplace", return_value=False), \
@@ -947,7 +910,6 @@ class TestHandleReal01Tick:
              patch("backend.app.services.engine_ws_parsing._parse_fid10_price", return_value=50000), \
              patch("backend.app.services.engine_ws_parsing.parse_change_rate_to_percent", return_value=2.0), \
              patch("backend.app.services.engine_ws_parsing._ws_fid_int", return_value=1000), \
-             patch("backend.app.services.engine_ws_parsing._ws_fid_key_present", return_value=True), \
              patch("backend.app.services.engine_ws_parsing._ws_fid_raw", return_value="2.0"), \
              patch("backend.app.core.trade_mode.is_test_mode", return_value=False), \
              patch("backend.app.services.engine_account_rest.apply_last_price_to_positions_inplace", return_value=True), \
@@ -975,7 +937,6 @@ class TestHandleReal01Tick:
              patch("backend.app.services.engine_ws_parsing._parse_fid10_price", return_value=50000), \
              patch("backend.app.services.engine_ws_parsing.parse_change_rate_to_percent", return_value=2.0), \
              patch("backend.app.services.engine_ws_parsing._ws_fid_int", return_value=1000), \
-             patch("backend.app.services.engine_ws_parsing._ws_fid_key_present", return_value=True), \
              patch("backend.app.services.engine_ws_parsing._ws_fid_raw", return_value="2.0"), \
              patch("backend.app.core.trade_mode.is_test_mode", return_value=True), \
              patch("backend.app.services.dry_run", mock_dry_run), \
@@ -1008,7 +969,6 @@ class TestHandleReal01Tick:
              patch("backend.app.services.engine_ws_parsing._parse_fid10_price", return_value=50000), \
              patch("backend.app.services.engine_ws_parsing.parse_change_rate_to_percent", return_value=2.0), \
              patch("backend.app.services.engine_ws_parsing._ws_fid_int", return_value=1000), \
-             patch("backend.app.services.engine_ws_parsing._ws_fid_key_present", return_value=False), \
              patch("backend.app.services.engine_ws_parsing._ws_fid_raw", return_value=""), \
              patch("backend.app.core.trade_mode.is_test_mode", return_value=False), \
              patch("backend.app.services.engine_account_rest.apply_last_price_to_positions_inplace", return_value=False), \
