@@ -200,14 +200,17 @@ class AutoTradeManager:
             logger.critical("[매매] [매수차단] %s 일일 매수 상태 로드 실패 — 매수 불가", stk_cd)
             return False, BUY_REJECT_DAILY_STATE
 
-        # ── 실시간 지연 중단 게이트 ────────────────────────────────────────────
+        # ── 실시간 지연 중단 게이트 (fail-closed — P20/P25 안전 우선) ──────────
+        # 체크 자체가 실패하면 매수 차단: 지연 상태를 확인할 수 없는 상황은
+        # 시스템 장애이므로 안전 차단이 합리적 (지연 중단 게이트 의도 존중).
         try:
             from backend.app.services.engine_state import state as engine_state
             if engine_state.realtime_latency_exceeded:
                 logger.info("[매매] [실시간지연] %s 매수 차단 — 실시간 통신 지연 200ms 초과", stk_cd)
                 return False, BUY_REJECT_REALTIME_LATENCY
         except Exception:
-            logger.warning("[매매] 실시간 지연 체크 실패", exc_info=True)
+            logger.warning("[매매] [매수차단] 실시간 지연 체크 실패 — 안전 차단 (fail-closed)", exc_info=True)
+            return False, BUY_REJECT_REALTIME_LATENCY
 
         # 스케줄 자동매매 게이트: 자동매매 비활성화 시 주문 생략
         if not settings["is_auto"]:
@@ -472,13 +475,13 @@ class AutoTradeManager:
             logger.warning("[매매] 매수 한도 전송 실패", exc_info=True)
 
         # ── 테스트모드: 가상 체결 이벤트 예약 (실전 WS "00"과 동일한 downstream) ──
+        # schedule_engine_task 사용 — ARCHITECTURE.md 금지 패턴 2 준수 (P23 일관성)
         if is_test_mode(raw_all):
             _dry_fill_price = int(order_price) if order_price > 0 else int(current_price)
-            _fill_task = asyncio.create_task(
-                dry_run.fake_fill_event("BUY", stk_cd, buy_qty, _dry_fill_price, stk_nm, pre_reserved=True)
-            )
-            _fill_task.add_done_callback(
-                lambda t: logger.error("[매매] 가상 체결 이벤트(매수) 실패: %s", t.exception(), exc_info=t.exception()) if t.exception() else None
+            from backend.app.services.engine_lifecycle import schedule_engine_task
+            schedule_engine_task(
+                dry_run.fake_fill_event("BUY", stk_cd, buy_qty, _dry_fill_price, stk_nm, pre_reserved=True),
+                context="가상 체결 이벤트(매수)",
             )
 
         t_str = datetime.now().strftime("%H:%M:%S")
@@ -569,6 +572,10 @@ class AutoTradeManager:
         self._recent_sells.add(stk_cd)
 
         # ── 평균매입가를 주문 전에 미리 조회 (주문 후 포지션 삭제되면 조회 불가) ──
+        # P18 참고: 테스트/실전 분기는 "조회"이며 돈 I/O가 아님. 엄격 해석상 미세 위반 소지
+        # 있으나 현행 유지 — 테스트모드는 build_positions_from_trades로 유령 포지션
+        # 차단 검사(qty 부족 시 매도 중단)를 수행하는 안전장치이므로 분기가 의도적.
+        # 실전모드는 get_positions()로 브로커 잔고를 직접 조회.
         _mode = "test" if is_test_mode(base_settings) else "real"
         _avg_buy = 0
         _buy_date = ""
@@ -661,13 +668,13 @@ class AutoTradeManager:
         )
 
         # ── 테스트모드: 가상 체결 이벤트 예약 (실전 WS "00"과 동일한 downstream) ──
+        # schedule_engine_task 사용 — ARCHITECTURE.md 금지 패턴 2 준수 (P23 일관성)
         if is_test_mode(base_settings):
             _dry_sell_price = int(order_price) if order_price > 0 else int(cur_price)
-            _fill_task = asyncio.create_task(
-                dry_run.fake_fill_event("SELL", stk_cd, qty, _dry_sell_price, stk_nm)
-            )
-            _fill_task.add_done_callback(
-                lambda t: logger.error("[매매] 가상 체결 이벤트(매도) 실패: %s", t.exception(), exc_info=t.exception()) if t.exception() else None
+            from backend.app.services.engine_lifecycle import schedule_engine_task
+            schedule_engine_task(
+                dry_run.fake_fill_event("SELL", stk_cd, qty, _dry_sell_price, stk_nm),
+                context="가상 체결 이벤트(매도)",
             )
 
         # ── RiskManager 성공 보고 ─────────────────────────────────────────────
@@ -695,14 +702,17 @@ class AutoTradeManager:
         if not settings.get("is_sell_auto", False):
             return
 
-        # ── 실시간 지연 중단 게이트 ────────────────────────────────────────────
+        # ── 실시간 지연 중단 게이트 (fail-closed — P20/P25 안전 우선) ──────────
+        # 체크 자체가 실패하면 매도 차단: 지연 상태를 확인할 수 없는 상황은
+        # 시스템 장애이므로 안전 차단이 합리적 (매수 게이트와 동일 정책, P23 일관성).
         try:
             from backend.app.services.engine_state import state as engine_state
             if engine_state.realtime_latency_exceeded:
                 logger.info("[매매] [실시간지연] 매도 조건 전체 차단 — 실시간 통신 지연 200ms 초과")
                 return
         except Exception:
-            logger.warning("[매매] 실시간 지연 체크 실패", exc_info=True)
+            logger.warning("[매매] [매도차단] 실시간 지연 체크 실패 — 안전 차단 (fail-closed)", exc_info=True)
+            return
 
         # ── RiskManager 매도 차단 체크 ───────────────────────────────────
         try:

@@ -6,6 +6,61 @@
 
 ## 직전 완료 작업
 
+### B5-08-01/02/04 trading.py 매매 로직 — schedule_engine_task 교체 + 평균매입가 분기 주석 + 실시간 지연 fail-closed — 완료 (2026-07-23) — P23 일관성 / P20 폴백 금지 / P25 격리된 실패 (Tier 3 마지막 세션, LOW 3건, 백엔드, safe-trade)
+
+**세션**: 단일 세션. 백엔드 코드 수정 (safe-trade 스킬 + backend-fix 스킬). Tier 3 마지막 세션.
+
+**배경**: P25 수정 계획 Tier 3 마지막 세션. A3-07-08/09/10 완료 후 진행. trading.py 매매 로직 3건 — 사전조사 → 수정 계획 보고(3건 각각 옵션 제시) → 승인(B5-08-01 진행, B5-08-02 옵션 A, B5-08-04 옵션 A) → 수정 진행.
+
+**작업 내용** (3건, 2개 파일):
+1. **B5-08-01 (LOW, P23) 완료** — `trading.py:474-482` (매수), `trading.py:663-671` (매도) `asyncio.create_task` → `schedule_engine_task` 교체. ARCHITECTURE.md 금지 패턴 2 준수. 매매 로직 변경 없음 (태스크 스케줄링 인프라만). `schedule_engine_task`가 동일 기능(create_task + add_done_callback) + 코루틴 정리(coro.close()) + 예외 로깅 보장. 테스트 패치도 함께 변경 (`test_trading.py:202`).
+2. **B5-08-02 (LOW, P18) 완료 — 옵션 A (현행 유지 + 주석 명시)** — `trading.py:571-580` 평균매입가 조회 테스트/실전 분기에 주석 추가. 테스트모드는 `build_positions_from_trades`로 유령 포지션 차단 검사(qty 부족 시 매도 중단)를 수행하는 안전장치이므로 분기가 의도적임을 명시. 매매 로직 변경 없음.
+3. **B5-08-04 (LOW, P20/P25) 완료 — 옵션 A (fail-closed 전환)** — `trading.py:203-213` (매수), `trading.py:705-715` (매도) 실시간 지연 체크 fail-open → fail-closed 전환. 체크 자체 실패 시 매수/매도 차단 (안전 우선). 지연 상태 확인 불가 시 시스템 장애 상황이므로 안전 차단이 합리적. **핵심 매매 로직 변경 (규칙 0-4 승인 완료)**.
+
+**수정 파일**: 2개 (백엔드).
+- `backend/app/services/trading.py` (B5-08-01 매수/매도 schedule_engine_task 교체, B5-08-02 평균매입가 분기 주석, B5-08-04 매수/매도 실시간 지연 fail-closed)
+- `backend/tests/test_trading.py` (B5-08-01 패치 변경: asyncio.create_task → schedule_engine_task + MagicMock import 제거)
+
+**아키텍처 원칙 부합**:
+- P15 (단일 주문 경로): `execute_buy()`/`execute_sell()` 경로 유지. `schedule_engine_task`는 태스크 스케줄링만 변경, 주문 경로 변경 없음.
+- P16 (살아있는 경로): `schedule_engine_task`의 `add_done_callback`이 실제 실행 경로에 연결됨.
+- P18 (테스트모드 동등성): B5-08-02 옵션 A로 현행 유지. 테스트/실전 조회 분기는 "조회"이며 돈 I/O가 아님 — 유령 포지션 차단 검사는 테스트모드 안전장치로 명시.
+- P20 (폴백 금지): B5-08-04 fail-closed로 폴백 금지 강화. 체크 실패 시 silent pass 대신 안전 차단 + 로깅.
+- P23 (일관성): `schedule_engine_task` 사용으로 코드베이스 일관성 향상 (engine_sector_confirm.py:392, daily_time_scheduler.py 등 기존 패턴과 일치).
+- P25 (격리된 실패): `schedule_engine_task`의 예외 처리 + 코루틴 정리 보장. fail-closed로 시스템 장애 시 안전 차단.
+
+**안전 확인 (safe-trade 스킬)**:
+- 거래 모드: **테스트모드** (코드 변경 없이 현행 유지). `is_test_mode()` 플래그로 보호됨.
+- API 키 하드코딩: 없음.
+- 주문 경로: `execute_buy()`/`execute_sell()` 단일 경로 유지 (P15). 테스트모드 `dry_run.fake_send_order()` / 실전 `router.order.send_order()` 2개만 허용.
+- RiskManager/CircuitBreaker: `execute_buy()`/`execute_sell()` 내부 호출 유지 (P16).
+- 테스트모드 동등성: 안전장치 생략 없음 (P18).
+- **원칙 15/16/18 준수 여부**: 모두 준수.
+
+**영향 범위**: 백엔드 2개 파일. 프론트엔드 영향 없음. 핵심 매매 로직 변경 (B5-08-04) — 규칙 0-4 승인 완료. 롤백 아님 (신규 보호 코드 추가 + 인프라 일관성 교체) → 규칙 0-3 해당 없음.
+
+**UI 기준 화면 변화 (규칙 0-4 — B5-08-04 핵심 로직 변경)**:
+- **정상 상황**: 변화 없음. 실시간 통신 정상 시 매수/매도 동일 동작.
+- **시스템 장애 상황 (실시간 지연 상태 확인 불가)**:
+  - **변경 전**: 매수/매도가 계속 진행됨 (fail-open). 지연 중단 게이트가 우회될 소지.
+  - **변경 후**: 매수/매도가 차단됨 (fail-closed). 화면 상단에 "실시간 지연" 칩 표시 + 매수 후보 목록에 차단 종목 표시 안 됨. 안전 우선.
+- **사용자가 확인할 수 있는 영향**: 시스템 장애 상황에서 매수 후보 목록이 비어있을 수 있음. 정상 상황에서는 변화 없음.
+
+**검증**:
+- `python -m py_compile backend/app/services/trading.py` 통과 ✓
+- `python -m pytest backend/tests/test_trading.py -x -q` 통과 — 52 passed in 0.54s ✓
+- `python -m pytest backend/tests/test_settlement_verification.py backend/tests/test_settlement_engine.py -x -q` 통과 — 56 passed in 0.82s ✓
+- `.venv/bin/ruff check backend/app/services/trading.py backend/tests/test_trading.py` 통과 — All checks passed ✓
+- `python -W error::RuntimeWarning main.py` 런타임 기동 통과 — 에러/Traceback/RuntimeWarning 없음, 220ms 기동, 정산 대조 완료(주문가능 870,541원 일치), 실시간 구독 정상 ✓
+
+**작업 중 발견 문제**: 없음.
+
+**다음 세션 대기 사항**:
+- **Tier 3 완료** — 본 세션으로 Tier 3 (P25 격리된 실패 + P20 폴백 금지 + P23 일관성) 모든 작업 완료.
+- **다음: 사용자 지시 대기** — Tier 3 완료 후 다음 단계(신규 기능, Tier 4, 또는 사용자 요청) 대기.
+
+---
+
 ### A3-07-08/09/10 통계 카드 / 라우트 변경 / addEventListener 격리 — 완료 (2026-07-23) — P25 격리된 실패 (Tier 3 다섯째 세션, LOW 3건, 프론트엔드)
 
 **세션**: 단일 세션. 프론트엔드 코드 수정 (frontend-fix 스킬). 세션 라벨 T3-S15 (사용자 지정 — 문서상 Tier 3 프론트엔드 3건).
