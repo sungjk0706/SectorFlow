@@ -107,27 +107,37 @@ function buildAccountRows(
   const container = document.createElement('div')
   container.style.display = isTestMode ? 'none' : ''
   for (let i = 0; i < labels.length; i++) {
-    const row = document.createElement('div')
-    row.style.cssText = ROW_CSS
-    if (i % 2 === 1) row.style.backgroundColor = COLOR.zebra
-    const label = document.createElement('span')
-    if (i === 4) {
-      label.appendChild(document.createTextNode('보유 종목 평가금액 ('))
-      const cntSpan = document.createElement('span')
-      cntSpan.style.color = COLOR.down
-      cntSpan.style.fontWeight = 'bold'
-      label.appendChild(cntSpan)
-      label.appendChild(document.createTextNode('종목)'))
-      holdingCountTarget(cntSpan)
-    } else {
-      label.textContent = labels[i]
+    // P25: 행 단위 격리 — 한 행 생성 throw 시 다음 행 계속 렌더링.
+    // valRefs.push(val)은 인덱스 기반(accountValRefs/testAccountValRefs)이므로
+    // 실패 시 더미 push로 인덱스 정합성 유지 (P22).
+    try {
+      const row = document.createElement('div')
+      row.style.cssText = ROW_CSS
+      if (i % 2 === 1) row.style.backgroundColor = COLOR.zebra
+      const label = document.createElement('span')
+      if (i === 4) {
+        label.appendChild(document.createTextNode('보유 종목 평가금액 ('))
+        const cntSpan = document.createElement('span')
+        cntSpan.style.color = COLOR.down
+        cntSpan.style.fontWeight = 'bold'
+        label.appendChild(cntSpan)
+        label.appendChild(document.createTextNode('종목)'))
+        holdingCountTarget(cntSpan)
+      } else {
+        label.textContent = labels[i]
+      }
+      const val = document.createElement('span')
+      Object.assign(val.style, { textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: FONT_SIZE.body })
+      row.appendChild(label)
+      row.appendChild(val)
+      container.appendChild(row)
+      valRefs.push(val)
+    } catch (e) {
+      console.error('[profit-overview] account row build error', e)
+      const dummyVal = document.createElement('span')
+      dummyVal.textContent = '-'
+      valRefs.push(dummyVal)
     }
-    const val = document.createElement('span')
-    Object.assign(val.style, { textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: FONT_SIZE.body })
-    row.appendChild(label)
-    row.appendChild(val)
-    container.appendChild(row)
-    valRefs.push(val)
   }
   return container
 }

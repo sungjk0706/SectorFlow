@@ -137,34 +137,44 @@ export function renderSectorStockPnl(state: ProfitOverviewState): void {
   }
 
   for (const group of groups) {
-    const sectorGroup = document.createElement('div')
-    sectorGroup.dataset.sector = group.sector
-    const isActive = activeSector === group.sector
-    if (isActive) {
-      Object.assign(sectorGroup.style, { background: COLOR.hoverBg, borderRadius: '6px' })
-    }
-
-    const header = createSectorHeader(group, () => {
-      if (state.activeSector === group.sector && !state.allExpanded) {
-        state.activeSector = null
-      } else {
-        state.activeSector = group.sector
-        state.allExpanded = false
+    // P25: 업종 그룹 단위 격리 — 한 그룹 처리 throw 시 다음 업종 계속 렌더링
+    try {
+      const sectorGroup = document.createElement('div')
+      sectorGroup.dataset.sector = group.sector
+      const isActive = activeSector === group.sector
+      if (isActive) {
+        Object.assign(sectorGroup.style, { background: COLOR.hoverBg, borderRadius: '6px' })
       }
-      updateExpandToggleBtn(state)
-      renderSectorStockPnl(state)
-    })
-    sectorGroup.appendChild(header)
 
-    // 종목 행 컨테이너 — 펼침/접힘 토글 대상
-    const stockRowsWrap = document.createElement('div')
-    const shouldShow = allExpanded || isActive
-    stockRowsWrap.style.display = shouldShow ? 'block' : 'none'
-    for (const stock of group.stocks) {
-      stockRowsWrap.appendChild(createStockRow(stock))
+      const header = createSectorHeader(group, () => {
+        if (state.activeSector === group.sector && !state.allExpanded) {
+          state.activeSector = null
+        } else {
+          state.activeSector = group.sector
+          state.allExpanded = false
+        }
+        updateExpandToggleBtn(state)
+        renderSectorStockPnl(state)
+      })
+      sectorGroup.appendChild(header)
+
+      // 종목 행 컨테이너 — 펼침/접힘 토글 대상
+      const stockRowsWrap = document.createElement('div')
+      const shouldShow = allExpanded || isActive
+      stockRowsWrap.style.display = shouldShow ? 'block' : 'none'
+      for (const stock of group.stocks) {
+        // P25: 종목 행 단위 격리 — 한 종목 행 throw 시 다음 종목 계속 렌더링
+        try {
+          stockRowsWrap.appendChild(createStockRow(stock))
+        } catch (e) {
+          console.error('[profit-overview-sector-pnl] stock row render error', e)
+        }
+      }
+      sectorGroup.appendChild(stockRowsWrap)
+      sectorStockListContainer.appendChild(sectorGroup)
+    } catch (e) {
+      console.error('[profit-overview-sector-pnl] sector group render error', e)
     }
-    sectorGroup.appendChild(stockRowsWrap)
-    sectorStockListContainer.appendChild(sectorGroup)
   }
 }
 

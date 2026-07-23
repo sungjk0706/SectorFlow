@@ -6,6 +6,57 @@
 
 ## 직전 완료 작업
 
+### T2-S10 페이지 렌더링 루프 격리 (수익/분류/계좌/통계) — 완료 (2026-07-23) — A3-07-05/06/07/08 완료 (Tier 2 넷째 세션, 안 B 적용)
+
+**세션**: 단일 세션. 프론트엔드 코드 수정 (frontend-fix + problem-solve 스킬). 세션 라벨 T2-S10 (Tier 2 넷째 세션, MEDIUM 4건).
+
+**배경**: P25 수정 계획 Tier 2 넷째 세션. 페이지 렌더링 루프 내 per-item 보호 부재로 한 항목 throw 시 전체 루프 중단 → 화면 일부 항목 누락(P25/P21 위반) 해결. T1-S5 (data-table-fixed.ts / virtual-scroller.ts per-row 격리, A3-07-01/02) 선행 완료 상태에서 진행 — 동일 패턴 일관성 확보.
+
+**작업 내용** (안 B — 공식 3건 + A3-07-08 편입, 총 4개 파일 6개 지점):
+1. **A3-07-05 (MEDIUM) 완료** — `frontend/src/pages/profit-overview-sector-pnl.ts` 139-168줄 `renderSectorStockPnl`: 업종×종목 이중 루프 per-item try/catch. 외부 루프(업종 그룹) + 내부 루프(종목 행) 각각 독립 try/catch. 한 종목 행 실패 시 해당 업종 나머지 종목 계속 렌더링, 한 업종 그룹 실패 시 다음 업종 계속 렌더링.
+2. **A3-07-06 (MEDIUM) 완료** — `frontend/src/pages/stock-classification.ts` 3개 함수 per-item try/catch:
+   - `updateStagingChipSectors` (278-288줄): 칩 단위 격리 — 한 칩 업종명 갱신 throw 시 다음 칩 계속 갱신.
+   - `countStocksBySector` (294-308줄): 종목 단위 격리 — 한 종목 카운트 처리 throw 시 다음 종목 계속 카운트.
+   - `getStocksForSector` (310-322줄): 종목 단위 격리 — 한 종목 수집 throw 시 다음 종목 계속 수집.
+3. **A3-07-07 (MEDIUM) 완료** — `frontend/src/pages/profit-overview-mount.ts` 101-133줄 `buildAccountRows`: 행 루프 per-row try/catch. `valRefs.push(val)`이 인덱스 기반(`accountValRefs`/`testAccountValRefs`)이므로 실패 시 더미 span push로 인덱스 정합성 유지 (P22). 한 행 생성 실패 시 다음 행 계속 렌더링.
+4. **A3-07-08 (LOW, T3-S15 소속이나 T2-S10으로 편입) 완료** — `frontend/src/pages/profit-detail-mount.ts` 185-222줄 `buildStatRow`: 6개 통계 카드 루프 per-card try/catch. `statEls.push(valEl)` + `state.statCardEls.push(stat)` 이후 `state.statCountEl = statEls[0]` 등 인덱스 참조이므로 실패 시 더미 push로 인덱스 정합성 유지 (P22).
+
+**A3-07-03 제외 사유**: 사전조사 결과 `frontend/src/components/common/data-table.ts` 108-115줄 `extractSamples`에 이미 per-cell try/catch 적용되어 있었음. 본 세션에서 수정 불필요.
+
+**수정 파일**: 4개 (프론트엔드).
+- `frontend/src/pages/profit-overview-sector-pnl.ts` (+31/-19, 이중 루프 per-item 격리)
+- `frontend/src/pages/stock-classification.ts` (+43/-26, 3개 함수 per-item 격리)
+- `frontend/src/pages/profit-overview-mount.ts` (+37/-27, buildAccountRows per-row 격리 + 더미 push)
+- `frontend/src/pages/profit-detail-mount.ts` (+31/-19, buildStatRow per-card 격리 + 더미 push)
+
+**아키텍처 원칙 부합**:
+- P25 (격리된 실패): 4건 모두 핵심 — 한 항목 throw 시 전체 루프 중단 방지, 다음 항목 계속 처리.
+- P20 (폴백 금지): 모든 catch 블록 `console.error('[모듈명] ... error', e)` 명시 로깅 (silent pass 아님). 더미 push는 에러 경로에서만 동작 — 정상 경로의 빈 값/None을 폴백으로 덮는 분기 아님.
+- P22 (데이터 정합성): 인덱스 기반 참조(`valRefs`/`statEls`/`statCardEls`)가 있는 루프는 실패 시 더미 push로 인덱스 정합성 유지 — `state.statCountEl = statEls[0]` 등 참조가 밀리지 않음.
+- P23 (일관성): 기존 `data-table.ts:108-115`, `store.ts:24-29` 표준 패턴과 동일 형태(`console.error('[모듈명] ... error', e)` + continue/더미) 유지.
+- P21 (사용자 투명성): 루프 일부 항목 누락 시 콘솔 로깅으로 추적 가능. UI 별도 표시는 기존 패턴과 일치하게 추가하지 않음.
+- P24 (단순성): per-item try/catch는 단순 래퍼, 함수 길이 미증가.
+
+**영향 범위**: 프론트엔드 4개 파일. 백엔드/DB/테스트 영향 없음. 정상 경로(모든 항목 렌더링 성공) 동작 변화 없음 — 예외 발생 시에만 해당 항목 스킵 + 로깅 + 다음 항목 계속. 롤백 아님 (신규 try/catch 추가만, 규칙 0-3/0-4/0-5 해당 없음). 핵심 로직(수신률/업종점수/매매/매수후보선정/매도조건) 변경 아님 — 규칙 0-4 해당 없음.
+
+**검증**:
+- `npm run typecheck` — 통과 (exit 0).
+- `npm run build` — 통과 (exit 0, 76 modules transformed, 1.95s).
+- `npm run lint` — 스크립트 없음 (프로젝트에 lint 미설정).
+- 브라우저 검증 — 사용자 확인 대기 (수익현황/수익상세/업종분류 3개 페이지).
+
+**작업 중 발견 문제**: 없음.
+
+**핵심 결정**:
+- 안 B 선택 (공식 3건 + A3-07-08 편입): 사용자 언급 4개 파일 중 `sector-stock.ts`는 해당 함수(`countStocksBySector`/`getStocksForSector`)가 없고 `stock-classification.ts`에 있었음. T2-S10 공식 대상 `profit-overview-sector-pnl.ts`(A3-07-05)를 누락 방지하기 위해 안 B 적용 — 공식 3건 + 사용자 언급 buildStatRow(A3-07-08, 원래 T3-S15 소속)를 T2-S10으로 편입.
+- 인덱스 기반 참조 루프의 더미 push: `valRefs`/`statEls`/`statCardEls`는 이후 `state.statCountEl = statEls[0]` 등 인덱스로 참조되므로 실패 시 더미 push로 인덱스를 맞추지 않으면 참조 밀림 발생 (P22 위반). 더미는 에러 경로에서만 생성 — 정상 경로 폴백 아님 (P20 준수).
+
+**다음 세션 대기 사항**:
+- **사용자 확정**: 다음 세션은 **T2-S11** (B5-08-03 — fake_fill_event 정합성 격리, Tier 2 마지막 세션, safe-trade 필수). 백엔드 거래 로직 수정 (`backend/app/services/trading.py`, `backend/app/services/dry_run.py`). safe-trade 스킬 필수 호출 (AGENTS.md P15 단일 주문 경로). P22 데이터 정합성 직결 — Settlement Engine 잔고 불일치 방지.
+- **Tier 2 진행 상태**: T2-S7, T2-S8, T2-S9, T2-S10 완료. 잔존 T2-S11 (1세션). MEDIUM 14건 중 13건 완료, 1건 잔존 (B5-08-03).
+
+---
+
 ### T2-S9 confirmed 빈 폴백 제거 / DB writer task_done 보장 / engine_cache 치명 오류 처리 — 완료 (2026-07-23) — B3-05-02, B4-06-01, B4-06-03 완료 (Tier 2 셋째 세션)
 
 **세션**: 단일 세션. 백엔드 코드 수정 (backend-fix + problem-solve 스킬). 세션 라벨 T2-S9 (Tier 2 셋째 세션, MEDIUM 3건).
