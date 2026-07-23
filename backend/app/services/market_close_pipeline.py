@@ -646,6 +646,7 @@ async def _save_confirmed_cache(
             if 'conn' in locals():
                 await conn.rollback()
             logger.warning("[스케줄] DB 저장 실패 (전종목 마스터 테이블): %s", e, exc_info=True)
+            return False
 
         return True
     except Exception as exc:
