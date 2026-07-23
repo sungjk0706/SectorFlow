@@ -6,6 +6,48 @@
 
 ## 직전 완료 작업
 
+### T1-S5 `_save_confirmed_cache` DB 실패 시 False 반환 — 완료 (2026-07-23) — B3-05-01 완료 (Tier 1 마지막)
+
+**세션**: 단일 세션. 백엔드 코드 수정 (backend-fix + problem-solve 스킬). 세션 라벨 T1-S5 (사용자 지정 라벨 — `p25_fix_tasks.md` 문서상 T1-S4 항목의 내용, 위반 ID B3-05-01 HIGH).
+
+**배경**: P25 수정 계획 Tier 1 마지막 세션. `market_close_pipeline.py`의 `_save_confirmed_cache` inner except(645~648)가 rollback+warning 후 fall-through → 650 `return True` 도달. DB 저장 실패를 성공으로 보고하는 silent failure (P20 폴백 금지 / P21 사용자 투명성 / P22 데이터 정합성 위반).
+
+**작업 내용**:
+1. **B3-05-01 (HIGH) 완료** — `backend/app/services/market_close_pipeline.py` 648줄: inner except에 `return False` 추가 (1줄). DB 저장 실패 시 False 반환, 정상 시에만 650 `return True` 도달. outer except(651~653)의 `return False` 패턴과 일관 (P23).
+2. **테스트 정정** — `backend/tests/test_market_close_pipeline.py` 725~737줄: `test_db_exception_returns_true_with_warning` → `test_db_exception_returns_false_with_warning`로 테스트명/주석/`assert result is False` 정정. 기존 테스트가 잘못된 동작(True 반환)을 명시적으로 검증하던 것을 올바른 동작(False 반환) 검증으로 수정.
+
+**수정 파일**: 2개.
+- `backend/app/services/market_close_pipeline.py` (+1줄)
+- `backend/tests/test_market_close_pipeline.py` (8줄 변경 — 테스트명/주석/assert)
+
+**아키텍처 원칙 부합**:
+- P20 (폴백 금지): DB 실패를 성공으로 보고하는 silent failure 제거 — 해결.
+- P21 (사용자 투명성): False 반환으로 실패 인지 가능 — 강화.
+- P22 (데이터 정합성): DB 저장 실패 시 잘못된 성공 전제 차단 — 해결.
+- P23 (일관성): outer except의 `return False` 패턴과 동일하게 정렬.
+- P24 (단순성): `return False` 1줄 추가, 복잡도 증가 없음.
+
+**영향 범위**: 현재 호출자 `_run_post_confirmed_pipeline`(510~520)이 반환값 무시(`await`만 하고 결과 사용 안 함) → 직접 동작 변화 없음. 향후 반환값 사용 시 올바른 계약 보장. 프론트엔드/DB 스키마 영향 없음.
+
+**검증**:
+- `py_compile` 통과.
+- `pytest backend/tests/test_market_close_pipeline.py -v --timeout=15` — 57 passed (0.77s), 0 failed.
+- `python -W error::RuntimeWarning main.py` 기동 — RuntimeWarning/Traceback/Error 0건. 30초 정상 구독·수신율 갱신 동작 확인.
+- 잔존 프로세스 0건 확인.
+
+**커밋**: `06cd751 fix(backend): T1-S5 _save_confirmed_cache DB 실패 시 False 반환 (B3-05-01)`
+
+**도중 발견 문제**:
+- HANDOVER.md 갱신 중 실수로 기존 HANDOVER.md(1961줄)를 82줄로 덮어쓰는 사고 발생 (규칙 0-3 승인 없는 롤백 위반). 즉시 `git show HEAD~1:HANDOVER.md`로 복구 후 본 섹션 추가 형태로 갱신. 사용자에게 보고 예정.
+
+**핵심 결정**:
+- 반환값 변경이나 현재 호출자가 반환값 무시하므로 직접 동작 변화 없음 — 계약 정정 자체가 의미 (P16 살아있는 경로: dead code 아님, 향후 사용 시 올바른 계약).
+- 롤백 아님 (버그 수정 — 잘못된 반환값 정정). 규칙 0-3/0-4/0-5 해당 없음.
+
+**Tier 1 전체 완료**: T1-S1~T1-S6 (문서상 라벨) = 사용자 라벨 T1-S1~T1-S5. CRITICAL 2건 + HIGH 8건 = 10건 전부 완료. 다음은 Tier 2 (MEDIUM 14건 / 5세션).
+
+---
+
 ### T1-S4 엔진 루프 / 기동 캐시 격리 — 완료 (2026-07-23) — B1-02-01/04 완료
 
 **세션**: 단일 세션. 백엔드 코드 수정 (backend-fix 스킬). 세션 라벨 T1-S4 (사용자 지정 라벨 — `p25_fix_tasks.md` 문서상 T1-S2 항목의 내용, 위반 ID B1-02-01 HIGH + B1-02-04 HIGH).
@@ -1567,18 +1609,26 @@
 
 ## 다음 세션 작업
 
-**P25 전수 조사 세션 9 (교차 점검·총합 보고) — 마지막 세션**:
-- 조사 범위: 세션 1~8 결과 취합 + 교차 원칙 매트릭스 작성 + 우선수정 추천
-- 조사 보고서: `docs/p25_isolated_failure_investigation.md` 섹션 11에 결과 누적 예정
-  - 11.1 P25 위반 전체 목록 취합 (세션 1~8 = 총 40건: A1 5건 + B1 7건 + B2 5건 + A2 2건 + B3 4건 + B4 3건 + A3 10건 + B5 4건)
-  - 11.2 교차 원칙 매트릭스 작성 (P25 × P7/P9/P16/P20/P21/P22/P23/P18/P15)
-  - 11.3 우선수정 추천 (영향도 순 — CRITICAL/HIGH 우선)
-  - 11.4 조사 완료 정의 확인
-- 세션 9 완료 시 P25 전수 조사 9/9 세션 완료
-- 조사만 수행 (코드 수정 없음)
-- **세션 8 이월 검토 항목**: B5-08-03 (MEDIUM) fake_fill_event 태스크 실패 시 P22 정합성 — 기동 시 대조(reconciliation) 메커니즘 보유 여부 확인 필요 (settlement_engine.py, engine_lifecycle.py 기동 시 대조 로직 조사)
+**Tier 2 (MEDIUM, 14건 / 5세션) — 진행 예정**:
 
-**P25 전수 조사 전체 진행률**: 8/9 세션 완료 (세션 1~8 완료. 세션 9 대기 — 마지막)
+| 세션 | 위반 ID | 파일 | 의존성 | safe-trade |
+|------|---------|------|--------|------------|
+| T2-S7 | A1-01-03, A2-04-01/02 | ws.ts, store.ts, hotStore.ts | T1-S1 완료 ✓ | 불필요 |
+| T2-S8 | B1-02-02/03, B2-03-02 | engine_loop.py, pipeline_compute.py | T1-S2/S3 완료 ✓ | 불필요 |
+| T2-S9 | B3-05-02, B4-06-01/03 | market_close_pipeline.py, db_writer.py, engine_cache.py | T1-S4 완료 ✓ | 불필요 |
+| T2-S10 | A3-07-03/05/06/07 | data-table.ts, profit-overview-sector-pnl.ts, stock-classification.ts, profit-overview-mount.ts | T1-S5 완료 권장 ✓ | 불필요 |
+| T2-S11 | B5-08-03 | trading.py, dry_run.py | 없음 | **필수** |
+
+**다음 시작 세션**: T2-S7 (프론트엔드 — WS 로그 분류 / store updater / hotStore dispatch 격리)
+- A1-01-03: 디코딩 catch와 핸들러 catch 분리 후 각각 목적에 맞는 로그 메시지
+- A2-04-01: setState updater `partial(state)` try/catch, throw 시 `console.error` + 기존 state 반환
+- A2-04-02: window.dispatchEvent CustomEvent per-dispatch try/catch (A2-04-01과 동일 패턴, P23)
+
+**세션 시작 시 확인 사항**:
+- 본 HANDOVER.md "직전 완료 작업" 파악
+- `docs/p25_fix_tasks.md` 해당 세션 항목 확인
+- 사전조사 4항목 수행 (규칙 0-2)
+- 사용자 명시적 승인(실행 지시어) 수신 후 수정 착수
 
 **audit 문서에 기록된 잔여 항목 (사용자 지시 시 진행)**:
 - B-13 보류 5건 (B13-03/04/06/07/08, LOW/INFO 등급) — `docs/architecture_audit_plan.md` 섹션 7 참조
