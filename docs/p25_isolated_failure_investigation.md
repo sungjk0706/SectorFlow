@@ -119,6 +119,19 @@ AGENTS.md 섹션3 규칙 0-1 (세션당 1단계 원칙) 준수.
 | B3-05-02 | B3 스케줄러·파이프라인 | `backend/app/services/market_close_pipeline.py:897` | `_step5_download_daily_confirmed`에서 `confirmed = {}` 빈 폴백. if confirmed 가드로 메모리/DB는 보호되나, 빈 eligible_codes로 `_run_post_confirmed_pipeline` 실행 → 빈 캐시 저장 시도 | 전종목 다운로드 실패 시 빈 데이터로 후속 파이프라인 진행. P20 폴백 금지 위반. 단 if confirmed 가드로 메모리/DB 파손은 차단 | MEDIUM | P20 | 세션 5 | 미승인 |
 | B3-05-03 | B3 스케줄러·파이프라인 | `backend/app/services/market_close_pipeline.py:492` | `except (ValueError, TypeError): pass` silent pass. float 변환 실패 시 strength_str 갱신 스킵만 하고 종목 루프 계속 (로깅 없음) | strength 필드 갱신 누락이 로그에 남지 않아 디버깅 불가. P20 위반. 영향도 국소적 (단일 종목 strength 필드) | LOW | P20 | 세션 5 | 미승인 |
 | B3-05-04 | B3 스케줄러·파이프라인 | 11곳 (`market_close_pipeline.py` 424, 858, 934, 1103, 1254 + `daily_time_scheduler.py` 1273, 1287, 1327, 1354, 1446, 1507) | exc_info 누락. logger.warning은 하나 exc_info=True 누락. 단 934는 "(무시)" 표시로 의도적 일부 드러남 | 스택트레이스 누락으로 디버깅困难. P23 일관성 위반 (다른 경로는 exc_info=True). 즉시 중단 유발 아님 | LOW | P23 | 세션 5 | 미승인 |
+| B4-06-01 | B4 워커·IO·재시도 | `backend/app/services/db_writer.py:79` | `_process_operation` 실패 시 `task_done()` 스킵 → 큐 미완료 카운트 누적, graceful shutdown 시 `queue.join()` 무한 대기 위험. 단 `stop_db_writer` cancel+비우기로 회피하므로 실제 발현 제한적 | 큐 미완료 카운트 누적. shutdown 시 무한 대기 위험 (회피 로직 존재) | MEDIUM | P25 부분 | 세션 6 | 미승인 |
+| B4-06-02 | B4 워커·IO·재시도 | `backend/app/services/kiwoom_rest.py:353-356` | `_request` 예외 시 재시도 없이 즉시 `return None` — `_call_api`는 예외 시 재시도하는데 일관성 부족 | REST 호출 실패 시 즉시 None 반환. 의도적일 수 있으나 P23 일관성 위반 | LOW | P23 | 세션 6 | 미승인 |
+| B4-06-03 | B4 워커·IO·재시도 | `backend/app/services/engine_cache.py:148-149` | 치명적 오류(RuntimeError 포함, line 28 `master_stocks_table 테이블에 데이터가 없습니다`)를 "무시, 기존 흐름으로 진행"으로 처리 | master_stocks_table 없음이 치명적인데 폴백으로 덮음 → P20 폴백 금지 위반 소지 | MEDIUM | P20 | 세션 6 | 미승인 |
+| A3-07-01 | A3 UI 컴포넌트 렌더링 | `frontend/src/components/virtual-scroller.ts:293-316` | `renderRange` 루프 내 `renderRow()` 호출(304, 312행)에 try/catch 없음. 한 행 렌더링 실패 시 가시 영역 전체 렌더링 루프 중단 | 가상 스크롤 테이블(업종 순위 등)에서 한 행 rowStyle/renderRow throw 시 가시 영역 전체 공백. 셀 단위 격리(243-250)는 있으나 행 단위 격리 부재 | HIGH | P25, P21 | 세션 7 | 미승인 |
+| A3-07-02 | A3 UI 컴포넌트 렌더링 | `frontend/src/components/common/data-table-fixed.ts:230-236` | 신규 키 추가 루프 내 `renderDataRow()` 호출(232행)에 try/catch 없음. rowStyle() 또는 행 생성 자체 throw 시 updateRows 루프 중단 | 고정 테이블(매수 후보, 보유 목록 등)에서 한 행 생성 실패 시 전체 테이블 렌더링 실패. 셀 단위 격리(154-162)는 있으나 행 단위 격리 부재 | HIGH | P25, P21 | 세션 7 | 미승인 |
+| A3-07-03 | A3 UI 컴포넌트 렌더링 | `frontend/src/components/common/data-table.ts:104-112` | `extractSamples` 이중 루프(rows × columns)에서 `columns[c].render()` 호출에 try/catch 없음. 한 셀 render throw 시 샘플링 전체 실패 → 컬럼 너비 계산 실패 → 테이블 초기화 차단 | 테이블 초기화 단계에서 사용자 정의 render 함수 오류 시 테이블 전체 미초기화. 발생 빈도 낮으나 구조적 보호 부재 | MEDIUM | P25 | 세션 7 | 미승인 |
+| A3-07-04 | A3 UI 컴포넌트 렌더링 | `frontend/src/layout/header.ts:365-494` | `onStateChange` 단일 대형 함수(~130줄, 15개 칩 순차 갱신)에 내부 try/catch 없음. store.ts listener 루프(40-46)가 콜백 전체를 보호하므로 다른 리스너는 안전하나, 콜백 내 한 칩 렌더링 throw 시 이후 칩들 미갱신. 증권사 칩 루프(461-467)도 per-broker 격리 없음 | 헤더 일부 칩이 멈춘 상태로 방치 → 사용자가 자동매수/매도/텔레그램 활성화 여부 오인 (P21 위반). F-02 사례와 동일 패턴 | HIGH | P25, P21 | 세션 7 | 미승인 |
+| A3-07-05 | A3 UI 컴포넌트 렌더링 | `frontend/src/pages/profit-overview-sector-pnl.ts:139-168` | `renderSectorStockPnl` 업종×종목 이중 루프에 per-item try/catch 없음. `createSectorHeader`/`createStockRow` 호출 throw 시 루프 중단 | 한 종목 행 실패 시 해당 업종 나머지 + 이후 업종 전부 화면 누락 → 수익 분석 왜곡 | MEDIUM | P25, P21 | 세션 7 | 미승인 |
+| A3-07-06 | A3 UI 컴포넌트 렌더링 | `frontend/src/pages/stock-classification.ts:278-288,294-308,310-322` | `updateStagingChipSectors`/`countStocksBySector`/`getStocksForSector` 루프에 per-item try/catch 없음. 한 칩/종목 처리 throw 시 나머지 미갱신 | 업종분류 칩 업종명 미갱신 또는 카운트 불완전 → 분류 변경 결과 UI 불완전 반영 | MEDIUM | P25, P21 | 세션 7 | 미승인 |
+| A3-07-07 | A3 UI 컴포넌트 렌더링 | `frontend/src/pages/profit-overview-mount.ts:101-133` | `buildAccountRows` 계좌 행 루프에 per-item try/catch 없음. 한 행 DOM 생성 throw 시 나머지 행 누락 | 계좌 현황 행 일부 누락 → 잔고/수익 정보 불완전 표시 | MEDIUM | P25 | 세션 7 | 미승인 |
+| A3-07-08 | A3 UI 컴포넌트 렌더링 | `frontend/src/pages/profit-detail-mount.ts:185-222` | `buildStatRow` 6개 통계 카드 루프에 per-item try/catch 없음. 한 카드 생성 throw 시 나머지 카드 누락 | 통계 카드 일부 누락. 항목 수 적어 영향 제한적 | LOW | P25 | 세션 7 | 미승인 |
+| A3-07-09 | A3 UI 컴포넌트 렌더링 | `frontend/src/router.ts:105-109` | `notifyRouteChange` cb 루프에 try/catch 없음. 한 routeChange 리스너 throw 시 다른 리스너 중단 | 리스너 수 적음(main.ts 2개) → 영향 국소적. 단 P23 일관성(다른 루프는 보호) 위반 | LOW | P25, P23 | 세션 7 | 미승인 |
+| A3-07-10 | A3 UI 컴포넌트 렌더링 | 프론트엔드 전역 87개 `addEventListener` | 클릭/변경/입력 핸들러 대부분 try/catch 없음. 핸들러 throw 시 브라우저 전역 에러로 전파 (해당 컴포넌트만 영향이나 디버깅 어려움) | 사용자 구동 이벤트라 빈도 낮아 위험 중간~낮음. 단 P25 격리 원칙 적용 미흡 | LOW | P25 | 세션 7 | 미승인 |
 
 ### 등급 정의
 - **CRITICAL**: 한 구성요소 실패가 시스템 전체 중단 유발 (자동매매 정지, 화면 전체 멈춤)
@@ -736,8 +749,8 @@ app.py lifespan (62):
 
 ## 9. 세션 7: A3 UI 컴포넌트 렌더링 조사
 
-> 상태: 미시작
-> 조사 파일: 36개 파일 (pages/*, components/common/*, layout/*)
+> 상태: 완료 (2026-07-23)
+> 조사 파일: 51개 파일 (pages/ 23, components/common/ 28, layout/ 3) + 참조 파일 2개 (binding.ts, virtual-scroller.ts)
 > 조사 범위:
 > - `subscribe()` 리스너 내부 렌더링 실패 시 전파
 > - `addEventListener` 콜백 실패 시 전파
@@ -745,10 +758,63 @@ app.py lifespan (62):
 > - 개별 칩/컴포넌트 렌더링 실패가 전체 화면 중단 유발 여부 (F-02 사례와 동일 패턴)
 
 ### 9.1 조사 결과
-_작성 예정_
+
+**계층별 격리 상태**:
+
+| 격리 계층 | 상태 | 비고 |
+|---|---|---|
+| Store 리스너 간 격리 | ✅ 준수 | `store.ts` setState(40-46)가 각 listener를 try/catch + console.error로 격리. F-02 fix |
+| DataTable 셀 렌더링 | ✅ 준수 | fixed(154-162, 274-290)/virtual(243-250) 모두 셀 단위 try/catch |
+| DataTable 행 렌더링 | ❌ 미준수 | renderRow/renderDataRow 호출부에 try/catch 없음 (A3-07-01/02) |
+| DataTable 초기화(샘플링) | ❌ 미준수 | `data-table.ts` extractSamples 루프 무보호 (A3-07-03) |
+| 헤더 칩 렌더링(콜백 내) | ❌ 미준수 | onStateChange 단일 함수, 칩 간 격리 없음 (A3-07-04) |
+| 페이지 리스트 루프 | ❌ 미준수 | profit/stock-classification 등 대부분 무보호 (A3-07-05~07) |
+| DOM addEventListener 핸들러 | ❌ 미준수 | 87개 중 거의 모든 핸들러 무보호 (A3-07-10) |
+| Router notifyRouteChange | ❌ 미준수 | cb 루프에 try/catch 없음 (A3-07-09) |
+| Router handleRouteChange | ✅ 준수 | loadModule+mount try/catch 보호, 실패 시 에러 UI + 재시도 버튼 |
+
+**핵심 발견**:
+- **Store 리스너 "간"은 격리되나, 하나의 콜백 "내부"에서 부분 실패 시 콜백 내 나머지 작업은 중단** (A3-07-04). store.ts가 콜백 전체를 try/catch하므로 다른 리스너는 보호되나, 콜백 내 15개 칩 중 하나가 throw하면 이후 칩들이 미갱신 → 헤더 일부 칩 멈춤 상태 방치 (P21 위반)
+- **DataTable 셀 단위 격리는 잘 되어 있으나 행 단위 격리 부재**. 셀 render 실패는 해당 셀만 빈 상태로 남으나, rowStyle() 또는 행 생성 자체가 throw하면 루프 중단 → 가시 영역 전체 공백
+- **F-02 사례와 동일 패턴이 헤더에 잔존**. F-02 fix는 store.ts listener 루프만 보호. onStateChange 내부 칩 간 격리는 별도 과제
+- **페이지 리스트 루프 대부분 per-item 격리 없음**. profit-overview-sector-pnl(이중 루프), stock-classification(칩/종목 루프), profit-overview-mount(계좌 행) 등
+- **DOM 이벤트 핸들러 87개 중 try/catch 보호 사실상 전무**. 사용자 구동이라 빈도 낮아 위험은 중간~낮으나 P25 적용 미흡
+
+**양호 항목 (P25 준수 확인)**:
+- `store.ts:40-46` listener 루프 try/catch + console.error — F-02 fix, P25 OK
+- `data-table-fixed.ts:154-162, 274-290` 셀 단위 try/catch — P25 OK
+- `data-table-virtual.ts:243-250` 셀 단위 try/catch — P25 OK
+- `router.ts:154-193` handleRouteChange try/catch + 에러 UI + 재시도 버튼 — P25 OK
+- `data-table-virtual.ts:263-266` rowFooter try/catch — P25 OK
 
 ### 9.2 위반 목록
-_작성 예정_
+
+| ID | 심각도 | 파일:줄 | 내용 | 수정 방향 |
+|----|--------|---------|------|-----------|
+| A3-07-01 | HIGH | `virtual-scroller.ts:293-316` | `renderRange` 루프 내 `renderRow()` 호출에 try/catch 없음 | 루프 내 각 `renderRow()` 호출을 try/catch로 감싸고, 실패 시 `console.error('[VirtualScroller] row render error', e)` + 해당 행 건너뛰고 계속 |
+| A3-07-02 | HIGH | `data-table-fixed.ts:230-236` | 신규 키 추가 루프 내 `renderDataRow()` 호출에 try/catch 없음 | `renderDataRow()` 호출을 try/catch로 감싸고, 실패 시 로깅 + 해당 행 건너뛰기 |
+| A3-07-03 | MEDIUM | `data-table.ts:104-112` | `extractSamples` 루프 내 `columns[c].render()` 무보호 | 샘플링 루프 내 셀 render를 try/catch로 감싸고, 실패 시 빈 문자열 폴백(샘플링이므로 P20 위반 아님) |
+| A3-07-04 | HIGH | `header.ts:365-494` | `onStateChange` 단일 함수, 15개 칩 순차 갱신, 칩 간 격리 없음 | onStateChange 내 각 칩 갱신 블록을 개별 try/catch로 감싸거나, 칩 갱신 헬퍼 함수에 try/catch 내장. 증권사 칩 루프(461-467)도 per-broker try/catch |
+| A3-07-05 | MEDIUM | `profit-overview-sector-pnl.ts:139-168` | 업종×종목 이중 루프 per-item 격리 없음 | 내부 루프(종목 행)와 외부 루프(업종 그룹) 각각 per-item try/catch |
+| A3-07-06 | MEDIUM | `stock-classification.ts:278-322` | 3개 루프(updateStagingChipSectors/countStocksBySector/getStocksForSector) per-item 격리 없음 | 각 루프 내 per-item try/catch + 로깅 |
+| A3-07-07 | MEDIUM | `profit-overview-mount.ts:101-133` | `buildAccountRows` 루프 per-item 격리 없음 | 루프 내 per-item try/catch |
+| A3-07-08 | LOW | `profit-detail-mount.ts:185-222` | `buildStatRow` 6개 카드 루프 per-item 격리 없음 | 루프 내 per-item try/catch (항목 수 적어 우선순위 낮음) |
+| A3-07-09 | LOW | `router.ts:105-109` | `notifyRouteChange` cb 루프에 try/catch 없음 | cb 루프를 try/catch로 감싸고, 실패 시 `console.error('[Router] routeChange listener error', e)` |
+| A3-07-10 | LOW | 프론트엔드 전역 87개 addEventListener | 핸들러 대부분 try/catch 없음 | 고위력 핸들러(저장/주문 관련)부터 우선 try/catch 적용. 전역 일괄 적용은 P24(단순성) 검토 필요 |
+
+### 9.3 교차 원칙 점검 (세션 7 범위)
+
+| 원칙 | 해당 | 비고 |
+|------|------|------|
+| P25 (격리된 실패) | 해당 | 본 조사 주 원칙. A3-07-01~10 전부 P25 위반 |
+| P21 (사용자 투명성) | 해당 | A3-07-01/02: 테이블 전체 공백 → 사용자가 데이터 누락 인지 못할 수 있음. A3-07-04: 헤더 칩 멈춤 → 자동매수/매도 활성화 여부 오인. A3-07-05/06: 수익/분류 정보 불완전 표시 |
+| P23 (일관성) | 해당 | A3-07-09: 다른 루프(store.ts, data-table 셀)는 보호되나 router notifyRouteChange는 미보호 → 비대칭. A3-07-10: 핸들러 보호 패턴 불일치 |
+| P16 (살아있는 경로) | 해당 | A3-07-01/02: 행 렌더링 실패 시 루프 중단 = 경로 사망. 셀 격리는 살아있으나 행 격리 부재 |
+| P7 (블로킹 금지) | 부분 | A3-07-01: 가상 스크롤 렌더링 중단 = 화면 갱신 블로킹. 틱 핸들러 경로는 아니나 고빈도 갱신 경로 |
+
+### 9.4 F-02 사례와의 연관
+
+F-02(장 상태 칩 렌더링 실패가 앱 전체를 죽이는 구조) 수정은 `store.ts` listener 루프 try/catch 추가로 "리스너 간" 격리를 확보했으나, **"리스너 내부" 칩 간 격리는 미해결**. A3-07-04는 F-02와 동일 패턴의 잔존 위험 — onStateChange 내 한 칩 실패 시 이후 칩 미갱신. F-02 근본 수정의 완성을 위해 A3-07-04 수정 필요.
 
 ---
 
@@ -805,3 +871,5 @@ _세션 1~8 완료 후 작성_
 | 2026-07-23 | 세션 3 | B2 파이프라인 연산 루프 조사 완료. 위반 5건 식별 (B2-03-01~05). 섹션 2 매트릭스 + 섹션 5 결과 작성. HIGH 1건, MEDIUM 1건, LOW 3건. 사전 위반 후보 pipeline_compute.py:209,214 create_task 직접 호출은 위반 아님으로 확정 (엔진 루프 안 await 호출). B1-02-05/06 호출부 격리 확인 완료 (LOW 유지). while 루프 4곳 중 2곳만 보호되어 P23 비대칭 |
 | 2026-07-23 | 세션 4 | A2 Store listener 조사 완료. 위반 2건 식별 (A2-04-01~02). 섹션 2 매트릭스 + 섹션 6 결과 작성. MEDIUM 2건. store.ts:40-46 listener 루프는 F-02 fix로 P25 준수 확인. 단 updater 함수(19)와 dispatchEvent(367-431)가 listener 루프 보호 우회 경로. 3개 store 동일 createStore 패턴 P23 일관성 준수 |
 | 2026-07-23 | 세션 5 | B3 대형 스케줄러·파이프라인 조사 완료. 위반 4건 식별 (B3-05-01~04). 섹션 2 매트릭스 + 섹션 7 결과 작성. HIGH 1건, MEDIUM 1건, LOW 2건. schedule_engine_task 15회 호출 모두 P25 격리 준수 (add_done_callback). call_later 3곳+call_soon_threadsafe 1곳 모두 보호. 45개 except 중 28개 logger.warning+exc_info=True 준수. B3-05-01 (HIGH) DB 저장 실패를 True 반환하는 P22/P21 위반이 가장 심각 |
+| 2026-07-23 | 세션 6 | B4 워커·IO·재시도 루프 조사 완료. 위반 3건 식별 (B4-06-01~03). 섹션 8 결과 작성. MEDIUM 2건, LOW 1건. (섹션 2 매트릭스 누락 보완 — 세션 7에서 B4-06 행 추가). IO 블로킹 전무(P1-P3 준수). 백그라운드 태스크 5곳 전부 add_done_callback로 P25 준수. WS 서버 3개 루프 동일 패턴 일관적. 10개 파일 중 7개 위반 없음 |
+| 2026-07-23 | 세션 7 | A3 UI 컴포넌트 렌더링 조사 완료. 위반 10건 식별 (A3-07-01~10). 섹션 2 매트릭스 + 섹션 9 결과 작성. HIGH 3건, MEDIUM 4건, LOW 3건. 51개 파일 조사. store.ts listener 간 격리(F-02 fix)와 DataTable 셀 단위 격리는 P25 준수 확인. 행 단위 격리·헤더 칩 간 격리·페이지 루프·DOM 핸들러는 미준수. A3-07-04는 F-02 잔존 위험(onStateChange 칩 간 격리). 세션 6 B4-06 매트릭스 누락분 보완 추가 |
