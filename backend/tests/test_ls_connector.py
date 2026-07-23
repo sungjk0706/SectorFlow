@@ -431,6 +431,27 @@ class TestConvertLsToInternal:
         result = sock._convert_ls_to_internal("JIF", {}, {"jangubun": "", "jstatus": "1"})
         assert result is None
 
+    def test_nws_normal(self):
+        sock = _make_ls_socket()
+        result = sock._convert_ls_to_internal("NWS", {}, {"title": "삼성전자 대규모 수주", "code": "005930"})
+        assert result is not None
+        assert result["trnm"] == "NWS"
+        assert result["title"] == "삼성전자 대규모 수주"
+        assert result["code"] == "005930"
+
+    def test_nws_empty_title_returns_none(self):
+        sock = _make_ls_socket()
+        result = sock._convert_ls_to_internal("NWS", {}, {"title": "", "code": "005930"})
+        assert result is None
+
+    def test_nws_missing_code_returns_empty_string(self):
+        sock = _make_ls_socket()
+        result = sock._convert_ls_to_internal("NWS", {}, {"title": "테스트 뉴스"})
+        assert result is not None
+        assert result["trnm"] == "NWS"
+        assert result["title"] == "테스트 뉴스"
+        assert result["code"] == ""
+
     def test_ij_normal(self):
         sock = _make_ls_socket()
         result = sock._convert_ls_to_internal("IJ_", {}, {
@@ -861,6 +882,25 @@ class TestLsConnectorSubscribeJifIndex:
         mock_socket.send.side_effect = [True, False]
         conn._socket = mock_socket
         result = await conn.subscribe_index()
+        assert result is False
+
+    async def test_subscribe_news_success(self):
+        conn = _make_ls_connector()
+        conn._connected = True
+        conn._token = "tok"
+        mock_socket = AsyncMock()
+        mock_socket.send.return_value = True
+        conn._socket = mock_socket
+        result = await conn.subscribe_news()
+        assert result is True
+        payload = mock_socket.send.call_args[0][0]
+        assert payload["body"]["tr_cd"] == "NWS"
+        assert payload["body"]["tr_key"] == "NWS001"
+
+    async def test_subscribe_news_not_connected(self):
+        conn = _make_ls_connector()
+        conn._connected = False
+        result = await conn.subscribe_news()
         assert result is False
 
 
