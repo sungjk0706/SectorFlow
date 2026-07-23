@@ -1105,7 +1105,7 @@ F-05-c(F05-08) 완료 후 작업 여력: **충분**. 잔여 profit-overview.ts/p
 - F04-01/F04-03 (P24): stock-classification.ts 파일 1597줄 / 함수 4개 50줄 초과 (buildSectorManageCard 278줄, buildTripleCenter 231줄, mount 103줄, buildTripleHeader 71줄) — 파일 분할은 별도 세션 필요 (구조 변경)
 - F04-15 (P10): 로컬 캐시/파생 상태 (cachedSectorStocksRef, cachedAllStocksMap, stockNameIndex, stagingSet, selectedStocks) — 성능 최적화 목적이므로 판단 필요
 - F04-16 (P23): fuzzy 검색 로직 중복 (612-628줄, 684-694줄) — 공통 함수 추출 검토
-- F04-18 (P21): 업종 삭제 시 사용자 명시적 알림 부재 — 경미
+- ~~F04-18 (P21): 업종 삭제 시 사용자 명시적 알림 부재 — 경미~~ → 해결 (2026-07-23 조사). `onDeleteSector`에 사전 확인 팝업(업종명+영향 명시) + 사후 성공/실패 토스트 + warning alert 3중 알림 구현됨. P21 위반 잔존 없음.
 
 ---
 
@@ -1147,7 +1147,7 @@ F-05-c(F05-08) 완료 후 작업 여력: **충분**. 잔여 profit-overview.ts/p
 - ~~F04-01/F04-03 (P24): stock-classification.ts 함수 4개 50줄 초과~~ — **F-04-e 해결** (4개 함수 모두 분할)
 - F04-15 (P10): 로컬 캐시/파생 상태 — 성능 최적화 목적이므로 판단 필요
 - ~~F04-16 (P23): fuzzy 검색 로직 중복~~ — **F-04-e 해결** (공통 함수 추출)
-- F04-18 (P21): 업종 삭제 시 사용자 명시적 알림 부재 — 경미
+- ~~F04-18 (P21): 업종 삭제 시 사용자 명시적 알림 부재 — 경미~~ → 해결 (2026-07-23 조사). `onDeleteSector`에 사전 확인 팝업 + 사후 토스트 + warning alert 3중 알림 구현됨. P21 위반 잔존 없음.
 
 ### F-03 보류 항목 (B그룹 4건, 추후 검토)
 - F03-07 (P20/P22): sell-position.ts:59,73 — `sectorStock?.cur_price ?? p.cur_price` 폴백 (사용자 설계 로직, 규칙 0-5 적용 대상)
