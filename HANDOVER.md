@@ -38,7 +38,7 @@
   - 1-6: 운영 미사용 모듈 제거 — `engine_ws_fill_followup.py` 제거 (app/에서 미사용 확인). **`lock_manager.py`는 subagent가 미사용으로 판단해 삭제했으나 런타임 기동 검증에서 `main.py` 진입점이 핵심 사용(중복 실행 차단)하는 것 발견, 즉시 git checkout으로 복구**
   - 1-7: 중복 wrapper 2개 제거 (`fetch_ka10081_daily_price` kiwoom_rest wrapper, `_apply_last_price_to_positions` engine_account wrapper). 이름 중복 1개(stock_classification_data vs routes)는 기능상 정상 동작이므로 유지
 - **안전장치**: (1) pyflakes로 unused import/변수 탐지, vulture로 dead function 탐지, grep 교차 검증. (2) 함수 제거 시 관련 테스트 + docstring + 헤더 주석 동시 정리 (AGENTS.md Code Removal Rules 준수). (3) 런타임 기동 검증으로 main.py 진입점 import 확인 → lock_manager.py 잘못된 삭제 발견 및 복구.
-- **검증**: pyflakes `app/` 0 경고 / pytest 2693 passed 3 failed (3개 실패는 `test_web_app.py::TestSpaFallback` — `frontend/dist` 디렉토리 없음으로 인한 기존 환경 문제, 본 작업과 무관) / 런타임 import 16개 핵심 모듈 전부 성공
+- **검증**: pyflakes `app/` 0 경고 / pytest 2693 passed 3 failed (3개 실패는 `test_web_app.py::TestSpaFallback` — `frontend/dist` 디렉토리 없음으로 인한 기존 환경 문제, 본 작업과 무관) / 런타임 import 16개 핵심 모듈 전부 성공 / 커밋 `d471103`
 - **보류**: 프론트엔드 죽은 코드 정리 (2-1: 죽은 `??` 폴백 15개, 2-2: 죽은 초기 할당 2개, 2-3: 명명 중복 4개) — 다음 세션에서 진행
 
 ### CLEAN-02 프로젝트 폴더 추가 용량 정리 + .venv 경량화 (2026-07-24)
