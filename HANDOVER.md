@@ -6,6 +6,51 @@
 
 ## 직전 완료 작업
 
+### 수신율 갱신 로그 1줄 \r 갱신 통일 (2026-07-23)
+
+**세션**: 단일 세션. 백엔드 2파일 + 테스트 1파일.
+
+**문제 현상**: 수신율 갱신 시마다 `logger.info`로 매번 새 줄 출력 → 장초반 틱 집중 수신 시 40~50줄 폭주, 파일 로그 용량 증가. 다운로드 진행률은 이미 `log_progress`로 1줄 `\r` 갱신 중이나 수신율만 예외 상태.
+
+**근본 원인**: `pipeline_compute.py` Phase 1/Phase 2 루프의 수신율 갱신 로그가 `logger.info`로 매번 새 줄 출력. 파일에도 INFO로 누적되어 용량 증가.
+
+**수정 안**: 다운로드 진행률 `log_progress` 패턴 재사용 (P23 일관성).
+- 콘솔: `\r` 1줄 갱신 (TTY 아닐 때 `\n`)
+- 파일: DEBUG 강하 (INFO 운영 시 파일 누적 안 됨 → 용량 절감)
+- 임계값 통과 시점: 별도 `logger.info` 1줄 영구 기록 유지 (P21 투명성)
+- Phase 2 구간도 동일 적용
+
+**수정 파일 3개**:
+- `backend/app/core/logger.py` — `log_receive_rate_progress` 헬퍼 신규 추가. KRX/NXT 이중 카운터 + 임계값 표시. `_progress_active` 플래그 공유, `log_progress_end` 재사용.
+- `backend/app/pipelines/pipeline_compute.py` — Phase 1 대기 중 로그 → `log_receive_rate_progress(waiting=True)`, 임계값 통과 직전 `log_progress_end()` 추가 (커서 꼬임 방지), Phase 2 로그 → `log_receive_rate_progress(waiting=False)`.
+- `backend/tests/test_logger.py` — `TestLogReceiveRateProgress` 4건 추가 (TTY 대기 중, TTY Phase 2, non-TTY, zero total).
+
+**원칙 부합**:
+- P10 SSOT: `_progress_active` 단일 플래그 유지, 수신율 데이터는 기존 `_current_receive_rate` 참조
+- P16 살아있는 경로: 헬퍼가 실제 Phase 1/2 루프 호출 경로에 연결
+- P21 사용자 투명성: 임계값 통과 시점 `logger.info` 영구 기록 유지
+- P23 일관성: `log_progress`와 동일 패턴, 용어 "수신율/임계값" 유지
+- P24 단순성: 신규 헬퍼 단일 역할, 20줄 이내
+
+**검증**:
+- `py_compile` 통과, `ruff` 신규 코드 통과 (기존 unused import 2건은 본 수정과 무관)
+- `pytest backend/tests/test_logger.py` 42 passed (신규 4건 포함)
+- 런타임 기동 (`-W error::RuntimeWarning`) 정상 — RuntimeWarning/Traceback 없음
+- 콘솔 1줄 `\r` 갱신 확인, 파일 수신율 갱신 0건 / 임계값 통과 1건 확인
+- 잔존 프로세스 0건
+
+**화면 영향**: 없음 (로그 출력 방식 변경만, WS 수신율 broadcast 불변)
+
+**커밋**: `fe150c9` refactor: 수신율 갱신 로그를 1줄 \r 갱신으로 통일 — 다운로드 진행률과 동일 패턴 (P23/P24)
+
+**잔존 프로세스**: 없음.
+
+**다음 세션 대기 사항**: 완료. 다음 우선순위 작업 진행.
+
+---
+
+## 직전 완료 작업 (이전 세션)
+
 ### JIF 카운트다운 override datetime JSON 직렬화 오류 근본 해결 (2026-07-23)
 
 **세션**: 긴급 런타임 오류 수정 — 단일 세션. 백엔드 2파일.
