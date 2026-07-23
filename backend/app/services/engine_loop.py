@@ -380,23 +380,33 @@ async def run_engine_loop() -> None:
         logger.info("[연산] 백그라운드 태스크 종료 완료")
 
         # ── Event Bus 종료 ───────────────────────────────────────────────────
+        # P25 격리된 실패 — 연결 해제 실패가 이후 REST 정리 루프를 블로킹하지 않도록 per-step try/except.
         if engine_state.state.connector_manager:
-            await engine_state.state.connector_manager.disconnect_all()
-        else:
-            if engine_state.state.active_connector:
+            try:
+                await engine_state.state.connector_manager.disconnect_all()
+            except Exception as e:
+                logger.warning("[연산] 실시간 연결 일괄 해제 실패: %s", e, exc_info=True)
+        elif engine_state.state.active_connector:
+            try:
                 await engine_state.state.active_connector.disconnect()
+            except Exception as e:
+                logger.warning("[연산] 실시간 연결 해제 실패: %s", e, exc_info=True)
         engine_state.state.connector_manager = None
         engine_state.state.active_connector = None
-        # 증권사별 REST API 클라이언트 정리
+        # 증권사별 REST API 클라이언트 정리 — per-broker 격리 (P25)
+        # 한 증권사 토큰 폐기/클라이언트 정리 실패가 다른 증권사 정리를 차단하지 않음.
         for _broker_id, _rest_api in engine_state.state.broker_rest_apis.items():
             try:
                 await _rest_api.revoke_token()
             except Exception as e:
-                logger.warning("[연산] %s 토큰 폐기 실패: %s", BROKER_DISPLAY_NAMES.get(_broker_id, _broker_id), e)
-            if hasattr(_rest_api, '_reset_client'):
-                await _rest_api._reset_client()
-            elif hasattr(_rest_api, '_client') and _rest_api._client:
-                await _rest_api._client.aclose()
+                logger.warning("[연산] %s 토큰 폐기 실패: %s", BROKER_DISPLAY_NAMES.get(_broker_id, _broker_id), e, exc_info=True)
+            try:
+                if hasattr(_rest_api, '_reset_client'):
+                    await _rest_api._reset_client()
+                elif hasattr(_rest_api, '_client') and _rest_api._client:
+                    await _rest_api._client.aclose()
+            except Exception as e:
+                logger.warning("[연산] %s REST 클라이언트 정리 실패: %s", BROKER_DISPLAY_NAMES.get(_broker_id, _broker_id), e, exc_info=True)
         engine_state.state.broker_rest_apis.clear()
         engine_state.state.broker_tokens.clear()
         engine_state.state.running = False

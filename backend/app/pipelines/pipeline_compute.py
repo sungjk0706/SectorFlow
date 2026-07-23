@@ -689,5 +689,8 @@ async def _sector_recompute_loop_impl(broadcast_queue: asyncio.Queue) -> None:
     except asyncio.CancelledError:
         logger.info("[연산] 백그라운드 업종 점수 재계산 반복 취소됨")
     except Exception as e:
+        # 치명 오류로 루프가 완전 종료 — _compute_running=False로 정리하여
+        # stop_compute_loop의 cancel 대기에서 의미 없는 대기 방지 (P25 격리된 실패).
+        _compute_running = False
         logger.error("[연산] 업종 점수 재계산 루프 치명 오류: %s", e, exc_info=True)
 

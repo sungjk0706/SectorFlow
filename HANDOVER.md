@@ -6,6 +6,50 @@
 
 ## 직전 완료 작업
 
+### T2-S8 엔진 종료 finally / 파이프라인 서브루프 격리 — 완료 (2026-07-23) — B1-02-02/03, B2-03-02 완료 (Tier 2 둘째 세션)
+
+**세션**: 단일 세션. 백엔드 코드 수정 (backend-fix + problem-solve 스킬). 세션 라벨 T2-S8 (Tier 2 둘째 세션, MEDIUM 3건).
+
+**배경**: P25 수정 계획 Tier 2 둘째 세션. 엔진 종료 finally 블록의 무보호 disconnect / REST 정리 루프와 파이프라인 서브루프 치명 오류 처리의 잔존 격리 부재 3건 해결. T1-S2 (engine_loop.py 기동 캐시 격리), T1-S3 (pipeline_compute.py Phase 1/2 루프 격리) 선행 완료 상태에서 진행.
+
+**작업 내용**:
+1. **B1-02-02 (MEDIUM) 완료** — `backend/app/services/engine_loop.py` 383-389줄: finally 블록 `disconnect_all()` / `disconnect()` 호출을 per-call try/except로 격리. 연결 해제 실패해도 이후 REST 토큰 폐기 루프가 실행되도록 보장 (P25). 실패 시 `logger.warning(..., exc_info=True)` (P20).
+2. **B1-02-03 (MEDIUM) 완료** — `backend/app/services/engine_loop.py` 391-404줄: REST 정리 루프 per-broker 격리. `revoke_token()`과 `_reset_client()`/`_client.aclose()`를 각각 별도 try/except로 분리 — 한 증권사 토큰 폐기/클라이언트 정리 실패가 다른 증권사 정리를 차단하지 않음 (P25). 기존 `logger.warning`에 누락된 `exc_info=True` 추가 (P20).
+3. **B2-03-02 (MEDIUM) 완료** — `backend/app/pipelines/pipeline_compute.py` 689-695줄: `_sector_recompute_loop_impl` `except Exception` 블록에 `_compute_running=False` 정리 추가. 치명 오류로 루프 완전 종료 시 stop_compute_loop의 cancel 대기에서 의미 없는 대기 방지 (P25). 단, T1-S3에서 이미 `except Exception: logger.error(..., exc_info=True)` 골격 처리됨 — 본 세션에서 상태 정리 보완.
+
+**수정 파일**: 2개.
+- `backend/app/services/engine_loop.py` (+19/-9, finally disconnect + REST 루프 격리)
+- `backend/app/pipelines/pipeline_compute.py` (+4/-1, _sector_recompute_loop_impl 상태 정리)
+
+**아키텍처 원칙 부합**:
+- P25 (격리된 실패): 3건 모두 핵심 — 단일 예외가 엔진 종료 전체 정리 / 파이프라인 서브루프 종료 처리를 블로킹하지 않도록 per-step, per-broker 격리.
+- P20 (폴백 금지): 모든 catch에 `logger.warning/error(..., exc_info=True)` 명시 로깅 (silent pass 아님). 기존 395줄 `exc_info=True` 누락 분 수정.
+- P16 (살아있는 경로): 정리 로직이 끝까지 실행되도록 보장 — finally 블록 내 모든 단계가 독립 try/except로 보호.
+- P23 (일관성): 338-346줄 WS 해제 루프 패턴(try/except + `logger.error(..., exc_info=True)`)과 동일 구조 적용.
+
+**영향 범위**: 백엔드 2개 파일만 수정. 프론트엔드/DB/테스트 영향 없음. 정상 종료 경로 동작 변화 없음 — 예외 발생 시에만 로그 출력 + 정리 연속성 보장. 롤백 아님 (신규 try/except 추가 + 상태 정리 보완만, 규칙 0-3/0-4/0-5 해당 없음).
+
+**검증**:
+- `py_compile` — engine_loop.py / pipeline_compute.py 통과.
+- `ruff check` — 본 세션 수정 범위 밖 unused import 2건(`time`, `_check_realtime_latency`) 잔존. 기존 잔존 — HANDOVER.md 미해결 문제에 기록.
+- `python -W error::RuntimeWarning main.py` 기동 — RuntimeWarning/Traceback/Error 0건, 30초 정상 구독·수신율 갱신 (KRX 100% / NXT 100%).
+- 런타임 종료 로그 — `백그라운드 업종 점수 재계산 반복 취소됨` → `백그라운드 태스크 종료 완료` → `LS증권 연결 해제 완료` → `LS증권 토큰 폐기 완료` / `키움증권 토큰 폐기 완료` → `엔진 루프 완료` → `앱 종료 완료`. finally 블록 전 단계 정상 실행 확인.
+- 잔존 프로세스 0건 확인.
+
+**작업 중 발견 문제 (HANDOVER 미해결 문제에 기록)**:
+- `pipeline_compute.py:14` `import time` unused (F401) — 본 세션 수정 범위 밖. 기존 잔존.
+- `pipeline_compute.py:18` `_check_realtime_latency` import unused (F401) — 본 세션 수정 범위 밖. 기존 잔존.
+
+**핵심 결정**:
+- B2-03-02에서 `_compute_running=False` 추가 선택: 치명 오류로 루프가 완전히 종료된 상태에서 플래그가 True로 잔존하면 stop_compute_loop의 `await _sector_recompute_task`가 이미 종료된 태스크를 대기하게 됨 — 의미 없는 대기 제거.
+- REST 루프에서 `revoke_token()`과 `_reset_client()`/`aclose()`를 별도 try/except로 분리 선택: 토큰 폐기 실패해도 클라이언트 리소스 정리는 독립적으로 수행되어야 함 (httpx 클라이언트 미정리 시 리소스 누수).
+
+**다음 세션 대기 사항**:
+- **사용자 확정**: 다음 세션은 **T2-S9** (B3-05-02, B4-06-01, B4-06-03 — confirmed 빈 폴백 제거 / DB writer / engine_cache 치명 오류 처리). 백엔드 수정 (market_close_pipeline.py, db_writer.py, engine_cache.py). 선행 의존성: T1-S4 필수 (B3-05-02는 market_close_pipeline.py 같은 파일) — 완료됨.
+- **Tier 2 진행 상태**: T2-S7, T2-S8 완료. 잔존 T2-S9~T2-S11 (3세션). MEDIUM 14건 중 6건 완료, 8건 잔존.
+
+---
+
 ### T2-S7 WS 로그 분류 / store updater / hotStore dispatch 격리 — 완료 (2026-07-23) — A1-01-03, A2-04-01/02 완료 (Tier 2 첫 세션)
 
 **세션**: 단일 세션. 프론트엔드 코드 수정 (frontend-fix 스킬). 세션 라벨 T2-S7 (Tier 2 첫 세션, MEDIUM 3건).
@@ -2057,3 +2101,7 @@ F-05-c(F05-08) 완료 후 작업 여력: **충분**. 잔여 profit-overview.ts/p
 3. `architecture_audit_tasks.md` 섹션 F-05 체크리스트 참조
 4. 세션당 1단계 원칙 준수 (AGENTS.md 규칙 0-1)
 5. F-03 보류 항목 4건 (F03-07~F03-10) 참조
+
+### T2-S8 작업 중 발견 (2026-07-23)
+- pipeline_compute.py:14 `import time` unused (F401) — 본 세션 수정 범위 밖. 기존 잔존.
+- pipeline_compute.py:18 `_check_realtime_latency` import unused (F401) — 본 세션 수정 범위 밖. 기존 잔존.
