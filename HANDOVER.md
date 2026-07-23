@@ -6,6 +6,58 @@
 
 ## 직전 완료 작업
 
+### T3-S12b leaf 핸들러/엔진 시작 보호 — 완료 (2026-07-23) — B1-02-05/06/07 완료 (Tier 3 셋째 세션, LOW 3건, 백엔드)
+
+**세션**: 단일 세션. 백엔드 코드 수정 (backend-fix + problem-solve 스킬). 세션 라벨 T3-S12b (사용자 지정 — 문서상 Tier 3 백엔드 3건).
+
+**배경**: P25 수정 계획 Tier 3 셋째 세션. T3-S12a/S12b(B2-03-03/04/05 + B4-06-02) + T3-S13(A1-01-05) 완료 후 진행. B2-03-03(per-item 격리) 선행 완료로 B1-02-05/06 의존성 해결 상태. 사전조사 → 수정 계획 보고 → 승인 → 수정 진행.
+
+**작업 내용** (3건 + 테스트 8건):
+1. **B1-02-05 (LOW) 완료** — `engine_ws_dispatch.py:149-160` `_handle_real_00` 내 `on_fill_update` + `_on_fill_after_ws` 호출을 try/except로 감쌈. 실패 시 `logger.warning("[매매] 체결 콜백/잔고 갱신 오류 (계속): %s", e, exc_info=True)`. `_check_realtime_latency`는 try 외부 유지 — 지연 측정은 예외와 무관하게 항상 실행. 단일 try 블록 구조(P24 단순성) — on_fill_update 실패 시 _on_fill_after_ws는 같은 블록 내에서 스킵.
+2. **B1-02-06 (LOW) 완료** — `engine_ws_dispatch.py:165-172` `_handle_real_balance` 내 `_apply_balance_realtime` 호출을 try/except로 감쌈. 실패 시 `logger.warning("[계좌] 실시간 잔고 반영 오류 (계속): %s", e, exc_info=True)`.
+3. **B1-02-07 (LOW) 완료** — `engine_lifecycle.py:32-43` `start_engine` 내 `_refresh_positions_if_dirty` 호출을 try/except로 감쌈. 테스트모드 포지션 구축 실패 시 엔진 기동 계속 (return True 유지). 실패 시 `logger.warning("[연산] 테스트모드 포지션 구축 실패 — 엔진은 계속 가동: %s", e, exc_info=True)`. 호출자 app.py:123(이미 격리) + engine_service.py:93(미격리) 모두 혜택.
+4. **테스트**: `test_engine_ws_dispatch_isolation.py` 신규 8건
+   - `TestHandleReal00Isolation` (3): on_fill_update 예외 시 정상 반환 + 지연 측정 유지 / _on_fill_after_ws 예외 시 정상 반환 / auto_trade=None 회귀 보호
+   - `TestHandleRealBalanceIsolation` (2): _apply_balance_realtime 예외 시 정상 반환 / 정상 경로 회귀
+   - `TestStartEngineRefreshPositionsIsolation` (3): _refresh_positions_if_dirty 예외 시 기동 계속 (True 반환 + 후속 _apply_pending_settings_on_startup/broadcast_engine_status 실행) / 정상 경로 회귀 / 실전모드 스킵 회귀
+
+**수정 파일**: 3개 (백엔드 2 + 테스트 1).
+- `backend/app/services/engine_ws_dispatch.py` (+13줄, _handle_real_00 + _handle_real_balance try/except)
+- `backend/app/services/engine_lifecycle.py` (+5줄, start_engine _refresh_positions_if_dirty try/except)
+- `backend/tests/test_engine_ws_dispatch_isolation.py` (신규 202줄, 8건)
+
+**아키텍처 원칙 부합**:
+- P25 (격리된 실패): 본 위반 3건 직접 해결 — leaf 핸들러/엔진 시작 단에서 예외 차단. 형제 item/엔진 기동 유지.
+- P20 (폴백 금지): `except: pass` 없음 — 모두 `logger.warning(..., exc_info=True)`.
+- P23 (일관성): B2-03-03에서 사용한 `logger.error("[연산] ... 오류 (계속): %s", e, exc_info=True)` 패턴과 동일. 단 leaf 핸들러는 기존 prefix(`[매매]`/`[계좌]`/`[연산]`) 유지.
+- P16 (살아있는 경로): try/except는 실제 호출 경로에 연결됨 (dead code 아님).
+- P24 (단순성): 각 함수 +3~5줄, 복잡도 증가 없음. 단일 try 블록으로 on_fill_update + _on_fill_after_ws를 함께 감싸는 단순성 선택.
+- P21 (사용자 투명성): B1-02-07 포지션 구축 실패 시 백엔드 로그로 상태 노출. UI 표시는 별도 범위 (미해결 문제 이관).
+
+**영향 범위**: 백엔드 2개 파일 + 테스트 1개 파일. 프론트엔드 영향 없음. 핵심 매매 로직 아님 — 체결 콜백/잔고 갱신/포지션 구축의 예외 처리 경로만 추가. 규칙 0-4 해당 없음. 롤백 아님 (신규 보호 코드 추가만) → 규칙 0-3 해당 없음.
+
+**UI 기준 화면 변화 (규칙 0-4)**:
+- 정상 동작 변화 없음.
+- 비정상 상황에서만 개선:
+  - 체결 처리 중 오류 시: 화면 변화 없음. 같은 틱의 다른 종목 시세/호가/업종지수 갱신 계속 (기존에는 누락 가능).
+  - 테스트모드 엔진 시작 시 보유 종목 불러오기 실패: 엔진이 멈추지 않고 계속 가동. 화면에는 엔진 정상 가동 중으로 표시되나, 보유 종목 목록이 비어있을 수 있음. 로그에 `[연산] 테스트모드 포지션 구축 실패 — 엔진은 계속 가동` 기록.
+
+**검증**:
+- py_compile 3개 파일 ✓
+- pytest 신규 8건 + 기존 245건(pipeline_compute/dry_run/dry_run_fill_event/engine_settings/broker_change/web_app) 전부 통과 ✓
+- 런타임 기동 (`-W error::RuntimeWarning`) 정상 — 에러/Traceback/RuntimeWarning 없음, 수신율 갱신 루프 정상 동작 ✓
+- 잔존 프로세스 0건 ✓
+
+**작업 중 발견 문제** (미해결 문제로 이관):
+- B1-02-07 포지션 구축 실패 시 UI 사용자 알림 누락 (P21) — 본 수정은 백엔드 로그만 확보. UI 표시는 별도 세션 검토 필요. → "미해결 문제" 섹션에 기록.
+
+**다음 세션 대기 사항**:
+- **다음 세션: B3-05-03/04 silent except 제거 + exc_info 11곳 (백엔드)** — 사용자 지시. market_close_pipeline.py + daily_time_scheduler.py. 백엔드 2건 (LOW).
+- **Tier 3 잔여**: B3-05-03/04(백엔드, 다음 세션), A3-07-08/09/10(프론트), B5-08-01/02/04(백엔드, safe-trade 필수 + 규칙 0-4 핵심 로직). 총 3세션.
+- **진행 순서**: 사용자 지시 — B3-05-03/04 → A3-07-08/09/10 → B5-08-01/02/04.
+
+---
+
 ### T3-S13 WS 재연결 루프 보호 — 완료 (2026-07-23) — A1-01-05 완료 (Tier 3 둘째 세션, LOW 1건, 프론트엔드)
 
 **세션**: 단일 세션. 프론트엔드 코드 수정 (frontend-fix 스킬). 세션 라벨 T3-S13 (사용자 지정 — 문서상 Tier 3 프론트엔드 단일 건).
@@ -1887,6 +1939,13 @@
 
 ## 미해결 문제 (발견 즉시 기록)
 
+### T3-S12b 진행 중 발견 — B1-02-07 포지션 구축 실패 시 UI 사용자 알림 누락 (2026-07-23)
+- **파일**: `backend/app/services/engine_lifecycle.py:38-43` (start_engine try/except), `backend/app/services/engine_state.py` (state 필드), `backend/app/services/engine_lifecycle.py:162` (get_engine_status), 프론트엔드 `frontend/src/binding.ts` (engine-ready 핸들러)
+- **위반/부합 원칙**: P21 (사용자 투명성) 부분 충족 — 백엔드 try/except로 `logger.warning("[연산] 테스트모드 포지션 구축 실패 — 엔진은 계속 가동")` 로그는 활성화되었으나, 화면에 "보유 종목 불러오기 실패, 엔진은 계속 가동 중" 상태를 명시적으로 표시하는 프론트엔드 경로 미구현.
+- **증상**: 테스트모드에서 `_refresh_positions_if_dirty` 실패 시 (trade_history 조회 오류 등) 엔진은 계속 가동하나, 사용자 화면에는 정상 기동과 동일하게 `engine-ready`만 표시됨. 보유 종목 목록이 비어있어 사용자가 "왜 보유 종목이 안 보이지?" 의문 가능.
+- **수정 방향**: engine_lifecycle.py:38 except 블록에서 `engine_state.state`에 포지션 구축 실패 플래그 설정 → get_engine_status() 반환값에 포함 → 프론트엔드 index-data/engine-ready 핸들러에서 UI 표시 (예: 엔진 상태 칩에 경고 표시). 백엔드 + 프론트엔드 변경이 필요하므로 별도 세션에서 승인 시 진행 권장.
+- **참고**: B4-06-03 "감소 모드" 화면 명시 표시 미구현(아래 항목)과 동일 성격 — 백엔드는 로그로 상태 노출, UI 표시는 별도. 두 항목을 하나의 세션에서 통합 처리 가능.
+
 ### T2-S9 진행 중 발견 — B4-06-03 "감소 모드" 화면 명시 표시 미구현 (2026-07-23)
 - **파일**: `backend/app/services/engine_loop.py:35`, `backend/app/services/engine_lifecycle.py:162` (get_engine_status), 프론트엔드 `frontend/src/binding.ts:244` (engine-ready 핸들러)
 - **위반/부합 원칙**: P21 (사용자 투명성) 부분 충족 — 백엔드 log-and-rethrow로 engine_loop.py:35 "감소 모드로 기동" 에러 로그는 활성화되었으나, 화면에 "감소 모드" 상태를 명시적으로 표시하는 프론트엔드 경로 미구현.
@@ -1934,9 +1993,9 @@
 - **B1-02-02 (MEDIUM)**: `engine_loop.py:374,377` finally 블록 `disconnect_all()`/`disconnect()` 무보호. throw 시 후속 정리 스킵
 - **B1-02-03 (MEDIUM)**: `engine_loop.py:387,389` finally 블록 REST 정리 루프 `_reset_client()`/`aclose()` 무보호. 한 증권사 실패 시 나머지 스킵
 - **B1-02-04 (HIGH)**: `engine_loop.py:31` `_load_caches_preboot` 무보호. throw 시 엔진 기동 전체 차단
-- **B1-02-05 (LOW)**: `engine_ws_dispatch.py:149-153` `_handle_real_00` 내 `on_fill_update`/`_on_fill_after_ws` 무보호. 호출자 의존 — 세션 3에서 확인
-- **B1-02-06 (LOW)**: `engine_ws_dispatch.py:162` `_handle_real_balance` 내 `_apply_balance_realtime` 무보호. 호출자 의존 — 세션 3에서 확인
-- **B1-02-07 (LOW)**: `engine_lifecycle.py:38` `_refresh_positions_if_dirty` 무보호. 주 호출자는 격리 있으나 engine_service.py:93 경유 시 미확인 — 세션 6에서 확인
+- **B1-02-05 (LOW)**: ~~`engine_ws_dispatch.py:149-153` `_handle_real_00` 내 `on_fill_update`/`_on_fill_after_ws` 무보호. 호출자 의존 — 세션 3에서 확인~~ → **해결 (T3-S12b, 2026-07-23)**: per-call try/except 추가.
+- **B1-02-06 (LOW)**: ~~`engine_ws_dispatch.py:162` `_handle_real_balance` 내 `_apply_balance_realtime` 무보호. 호출자 의존 — 세션 3에서 확인~~ → **해결 (T3-S12b, 2026-07-23)**: per-call try/except 추가.
+- **B1-02-07 (LOW)**: ~~`engine_lifecycle.py:38` `_refresh_positions_if_dirty` 무보호. 주 호출자는 격리 있으나 engine_service.py:93 경유 시 미확인 — 세션 6에서 확인~~ → **해결 (T3-S12b, 2026-07-23)**: per-call try/except 추가. UI 알림 누락(P21)은 미해결 문제로 이관.
 - 수정은 별도 승인 세션에서 진행 (조사는 보고까지만)
 
 ### P25 전수 조사 — 세션 1 (A1 WS 디스패치) 위반 5건 식별 (2026-07-23)
