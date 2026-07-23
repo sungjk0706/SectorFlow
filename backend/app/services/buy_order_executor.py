@@ -32,6 +32,7 @@ def _refresh_buyable_prices(ss, available: int, effective_buy_amt: int | None, i
     execute_buy 내부(trading.py:267-273)와 동일 기준.
     """
     from backend.app.services import dry_run
+    from backend.app.services import settlement_engine
     from backend.app.services.daily_time_scheduler import is_order_blocked_by_time
     from backend.app.services.engine_state import state
 
@@ -52,7 +53,8 @@ def _refresh_buyable_prices(ss, available: int, effective_buy_amt: int | None, i
         _est_price = dry_run.estimate_fill_price(_price, "BUY") if is_test else _price
         # 종목별 가용 금액 = min(effective_buy_amt, available) 또는 available
         _max_for_code = min(effective_buy_amt, available) if effective_buy_amt is not None else available
-        if _max_for_code < _est_price:
+        # 수수료 포함 최대 수량 1주 미만이면 매수 후보에서 제외 (P10 SSOT — trading.py와 동일 기준)
+        if settlement_engine.max_buy_qty_for_budget(_est_price, _max_for_code, is_test) <= 0:
             continue
         _new_codes.add(s.code)
     return _new_codes

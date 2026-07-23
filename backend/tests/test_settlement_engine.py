@@ -27,6 +27,7 @@ from backend.app.services.settlement_engine import (
     on_sell_fill,
     charge,
     get_effective_buy_power,
+    max_buy_qty_for_budget,
     reset,
 )
 
@@ -470,3 +471,65 @@ class TestConstants:
 
     def test_securities_tax_rate(self):
         assert SECURITIES_TAX == 0.002
+
+
+# ── max_buy_qty_for_budget 헬퍼 단위 테스트 (P10 SSOT / P22 정합성) ────────────
+
+class TestMaxBuyQtyForBudget:
+    """예산 내 최대 매수 수량(수수료 포함) 헬퍼 검증.
+    reserve_buy_power의 cost 공식(price*qty + round(price*qty*BUY_COMMISSION))과
+    정합되는지 검증 — trading.py buy_qty 계산과 buy_order_executor가 동일 기준으로 호출.
+    """
+
+    def test_zero_price_returns_zero(self):
+        assert max_buy_qty_for_budget(0, 1_000_000, is_test=True) == 0
+
+    def test_zero_budget_returns_zero(self):
+        assert max_buy_qty_for_budget(70_000, 0, is_test=True) == 0
+
+    def test_negative_inputs_returns_zero(self):
+        assert max_buy_qty_for_budget(-1, -1, is_test=True) == 0
+
+    def test_test_mode_exact_fit_no_fee_overflow(self):
+        """예산이 딱 맞을 때 수수료 포함 후에도 수량 유지.
+        price=70000, budget=980147 → 14주 cost=980147 (정확히 일치).
+        """
+        budget = 14 * 70_000 + round(14 * 70_000 * BUY_COMMISSION)
+        assert max_buy_qty_for_budget(70_000, budget, is_test=True) == 14
+
+    def test_test_mode_fee_overflow_reduces_qty(self):
+        """수수료 초과 시 1주 감소.
+        price=70000, budget=980146 (1원 부족) → 14주 cost=980147 > 980146 → 13주.
+        """
+        budget = 14 * 70_000 + round(14 * 70_000 * BUY_COMMISSION) - 1
+        assert max_buy_qty_for_budget(70_000, budget, is_test=True) == 13
+
+    def test_test_mode_one_share_only(self):
+        """예산이 1주+수수료는 감당하지만 2주는 안 되는 경우."""
+        budget = 70_000 + round(70_000 * BUY_COMMISSION)
+        assert max_buy_qty_for_budget(70_000, budget, is_test=True) == 1
+
+    def test_test_mode_cannot_afford_one_share(self):
+        """예산이 1주+수수료보다 적으면 0."""
+        budget = 70_000 + round(70_000 * BUY_COMMISSION) - 1
+        assert max_buy_qty_for_budget(70_000, budget, is_test=True) == 0
+
+    def test_real_mode_excludes_fee(self):
+        """실전모드는 수수료 미적용 — budget // price."""
+        # 14*70000=980000, 14*70000+fee=980147 > 980000이지만 실전은 무시
+        assert max_buy_qty_for_budget(70_000, 980_000, is_test=False) == 14
+
+    @pytest.mark.asyncio
+    async def test_consistent_with_reserve_buy_power(self, fresh_engine):
+        """헬퍼가 반환한 수량으로 reserve_buy_power 호출 시 반드시 성공해야 함 (P22 정합성)."""
+        mock_persist, mock_broadcast = fresh_engine
+        # 주문가능금액을 1_000_000으로 설정
+        settlement_engine._orderable = 1_000_000
+        price = 70_000
+        qty = max_buy_qty_for_budget(price, 1_000_000, is_test=True)
+        assert qty > 0
+        ok, reason, cost = await reserve_buy_power(price * qty, 0, 0)
+        assert ok is True, f"reserve_buy_power 거부: {reason}"
+        # 헬퍼가 계산한 qty로 실제 cost가 예산 이내인지 재확인
+        assert cost == price * qty + round(price * qty * BUY_COMMISSION)
+        assert cost <= 1_000_000

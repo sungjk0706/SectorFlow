@@ -170,6 +170,24 @@ def get_effective_buy_power(daily_limit: int = 0, daily_spent: int = 0) -> int:
     return _orderable
 
 
+def max_buy_qty_for_budget(price: int, budget: int, is_test: bool) -> int:
+    """예산 내 최대 매수 수량 (수수료 포함, P10 SSOT).
+
+    테스트모드: reserve_buy_power의 cost 공식(price*qty + round(price*qty*BUY_COMMISSION))
+    과 정합되도록 수수료 여유분 확보. 실전모드: 수수료 미적용(브로커 처리, 별도 세션).
+    trading.py의 buy_qty 계산과 buy_order_executor._refresh_buyable_prices가
+    동일 기준으로 호출 (P22 정합성).
+    """
+    if price <= 0 or budget <= 0:
+        return 0
+    if not is_test:
+        return budget // price
+    qty = budget // price
+    while qty > 0 and qty * price + round(qty * price * BUY_COMMISSION) > budget:
+        qty -= 1
+    return qty
+
+
 # ── 리셋 및 모드 전환 ───────────────────────────────────────────────────────
 
 async def reset(initial_deposit: int) -> None:

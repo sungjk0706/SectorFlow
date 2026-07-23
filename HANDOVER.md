@@ -8,6 +8,8 @@
 
 | 날짜 | 세션 | 작업 | 상태 |
 |------|------|------|------|
+| 2026-07-23 | T3-S20 | 매수 수량 계산 수수료 여유분 확보 (max_buy_qty_for_budget 헬퍼 SSOT) — P10/P22 (백엔드+테스트) | 완료 |
+| 2026-07-23 | T3-S19 | 일일/종목당 매수 한도 수수료 포함 통일 (테스트모드) — P22/P10/P21 (백엔드+프론트+테스트) | 완료 |
 | 2026-07-23 | T3-S18 | 수익상세 페이지 매수/매도 금액 라벨 명확화 + 승률/수익률 카드 순서 교환 (P21/P23) | 완료 |
 | 2026-07-23 | T3-S16 | B5-08-01/02/04 trading.py 매매 로직 (schedule_engine_task 교체 + 평균매입가 분기 주석 + 실시간 지연 fail-closed) | 완료 |
 | 2026-07-23 | T3-S15 | A3-07-08/09/10 통계 카드 / 라우트 변경 / addEventListener 격리 | 완료 |
@@ -18,6 +20,87 @@
 ---
 
 ## 직전 완료 작업
+
+### T3-S20 매수 수량 계산 수수료 여유분 확보 — 완료 (2026-07-23) — P10 SSOT / P22 데이터 정합성 (백엔드, safe-trade + backend-fix)
+
+**세션**: 단일 세션. 매수 수량 계산 시 수수료 포함 최대 수량 헬퍼 추가 + 양쪽 호출처 통일 + 테스트 추가.
+
+**배경**: T3-S19에서 한도 체크 기준을 수수료 포함으로 통일했으나, 매수 수량 계산(`buy_qty = budget // price`)은 여전히 수수료 미반영. 테스트모드에서 `reserve_buy_power`가 청구하는 cost(수수료 포함)가 `buy_qty * price`를 초과하면 "주문가능금액 부족" 거부로 매수 1회 시도가 헛수고였던 버그. 또한 `buy_order_executor._refresh_buyable_prices`의 매수 후보 필터(`_max_for_code < _est_price`)도 수수료 미반영으로 trading.py와 기준 상이 (P10 위반).
+
+**작업 내용** (4건, 5개 파일):
+1. **`max_buy_qty_for_budget` 헬퍼 추가 (P10 SSOT)** — `settlement_engine.py:172-188`. 예산 내 수수료 포함 최대 매수 수량 반환. `reserve_buy_power`의 cost 공식(`price*qty + round(price*qty*BUY_COMMISSION)`)과 정합. 테스트모드만 수수료 적용, 실전모드는 `budget // price` (P18 — 실전 수수료는 별도 세션).
+2. **trading.py buy_qty 계산 헬퍼 호출로 변경** — `trading.py:362` `buy_qty = _max_available // _est_buy_price` → `settlement_engine.max_buy_qty_for_budget(_est_buy_price, _max_available, is_test_mode(raw_all))`. 중복 지연 import 정리 (P24).
+3. **buy_order_executor._refresh_buyable_prices 헬퍼 적용** — `buy_order_executor.py:55` 단가 비교 `_max_for_code < _est_price` → `max_buy_qty_for_budget(_est_price, _max_for_code, is_test) <= 0`. trading.py와 동일 기준 (P10).
+4. **테스트 추가** — `test_settlement_engine.py` `TestMaxBuyQtyForBudget` 9개 (zero/negative, 딱 맞는 예산, 수수료 초과 1주 감소, 1주만 가능, 1주 불가, 실전 수수료 미적용, reserve_buy_power 정합성). `test_trading.py:855` 주석 헬퍼 기반 계산으로 업데이트 (결과 14주 동일).
+
+**수정 파일**: 5개 (백엔드 3 + 테스트 2).
+- `backend/app/services/settlement_engine.py` (헬퍼 추가)
+- `backend/app/services/trading.py` (buy_qty 헬퍼 호출 + 중복 import 정리)
+- `backend/app/services/buy_order_executor.py` (_refresh_buyable_prices 헬퍼 적용)
+- `backend/tests/test_settlement_engine.py` (TestMaxBuyQtyForBudget 9개)
+- `backend/tests/test_trading.py` (주석 업데이트)
+
+**아키텍처 원칙 부합**:
+- P10 (SSOT): 단일 헬퍼를 settlement_engine에 두고 trading.py/buy_order_executor 양쪽이 호출 → 동일 기준.
+- P16 (살아있는 경로): 헬퍼가 실제 매수 경로 2곳에서 모두 호출됨.
+- P22 (데이터 정합성): buy_qty가 reserve_buy_power가 청구할 금액과 정합 → 불필요한 거부 사전 차단.
+- P20 (폴백 금지): 살 수 없으면 0 반환 → 기존 BUY_REJECT_QTY_ZERO/skip 경로가 처리 (silent pass 없음).
+- P15 (단일 주문 경로): 주문 경로 변경 없음, 수량 계산만 정교화.
+- P18 (테스트모드 동등성): 수수료 분기는 is_test 플래그로 기존 estimate_fill_price와 동일한 분기점.
+- P24 (단순성): 헬퍼 5줄, 추상화 최소.
+
+**영향 범위**: 백엔드 3파일 + 테스트 2파일. 핵심 매매 로직(매수 수량 계산) 변경 → 규칙 0-4 UI 기준 설명 + 승인 완료. 롤백 아님 (신규 헬퍼 추가 + 기준 통일) → 규칙 0-3 해당 없음.
+
+**UI 기준 화면 변화 (규칙 0-4)**: 매수 후보 목록 자체는 동일(종목/순위 변동 없음). 다만 잔액이 종목 1주+수수료를 감당 못 하는 임계 상황에서 해당 종목이 매수 후보에서 미리 제외되어 "매수 시도 → 주문가능금액 부족 거부" 로그가 더 이상 찍히지 않음 (불필요한 노이즈 감소). 실전모드 화면 변화 없음.
+
+**검증**:
+- py_compile 5개 파일 통과 ✓
+- ruff All checks passed ✓
+- pytest test_settlement_engine + test_trading: 116 passed ✓
+- 런타임 기동 (`-W error::RuntimeWarning`): 정상 기동, 에러/Traceback/RuntimeWarning 없음, 잔존 프로세스 0건 ✓
+
+**작업 중 발견 문제**: 없음 (P18 갭은 T3-S19에서 이미 기록됨).
+
+---
+
+### T3-S19 일일/종목당 매수 한도 수수료 포함 통일 (테스트모드) — 완료 (2026-07-23) — P22 데이터 정합성 / P10 SSOT / P21 사용자 투명성 (백엔드 + 프론트엔드, safe-trade + problem-solve)
+
+**세션**: 단일 세션. 백엔드 한도 체크 기준 통일 + 프론트엔드 UI 라벨 명확화 + 테스트 추가.
+
+**배경**: T3-S18에서 발견한 한도 체크 기준 불일치 — settlement_engine은 수수료 포함 차감하지만, `_daily_buy_spent`/`_symbol_daily_buy_spent`는 수수료 제외로 누적 → 한도 잔여와 실제 지출 가능액이 어긋남 (P22 위반 소지). 사용자 방향 지시: 테스트모드만 수수료 포함 한도 체크로 수정, 실전모드는 현행 유지 + 실전 전환 직전 별도 세션에서 처리.
+
+**작업 내용** (4건, 4개 파일):
+1. **`_load_daily_buy_state` total_amt 기반 로드 (P10/P22)** — `trading.py:136-160` price*qty 합 → trade_history.total_amt 합으로 변경. trade_history.record_buy의 total_amt 공식(테스트: price*qty+fee / 실전: price*qty)과 단일 기준. 재기동 시 메모리 누적과 로드 값이 모드별로 일치.
+2. **매수 후 누적 fee 포함 (테스트모드만, P22)** — `trading.py:450-457` `spent = buy_qty*fill_price` → `_base = buy_qty*fill_price; _fee = round(_base*BUY_COMMISSION) if is_test_mode else 0; spent = _base + _fee`. 테스트모드만 수수료 포함, 실전모드는 현행 유지. trade_history.record_buy 공식과 동일.
+3. **BUY_COMMISSION import 추가** — `trading.py:20` `from backend.app.core.constants import BUY_COMMISSION`. 기존 공통 상수 재사용 (P23).
+4. **UI 라벨 "수수료 포함" 명시 (P21)** — `buy-target.ts:263` 배지 "일일 매수 금액 (수수료 제외)" → "(수수료 포함)". `buy-settings.ts:325,355` 설정 라벨 2개 "전체 일일 최대 매수 금액" / "종목당 일일 최대 매수 금액" → 각각 "(수수료 포함)" 추가.
+
+**수정 파일**: 4개 (백엔드 1 + 프론트엔드 2 + 테스트 1).
+- `backend/app/services/trading.py` (import + _load_daily_buy_state + 매수 후 누적)
+- `frontend/src/pages/buy-target.ts` (배지 라벨)
+- `frontend/src/pages/buy-settings.ts` (설정 라벨 2개)
+- `backend/tests/test_trading.py` (신규 테스트 6개: TestDailyBuySpentFeeInclusive 클래스)
+
+**아키텍처 원칙 부합**:
+- P22 (데이터 정합성): 한도 체크 기준과 settlement_engine 차감 기준이 테스트모드에서 일치. 재기동 시 _load와 post-buy 누적이 동일 공식 사용.
+- P10 (SSOT): trade_history.total_amt를 단일 진실 원천으로 사용. price*qty와 total_amt 이중 관리 제거.
+- P21 (사용자 투명성): UI 라벨에 "수수료 포함" 명시로 한도 설정 의미 변경 투명화.
+- P18 (테스트모드 동등성): 테스트/실전 간 한도 기준 상이 → 미해결 문제로 기록, 실전 전환 직전 별도 세션 처리.
+- P15 (단일 주문 경로): 주문 경로 변경 없음. 한도 체크 내부 수치 기준만 변경.
+- P23 (공통 자산 재사용): BUY_COMMISSION 기존 상수 재사용.
+
+**영향 범위**: 백엔드 1파일(trading.py) + 프론트엔드 2파일 + 테스트 1파일. 핵심 매매 로직(한도 체크 기준) 변경 → 규칙 0-4 UI 기준 설명 + 승인 완료. 롤백 아님 (신규 기준 통일) → 규칙 0-3 해당 없음.
+
+**UI 기준 화면 변화 (규칙 0-4)**:
+- 매수후보 화면 상단 배지: "💰 일일 매수 금액 (수수료 제외)" → "💰 일일 매수 금액 (수수료 포함)". 30만원어치 매수 시 배지 표시가 300,000원 → 약 300,045원으로 변경 (수수료 0.015% 추가).
+- 매수 설정 화면: "전체 일일 최대 매수 금액" → "전체 일일 최대 매수 금액 (수수료 포함)", "종목당 일일 최대 매수 금액" → "종목당 일일 최대 매수 금액 (수수료 포함)".
+- 동일 한도 설정 시 실제 매수 가능 주식 수가 수수료분만큼 극소량 감소. 단, 주문가능금액 차감은 이미 수수료 포함이었으므로 실제 매수 가능액 변화는 없음 — 한도 체크 기준이 주문가능금액 차감 기준과 일치해지는 효과.
+
+**검증**: pytest + npm run build (진행 중).
+
+**작업 중 발견 문제**: P18 갭 (테스트/실전 한도 기준 상이) — 미해결 문제에 기록.
+
+---
 
 ### T3-S18 수익상세 페이지 매수/매도 금액 라벨 명확화 + 승률/수익률 카드 순서 교환 — 완료 (2026-07-23) — P21 사용자 투명성 / P23 일관성 (프론트엔드, frontend-fix 스킬)
 
@@ -177,14 +260,7 @@
 
 ## 다음 세션 진행 대기
 
-**다음 세션: 수정안 A (한도 수수료 포함 통일)** — 사용자 승인 완료. T3-S18 조사에서 도출된 보류 수정안.
-
-**수정안 A 상세**:
-- **대상**: `backend/app/services/trading.py`의 `_daily_buy_spent`, `_symbol_daily_buy_spent` 계산/로드
-- **변경**: 매수 성공 후 `_daily_buy_spent`에 `spent + fee` 누적 (현재는 `spent`만). `_load_daily_buy_state`에서도 `total_amt`(수수료 포함) 합으로 로드. `_symbol_daily_buy_spent`도 동일하게 `total_amt` 기준.
-- **효과**: 한도 체크(`max_daily_total_buy_amt`, `buy_amt`)가 "실제 지출액" 기준이 되도록 통일 (P22).
-- **주의 (규칙 0-4)**: 사용자가 설정한 한도의 의미가 "순수 매수가 기준"에서 "수수료 포함 지출액 기준"으로 변경됨. UI 기준 설명 + 승인 필수. safe-trade 스킬 + backend-fix 스킬 적용.
-- **영향 범위**: `trading.py` (3곳), 기동 시 로드 1곳. 테스트 코드 수정 필요.
+**실전모드 수수료 대응 (P18 갭)** — 실전 전환 직전 별도 세션에서 처리 필요. 상세는 "미해결 문제" 섹션 참조.
 
 **사용자 지시 시 진행 가능 항목 (audit 문서 잔여)**:
 - B-13 보류 5건 (B13-03/04/06/07/08, LOW/INFO 등급) — `docs/architecture_audit_plan.md` 섹션 7 참조
@@ -201,6 +277,14 @@
 ---
 
 ## 미해결 문제
+
+### P18 갭: 테스트/실전 한도 체크 기준 상이 (2026-07-23 T3-S19 발견)
+- **파일**: `backend/app/services/trading.py:141,147` (_load_daily_buy_state), `trading.py:450-457` (매수 후 누적), `backend/app/services/trade_history.py:270,280` (record_buy total_amt)
+- **위반/부합 원칙**: P18 (테스트모드 동등성) 부분 위반 — 테스트모드는 수수료 포함 한도 체크, 실전모드는 수수료 제외 한도 체크로 기준 상이.
+- **증상**: 테스트모드에서는 `_daily_buy_spent`/`_symbol_daily_buy_spent`가 `total_amt`(수수료 포함) 기준으로 누적/로드되어 settlement_engine 차감 기준과 일치. 실전모드에서는 trade_history의 `fee=0`, `total_amt=price*qty`이므로 한도 누적이 수수료 제외 기준 → settlement_engine(수수료 포함 차감)과 기준 불일치. 사용자는 현재 테스트모드 운영 중이므로 기능적 문제 없음.
+- **근거**: 사용자 방향 지시 — "테스트모드: 수수료 포함 한도 체크, 실전모드: 증권사 데이터 그대로 사용, 수수료 계산 로직 불필요 → 별도 처리. 지금은 테스트모드만 운영 중이므로 테스트모드 기준으로 수정. 실전모드 수수료 대응은 실전 전환 직전 별도 세션에서 처리."
+- **수정 방향**: 실전 전환 직전 별도 세션에서 실전모드 수수료 대응 필요. trade_history의 실전모드 fee=0 기록 문제도 함께 검토. 실전 브로커 수수료를 trade_history에 기록하는 방식 또는 trading.py에서 실전모드에도 BUY_COMMISSION 추정치를 적용하는 방식(A-2 원안) 중 선택 필요.
+- **참고**: settlement_engine.py:65,78,112는 테스트/실전 무관 항상 BUY_COMMISSION 적용 중이므로, 실전 전환 시 trading.py 한도 체크만 실전 수수료 미반영 상태가 됨.
 
 ### virtual-scroller.ts renderRow 호출부 3곳 무보호 (2026-07-23 발견)
 - **파일**: `frontend/src/components/virtual-scroller.ts`
