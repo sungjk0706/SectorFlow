@@ -723,8 +723,8 @@ class TestSaveConfirmedCache:
             assert result is True
 
     @pytest.mark.asyncio
-    async def test_db_exception_returns_true_with_warning(self):
-        # _save_confirmed_cache catches DB exception in inner try/except and returns True
+    async def test_db_exception_returns_false_with_warning(self):
+        # _save_confirmed_cache catches DB exception in inner try/except and returns False
         mock_state = _mock_state()
         mock_state.master_stocks_cache = {
             "005930": {"status": "active", "name": "삼성전자", "cur_price": 50000, "change": 0, "change_rate": 0.0, "trade_amount": 0, "avg_5d_trade_amount": 0, "high_5d_price": 0, "sector": "반도체"},
@@ -733,8 +733,8 @@ class TestSaveConfirmedCache:
              patch("backend.app.db.database.get_db_connection", new_callable=AsyncMock, side_effect=Exception("DB fail")), \
              patch("backend.app.services.market_close_pipeline.get_current_trading_day_str", return_value="20250106"):
             result = await _save_confirmed_cache()
-            # Inner except catches the DB error, logs warning, and returns True
-            assert result is True
+            # Inner except catches the DB error, logs warning, and returns False
+            assert result is False
 
 
 # ── _update_layout_cache ──────────────────────────────────────────────────────
