@@ -8,6 +8,7 @@
 
 | 날짜 | 세션 | 작업 | 상태 |
 |------|------|------|------|
+| 2026-07-23 | T3-S22 | 보유종목 테이블 4번째 배지 "🚦 매도상태" 추가 (매수후보 T3-S21과 동일 패턴) — P21 (프론트엔드) | 완료 |
 | 2026-07-23 | T3-S21 | 매수후보 테이블 4번째 배지 "🚦 매수상태" 추가 (전체 차단 게이트 UI 표시) — P21 (프론트엔드) | 완료 |
 | 2026-07-23 | T3-S20 | 매수 수량 계산 수수료 여유분 확보 (max_buy_qty_for_budget 헬퍼 SSOT) — P10/P22 (백엔드+테스트) | 완료 |
 | 2026-07-23 | T3-S19 | 일일/종목당 매수 한도 수수료 포함 통일 (테스트모드) — P22/P10/P21 (백엔드+프론트+테스트) | 완료 |
@@ -21,6 +22,58 @@
 ---
 
 ## 직전 완료 작업
+
+### T3-S22 보유종목 테이블 4번째 배지 "🚦 매도상태" 추가 — 완료 (2026-07-23) — P21 사용자 투명성 (프론트엔드, frontend-fix)
+
+**세션**: 단일 세션. 보유종목 테이블 상단 배지 행에 4번째 배지 추가로 "왜 매도가 안 되는지"를 화면에서 즉시 파악 가능하게 함. 매수후보 T3-S21과 동일 패턴.
+
+**배경**: 기존 3개 배지(평가금액/평가손익/수익률)는 "요약 수치"만 표시. 서킷브레이커·리스크·시간대·자동매도 OFF 등으로 매도가 차단될 수 있으나, 그 사실이 보유종목 페이지에 문맥적으로 연결되지 않아 사용자가 "보유 종목 있는데 왜 안 팔려?"라는 의문을 갖게 됨 (P21 위반). 차단 정보는 화면 최상단 헤더 칩에 있으나 시선 분리. T3-S21에서 매수후보에 매수상태 배지를 추가했으나 보유종목 페이지는 미대응 상태였음.
+
+**작업 내용** (5건, 1개 파일):
+1. **import 추가** — `sell-position.ts:7,10` `uiStore`, `globalSettingsManager` (buy-target.ts와 동일).
+2. **모듈 변수 추가** — `sell-position.ts:104-106,113` `unsubUiStore`/`unsubSettings`/`_statusRafId`/`summaryStatusBadge`.
+3. **`updateSellStatusBadge()` 함수 신규** — `sell-position.ts:142-189`. 우선순위 체인: 서킷브레이커 > 리스크(side=sell) > 시간대 > 자동매매 OFF > 자동매도 OFF > 매도 시간대 외. 정상 시 "매도 가능"(파랑), 차단 시 "차단: {사유}"(빨강). 시간 범위 체크는 KST HH:MM 기준(`toLocaleTimeString('en-GB', { timeZone: 'Asia/Seoul' })`)으로 백엔드 `auto_sell_effective`와 동일 로직. try/catch + console.error (P25 격리된 실패).
+4. **배지 추가 + 초기 렌더** — `sell-position.ts:198-208` 4번째 `createBadge('🚦 매도상태', '')` 추가. `mount()` 초기 렌더 시 `updateSellStatusBadge()` 호출.
+5. **uiStore + globalSettingsManager 구독** — `sell-position.ts:282-302` rAF 배칭으로 매도상태 배지 갱신. `unmount()`에 신규 구독 해제 + `_statusRafId` 취소 추가.
+
+**수정 파일**: 1개 (프론트엔드).
+- `frontend/src/pages/sell-position.ts` (import + 모듈 변수 + updateSellStatusBadge 함수 + 4번째 배지 + uiStore/settings 구독 + unmount 정리)
+
+**데이터 소스 (P10 SSOT — 신규 데이터 없음)**:
+- `uiStore.circuitBreakerOpen` / `orderTimeBlocked` / `riskBlockStatus` — 기존 WS 이벤트로 갱신됨. `riskBlockStatus.side === 'sell'`로 매도 전용 분기.
+- `globalSettingsManager.getSettings()`의 `time_scheduler_on`/`auto_sell_on`/`sell_time_start`/`sell_time_end` — 기존 설정.
+
+**아키텍처 원칙 부합**:
+- P21 (사용자 투명성): 핵심 목적 — 매도 차단 원인을 보유종목 화면에 직접 표시. "보유 종목 있는데 왜 안 팔려?" 의문 해소.
+- P10 (SSOT): 신규 데이터/상태 없음. 기존 uiStore + globalSettingsManager 집계만.
+- P16 (살아있는 경로): updateSellStatusBadge()는 mount 초기 렌더 + uiStore/settings 구독 콜백에서 호출됨.
+- P20 (폴백 금지): settings null 시 early return (기존 패턴 준수).
+- P23 (일관성): buy-target.ts의 매수상태 배지와 동일 패턴·우선순위·색상. `createBadge`/`updateBadge` 공통 컴포넌트 재사용, 용어사전 준수("매도").
+- P24 (단순성): 우선순위 if-else 체인, 신규 추상화 없음.
+- P25 (격리된 실패): updateSellStatusBadge() try/catch + console.error.
+
+**영향 범위**: 프론트엔드 1파일. 백엔드/테스트 영향 없음. 핵심 매매 로직 아님 (UI 표시만) → 규칙 0-4 해당 없음. 롤백 아님 (신규 배지 추가) → 규칙 0-3 해당 없음.
+
+**UI 기준 화면 변화 (규칙 0-4)**:
+- 보유종목 화면 상단 배지 행이 3개 → 4개로 변경. 기존 3개 배지(평가금액/평가손익/수익률) 라벨/표시 변화 없음.
+- 4번째 배지 "🚦 매도상태" 추가:
+  - 정상: "매도 가능" (파랑)
+  - 서킷브레이커 발동 시: "차단: 서킷브레이커" (빨강)
+  - 리스크 차단 시: "차단: 리스크({사유})" (빨강)
+  - 동시호가/장외 시: "차단: {사유}" (빨강)
+  - 자동매매 OFF 시: "차단: 자동매매 OFF" (빨강)
+  - 자동매도 OFF 시: "차단: 자동매도 OFF" (빨강)
+  - 매도 작동 시간 외: "차단: 매도 시간대 외" (빨강)
+- 사용자가 보유종목 화면만 보고 "지금 매도가 실행 가능한가?"를 즉시 파악 가능. 매수후보 화면의 "🚦 매수상태" 배지와 동일한 위치·색상·표시 방식.
+
+**검증**:
+- `npm run typecheck` (tsc --noEmit) 통과 ✓
+- `npm run build` (tsc -b + vite build) 통과 — sell-position 번들 5.12 kB ✓
+- 브라우저 검증: 사용자 확인 대기
+
+**작업 중 발견 문제**: 없음. (T3-S21에서 발견한 P21 갭 — 미노출 4개 전체 차단 사유 백엔드 WS 미브로드캐스트 — 는 매도에도 동일하게 적용되나, 본 세션에서는 신규 발견 아님. 기존 "미해결 문제" 섹션 참조.)
+
+---
 
 ### T3-S21 매수후보 테이블 4번째 배지 "🚦 매수상태" 추가 — 완료 (2026-07-23) — P21 사용자 투명성 (프론트엔드, problem-solve)
 
@@ -311,7 +364,7 @@
 
 ## 다음 세션 진행 대기
 
-**T3-S22 매도 보유종목 테이블 4번째 배지 "🚦 매도상태" 추가 (사용자 지시)** — 매도 보유종목 페이지(`frontend/src/pages/sell-position.ts`)에 T3-S21과 동일 패턴으로 4번째 배지 추가. 우선순위 체인: 서킷브레이커 > 리스크(side=sell) > 시간대 > 자동매매 OFF > 자동매도 OFF > 매도 시간대 외. 데이터 소스: 기존 uiStore + globalSettingsManager (`auto_sell_on`/`sell_time_start`/`sell_time_end`). 사전조사 시 `sell-position.ts` 배지 행 구조 및 `riskBlockStatus.side==='sell'` 분기 확인 필요.
+**T3-S23 배지 폰트 크기/공통 컴포넌트 통일 검토 (사용자 지시)** — 매수후보(buy-target.ts)와 보유종목(sell-position.ts) 양쪽에 4번째 상태 배지가 추가 완료됨. 다음 세션에서 배지 폰트 크기, 라벨 길이, 공통 컴포넌트(`components/common/badge.ts`) 통일 검토. 양쪽 배지 행이 4등분으로 표시될 때 폰트 크기/라벨 간소화 필요성, 색상 상수 일관성, 상태 텍스트 포맷 통일 등 점검. 사전조사 시 `badge.ts`의 `createBadge`/`updateBadge` 스펙과 buy-target.ts/sell-position.ts 양쪽 배지 라벨/상태 텍스트 비교 필요.
 
 **실전모드 수수료 대응 (P18 갭)** — 실전 전환 직전 별도 세션에서 처리 필요. 상세는 "미해결 문제" 섹션 참조.
 
