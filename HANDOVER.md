@@ -311,6 +311,8 @@
 
 ## 다음 세션 진행 대기
 
+**T3-S22 매도 보유종목 테이블 4번째 배지 "🚦 매도상태" 추가 (사용자 지시)** — 매도 보유종목 페이지(`frontend/src/pages/sell-position.ts`)에 T3-S21과 동일 패턴으로 4번째 배지 추가. 우선순위 체인: 서킷브레이커 > 리스크(side=sell) > 시간대 > 자동매매 OFF > 자동매도 OFF > 매도 시간대 외. 데이터 소스: 기존 uiStore + globalSettingsManager (`auto_sell_on`/`sell_time_start`/`sell_time_end`). 사전조사 시 `sell-position.ts` 배지 행 구조 및 `riskBlockStatus.side==='sell'` 분기 확인 필요.
+
 **실전모드 수수료 대응 (P18 갭)** — 실전 전환 직전 별도 세션에서 처리 필요. 상세는 "미해결 문제" 섹션 참조.
 
 **사용자 지시 시 진행 가능 항목 (audit 문서 잔여)**:
