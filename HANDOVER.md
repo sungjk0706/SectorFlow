@@ -6,6 +6,43 @@
 
 ## 직전 완료 작업
 
+### T1-S6 헤더 칩 순차 갱신 격리 — 완료 (2026-07-23) — A3-07-04 완료
+
+**세션**: 단일 세션. 프론트엔드 코드 수정 (frontend-fix 스킬). 세션 라벨 T1-S6 (`p25_fix_tasks.md`의 T1-S6 항목, 위반 ID A3-07-04).
+
+**배경**: P25 수정 계획 Tier 1 세션. `header.ts`의 `onStateChange` 콜백이 15개 헤더 칩을 순차 갱신하는데 칩 간 격리가 없어, 한 칩 렌더링 throw 시 이후 모든 칩이 미갱신되는 P25 위반 (F-02 잔존 위험). `store.ts` listener 루프(40-46줄)가 "리스너 간" 격리는 보장하나 "콜백 내부 칩 간" 격리는 없었음. 사용자가 자동매수/자동매도/텔레그램 활성화 여부를 헤더에서 오인할 수 있는 P21 위반 잔존.
+
+**작업 내용**:
+1. **A3-07-04 (HIGH) 완료** — `frontend/src/layout/header.ts` `onStateChange` (368-494줄): 13개 칩 갱신 블록을 per-chip try/catch로 감쌈. 각 catch 블록은 `console.error('[header] <칩명> chip error', e)` 로깅 (silent pass 금지, P20 준수). catch 블록에서 칩 내용/style 폴백 덮지 않음 (기존 상태 유지).
+   - 적용 칩: circuitBreaker, orderTimeBlocked, riskBlock, krx phase, nxt phase, index(코스피/코스닥), krxAlert, bootstrap, avgAmt, mode, settings(autoTrade/autoBuy/autoSell/tele).
+2. **증권사 칩 루프 per-broker 격리** — `onStateChange` 내 증권사 칩 루프(485-493줄): 루프 내 각 brokerId 반복을 개별 try/catch로 감싸 한 증권사 칩 실패 시 다른 증권사 칩 계속 갱신. catch 로깅에 brokerId 포함.
+
+**수정 파일**: 1개 (+125/-97줄).
+- `frontend/src/layout/header.ts` (+125/-97)
+
+**아키텍처 원칙 부합**:
+- P25 (격리된 실패): 한 칩 렌더링 throw 시 해당 칩만 미갱신 + 로깅, 나머지 칩 계속 갱신 — 해결. F-02 잔존 위험 완결.
+- P20 (폴백 금지): `console.error` 명시 로깅 (silent pass 금지) — 준수. catch 블록에서 빈 문자열/None 폴백 덮지 않음 — 준수.
+- P21 (사용자 투명성): 한 칩 실패 시 다른 칩(자동매수/매도/텔레그램 등) 정상 갱신 → 사용자가 활성화 여부 정확히 인지 — 강화.
+- P23 (일관성): 기존 `data-table.ts:108-115`, `virtual-scroller.ts:304-307, 315-322`의 P25 격리 패턴과 동일 구조 (`// P25: ... 격리 — ... throw 시 ... + 로깅, 다음 ... 계속` 주석 + `console.error('[header] ... error', e)`) — 준수.
+- P24 (단순성): per-chip try/catch 1뎁스만 추가, 헬퍼 함수/추상화 도입 없음 — 준수.
+
+**검증**:
+- `npm run typecheck` (`tsc --noEmit`) 통과.
+- `npm run build` (`tsc -b && vite build`) 통과 — 76 모듈 변환, 1.95s, 번들 정상 생성.
+- lint 스크립트는 package.json에 없음 → typecheck + build로 대체.
+- 브라우저 확인: 사용자 직접 확인 필요 (헤더 칩 정상 표시). 수정은 실패 전파 차단만 추가한 것이므로 정상 경로 동작은 변경되지 않음. dev 서버 5173 포트 실행 중.
+- 잔존 프로세스 0건 확인.
+
+**핵심 결정**:
+- 칩 그룹화: 설정 상태 4칩(autoTrade/autoBuy/autoSell/tele)은 단일 settings 블록 내에서 함께 갱신되므로 1개 try/catch로 통합 감쌈 (P24 단순성 — 4칩을 4개 try/catch로 분리하면 과도한 중첩).
+- 업종지수 2칩(코스피/코스닥)도 단일 블록에서 `display` 설정 후 `applyIndexChip` 2회 호출하므로 1개 try/catch로 통합 감쌈.
+- catch 블록에서 칩 내용/style 초기화하지 않음: throw 시점에 칩이 어느 상태였는지 알 수 없으므로 폴백 덮지 않고 기존 표시 유지 (P20 준수). 사용자는 콘솔 에러 로그로 원인 파악.
+
+**다음 세션 대기 사항**: `p25_fix_tasks.md` 순서상 T1-S3 (B2-03-01 pipeline_compute.py Phase2 recompute 루프 격리, 백엔드) 또는 T1-S4 (B3-05-01 market_close_pipeline.py, 백엔드). Tier 1 잔존: T1-S3, T1-S4. 세션당 1단계 원칙(규칙 0-1) 준수.
+
+---
+
 ### T1-S2 DataTable 행 렌더링 격리 — 완료 (2026-07-23) — A3-07-01/02/03 완료
 
 **세션**: 단일 세션. 프론트엔드 코드 수정 (frontend-fix 스킬). 세션 라벨 T1-S2 (문서상 T1-S5와 동일 — `p25_fix_tasks.md`의 T1-S5 항목).

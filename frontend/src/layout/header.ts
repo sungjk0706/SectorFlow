@@ -368,128 +368,156 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
   function onStateChange(state: UIState): void {
     const { marketPhase, bootstrapStage, engineReady, avgAmtProgress, status, settings, indexData, circuitBreakerOpen, orderTimeBlocked, riskBlockStatus } = state
 
+    // P25: 칩 단위 격리 — 각 칩 렌더링 throw 시 해당 칩만 미갱신 + 로깅, 다음 칩 계속
+    // (F-02 잔존 위험 해결 — onStateChange 콜백 내부 칩 간 격리)
+
     // OMS 서킷브레이커 발동 칩
-    if (circuitBreakerOpen) {
-      circuitBreakerChip.style.display = ''
-      circuitBreakerChip.style.background = `${COLOR.upBg}`
-      circuitBreakerChip.style.color = `${COLOR.up}`
-      circuitBreakerChip.style.border = `1px solid ${COLOR.up}40`
-      circuitBreakerChip.textContent = `⚠ ${circuitBreakerOpen.message}`
-    } else {
-      circuitBreakerChip.style.display = 'none'
-    }
+    try {
+      if (circuitBreakerOpen) {
+        circuitBreakerChip.style.display = ''
+        circuitBreakerChip.style.background = `${COLOR.upBg}`
+        circuitBreakerChip.style.color = `${COLOR.up}`
+        circuitBreakerChip.style.border = `1px solid ${COLOR.up}40`
+        circuitBreakerChip.textContent = `⚠ ${circuitBreakerOpen.message}`
+      } else {
+        circuitBreakerChip.style.display = 'none'
+      }
+    } catch (e) { console.error('[header] circuitBreaker chip error', e) }
 
     // 체결 불가 시간대 주문 일시중단 칩 (노란색 — 동시호가/장외)
-    if (orderTimeBlocked) {
-      orderTimeBlockedChip.style.display = ''
-      orderTimeBlockedChip.style.background = `${COLOR.warningBg}`
-      orderTimeBlockedChip.style.color = `${COLOR.warning}`
-      orderTimeBlockedChip.style.border = `1px solid ${COLOR.warning}40`
-      orderTimeBlockedChip.textContent = `⏸ ${orderTimeBlocked.reason}`
-    } else {
-      orderTimeBlockedChip.style.display = 'none'
-    }
+    try {
+      if (orderTimeBlocked) {
+        orderTimeBlockedChip.style.display = ''
+        orderTimeBlockedChip.style.background = `${COLOR.warningBg}`
+        orderTimeBlockedChip.style.color = `${COLOR.warning}`
+        orderTimeBlockedChip.style.border = `1px solid ${COLOR.warning}40`
+        orderTimeBlockedChip.textContent = `⏸ ${orderTimeBlocked.reason}`
+      } else {
+        orderTimeBlockedChip.style.display = 'none'
+      }
+    } catch (e) { console.error('[header] orderTimeBlocked chip error', e) }
 
     // 리스크 매니저 차단 칩 (빨간색 — 손실/수익 한도 도달, 클릭 시 해제)
-    if (riskBlockStatus) {
-      riskBlockChip.style.display = ''
-      riskBlockChip.style.background = `${COLOR.upBg}`
-      riskBlockChip.style.color = `${COLOR.up}`
-      riskBlockChip.style.border = `1px solid ${COLOR.up}40`
-      const sideLabel = riskBlockStatus.side === 'buy' ? '매수' : riskBlockStatus.side === 'sell' ? '매도' : '매매'
-      riskBlockChip.textContent = `⚠ 리스크 차단(${sideLabel}): ${riskBlockStatus.reason}`
-    } else {
-      riskBlockChip.style.display = 'none'
-    }
+    try {
+      if (riskBlockStatus) {
+        riskBlockChip.style.display = ''
+        riskBlockChip.style.background = `${COLOR.upBg}`
+        riskBlockChip.style.color = `${COLOR.up}`
+        riskBlockChip.style.border = `1px solid ${COLOR.up}40`
+        const sideLabel = riskBlockStatus.side === 'buy' ? '매수' : riskBlockStatus.side === 'sell' ? '매도' : '매매'
+        riskBlockChip.textContent = `⚠ 리스크 차단(${sideLabel}): ${riskBlockStatus.reason}`
+      } else {
+        riskBlockChip.style.display = 'none'
+      }
+    } catch (e) { console.error('[header] riskBlock chip error', e) }
 
     // 장 상태 — 카운트다운(백엔드 SSOT 수신값)이 있으면 우선 표시, 없으면 시계 페이즈명
-    applyMarketPhaseChip(krxChip, 'KRX', marketPhase.krx, formatCountdown(marketPhase.krx_countdown))
-    applyMarketPhaseChip(nxtChip, 'NXT', marketPhase.nxt, formatCountdown(marketPhase.nxt_countdown))
+    try {
+      applyMarketPhaseChip(krxChip, 'KRX', marketPhase.krx, formatCountdown(marketPhase.krx_countdown))
+    } catch (e) { console.error('[header] krx phase chip error', e) }
+    try {
+      applyMarketPhaseChip(nxtChip, 'NXT', marketPhase.nxt, formatCountdown(marketPhase.nxt_countdown))
+    } catch (e) { console.error('[header] nxt phase chip error', e) }
 
     // 업종지수 실시간 — 칩은 항상 표시, 데이터 없으면 placeholder
-    const kospi = indexData?.['001']
-    const kosdaq = indexData?.['301']
-    kospiChip.style.display = ''
-    kosdaqChip.style.display = ''
-    applyIndexChip(kospiChip, kospi ?? { upcode: '001' })
-    applyIndexChip(kosdaqChip, kosdaq ?? { upcode: '301' })
+    try {
+      const kospi = indexData?.['001']
+      const kosdaq = indexData?.['301']
+      kospiChip.style.display = ''
+      kosdaqChip.style.display = ''
+      applyIndexChip(kospiChip, kospi ?? { upcode: '001' })
+      applyIndexChip(kosdaqChip, kosdaq ?? { upcode: '301' })
+    } catch (e) { console.error('[header] index chip error', e) }
 
     // KRX 알림 (서킷브레이커/사이드카)
-    const alert = marketPhase.krx_alert
-    if (alert) {
-      krxAlertChip.style.display = ''
-      krxAlertChip.style.background = `${COLOR.upBg}`
-      krxAlertChip.style.color = `${COLOR.up}`
-      krxAlertChip.style.border = `1px solid ${COLOR.up}40`
-      krxAlertChip.textContent = `⚠ ${alert}`
-    } else {
-      krxAlertChip.style.display = 'none'
-    }
+    try {
+      const alert = marketPhase.krx_alert
+      if (alert) {
+        krxAlertChip.style.display = ''
+        krxAlertChip.style.background = `${COLOR.upBg}`
+        krxAlertChip.style.color = `${COLOR.up}`
+        krxAlertChip.style.border = `1px solid ${COLOR.up}40`
+        krxAlertChip.textContent = `⚠ ${alert}`
+      } else {
+        krxAlertChip.style.display = 'none'
+      }
+    } catch (e) { console.error('[header] krxAlert chip error', e) }
 
     // 앱준비 진행률
-    if (bootstrapStage && !engineReady) {
-      bootstrapChip.style.display = ''
-      bootstrapChip.style.background = '#f3e5f5'
-      bootstrapChip.style.color = '#6a1b9a'
-      bootstrapChip.style.border = '1px solid #6a1b9a20'
-      let text = ` ${bootstrapStage.stage_name}`
-      if (bootstrapStage.progress) {
-        text += ` (${bootstrapStage.progress.current}/${bootstrapStage.progress.total})`
+    try {
+      if (bootstrapStage && !engineReady) {
+        bootstrapChip.style.display = ''
+        bootstrapChip.style.background = '#f3e5f5'
+        bootstrapChip.style.color = '#6a1b9a'
+        bootstrapChip.style.border = '1px solid #6a1b9a20'
+        let text = ` ${bootstrapStage.stage_name}`
+        if (bootstrapStage.progress) {
+          text += ` (${bootstrapStage.progress.current}/${bootstrapStage.progress.total})`
+        }
+        bootstrapChip.innerHTML = spinnerHtml + text
+      } else {
+        bootstrapChip.style.display = 'none'
       }
-      bootstrapChip.innerHTML = spinnerHtml + text
-    } else {
-      bootstrapChip.style.display = 'none'
-    }
+    } catch (e) { console.error('[header] bootstrap chip error', e) }
 
     // 백그라운드 데이터 갱신
-    if (avgAmtProgress) {
-      renderAvgAmtChip(avgAmtChip, avgAmtProgress)
-    } else {
-      avgAmtChip.style.display = 'none'
-    }
+    try {
+      if (avgAmtProgress) {
+        renderAvgAmtChip(avgAmtChip, avgAmtProgress)
+      } else {
+        avgAmtChip.style.display = 'none'
+      }
+    } catch (e) { console.error('[header] avgAmt chip error', e) }
 
     // 엔진 상태
-    if (status) {
-      modeChip.style.display = ''
-      applyStatusChip(modeChip, status.is_test_mode ? '테스트모드' : '실전모드', undefined, status.is_test_mode ? 'blue' : 'red')
-    } else {
-      modeChip.style.display = 'none'
-    }
+    try {
+      if (status) {
+        modeChip.style.display = ''
+        applyStatusChip(modeChip, status.is_test_mode ? '테스트모드' : '실전모드', undefined, status.is_test_mode ? 'blue' : 'red')
+      } else {
+        modeChip.style.display = 'none'
+      }
+    } catch (e) { console.error('[header] mode chip error', e) }
 
     // 증권사 칩 상태 업데이트 (미리 생성된 칩 재사용 — 재생성 금지)
+    // P25: 증권사 단위 격리 — 한 증권사 칩 렌더링 throw 시 해당 증권사만 스킵 + 로깅, 다른 증권사 계속
     const brokerStatuses = status?.broker_statuses ?? {}
     for (const brokerId of Object.keys(brokerChipRefs)) {
-      const refs = brokerChipRefs[brokerId]
-      const bs = brokerStatuses[brokerId]
-      const label = BROKER_LABELS[brokerId]
-      applyStatusChip(refs.token, `${label}증권`, bs?.token_valid ?? false)
-      applyStatusChip(refs.ws, `${label}실시간`, bs?.ws_connected ?? false)
+      try {
+        const refs = brokerChipRefs[brokerId]
+        const bs = brokerStatuses[brokerId]
+        const label = BROKER_LABELS[brokerId]
+        applyStatusChip(refs.token, `${label}증권`, bs?.token_valid ?? false)
+        applyStatusChip(refs.ws, `${label}실시간`, bs?.ws_connected ?? false)
+      } catch (e) { console.error('[header] broker chip error', brokerId, e) }
     }
 
     // 설정 상태
-    if (settings) {
-      autoTradeChip.style.display = ''
-      autoBuyChip.style.display = ''
-      autoSellChip.style.display = ''
-      teleChip.style.display = ''
-      applyStatusChip(autoTradeChip, '자동매매', !!settings.time_scheduler_on)
-      applyStatusChip(
-        autoBuyChip,
-        `자동매수 ${(settings.buy_time_start || '09:00').slice(0, 5)}~${(settings.buy_time_end || '15:20').slice(0, 5)}`,
-        !!settings.auto_buy_on,
-      )
-      applyStatusChip(
-        autoSellChip,
-        `자동매도 ${(settings.sell_time_start || '09:00').slice(0, 5)}~${(settings.sell_time_end || '15:20').slice(0, 5)}`,
-        !!settings.auto_sell_on,
-      )
-      applyStatusChip(teleChip, '텔레그램', settings.tele_on)
-    } else {
-      autoTradeChip.style.display = 'none'
-      autoBuyChip.style.display = 'none'
-      autoSellChip.style.display = 'none'
-      teleChip.style.display = 'none'
-    }
+    try {
+      if (settings) {
+        autoTradeChip.style.display = ''
+        autoBuyChip.style.display = ''
+        autoSellChip.style.display = ''
+        teleChip.style.display = ''
+        applyStatusChip(autoTradeChip, '자동매매', !!settings.time_scheduler_on)
+        applyStatusChip(
+          autoBuyChip,
+          `자동매수 ${(settings.buy_time_start || '09:00').slice(0, 5)}~${(settings.buy_time_end || '15:20').slice(0, 5)}`,
+          !!settings.auto_buy_on,
+        )
+        applyStatusChip(
+          autoSellChip,
+          `자동매도 ${(settings.sell_time_start || '09:00').slice(0, 5)}~${(settings.sell_time_end || '15:20').slice(0, 5)}`,
+          !!settings.auto_sell_on,
+        )
+        applyStatusChip(teleChip, '텔레그램', settings.tele_on)
+      } else {
+        autoTradeChip.style.display = 'none'
+        autoBuyChip.style.display = 'none'
+        autoSellChip.style.display = 'none'
+        teleChip.style.display = 'none'
+      }
+    } catch (e) { console.error('[header] settings chip error', e) }
 
   }
 
