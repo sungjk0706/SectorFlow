@@ -6,6 +6,54 @@
 
 ## 직전 완료 작업
 
+### T2-S7 WS 로그 분류 / store updater / hotStore dispatch 격리 — 완료 (2026-07-23) — A1-01-03, A2-04-01/02 완료 (Tier 2 첫 세션)
+
+**세션**: 단일 세션. 프론트엔드 코드 수정 (frontend-fix 스킬). 세션 라벨 T2-S7 (Tier 2 첫 세션, MEDIUM 3건).
+
+**배경**: P25 수정 계획 Tier 2 첫 세션. WS 디스패치 / store / hotStore 전파 경로의 잔존 격리 부재 3건 해결. T1-S1 (A1-01-01/02 WS 디스패치 per-handler 격리) 선행 완료 상태에서 진행.
+
+**작업 내용**:
+1. **A1-01-03 (MEDIUM) 완료** — `frontend/src/api/ws.ts` `_handleTextFrame` (180-193줄): JSON.parse try와 `_dispatchMessage` try를 분리. 기존에는 동일 try 블록 안에 있어 핸들러 예외를 "파싱 실패"로 잘못 분류하던 문제 수정. "JSON 파싱 실패" / "text frame event 디스패치 실패"로 분류 — binary frame 패턴(`_handleBinaryFrame` 171-173줄)과 일관 (P23). 단, `_handleBinaryFrame`은 T1-S1에서 이미 디코딩/디스패치 try 분리 완료 — 본 세션 추가 수정 불필요.
+2. **A2-04-01 (MEDIUM) 완료** — `frontend/src/stores/store.ts` `setState` (18-29줄): updater 함수 호출 `partial(state)`를 try/catch로 격리. updater 본문 throw 시 `console.error('[Store] updater error', e)` + early return (기존 state 유지, P22 데이터 정합성). `createStore` 한 곳 수정으로 모든 store(hotStore, uiStore 등) 자동 보호 (P24 단순성). listener 루프(40-46)는 이미 per-listener try/catch로 보호됨 — updater만 미보호 상태였던 것 해결.
+3. **A2-04-02 (MEDIUM) 완료** — `frontend/src/stores/hotStore.ts` 5곳 `window.dispatchEvent(new CustomEvent(...))` try/catch 격리:
+   - `applyRealData` rank-0 변경 2곳 (367, 370줄)
+   - `applyRealData` 변경 알림 1곳 (390줄)
+   - `applyOrderbookUpdate` 1곳 (412줄)
+   - `applyProgramUpdate` 1곳 (431줄)
+   - 각 이벤트명(real-data-tick/orderbook-tick/program-tick)을 로그 메시지에 명시 (P21, P23). 한 UI 컴포넌트 핸들러 오류가 같은 틱의 다른 종목 시세 갱신 중단되는 것 차단 (P7, P25).
+
+**수정 파일**: 3개.
+- `frontend/src/api/ws.ts` (+8/-2, _handleTextFrame try 분리)
+- `frontend/src/stores/store.ts` (+11/-1, setState updater 격리)
+- `frontend/src/stores/hotStore.ts` (+25/-5, 5곳 dispatchEvent 격리)
+
+**아키텍처 원칙 부합**:
+- P25 (격리된 실패): 3건 모두 핵심 — 단일 예외가 전파 경로(WS 디스패치 → 화면 갱신 전체) 차단 방지.
+- P21 (사용자 투명성): A1-01-03 로그 분류로 디버깅 시 원인 파악 가능.
+- P23 (일관성): text frame = binary frame 패턴; hotStore 5곳 동일 패턴; store.ts 단일 수정으로 모든 store 보호.
+- P22 (데이터 정합성): A2-04-01 early return 시 기존 state 유지 — 잘못된 부분 상태로 교체 방지.
+- P24 (단순성): 신규 추상화 없음, try/catch 1뎁스 추가.
+- P20 (폴백 금지): 모든 catch에 `console.error` 명시 로깅 (silent pass 아님).
+
+**영향 범위**: 프론트엔드 3개 파일만 수정. 백엔드/DB/테스트 영향 없음. 정상 경로 동작 변화 없음 — 예외 발생 시에만 로그 출력 + 전파 차단. 롤백 아님 (신규 try/catch 추가만, 규칙 0-3/0-4/0-5 해당 없음).
+
+**검증**:
+- `npm run typecheck` (`tsc --noEmit`) — 통과, 오류 0건.
+- `npm run build` (`tsc -b && vite build`) — 성공, 76 모듈 변환, 910ms, TypeScript 오류 0건.
+- 브라우저 실시간 데이터 흐름 검증: 백엔드 미기동으로 정적 검증만 수행 (코드 경로 유효성 확인).
+
+**커밋**: `bc920df fix(frontend): T2-S7 WS 로그 분류 / store updater / hotStore dispatch 격리 (A1-01-03, A2-04-01/02)`
+
+**핵심 결정**:
+- A2-04-01에서 early return 선택 (기존 state 유지): updater 실패 시 부분 갱신으로 인한 데이터 불일치 방지 (P22). listener 루프처럼 continue가 아닌 return인 이유 — updater가 실패하면 nextPartial 자체가 신뢰할 수 없어 변경 감지/상태 교체/리스너 통지 전체를 스킵해야 함.
+- A2-04-02에서 dispatchEvent 호출부 보호 선택 (CustomEvent 핸들러 등록부 아님): 호출부 보호가 더 근본적. 핸들러 등록부(A3 영역)는 후속 세션에서 별도 검토.
+
+**다음 세션 대기 사항**:
+- **사용자 확정**: 다음 세션은 **T2-S8** (B1-02-02, B1-02-03, B2-03-02 — 엔진 종료 finally / 파이프라인 서브루프 격리). 백엔드 수정 (engine_loop.py, pipeline_compute.py). 선행 의존성: T1-S2, T1-S3 필수 (같은 파일 — 충돌 방지 위해 선행 세션 완료 후 진행) — 둘 다 완료됨.
+- **Tier 2 진행 상태**: T2-S7 완료. 잔존 T2-S8~T2-S11 (4세션). MEDIUM 14건 중 3건 완료, 11건 잔존.
+
+---
+
 ### T1-S5 `_save_confirmed_cache` DB 실패 시 False 반환 — 완료 (2026-07-23) — B3-05-01 완료 (Tier 1 마지막)
 
 **세션**: 단일 세션. 백엔드 코드 수정 (backend-fix + problem-solve 스킬). 세션 라벨 T1-S5 (사용자 지정 라벨 — `p25_fix_tasks.md` 문서상 T1-S4 항목의 내용, 위반 ID B3-05-01 HIGH).
