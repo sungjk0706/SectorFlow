@@ -6,6 +6,53 @@
 
 ## 직전 완료 작업
 
+### P25 전수 조사 세션 8: B5 매매·테스트모드 태스크 조사 완료 (2026-07-23)
+
+**세션**: 단일 세션. 조사만 수행 (코드 수정 없음). safe-trade 스킬 연계. HANDOVER 미해결 문제 4건 기록.
+
+**배경**: P25 전수 조사 9세션 중 세션 8. B5 매매·테스트모드 영역 조사. 우선순위 8위 — 백엔드 매매 실행 경로(`trading.py`, `buy_order_executor.py`, `dry_run.py`). dry_run 태스크 격리, 매매 경로 실패 전파, P15(단일 주문 경로)/P18(테스트모드 동등성) 교차 점검.
+
+**조사 파일**: 3개 (`trading.py` 859줄, `buy_order_executor.py` 234줄, `dry_run.py` 333줄)
+
+**조사 항목 결과**:
+
+1. **P15 단일 주문 경로**: ✅ 준수. `execute_buy`/`execute_sell` 단일 경로. 분기/우회 없음. `buy_order_executor.evaluate_buy_candidates`도 동일 경로 호출.
+
+2. **P18 테스트모드 동등성**: 대체 준수, 1건 미세 위반 (B5-08-02). RiskManager 게이트, 등락률/체결강도 가드, 재매수 차단, 시간대 차단, 한도 체크 모두 테스트/실전 공통. 모드 분기는 돈 I/O 최소 지점에 한정. 단 `execute_sell` 평균매입가 조회(trading.py:572-598)가 모드 분기됨 — 돈 I/O 아닌 "조회" 분기로 P18 엄격 해석상 미세 위반.
+
+3. **P25 격리된 실패 / dry_run 태스크 격리**: 2건 이슈.
+   - B5-08-01 (LOW/P23): trading.py:477-482, 666-671 `asyncio.create_task` 직접 사용 + add_done_callback 수동 연결. `schedule_engine_task()` 미사용 → ARCHITECTURE.md 금지 패턴 2 위반. 기능적 동등.
+   - B5-08-03 (MEDIUM/P22): `fake_fill_event` 태스크 실패 시 trade_history와 Settlement Engine 잔고 불일치 가능. 단 `tests/test_settlement_verification.py` S4-1에 재현 테스트 존재 → 인지된 영역. 기동 시 대조 메커니즘 보유 여부는 세션 9 교차 점검 대상.
+
+4. **매매 경로 실패 전파**: ✅ 양호. 매수 실패 시 사전 차감 롤백 + RiskManager 실패 보고 + 서킷브레이커 OPEN 시 마스터 스위치 강제 OFF + WS 브로드캐스트. 매도 실패 시 `_recent_sells` 해제 + 동일 RiskManager 처리. buy_order_executor 예외 시 `break` 안전 종료 + `logger.warning(exc_info=True)` (silent pass 아님).
+
+5. **기타 발견 (B5-08-04, LOW)**: trading.py:204-210 실시간 지연 체크 실패 시 매수 차단 아닌 통과 (게이트 우회 형태). P20/P25 관점에서 fail-closed가 더 보수적.
+
+**식별 위반 4건** (미해결 문제에 기록):
+- **B5-08-01 (LOW)**: `trading.py:477-482, 666-671` create_task 직접 사용 → schedule_engine_task 통일 권장 (P23)
+- **B5-08-02 (LOW)**: `trading.py:572-598` execute_sell 평균매입가 조회 모드 분기 (P18 미세 위반)
+- **B5-08-03 (MEDIUM)**: `trading.py:477-482, 666-671` fake_fill_event 태스크 실패 시 P22 정합성 잠재 위험 (테스트 존재)
+- **B5-08-04 (LOW)**: `trading.py:204-210` 실시간 지연 체크 실패 시 매수 통과 (P20/P25 게이트 우회 형태)
+
+**핵심 발견**:
+- P15 단일 주문 경로는 완벽 준수. 매수/매도 모두 `execute_buy`/`execute_sell` 단일 경로.
+- 매수/매도 실패 전파 처리는 양호 — 사전 차감 롤백, 서킷브레이커 강제 OFF, WS 브로드캐스트로 P20/P21/P22 준수.
+- 가장 심각한 항목은 B5-08-03 (MEDIUM) — fake_fill_event 태스크 실패 시 잔고 정합성 잠재 위험. 단 테스트가 존재하므로 인지된 영역.
+- B5-08-01은 ARCHITECTURE.md 금지 패턴 2 위반이나 기능적 동등, 심각도 낮음.
+- safe-trade 스킬 연계: 조사 시작 시 스킬 호출, 거래 로직 수정 안전 절차 준수. 본 세션은 조사만 수행하여 수정 없음.
+
+**수정 방향 (참고용, 승인 시 별도 세션 — 거래 로직이므로 safe-trade 스킬 필수)**:
+- B5-08-01: trading.py:477, 666 create_task → schedule_engine_task로 교체 (add_done_callback 포함). 거래 로직 수정 아님 — 안전장치 배선만 통일.
+- B5-08-02: execute_sell 평균매입가 조회를 공통 헬퍼로 추출 (모드 분기 제거). 거래 로직 수정 — safe-trade 스킬 필수, 사용자 승인 필요.
+- B5-08-03: fake_fill_event 태스크 실패 시 정합성 복구 메커니즘 점검 (기동 시 대조). 세션 9 교차 점검에서 우선순위 논의.
+- B5-08-04: 실시간 지연 체크 실패 시 fail-closed (매수 차단) 전환. 거래 로직 수정 — safe-trade 스킬 필수.
+
+**검증**: 조사만 수행 — typecheck/build/런타임 기동 불필요. 잔존 프로세스 0건.
+
+**다음 세션 대기 사항**: 세션 9 (교차 점검·총합 보고) 진행 — 마지막 세션. 세션 1~8 결과 취합 + 교차 원칙 매트릭스 작성 + 우선수정 추천. 조사 보고서 `docs/p25_isolated_failure_investigation.md` 섹션 11에 결과 누적 예정. 세션 9 완료 시 P25 전수 조사 9/9 세션 완료.
+
+---
+
 ### P25 전수 조사 세션 7: A3 UI 컴포넌트 렌더링 조사 완료 (2026-07-23)
 
 **세션**: 단일 세션. 조사만 수행 (코드 수정 없음). HANDOVER 미해결 문제 10건 기록.
@@ -1194,6 +1241,16 @@
 
 ## 미해결 문제 (발견 즉시 기록)
 
+### P25 전수 조사 — 세션 8 (B5 매매·테스트모드 태스크) 위반 4건 식별 (2026-07-23)
+- 조사 파일: `backend/app/services/trading.py`, `backend/app/services/buy_order_executor.py`, `backend/app/services/dry_run.py`
+- 조사 보고서: `docs/p25_isolated_failure_investigation.md` 섹션 2(매트릭스) + 섹션 10(세션 8 결과) 참조
+- **B5-08-01 (LOW)**: `trading.py:477-482, 666-671` `asyncio.create_task` 직접 사용 + add_done_callback 수동 연결. `schedule_engine_task()`(engine_lifecycle.py:279-309)가 동일 기능 제공하는데 미사용 → **ARCHITECTURE.md 금지 패턴 2 위반 + P23 일관성 위반**. 기능적으로는 동등(엔진 루프 내 호출이므로 schedule_engine_task 두 번째 분기와 동일). 심각도 낮음
+- **B5-08-02 (LOW)**: `trading.py:572-598` `execute_sell` 평균매입가 조회가 테스트/실전 분기됨 (`build_positions_from_trades` vs `get_positions`). 돈 I/O가 아닌 "조회" 분기로 **P18 "모드 분기는 돈 I/O 최소 지점에만" 엄격 해석상 미세 위반**. 결과 동일성은 보장되나 분기 위치 검토 대상
+- **B5-08-03 (MEDIUM)**: `trading.py:477-482, 666-671` (연관 `dry_run.py:153-198`) `fake_fill_event` 태스크 실패/취소 시: 주문 접수는 `record_buy`/`record_sell`로 영속화되어 있으나, `fake_fill_event` 내부 `_apply_buy`/`_apply_sell`(Settlement Engine 예수금 차감/매도 정산) 누락 가능 → **P22 데이터 정합성 잠재 위험** (trade_history와 Settlement Engine 잔고 불일치). 단 `tests/test_settlement_verification.py` S4-1(207-260)에 재현 테스트 존재 → 인지된 영역. 기동 시 대조(reconciliation) 메커니즘 보유 여부는 세션 9 교차 점검 대상
+- **B5-08-04 (LOW)**: `trading.py:204-210` 실시간 지연 체크 `except Exception:`이 로깅은 하되 체크 실패 시 매수를 차단하지 않고 계속 진행 → **P20/P25 관점에서 fail-closed(안전 차단)가 더 보수적** (현재는 게이트 우회 형태)
+- 양호: P15 단일 주문 경로 완벽 준수, 매수/매도 실패 전파 양호 (사전 차감 롤백+서킷브레이커 강제 OFF+WS 브로드캐스트), buy_order_executor 예외 break+로깅, RiskManager 보고 실패 격리, safe-trade 스킬 연계 준수
+- 수정은 별도 승인 세션에서 진행 (거래 로직 수정 시 safe-trade 스킬 필수, B5-08-02/03/04는 핵심 로직 변경이므로 AGENTS.md 섹션3 규칙 0-4/0-5 엄격 적용)
+
 ### P25 전수 조사 — 세션 5 (B3 대형 스케줄러·파이프라인) 위반 4건 식별 (2026-07-23)
 - 조사 파일: `backend/app/services/daily_time_scheduler.py`, `backend/app/services/market_close_pipeline.py`, `backend/app/services/engine_lifecycle.py`(정의 확인용)
 - **B3-05-01 (HIGH)**: `market_close_pipeline.py:645-650` `_save_confirmed_cache` inner except에서 rollback+warning 후 fall-through → 650 `return True` → 전종목 마스터 테이블 DB 저장 실패해도 함수 True 반환 → **P22 데이터 정합성 위반 + P21 사용자 투명성 위반**. 후속 6단계 메모리 교체 로직이 잘못된 성공 전제로 진행됨
@@ -1231,18 +1288,18 @@
 
 ## 다음 세션 작업
 
-**P25 전수 조사 세션 3 (B2 파이프라인 연산 루프 조사)**:
-- 조사 파일: `pipeline_compute.py`, `pipeline_compute_tick_handlers.py`, `pipeline_gateway.py`
-- 조사 범위:
-  - `pipeline_compute.py:209,214` create_task 직접 호출 (schedule_engine_task 미사용 — P23 위반 후보)
-  - `pipeline_compute.py:247` `while True` 루프 내부 예외 격리
-  - `_compute_loop_impl` / `_sector_recompute_loop_impl` 루프 실패 시 전파 경로
-  - tick_handlers의 틱 핸들러 예외 전파 경로
-  - **세션 2 연계**: B1-02-05/06 (`_handle_real_00`/`_handle_real_balance` 호출부인 pipeline_compute.py:487,492)의 격리 여부 확인
-- 조사 보고서: `docs/p25_isolated_failure_investigation.md` 섹션 5에 결과 누적 예정
+**P25 전수 조사 세션 9 (교차 점검·총합 보고) — 마지막 세션**:
+- 조사 범위: 세션 1~8 결과 취합 + 교차 원칙 매트릭스 작성 + 우선수정 추천
+- 조사 보고서: `docs/p25_isolated_failure_investigation.md` 섹션 11에 결과 누적 예정
+  - 11.1 P25 위반 전체 목록 취합 (세션 1~8 = 총 40건: A1 5건 + B1 7건 + B2 5건 + A2 2건 + B3 4건 + B4 3건 + A3 10건 + B5 4건)
+  - 11.2 교차 원칙 매트릭스 작성 (P25 × P7/P9/P16/P20/P21/P22/P23/P18/P15)
+  - 11.3 우선수정 추천 (영향도 순 — CRITICAL/HIGH 우선)
+  - 11.4 조사 완료 정의 확인
+- 세션 9 완료 시 P25 전수 조사 9/9 세션 완료
 - 조사만 수행 (코드 수정 없음)
+- **세션 8 이월 검토 항목**: B5-08-03 (MEDIUM) fake_fill_event 태스크 실패 시 P22 정합성 — 기동 시 대조(reconciliation) 메커니즘 보유 여부 확인 필요 (settlement_engine.py, engine_lifecycle.py 기동 시 대조 로직 조사)
 
-**P25 전수 조사 전체 진행률**: 2/9 세션 완료 (세션 1, 2 완료. 세션 3~9 대기)
+**P25 전수 조사 전체 진행률**: 8/9 세션 완료 (세션 1~8 완료. 세션 9 대기 — 마지막)
 
 **audit 문서에 기록된 잔여 항목 (사용자 지시 시 진행)**:
 - B-13 보류 5건 (B13-03/04/06/07/08, LOW/INFO 등급) — `docs/architecture_audit_plan.md` 섹션 7 참조
