@@ -131,7 +131,14 @@ export class WSClient {
 
   private _scheduleReconnect(): void {
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer)
-    this.reconnectTimer = setTimeout(() => this._connect(), this.reconnectDelay)
+    this.reconnectTimer = setTimeout(() => {
+      try {
+        this._connect()
+      } catch (err) {
+        console.error('[WS] 재연결 시도 실패:', err)
+        this._scheduleReconnect()
+      }
+    }, this.reconnectDelay)
     this.reconnectDelay = Math.min(this.reconnectDelay * 2, this.maxReconnectDelay)
   }
 

@@ -6,6 +6,45 @@
 
 ## 직전 완료 작업
 
+### T3-S13 WS 재연결 루프 보호 — 완료 (2026-07-23) — A1-01-05 완료 (Tier 3 둘째 세션, LOW 1건, 프론트엔드)
+
+**세션**: 단일 세션. 프론트엔드 코드 수정 (frontend-fix 스킬). 세션 라벨 T3-S13 (사용자 지정 — 문서상 Tier 3 프론트엔드 단일 건).
+
+**배경**: P25 수정 계획 Tier 3 둘째 세션. T3-S12a/S12b(백엔드 4건) 완료 후 진행. 사전조사는 이전 세션에서 완료되어 본 세션에서 수정 계획 보고 → 승인 → 수정 진행.
+
+**작업 내용** (1건):
+1. **A1-01-05 (LOW) 완료** — `frontend/src/api/ws.ts:132-141` `_scheduleReconnect`의 setTimeout 콜백을 try/catch로 보호. `_connect()` 동기 throw 시 재연결 루프 영구 중단(P25 위반) 해소. 실패 시 `console.error('[WS] 재연결 시도 실패:', err)` 로깅 후 `this._scheduleReconnect()` 재호출로 다음 재연결 스케줄 유지. 백오프는 이미 2배 증가한 상태에서 재호출되므로 `maxReconnectDelay`(30초)까지 증가 후 고정 — 무한 루프 위험 없음.
+
+**수정 파일**: 1개 (프론트엔드).
+- `frontend/src/api/ws.ts` (+7줄, _scheduleReconnect 콜백 try/catch)
+
+**아키텍처 원칙 부합**:
+- P25 (격리된 실패): 본 위반 직접 해결 — 재연결 1회 실패가 루프 전체 중단으로 이어지지 않음.
+- P23 (일관성): ws.ts 내 기존 try/catch 패턴(`_handleBinaryFrame` 165-177, `_handleTextFrame` 182-192, `_dispatchMessage` 205-209, `_startPing` 143-153)과 동일 — `console.error('[WS] ...:', err)` + 계속 진행.
+- P20 (폴백 금지): silent `catch {}` 없음 — `console.error` 로깅.
+- P16 (살아있는 경로): setTimeout 콜백 내 실제 실행 경로에 직접 배선.
+- P24 (단순성): 기존 3줄 함수에서 try/catch 추가만, 신규 추상화/상수 없음.
+- P23 (공통 자산 재사용): ws.ts 내 기존 try/catch 패턴 재사용. 신규 함수/상수 없음.
+
+**영향 범위**: 프론트엔드 1개 파일. 백엔드/테스트 영향 없음. 핵심 매매 로직 아님 → 규칙 0-4 해당 없음. 롤백 아님 (신규 보호 코드 추가만) → 규칙 0-3 해당 없음.
+
+**UI 기준 화면 변화 (규칙 0-4)**:
+- 정상 동작 변화 없음.
+- 비정상 상황에서만 개선: 재연결 시도 중 오류가 발생해도 재연결 루프가 영구 중단되지 않고 계속 재시도 (기존은 한 번 오류 시 화면 실시간 데이터 영구 단절).
+
+**검증**:
+- `npm run typecheck` ✓
+- `npm run build` ✓ (76 modules, 1.54s)
+
+**작업 중 발견 문제**: 없음.
+
+**다음 세션 대기 사항**:
+- **다음 세션: B1-02-05/06/07 leaf 핸들러/엔진 시작 보호 (백엔드)** — T3-S13(B2-03-03/04/05) 선행 완료로 의존성 해결 상태. 백엔드 3건.
+- **Tier 3 잔여**: B1-02-05/06/07(백엔드), B3-05-03/04(백엔드), A3-07-08/09/10(프론트), B5-08-01/02/04(백엔드, safe-trade 필수 + 규칙 0-4 핵심 로직). 총 4세션.
+- **진행 순서**: 사용자 지시 "문서 라벨 무시하고 남은 작업 순서대로" — B1-02-05/06/07 → B3-05-03/04 → A3-07-08/09/10 → B5-08-01/02/04.
+
+---
+
 ### T3-S12a/S12b REAL 틱 per-item 격리 + 0J 핸들러 + 게이트웨이 done_callback + REST 재시도 일관성 — 완료 (2026-07-23) — B2-03-03/04/05 + B4-06-02 완료 (Tier 3 첫 세션, LOW 4건)
 
 **세션**: 단일 세션. 백엔드 코드 수정 (backend-fix + problem-solve 스킬). 세션 라벨 T3-S12a/S12b (사용자 지정 — 문서상 T3-S13 + T3-S14 일부).
@@ -62,70 +101,6 @@
 - **다음 세션: A1-01-05 WS 재연결 루프 보호 (프론트엔드, ws.ts)** — 사전조사 완료 (아래 "A1-01-05 사전조사 결과" 참조). 사용자가 "문서 라벨 무시하고 남은 작업 순서대로" 진행 지시. 다음 세션에서 사전조사 결과 기반으로 수정 계획 보고 → 승인 → 수정 진행.
 - **Tier 3 잔여**: A1-01-05(프론트, 사전조사 완료), B1-02-05/06/07(백엔드, T3-S13 선행 완료로 의존성 해결), B3-05-03/04(백엔드), A3-07-08/09/10(프론트), B5-08-01/02/04(백엔드, safe-trade 필수 + 규칙 0-4 핵심 로직). 총 5세션.
 - **진행 순서**: 사용자 지시 "문서 라벨 무시하고 남은 작업 순서대로" — A1-01-05 → B1-02-05/06/07 → B3-05-03/04 → A3-07-08/09/10 → B5-08-01/02/04.
-
----
-
-### A1-01-05 사전조사 결과 (다음 세션에서 바로 진행 가능)
-
-**위반 ID**: A1-01-05 (LOW)
-**파일**: `frontend/src/api/ws.ts:132-136`
-**스킬**: frontend-fix (이미 호출 완료)
-
-**문제 현상**: `_scheduleReconnect`의 setTimeout 콜백이 `this._connect()` 호출 시 try/catch 없음. `_connect` 동기 throw 시 재연결 루프 영구 중단 → WS 영구 단절.
-
-**근본 원인**: `ws.ts:134` `this.reconnectTimer = setTimeout(() => this._connect(), this.reconnectDelay)` — `_connect()` 호출이 try/catch로 보호되지 않음.
-
-**`_connect()` throw 경로 분석** (ws.ts:89-130):
-1. `this.disconnect()` (91줄) — 내부 `ws.close()` (244줄)가 드물게 throw 가능 (이미 closed 상태에서 호출 시 일부 브라우저).
-2. `new WebSocket(url)` (94줄) — URL이 잘못된 경우 `SyntaxError` throw 가능. 정상 경로에서는 proto//host/api/ws/channel 형식이므로 안전하지만, `location.host`가 비정상일 경우 가능.
-3. `location.protocol`/`location.host` 접근 (92-93줄) — 정상 환경에서 안전.
-
-**사전조사 4항목 (규칙 0-2)**:
-
-1. **의존성**: `_scheduleReconnect`는 3곳에서 호출됨 — `ws.onclose`(128줄), `_startPing` ping 실패 시(151줄), 본 수정의 재호출. 호출자 변경 없음. `_connect()` 시그니처 변경 없음.
-2. **영향 범위**: 프론트엔드 1개 파일 (`ws.ts`). 백엔드/테스트 영향 없음. 핵심 매매 로직 아님 → 규칙 0-4 해당 없음. 롤백 아님 → 규칙 0-3 해당 없음.
-3. **아키텍처 원칙 부합**:
-   - P25 (격리된 실패): 본 위반 직접 해결 — 재연결 루프 내 예외가 루프 영구 중단으로 이어지지 않도록 차단.
-   - P23 (일관성): T1-S1에서 처리한 `_handleBinaryFrame` per-item try/catch(167-174줄), `_handleTextFrame` try/catch(188-192줄), `_dispatchMessage` per-handler try/catch(205-209줄)와 동일 패턴 — `console.error` + 계속 진행.
-   - P20 (폴백 금지): silent `catch {}` 없음 — `console.error('[WS] 재연결 실패:', err)` 로깅.
-   - P16 (살아있는 경로): setTimeout 콜백 내 실제 실행 경로에 직접 배선.
-   - P24 (단순성): 기존 3줄 함수에서 try/catch 추가만, 신규 추상화 없음.
-4. **기존 공통 자산 확인 (규칙 0-2.4)**: ws.ts 내 기존 try/catch 패턴(`_handleBinaryFrame` 165-177, `_handleTextFrame` 182-192, `_dispatchMessage` 205-209, `_startPing` 143-153) 재사용. `console.error('[WS] ...:', err)` 형식 통일. 신규 함수/상수 없음.
-
-**수정 방안** (변경 전/후):
-```typescript
-// 변경 전 (132-136)
-private _scheduleReconnect(): void {
-  if (this.reconnectTimer) clearTimeout(this.reconnectTimer)
-  this.reconnectTimer = setTimeout(() => this._connect(), this.reconnectDelay)
-  this.reconnectDelay = Math.min(this.reconnectDelay * 2, this.maxReconnectDelay)
-}
-
-// 변경 후
-private _scheduleReconnect(): void {
-  if (this.reconnectTimer) clearTimeout(this.reconnectTimer)
-  this.reconnectTimer = setTimeout(() => {
-    try {
-      this._connect()
-    } catch (err) {
-      console.error('[WS] 재연결 실패:', err)
-      this._scheduleReconnect()
-    }
-  }, this.reconnectDelay)
-  this.reconnectDelay = Math.min(this.reconnectDelay * 2, this.maxReconnectDelay)
-}
-```
-
-**무한 재귀 위험 분석**: `_scheduleReconnect` 재호출 시 `reconnectDelay`가 이미 2배 증가한 상태에서 다시 2배 → 백오프가 `maxReconnectDelay`(30초)까지 증가 후 고정. 재연결 시도 간격이 30초로 늘어나므로 무한 루프 위험 낮음. 단, `_connect()`가 매번 즉시 throw하는 경우 30초 간격으로 영원히 재시도 — 이는 기존 재연결 루프의 의도된 동작(서버 복구 시 자동 재연결)과 일치.
-
-**검증 방법**:
-- `npm run type-check` + `npm run lint` 통과
-- `npm run build` 성공
-- 브라우저: WS 재연결 루프 안정성 확인 (백엔드 미실행 시 정적 검증으로 코드 경로 유효성 확인)
-
-**UI 기준 화면 변화 (규칙 0-4)**:
-- 정상 동작 변화 없음.
-- 비정상 상황에서만 개선: 재연결 시도 중 오류가 발생해도 재연결 루프가 영구 중단되지 않고 계속 재시도 (기존은 한 번 오류 시 화면 실시간 데이터 영구 단절).
 
 ---
 
