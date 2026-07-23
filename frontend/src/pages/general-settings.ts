@@ -5,8 +5,10 @@
 // 파일 분할 (F-04, P24 단순성):
 // - general-settings.ts (본 파일): 탭 바, refreshUI, syncFromSettings, mount/unmount
 // - general-settings-shared.ts: 상태 객체 + GS 상수 + 공통 헬퍼
-// - general-settings-time-settings-tab.ts: 시간 설정 탭
-// - general-settings-auto-trade-tab.ts: 자동매매 탭
+// - general-settings-time-settings-tab.ts: 시간 설정 탭 (+ 자동매수/매도 토글)
+// - general-settings-auto-trade-tab.ts: 자동매매 탭 (마스터+배지+안전장치)
+// - general-settings-news-settings-tab.ts: 뉴스 설정 탭 (Step 2 신설)
+// - general-settings-display-settings-tab.ts: 화면 설정 탭 (Step 2 신설)
 // - general-settings-telegram-tab.ts: 텔레그램 탭
 // - general-settings-account-tab.ts: 투자모드 탭
 // - general-settings-api-settings-tab.ts: API 설정 탭
@@ -18,8 +20,7 @@ import { startSettingsSubscription, destroySettingsPage } from '../utils/setting
 import { showSaveToast } from '../components/common/toast'
 import { createCardTitle } from '../components/common/card-title'
 import { createTabBar } from '../components/common/button'
-import { setDisabled, COLOR, FONT_SIZE } from '../components/common/ui-styles'
-import { parseHM, updateTimeSlotDisplay } from '../components/common/settings-common'
+import { COLOR, FONT_SIZE } from '../components/common/ui-styles'
 import { api } from '../api/client'
 import type { AppSettings } from '../types'
 import {
@@ -28,8 +29,10 @@ import {
   updateHolidayBadges,
   resetState,
 } from './general-settings-shared'
-import { renderTimeSettingsTab } from './general-settings-time-settings-tab'
-import { renderAutoTradeTab } from './general-settings-auto-trade-tab'
+import { renderTimeSettingsTab, syncTimeSettingsTab } from './general-settings-time-settings-tab'
+import { renderAutoTradeTab, syncAutoTradeTab } from './general-settings-auto-trade-tab'
+import { renderNewsSettingsTab, syncNewsSettingsTab } from './general-settings-news-settings-tab'
+import { renderDisplaySettingsTab, syncDisplaySettingsTab } from './general-settings-display-settings-tab'
 import { renderTelegramTab } from './general-settings-telegram-tab'
 import { renderAccountTab, syncTradeMode } from './general-settings-account-tab'
 import { renderApiSettingsTab, syncBrokerRadios } from './general-settings-api-settings-tab'
@@ -42,6 +45,8 @@ function renderTabBar(): HTMLElement {
   const tabs: { id: TabId; label: string }[] = [
     { id: 'auto-trade', label: '자동매매' },
     { id: 'time-settings', label: '시간 설정' },
+    { id: 'news-settings', label: '뉴스 설정' },
+    { id: 'display-settings', label: '화면 설정' },
     { id: 'account-manage', label: '투자모드' },
     { id: 'api-settings', label: 'API 설정' },
     { id: 'telegram', label: '텔레그램' },
@@ -74,77 +79,8 @@ function refreshUI(): void {
 }
 
 /* ── 설정 동기화 ── */
-/** 토글+입력+컨트롤 행 동기화 공통 패턴 (5회 반복 추출 — P23 DRY) */
-function syncToggleInputRow(
-  toggle: { setOn: (v: boolean) => void } | null,
-  input: { el: HTMLElement; setValue: (v: number) => void } | null,
-  controls: HTMLElement | null,
-  on: boolean,
-  value: number,
-  act: Element | null,
-): void {
-  toggle?.setOn(on)
-  if (input && (!act || !input.el.contains(act))) {
-    input.setValue(value)
-  }
-  if (controls) setDisabled(controls, !on)
-}
-
-function syncRiskManager(r: Record<string, unknown>, act: Element | null): void {
-  state.riskManagerToggle?.setOn(!!r.risk_manager_on)
-  if (state.riskManagerChildren) setDisabled(state.riskManagerChildren, !r.risk_manager_on)
-  syncToggleInputRow(state.dailyLossToggle, state.dailyLossInput, state.dailyLossControls, r.daily_loss_limit_on !== false, Number(r.daily_loss_limit ?? -500000), act)
-  syncToggleInputRow(state.dailyLossRateToggle, state.dailyLossRateInput, state.dailyLossRateControls, !!r.daily_loss_rate_limit_on, Number(r.daily_loss_rate_limit ?? -5), act)
-  syncToggleInputRow(state.dailyProfitToggle, state.dailyProfitInput, state.dailyProfitControls, !!r.daily_profit_limit_on, Number(r.daily_profit_limit ?? 500000), act)
-  syncToggleInputRow(state.dailyProfitRateToggle, state.dailyProfitRateInput, state.dailyProfitRateControls, !!r.daily_profit_rate_limit_on, Number(r.daily_profit_rate_limit ?? 5), act)
-  syncToggleInputRow(state.consecLossToggle, state.consecLossInput, state.consecLossControls, !!r.consecutive_loss_limit_on, Number(r.consecutive_loss_limit ?? 3), act)
-  state.riskBlockBuyToggle?.setOn(r.risk_block_buy_on !== false)
-  state.riskBlockSellToggle?.setOn(!!r.risk_block_sell_on)
-}
-
-function syncTimetables(r: Record<string, unknown>): void {
-  const [trh, trm] = parseHM(String(r['timetable.realtime_reset'] ?? '07:58'))
-  if (state.timetableResetSlot) updateTimeSlotDisplay(state.timetableResetSlot, trh, trm)
-  const [twh, twm] = parseHM(String(r['timetable.ws_prestart'] ?? '07:59'))
-  if (state.timetableWsSlot) updateTimeSlotDisplay(state.timetableWsSlot, twh, twm)
-  const [tkh, tkm] = parseHM(String(r['timetable.krx_pre_subscribe'] ?? '08:59'))
-  if (state.timetableKrxSlot) updateTimeSlotDisplay(state.timetableKrxSlot, tkh, tkm)
-}
-
-function syncAutoTradeTab(r: Record<string, unknown>): void {
-  state.masterToggle?.setOn(!!r.time_scheduler_on)
-  updateHolidayBadges()
-
-  // 확정 시세 다운로드 시간 + 자동다운로드 토글
-  const [cdh, cdm] = parseHM(String(r['timetable.confirmed_download'] ?? '20:40'))
-  state.confirmedDlH = cdh; state.confirmedDlM = cdm
-  if (state.confirmedDlSlot) updateTimeSlotDisplay(state.confirmedDlSlot, cdh, cdm)
-  const dlOn = r.scheduler_market_close_on !== false
-  state.confirmedDlToggle?.setOn(dlOn)
-  if (state.confirmedDlSlot) setDisabled(state.confirmedDlSlot, !dlOn)
-
-  state.uiFlashToggle?.setOn(r.ui_price_flash_on !== false)
-
-  // 실시간 뉴스 설정 — 키워드 칩 + TTL (NWS-S6)
-  const keywords = String(r.news_keywords ?? '')
-    .split(',')
-    .map(s => s.trim())
-    .filter(s => s.length > 0)
-  state.newsKeywordsTagChip?.setTags(keywords)
-  state.newsTtlInput?.setValue(Number(r.news_boost_ttl_sec ?? 300) || 300)
-
-  syncRiskManager(r, document.activeElement)
-  syncTimetables(r)
-
-  // 구독 한도
-  state.subscribeMaxInput?.setValue(Number(r['subscribe.max_0b_count'] ?? 200) || 200)
-
-  // 자동매수/매도 (시간쌍은 시간 설정 탭에서 표시, 토글 OFF 시에도 활성화 유지 — 설계서 2-1)
-  state.autoBuyToggle?.setOn(!!r.auto_buy_on)
-  if (state.buyTimeHandle) state.buyTimeHandle.setValue(String(r.buy_time_start ?? '09:00'), String(r.buy_time_end ?? '15:00'))
-  state.autoSellToggle?.setOn(!!r.auto_sell_on)
-  if (state.sellTimeHandle) state.sellTimeHandle.setValue(String(r.sell_time_start ?? '09:00'), String(r.sell_time_end ?? '15:00'))
-}
+// Step 2 분할: syncAutoTradeTab/syncTimeSettingsTab/syncNewsSettingsTab/syncDisplaySettingsTab은 각 탭 파일로 이관.
+// 본 파일에는 텔레그램/투자모드/API 설정 탭 동기화만 잔류.
 
 function syncTelegramTab(r: Record<string, unknown>): void {
   const act = document.activeElement
@@ -185,6 +121,9 @@ function syncFromSettings(s: AppSettings): void {
   }
 
   syncAutoTradeTab(r)
+  syncTimeSettingsTab(r)
+  syncNewsSettingsTab(r)
+  syncDisplaySettingsTab(r)
   syncTelegramTab(r)
   syncAccountTab(r)
   syncApiSettingsTab(r)
@@ -199,6 +138,12 @@ function buildTabPanels(): void {
   const timeSettingsPanel = document.createElement('div')
   renderTimeSettingsTab(state, timeSettingsPanel)
 
+  const newsSettingsPanel = document.createElement('div')
+  renderNewsSettingsTab(state, newsSettingsPanel)
+
+  const displaySettingsPanel = document.createElement('div')
+  renderDisplaySettingsTab(state, displaySettingsPanel)
+
   const accountPanel = document.createElement('div')
   renderAccountTab(state, accountPanel)
 
@@ -211,6 +156,8 @@ function buildTabPanels(): void {
   state.tabPanels = {
     'auto-trade': autoTradePanel,
     'time-settings': timeSettingsPanel,
+    'news-settings': newsSettingsPanel,
+    'display-settings': displaySettingsPanel,
     'account-manage': accountPanel,
     'api-settings': apiPanel,
     'telegram': telegramPanel,

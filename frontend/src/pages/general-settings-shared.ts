@@ -5,8 +5,10 @@
 // 파일 분할 (F-04, P24 단순성):
 // - general-settings.ts (메인): 탭 바, refreshUI, syncFromSettings, mount/unmount
 // - general-settings-shared.ts (본 파일): 상태 객체 + GS 상수 + 공통 헬퍼
-// - general-settings-time-settings-tab.ts: 시간 설정 탭
-// - general-settings-auto-trade-tab.ts: 자동매매 탭
+// - general-settings-time-settings-tab.ts: 시간 설정 탭 (+ 자동매수/매도 토글)
+// - general-settings-auto-trade-tab.ts: 자동매매 탭 (마스터+배지+안전장치)
+// - general-settings-news-settings-tab.ts: 뉴스 설정 탭 (Step 2 신설)
+// - general-settings-display-settings-tab.ts: 화면 설정 탭 (Step 2 신설)
 // - general-settings-telegram-tab.ts: 텔레그램 탭
 // - general-settings-account-tab.ts: 투자모드 탭
 // - general-settings-api-settings-tab.ts: API 설정 탭
@@ -21,7 +23,7 @@ import { toastResult } from '../components/common/toast'
 import { COLOR, FONT_SIZE } from '../components/common/ui-styles'
 
 /* ── 탭 ID ── */
-export type TabId = 'auto-trade' | 'time-settings' | 'telegram' | 'account-manage' | 'api-settings'
+export type TabId = 'auto-trade' | 'time-settings' | 'news-settings' | 'display-settings' | 'telegram' | 'account-manage' | 'api-settings'
 
 /* ── 일반설정 페이지 전용 스타일 상수 (공유 FONT_SIZE와 분리) ── */
 export const GS = {
@@ -63,6 +65,9 @@ export interface GeneralSettingsState {
   sellTimeHandle: TimePairInputHandle | null
   holidayBadgeEls: HTMLElement[]
   uiFlashToggle: ReturnType<typeof createToggleBtn> | null
+  // 자동매수/매도 상태 배지 (자동매매 탭, 읽기 전용 — Step 2, P21)
+  autoBuyBadge: HTMLElement | null
+  autoSellBadge: HTMLElement | null
 
   // 실시간 뉴스 설정 (자동매매 탭)
   newsKeywordsTagChip: TagChipHandle | null
@@ -144,6 +149,8 @@ function createState(): GeneralSettingsState {
     sellTimeHandle: null,
     holidayBadgeEls: [],
     uiFlashToggle: null,
+    autoBuyBadge: null,
+    autoSellBadge: null,
 
     newsKeywordsTagChip: null,
     newsTtlInput: null,

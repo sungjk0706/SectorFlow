@@ -3,6 +3,7 @@
 // general-settings.ts에서 이관. 순수 이동, 동작 변경 없음.
 //
 // Step 1 골조 + Step 2 자동매수/매도 시간쌍 이동 + Step 3 사전 준비 시간·거래소 고정 시간 이동 + Step 4 1일봉 다운로드 이동.
+// Step 2(탭 재분류): 자동매수/매도 토글을 자동매매 탭에서 이관 — 시간+토글 통합 행 (설계서 3.2).
 // 토글 OFF 시에도 시간 입력 활성화 유지 (설계서 2-1, P24 탭 간 의존성 최소화, P21 안내 문구로 보완).
 
 import { createToggleBtn, createNumInput } from '../components/common/setting-row'
@@ -10,7 +11,7 @@ import { sectionTitle, createDescText, parseHM, createTimeSlot, updateTimeSlotDi
 import { createTimePairInput } from '../components/common/time-pair-input'
 import { FONT_SIZE, FONT_WEIGHT, COLOR, setDisabled } from '../components/common/ui-styles'
 import { toastResult } from '../components/common/toast'
-import { type GeneralSettingsState, GS, scheduleTimetableSave } from './general-settings-shared'
+import { type GeneralSettingsState, GS, scheduleTimetableSave, createHolidayBadge, state } from './general-settings-shared'
 
 function buildBuyTimeRow(state: GeneralSettingsState): HTMLElement {
   const row = document.createElement('div')
@@ -33,7 +34,20 @@ function buildBuyTimeRow(state: GeneralSettingsState): HTMLElement {
     }
   })
   state.buyTimeHandle = handle
-  row.appendChild(tpWrap)
+  // 토글 통합 행 — 자동매매 탭에서 이관 (설계서 3.2): [시간쌍 입력] [토글]
+  const right = document.createElement('span')
+  right.style.cssText = 'display:flex;align-items:center;gap:10px;'
+  right.appendChild(tpWrap)
+  state.autoBuyToggle = createToggleBtn({ on: !!state.vals.auto_buy_on, onClick: async () => {
+    const next = !state.vals.auto_buy_on
+    state.vals.auto_buy_on = next; state.autoBuyToggle!.setOn(next)
+    const res = await state.settingsMgr!.saveSection({ auto_buy_on: next })
+    toastResult(res)
+    if (!res.ok) { state.vals.auto_buy_on = !next; state.autoBuyToggle!.setOn(!next) }
+  }})
+  right.appendChild(createHolidayBadge())
+  right.appendChild(state.autoBuyToggle.el)
+  row.appendChild(right)
   return row
 }
 
@@ -58,7 +72,20 @@ function buildSellTimeRow(state: GeneralSettingsState): HTMLElement {
     }
   })
   state.sellTimeHandle = handle
-  row.appendChild(tpWrap)
+  // 토글 통합 행 — 자동매매 탭에서 이관 (설계서 3.2): [시간쌍 입력] [토글]
+  const right = document.createElement('span')
+  right.style.cssText = 'display:flex;align-items:center;gap:10px;'
+  right.appendChild(tpWrap)
+  state.autoSellToggle = createToggleBtn({ on: !!state.vals.auto_sell_on, onClick: async () => {
+    const next = !state.vals.auto_sell_on
+    state.vals.auto_sell_on = next; state.autoSellToggle!.setOn(next)
+    const res = await state.settingsMgr!.saveSection({ auto_sell_on: next })
+    toastResult(res)
+    if (!res.ok) { state.vals.auto_sell_on = !next; state.autoSellToggle!.setOn(!next) }
+  }})
+  right.appendChild(createHolidayBadge())
+  right.appendChild(state.autoSellToggle.el)
+  row.appendChild(right)
   return row
 }
 
@@ -184,7 +211,7 @@ function buildSubscribeMaxRow(state: GeneralSettingsState): HTMLElement {
 export function renderTimeSettingsTab(state: GeneralSettingsState, container: HTMLElement): void {
   container.appendChild(buildBuyTimeRow(state))
   container.appendChild(buildSellTimeRow(state))
-  container.appendChild(createDescText('자동매수/매도가 꺼져 있어도 시간을 미리 설정할 수 있습니다. "자동매매" 탭에서 자동매수/매도를 켜면 이 시간에 맞춰 실행됩니다.'))
+  container.appendChild(createDescText('시간 우측 토글로 자동매수/매도를 켜고 끕니다. 토글이 꺼져 있어도 시간은 미리 설정할 수 있습니다. 거래일 설정시간 내에서만 실행되며, 공휴일·주말에는 자동매매가 항상 차단됩니다.'))
 
   // 사전 준비 시간 설정 (타임테이블 사용자 조정 3개) — P21 투명성
   container.appendChild(sectionTitle('사전 준비 시간 설정'))
@@ -207,4 +234,33 @@ export function renderTimeSettingsTab(state: GeneralSettingsState, container: HT
   container.appendChild(sectionTitle('구독 한도'))
   container.appendChild(createDescText('종목 실시간 시세를 동시에 구독할 최대 개수입니다. 보유 종목을 우선 등록한 뒤, 남은 자리만큼 필터 통과 종목이 추가로 등록됩니다. (기본값 200, 범위 1~1000)'))
   container.appendChild(buildSubscribeMaxRow(state))
+}
+
+/* ── 시간 설정 탭 동기화 — Step 2 분할 (자동매매 탭에서 이관) ── */
+// 확정 시세 다운로드 시간 + 자동다운로드 토글 + 타임테이블 3슬롯 + 구독 한도 + 자동매수/매도 토글·시간쌍
+export function syncTimeSettingsTab(r: Record<string, unknown>): void {
+  // 확정 시세 다운로드 시간 + 자동다운로드 토글
+  const [cdh, cdm] = parseHM(String(r['timetable.confirmed_download'] ?? '20:40'))
+  state.confirmedDlH = cdh; state.confirmedDlM = cdm
+  if (state.confirmedDlSlot) updateTimeSlotDisplay(state.confirmedDlSlot, cdh, cdm)
+  const dlOn = r.scheduler_market_close_on !== false
+  state.confirmedDlToggle?.setOn(dlOn)
+  if (state.confirmedDlSlot) setDisabled(state.confirmedDlSlot, !dlOn)
+
+  // 타임테이블 3슬롯
+  const [trh, trm] = parseHM(String(r['timetable.realtime_reset'] ?? '07:58'))
+  if (state.timetableResetSlot) updateTimeSlotDisplay(state.timetableResetSlot, trh, trm)
+  const [twh, twm] = parseHM(String(r['timetable.ws_prestart'] ?? '07:59'))
+  if (state.timetableWsSlot) updateTimeSlotDisplay(state.timetableWsSlot, twh, twm)
+  const [tkh, tkm] = parseHM(String(r['timetable.krx_pre_subscribe'] ?? '08:59'))
+  if (state.timetableKrxSlot) updateTimeSlotDisplay(state.timetableKrxSlot, tkh, tkm)
+
+  // 구독 한도
+  state.subscribeMaxInput?.setValue(Number(r['subscribe.max_0b_count'] ?? 200) || 200)
+
+  // 자동매수/매도 토글 + 시간쌍 (토글 OFF 시에도 시간 입력 활성화 유지 — 설계서 2-1)
+  state.autoBuyToggle?.setOn(!!r.auto_buy_on)
+  if (state.buyTimeHandle) state.buyTimeHandle.setValue(String(r.buy_time_start ?? '09:00'), String(r.buy_time_end ?? '15:00'))
+  state.autoSellToggle?.setOn(!!r.auto_sell_on)
+  if (state.sellTimeHandle) state.sellTimeHandle.setValue(String(r.sell_time_start ?? '09:00'), String(r.sell_time_end ?? '15:00'))
 }
