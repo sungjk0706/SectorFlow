@@ -6,6 +6,64 @@
 
 ## 직전 완료 작업
 
+### P25 전수 조사 세션 5: B3 대형 스케줄러·파이프라인 조사 완료 (2026-07-23)
+
+**세션**: 단일 세션. 조사만 수행 (코드 수정 없음). HANDOVER 미해결 문제 1건 기록.
+
+**배경**: P25 전수 조사 9세션 중 세션 5. B3 대형 스케줄러·파이프라인 영역(`daily_time_scheduler.py` 1524줄, `market_close_pipeline.py` 1407줄) 조사. 우선순위 5위 — 장마감 후 확정 데이터 파이프라인 + 타임테이블 스케줄러. 한 번 중단 시 당일 확정 데이터 미갱신 위험.
+
+**조사 파일**: 2개 메인 파일 + 1개 보조 파일 (engine_lifecycle.py — schedule_engine_task 정의 확인용)
+
+**조사 항목 4가지 결과**:
+
+1. **schedule_engine_task 15회 호출 격리 (daily_time_scheduler.py)**:
+   - 14회 실제 호출 + 1회 import. 모두 `schedule_engine_task(coro, context="...")` 형태로 일관 (P23 OK)
+   - `engine_lifecycle.py:279-309` 정의: `loop.call_soon_threadsafe(_create_with_callback)` + `task.add_done_callback(lambda t: logger.warning(...) if t.exception() else None)` → 태스크 실패 시 경고 로깅, 루프 중단 없음 → **P25 격리 OK**
+   - call_soon_threadsafe 자체 실패 시 `coro.close()` 정리 → OK
+   - 15회 모두 동일 패턴, 격리 일관적
+
+2. **except 블록 silent pass 여부 (P20)**:
+   - **market_close_pipeline.py 19개**: silent pass 1건(492 float 변환 `pass`), 빈 폴백 1건(897 `confirmed={}`), exc_info 누락 5건(424, 858, 934, 1103, 1254), raise 전파 1건(385 의도적), 나머지 11건 logger.warning+exc_info OK
+   - **daily_time_scheduler.py 26개**: silent pass 0건, exc_info 누락 6건(1273, 1287, 1327, 1354, 1446, 1507), RuntimeError→return 3건(1085, 1372, 1458 의도적 루프 없음 시 스킵), 나머지 17건 OK
+
+3. **파이프라인 단계 간 실패 전파 (P9)**:
+   - `_run_confirmed_pipeline` (976-1064): 1~4단계 None 반환 시 즉시 `return {"fetched":0,"failed":0,"cached":False}` → 전파 명시적. 단 실패 상태 알림 필드 없어 fetched=0이 정상 0건인지 실패인지 구분 안 됨 → **P21 부분 위반**
+   - 5단계 `confirmed={}` 폴백(897) → `if confirmed` 가드로 메모리/DB 보호되나, `_run_post_confirmed_pipeline(eligible_codes=confirmed_codes)`는 여전히 실행 → 빈 eligible로 캐시 저장 시도
+   - 7단계 `_step7_recompute_and_broadcast` except(972) → logger.warning+exc_info → 격리 OK
+   - finally 플래그 복원 → OK
+
+4. **call_later/call_soon_threadsafe 콜백 실패 시 루프 영향**:
+   - daily_time_scheduler.py call_later 3곳(1116, 1401, 1465): 모두 `lambda: schedule_engine_task(coro, context=...)` → schedule_engine_task 내부 try/except로 보호되어 lambda 예외 거의 불가능. lambda 자체 예외 시 asyncio "Exception in callback" 경고, 루프 중단 없음 → **P25 OK**
+   - market_close_pipeline.py call_soon_threadsafe 1곳(68): `lambda: q.put_nowait(data) if not q.full() else None` + 외부 try/except(44-73) → 실패 시 logger.warning → OK. 단일 루프 스레드이므로 full()/put_nowait 레이스 없음
+
+**식별 위반 4건** (미해결 문제에 기록):
+- **B3-05-01 (HIGH)**: `market_close_pipeline.py:645-650` `_save_confirmed_cache` inner except에서 rollback+warning 후 fall-through → 650 `return True` → 전종목 마스터 테이블 DB 저장 실패해도 함수 True 반환 → **P22 데이터 정합성 위반 + P21 사용자 투명성 위반** (실패를 성공으로 보고)
+- **B3-05-02 (MEDIUM)**: `market_close_pipeline.py:897` `_step5_download_daily_confirmed`에서 `confirmed = {}` 빈 폴백 → **P20 폴백 금지 위반**. if confirmed 가드로 메모리/DB는 보호되나, 빈 eligible_codes로 `_run_post_confirmed_pipeline` 실행 → 빈 캐시 저장 시도
+- **B3-05-03 (LOW)**: `market_close_pipeline.py:492` `except (ValueError, TypeError): pass` silent pass → **P20 위반** (로깅 없음). float 변환 실패 시 strength_str 갱신 스킵만 하고 종목 루프 계속
+- **B3-05-04 (LOW)**: exc_info 누락 11건 (pipeline 424, 858, 934, 1103, 1254 + scheduler 1273, 1287, 1327, 1354, 1446, 1507) → **P23 일관성 위반**. logger.warning은 하나 exc_info=True 누락. 단 934는 "(무시)" 표시로 의도적 일부 드러남
+
+**핵심 발견**:
+- schedule_engine_task 15회 호출은 모두 P25 격리 준수 — add_done_callback으로 태스크 실패 격리 일관
+- call_later 3곳 모두 schedule_engine_task 경유로 보호 — 직접 코루틴 호출 아님 → P25 OK
+- 파이프라인 1~4단계 None 반환 패턴은 명시적이나 실패 상태 전달 부재 → P21 부분 위반
+- 5단계 confirmed={} 폴백은 if confirmed 가드로 완화되나 여전히 P20 위반
+- _save_confirmed_cache 645-650은 가장 심각 — DB 저장 실패를 True로 보고 → 후속 6단계 메모리 교체 로직이 잘못된 성공 전제로 진행
+- 양호 항목 다수: 26+19=45개 except 중 28개는 logger.warning+exc_info=True로 P25 준수. RuntimeError→return 3건은 의도적 스킵. call_later/call_soon_threadsafe 콜백 모두 보호
+
+**수정 방향 (참고용, 승인 시 별도 세션)**:
+- B3-05-01: 645 except 블록 끝에 `return False` 추가 (또는 650 return True를 inner try 안으로 이동). inner DB 저장 실패 시 False 반환하도록
+- B3-05-02: 897 `confirmed = {}` 대신 `return 0, total, False` (전체 실패로 종료). 또는 raise 후 상위에서 처리
+- B3-05-03: 492 `pass` 대신 `logger.warning("[데이터] strength 변환 실패: %r", str_val, exc_info=True)` 추가
+- B3-05-04: 11곳 logger.warning에 `exc_info=True` 추가. 단 934는 "(무시)" 의도적이나 exc_info 추가 권장
+
+**검증**: 조사만 수행 — typecheck/build 불필요. 잔존 프로세스 0건.
+
+**화면 영향**: 없음 (조사 보고서 작성).
+
+**다음 세션 대기 사항**: 세션 6 (B4 파이프라인 헬퍼·유틸리티 조사) 진행 대기. 조사 파일: 미정 (P25 전수 조사 계획 문서 참조). 조사 보고서 `docs/p25_isolated_failure_investigation.md` 섹션 8에 결과 누적 예정.
+
+---
+
 ### P25 전수 조사 세션 4: A2 Store listener 조사 완료 (2026-07-23)
 
 **세션**: 단일 세션. 조사 보고서 1파일 갱신. 조사만 수행 (코드 수정 없음).
@@ -1076,6 +1134,15 @@
 **화면 영향**: 없음. 순수 파일 분할이며 외부 import 경로가 동일하게 유지되어 모든 페이지가 동일하게 동작.
 
 ## 미해결 문제 (발견 즉시 기록)
+
+### P25 전수 조사 — 세션 5 (B3 대형 스케줄러·파이프라인) 위반 4건 식별 (2026-07-23)
+- 조사 파일: `backend/app/services/daily_time_scheduler.py`, `backend/app/services/market_close_pipeline.py`, `backend/app/services/engine_lifecycle.py`(정의 확인용)
+- **B3-05-01 (HIGH)**: `market_close_pipeline.py:645-650` `_save_confirmed_cache` inner except에서 rollback+warning 후 fall-through → 650 `return True` → 전종목 마스터 테이블 DB 저장 실패해도 함수 True 반환 → **P22 데이터 정합성 위반 + P21 사용자 투명성 위반**. 후속 6단계 메모리 교체 로직이 잘못된 성공 전제로 진행됨
+- **B3-05-02 (MEDIUM)**: `market_close_pipeline.py:897` `_step5_download_daily_confirmed`에서 `confirmed = {}` 빈 폴백 → **P20 폴백 금지 위반**. if confirmed 가드로 메모리/DB는 보호되나, 빈 eligible_codes로 `_run_post_confirmed_pipeline` 실행 → 빈 캐시 저장 시도
+- **B3-05-03 (LOW)**: `market_close_pipeline.py:492` `except (ValueError, TypeError): pass` silent pass → **P20 위반** (로깅 없음). float 변환 실패 시 strength_str 갱신 스킵만 하고 종목 루프 계속
+- **B3-05-04 (LOW)**: exc_info 누락 11건 → **P23 일관성 위반**. `market_close_pipeline.py` 424, 858, 934, 1103, 1254 + `daily_time_scheduler.py` 1273, 1287, 1327, 1354, 1446, 1507. logger.warning은 하나 exc_info=True 누락. 단 934는 "(무시)" 표시로 의도적 일부 드러남
+- 양호: schedule_engine_task 15회 호출 모두 P25 격리 준수(add_done_callback), call_later 3곳+call_soon_threadsafe 1곳 모두 보호, 45개 except 중 28개 logger.warning+exc_info=True 준수, RuntimeError→return 3건 의도적 스킵
+- 수정은 별도 승인 세션에서 진행 (조사는 보고까지만)
 
 ### P25 전수 조사 — 세션 2 (B1 엔진 코어 루프) 위반 7건 식별 (2026-07-23)
 - 조사 보고서: `docs/p25_isolated_failure_investigation.md` 섹션 2(매트릭스) + 섹션 4(세션 2 결과) 참조
