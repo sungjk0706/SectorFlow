@@ -8,18 +8,11 @@
 
 | 날짜 | 세션 | 작업 | 상태 |
 |------|------|------|------|
+| 2026-07-24 | SKILL-01 | problem-solve 스킬 "사용자 의도 파악 질문 프로세스" 섹션 1-1 신설 — P20/P23/P24 | 완료 (후속 스킬 보완 대기) |
 | 2026-07-24 | NWS-S7 | 실시간 뉴스(NWS) 매수 가산점 테스트+런타임 검증 (다단계 워크플로우 7세션) — P16/P20/P22/P25 | 완료 (NWS 다단계 워크플로우 전체 완료) |
 | 2026-07-24 | NWS-S6 | 실시간 뉴스(NWS) 매수 가산점 프론트엔드 일반설정 키워드 칩+TTL (다단계 워크플로우 6세션) — P21/P23/P24/P25 | 완료 |
-| 2026-07-24 | NWS-S5 | 실시간 뉴스(NWS) 매수 가산점 프론트엔드 매수설정+매수후보 테이블 (다단계 워크플로우 5세션) — P21/P23/P24/P25 | 완료 |
-| 2026-07-24 | NWS-S4 | 실시간 뉴스(NWS) 매수 가산점 백엔드 가산점 로직+설정 구현 (다단계 워크플로우 4세션) — P10/P13/P15/P16/P20/P21/P23/P24/P25 | 완료 (5세션 대기) |
-| 2026-07-24 | NWS-S3 | 실시간 뉴스(NWS) 매수 가산점 백엔드 NWS 인프라 구현 (다단계 워크플로우 3세션) — P4/P7/P10/P11/P13/P16/P20/P21/P23/P25 | 완료 (4세션 대기) |
-| 2026-07-24 | NWS-S2 | 실시간 뉴스(NWS) 매수 가산점 심층 사전조사 + 태스크 파일 작성 (다단계 워크플로우 2세션) — P4/P7/P10/P11/P13/P15/P16/P20/P21/P22/P23/P24/P25 | 사전조사+태스크 완료 (구현 대기) |
-| 2026-07-23 | NWS-S1 | 실시간 뉴스(NWS) 매수 가산점 설계 — 디자인 파일 작성 (다단계 워크플로우 1세션) — P4/P7/P10/P11/P13/P15/P16/P20/P21/P22/P23/P24/P25 | 설계 완료 (구현 대기) |
-| 2026-07-23 | T4-S01 | 매수설정 거래대금 순위 가산점 + 매수후보 거래대금 컬럼 제거 — P16/P21/P24 | 완료 |
-| 2026-07-23 | MEM-01 | 메모리 문제해결 참고서 고유 내용 스킬 이관 + 메모리 삭제 — P10 SSOT | 완료 |
-| 2026-07-23 | T3-S32 | 체결강도 매수차단 제거 문서 정리 (다단계 워크플로우 세션 5) — P10/P16/P21/P23/P24 | 완료 |
-| 2026-07-23 | T3-S31 | 체결강도 매수차단 제거 프론트엔드 구현 (다단계 워크플로우 세션 4) — P16/P21/P23/P24 | 완료 |
 
+> NWS 실시간 뉴스 매수 가산점 다단계 워크플로우(세션 1~7) 전체 완료. 계획서/설계 문서는 규칙 11에 따라 삭제됨.
 > 체결강도 매수차단 제거 다단계 워크플로우(세션 1~5) 전체 완료. 계획서/설계 문서는 규칙 11에 따라 삭제됨.
 > P25 전수 조사(9세션) + 수정(Tier 1/2/3, 17세션) 전체 완료. 조사 보고서 `docs/p25_isolated_failure_investigation.md`는 역사적 기록으로 유지.
 
@@ -27,76 +20,26 @@
 
 ## 직전 완료 작업
 
+### SKILL-01 problem-solve 스킬 "사용자 의도 파악 질문 프로세스" 섹션 1-1 신설 (2026-07-24)
+- **작업**: NWS 구현 경험 기반 — 사용자 의도 파악 확인 질문 패턴을 스킬에 체계화. problem-solve 섹션1 사전조사 끝에 하위 섹션 1-1 신설.
+- **수정**: `.devin/skills/problem-solve/SKILL.md` (1파일, +40줄) — 트리거(모호함 감지 시만 질문, 명확하면 생략) + 5개 질문 카테고리(우선순위 순: 수치/기간 > UI 위치 > 범위/예외 > 충돌 > 검증 기준) + 질문 작성 원칙(UI 용어, 선택지+트레이드오프, 1~4개 묶음) + 자체 결정 기준(공통 자산/원칙/내부 처리) + 적용 범위(다단계=전체, 단일=경량, 거래=safe-trade 추가) + 질문 결과 기록(다단계=디자인 파일, 단일=수정 계획 보고서)
+- **검증**: 기존 섹션 번호(2~12) 유지 확인(P23) / 삽입 위치 정확 / 커밋 대기
+
 ### NWS-S7 실시간 뉴스(NWS) 매수 가산점 테스트+런타임 검증 (2026-07-24)
-- **작업**: 다단계 워크플로우 7세션(테스트+런타임 검증). NWS 기능 전체 경로 단위 테스트 추가 — 매수 가산점 로직, NWS 핸들러, LS connector 변환/구독, 매수후보 news_boost 필드. 구현 코드 수정 없이 테스트만 추가. 기존 테스트 헬퍼 패턴 재사용 (`_stock()`/`_sector()` in test_buy_filter, `_make_ls_socket()`/`_make_ls_connector()` in test_ls_connector, `_mock_db` fixture in test_sector_data_provider).
-- **수정**: 백엔드 테스트 4파일 — `test_buy_filter.py` (news 가산점 케이스 5개: 부여/미부여/빈캐시/종목없음/합산), `test_ls_connector.py` (NWS 변환 3개 + subscribe_news 2개), `test_pipeline_compute_nws_handler.py` (신규 — NWS 핸들러 9개: 키워드 매칭/빈 title/빈 code/키워드 불일치/빈 키워드/복수 code 공백/복수 code 쉼표/매수후보 외 종목 무시/예외 전파 차단 P25), `test_sector_data_provider.py` (news_boost 필드 2개: 캐시 있음/캐시 없음)
-- **영향 범위**: 테스트 파일만 수정 (구현 코드 변경 없음). 거래 로직 변경 없음 (P15). DB 스키마 변경 없음.
-- **사용자 결정**: 4파일 테스트 계획 승인
-- **검증**: py_compile 통과 / ruff 통과 / mypy 신규 에러 없음 (기존 12개 에러는 사전 존재) / pytest 전체 2855개 통과 (기존 2834 + 신규 21) / 런타임 기동 정상 (98ms, RuntimeWarning 없음) / 잔존 프로세스 0건
+- **작업**: 다단계 워크플로우 7세션(테스트+런타임 검증). NWS 기능 전체 경로 단위 테스트 추가. 구현 코드 수정 없이 테스트만 추가.
+- **수정**: 백엔드 테스트 4파일 — `test_buy_filter.py`, `test_ls_connector.py`, `test_pipeline_compute_nws_handler.py`(신규), `test_sector_data_provider.py`
+- **검증**: pytest 2855개 통과 / 런타임 기동 정상 / 잔존 프로세스 0건 / 커밋 ae07f93
 
-### NWS-S6 실시간 뉴스(NWS) 매수 가산점 프론트엔드 일반설정 키워드 칩+TTL (2026-07-24)
-- **작업**: 다단계 워크플로우 6세션(프론트엔드 일반설정 키워드 칩+TTL). 일반설정 자동매매 탭 "화면 표시" 섹션 아래에 "실시간 뉴스 설정" 섹션 추가 — 호재 키워드 칩 편집 + 가산점 유지 시간(초) 입력. 기존 공통 자산 재사용 (`sectionTitle`, `createDescText`, `createNumInput`, `COLOR.up`/`upBg`, `FONT_SIZE`/`FONT_WEIGHT`, `GS.rowPad`/`rowBorder`). tag-chip 컴포넌트는 기존에 없어 신규 생성 (P23 일관성 — 기존에 chip/tag-input 컴포넌트 없음, P24 단순성 — 신규 추상화 최소화).
-- **수정**: 프론트엔드 2파일 — `components/common/tag-chip.ts` (신규 — 태그 칩 입력 컴포넌트: 입력 필드 + 추가 버튼 + 칩 나열(× 삭제), 중복 방지, COLOR.up/upBg 호재 직관적 표현, P25 try/catch + 로깅), `pages/general-settings.ts` (import createTagChip + 모듈 상태 2개 + buildNewsKeywordsRow + buildNewsTtlRow + syncAutoTradeTab 동기화 + unmount null 처리)
-- **영향 범위**: 일반설정 자동매매 탭 하단에 "실시간 뉴스 설정" 섹션 추가 — 호재 키워드 칩 편집(기본 10개: 수주,최대실적,특허,...) + "뉴스 가산점 유지 시간(초)" 숫자 입력(기본 300, 0~3600, ▲▼ 스핀 60단위). 키워드 변경 시 쉼표 문자열로 재조합하여 즉시 저장, TTL 변경 시 즉시 저장 (기존 subscribeMaxInput 패턴과 동일). 거래 로직 변경 없음 (P15). DB 스키마 변경 없음 (설정 키는 4세션에서 이미 백엔드에 추가됨).
-- **사용자 결정**: 2파일 계획 승인
-- **검증**: typecheck 통과 / build 성공 (637ms, 타입 오류 없음) / 개발 서버 5173 정상 응답 (브라우저 확인 가능)
-
-### NWS-S5 실시간 뉴스(NWS) 매수 가산점 프론트엔드 매수설정+매수후보 테이블 (2026-07-24)
-- **작업**: 다단계 워크플로우 5세션(프론트엔드 매수설정+매수후보 테이블). 사전조사 중 태스크 파일에 누락된 의존성 1건 발견 — `table-config.ts`의 `ColumnType`에 `'news'` 타입이 없어 `buy-target.ts`에서 `type: 'news'` 사용 시 typecheck 실패. 태스크 파일 3파일 + 사전조사 발견 1파일 = 4파일 수정. 기존 3개 가산점 행 패턴 그대로 4번째 행 추가 (P23 일관성), 기존 공통 자산 재사용 (`createNumInput`, `createToggleLabelControlsRow`, `COLOR.up`, `FONT_SIZE.body`, `FONT_WEIGHT.bold`).
-- **수정**: 프론트엔드 4파일 — `types/index.ts` (AppSettings 4키 + SectorStock news_boost 필드), `table-config.ts` (ColumnType 'news' + COLUMN_WIDTH 정의), `buy-settings.ts` (모듈 상태 3개 + syncBoost 뉴스 동기화 + buildBoostSection 4번째 행 + unmount null 처리), `buy-target.ts` (📰뉴스 컬럼 5일고가 앞)
-- **영향 범위**: 매수설정 "매수 가산점 (+N)" 섹션 4번째 줄 "📰 뉴스 호재" 추가, 매수후보 표 "프.순.매"와 "5일고가" 사이에 "📰뉴스" 컬럼 추가. 기본값 `boost_news_on=False`이므로 사용자가 매수설정에서 켜기 전까지 기존 동작 유지. 거래 로직 변경 없음 (P15). DB 스키마 변경 없음.
-- **사용자 결정**: table-config.ts 포함 4파일 계획 승인
-- **검증**: typecheck 통과 / build 성공 (603ms, 77 modules, 타입 오류 없음) / lint 스크립트 package.json에 없음 (기존과 동일) / 개발 서버 5173 실행 중 (브라우저 확인 가능)
-
-### NWS-S4 실시간 뉴스(NWS) 매수 가산점 백엔드 가산점 로직+설정 구현 (2026-07-24)
-- **작업**: 다단계 워크플로우 4세션(백엔드 가산점 로직+설정). `news_boost_cache` → 매수 가산점 반영 + 설정 기본값/검증/동기화. 사전조사 중 태스크 파일의 동기화 위치 오류 발견 — 태스크 파일은 `engine_state.py`에 동기화하라고 기재했으나, `integrated_system_settings_cache` 갱신은 `engine_config.py`의 `refresh_engine_integrated_system_settings_cache()`에서 단일 소스로 수행 (P10/P17). 사용자 승인 하에 `engine_config.py`로 정정. 추가로 초기 기동 시 `app.py`에서도 동기화 필요 → `_sync_nws_settings_to_state()` 헬퍼로 추출하여 양쪽에서 호출 (P10 SSOT — 단일 로직, P24 단순성 — 중복 제거).
-- **수정**: 백엔드 7파일 — `buy_filter.py` (4번째 가산점 로직 + `create_buy_targets` 파라미터 + `build_buy_targets_from_settings` 전달), `sector_data_provider.py` (매수후보 `news_boost` 필드, `get_news_boost_cache()` 한 번 조회 후 전달 P7), `engine_settings.py` (`_build_boost_settings()` NWS 설정 4개), `settings_defaults.py` (NWS 기본값 4개), `settings_store.py` (`_validate_numeric_fields()` NWS 검증 3개), `engine_config.py` (`_sync_nws_settings_to_state()` 헬퍼 + `refresh_engine_integrated_system_settings_cache()` 내 호출), `app.py` (초기 기동 시 헬퍼 호출)
-- **영향 범위**: 매수 가산점 4번째 "📰뉴스 호재" 추가. 기본값 `boost_news_on=False`이므로 사용자가 매수설정에서 켜기 전까지 기존 동작 유지. 거래 로직 변경 없음 (P15). DB 스키마 변경 없음 (설정 키만 `integrated_system_settings` 테이블에 증분 추가).
-- **사용자 결정**: 동기화 위치 `engine_config.py`로 정정 승인
-- **검증**: py_compile 통과 / ruff 통과 / mypy 신규 에러 없음 / 런타임 기동 정상 (197ms, RuntimeWarning 없음) / 잔존 프로세스 0건 / 기존 테스트 2834개 통과 / buy_filter 테스트 54개 통과
-
-### NWS-S3 실시간 뉴스(NWS) 매수 가산점 백엔드 NWS 인프라 구현 (2026-07-24)
-- **작업**: 다단계 워크플로우 3세션(백엔드 NWS 인프라 구현). NWS 메시지 수신 → `news_boost_cache` 갱신 경로 구축. 사전조사 중 태스크 파일의 디스패치 위치 오류 발견 — NWS는 JIF와 동일하게 tick_queue 우회하여 `engine_ws_dispatch.py` 경로로 처리되나, 태스크 파일은 `pipeline_compute.py`에 분기를 넣도록 잘못 기재 (죽은 코드 P16 위반 발생). 설계서 섹션 3.7.1이 이미 "디스패치 위치 확인 필요"로 명시했으나 태스크 작성 시 확인 누락. 사용자 승인 하에 바로잡아 진행: `pipeline_compute.py` 제외, `engine_ws.py` + `engine_ws_dispatch.py` 추가.
-- **수정**: 백엔드 6파일 — `ls_connector.py` (NWS 구독/변환/우회/재연결 6곳), `pipeline_compute_tick_handlers.py` (`_handle_nws_news()` 핸들러), `engine_ws.py` (trnm 필터 NWS 추가), `engine_ws_dispatch.py` (NWS 디스패치), `engine_state.py` (캐시 필드 4개), `engine_radar.py` (`get_news_boost_cache()` getter)
-- **영향 범위**: NWS 수신 경로 구축만 (가산점 계산 연결은 4세션). 거래 로직 변경 없음 (P15). DB 스키마 변경 없음.
-- **사용자 결정**: 태스크 파일 디스패치 위치 오류 바로잛아 진행 승인
-- **검증**: py_compile 통과 / ruff 통과 / mypy 신규 에러 없음 / 런타임 기동 정상 (157ms, RuntimeWarning 없음) / 잔존 프로세스 0건 / 기존 테스트 2834개 통과 / NWS 핸들러 기능 테스트 6개 통과
-
-### NWS-S2 실시간 뉴스(NWS) 매수 가산점 심층 사전조사 + 태스크 파일 작성 (2026-07-24)
-- **작업**: 다단계 워크플로우 2세션(설계 기반 심층 사전조사 + 태스크 파일 작성). 규칙 0-2 4항목 의존성/영향범위/원칙부합/공통자산 조사. 백엔드 10파일+프론트엔드 4파일+신규 1파일(tag-chip.ts)+테스트 1파일 변경점 식별. 기존 공통 자산 재사용 확인(subscribe_jif 패턴, get_program_net_buy_cache 패턴, calculate_boost_score 패턴, createToggleLabelControlsRow/createNumInput 등). tag-chip 컴포넌트는 기존에 없어 신규 생성 필요. 5세션(3~7세션) 단계 분할 확정.
-- **산출물**: `docs/plan_news_boost.md` (태스크 파일 — 3세션: 백엔드 NWS 인프라 / 4세션: 백엔드 가산점 로직+설정 / 5세션: 프론트엔드 매수설정+매수후보 테이블 / 6세션: 프론트엔드 일반설정 키워드 칩+TTL / 7세션: 테스트+런타임 검증)
-- **사용자 결정**: 5세션 단계 분할 승인
-- **검증**: 코드 수정 없음(사전조사+태스크만) / 커밋 대기
-
-### NWS-S1 실시간 뉴스(NWS) 매수 가산점 설계 — 디자인 파일 작성 + 보완 (2026-07-23)
-- **작업**: 다단계 워크플로우 1세션(설계 검토 + 디자인 파일 작성). 정적 키워드 사전 + 매수 가산점 전용 방향 설계. LLM 분류/악재 자동 손절/본문 2차 조회는 제외. 사용자 보완 요청 2건 반영(매수후보 테이블 📰뉴스 컬럼 추가 + 일반설정 키워드 칩 편집 UI).
-- **산출물**: `docs/architecture_news_boost_design.md` (설계서 — 백엔드 10파일 + 프론트엔드 4파일 + 테스트 1파일 변경 설계, P4/P7/P10/P11/P13/P15/P16/P20/P21/P22/P23/P24/P25 부합 검토 포함)
-- **사용자 결정**: 점수 유지 5분 / 키워드 편집 일반설정 자동매매 탭 / 키워드 칩+기본값 미리 채움 / 매수후보 내 종목만 / 📰뉴스 컬럼 5일고가 왼쪽 / LLM·악재손절 제외
-- **검증**: 코드 수정 없음(설계만) / 커밋 대기
-
-### T4-S01 매수설정 거래대금 순위 가산점 + 매수후보 거래대금 컬럼 제거 — 완료 (2026-07-23)
-- **사유**: 업종순위 1차 5일평균 최소거래대금 필터로 이미 일정 수준 이상 종목만 매수후보 풀 진입. 매수후보 내 당일 거래대금 1위 1종목 가산점은 효과 범위 좁고 한계 효과. 당일 실시간 거래대금 컬럼도 다른 컬럼으로 종목 판단 충분 → 사용자 투명성(P21) 위반 아님.
-- **수정**: 백엔드 7파일(buy_filter.py 가산점 로직/순위계산/파라미터, models.py 필드, engine_settings.py/settings_defaults.py 설정 키, sector_data_provider.py/engine_account_notify.py/engine_service.py 참조) + 프론트엔드 5파일(buy-settings.ts 토글/UI, buy-target.ts 컬럼, hotStore.ts recalcTradeAmountRank 함수, binding.ts import, types/index.ts 타입) + 테스트 2파일(관련 케이스 5개 제거) + DB 설정 키 2개 삭제
-- **영향 범위**: 매수설정 "매수 가산점" 섹션(4→3 항목), 매수후보 테이블(10→9 컬럼, 하이라이트 제거). 업종순위 페이지/5일평균 필터/업종 점수 3차 가산점은 영향 없음.
-- **검증**: DB 백업(20260723_234321) / py_compile 통과 / ruff 통과 / typecheck 통과 / 빌드 성공 / 테스트 69개 통과 / 런타임 기동 정상(137ms) / 잔존 프로세스 0건
-
-### MEM-01 메모리 문제해결 참고서 고유 내용 스킬 이관 + 메모리 삭제 — 완료 (2026-07-23)
-- 수정: backend-fix SKILL.md (1파일) — Python 실시간 금지 목록 + 테스트 hang 방지 원인 A-E 추가
-- 삭제: 메모리 "SectorFlow 문제해결 참고서" (고유 내용 스킬 이관 완료, 나머지 AGENTS.md/스킬과 완전 중복)
-- 검증: 스킬 파일 수정 확인 / 커밋 db79a21
-
-### T3-S32 체결강도 매수차단 제거 문서 정리 — 완료 (2026-07-23)
-- 수정: ARCHITECTURE.md + p25 문서 + HANDOVER.md (3파일), 삭제: 설계/태스크 파일 (2파일)
-- 검증: 잔존 참조 0건 / 커밋 3433391
+> NWS-S1~S6, T4-S01, MEM-01, T3-S31/S32 등 이전 완료 작업 상세는 git history 참조 (규칙 7 — 직전 완료 작업 최근 1~2건 유지).
 
 ---
 
 ## 다음 세션 진행 대기
 
-**다단계 작업 진행 중 — NWS 실시간 뉴스 매수 가산점 (설계 → 태스크 → 구현)**:
-- **현재 단계**: 5세션(프론트엔드 매수설정+매수후보 테이블) 완료. 6세션(프론트엔드 일반설정 키워드 칩+TTL) 대기.
-- **다음 세션 작업**: 6세션 — 프론트엔드 일반설정 자동매매 탭에 호재 키워드 편집 섹션 + TTL 입력 (tag-chip.ts 신규 컴포넌트 + general-settings.ts 키워드 칩+TTL). 키워드 칩 편집 UI + 뉴스 가산점 유지 시간 입력.
-- **참조 문서**: `docs/architecture_news_boost_design.md` (설계서) + `docs/plan_news_boost.md` (태스크 파일 — 6~7세션 단계별 상세)
+**스킬 보완 후속 (사용자 지시 시 진행)**:
+- **AGENTS.md 섹션4 다단계 워크플로우 1세션 step 2/3 구체화**: problem-solve 섹션 1-1 참조 명시 + 디자인 파일 `docs/architecture_*_design.md` "사용자 결정 항목" 섹션 의무화
+- **backend-fix / frontend-fix / safe-trade 스킬에 problem-solve 섹션 1-1 참조 추가** (1줄씩, P10 SSOT — 중복 기술 방지)
+- **safe-trade 거래 특화 질문 카테고리 3개 명시** (실전/모의 전환, 주문 경로 영향, 리스크 임계값 — 돈 직결이므로 problem-solve 범용 카테고리와 분리 유지)
 
 **사용자 지시 시 진행 가능 항목 (audit 문서 잔여)**:
 - B-13 보류 5건 (B13-03/04/06/07/08, LOW/INFO 등급) — `docs/architecture_audit_plan.md` 섹션 7 참조
