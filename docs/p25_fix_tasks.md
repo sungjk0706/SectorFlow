@@ -192,7 +192,7 @@
   - [x] P23 일관성: 338-346줄 WS 해제 루프 패턴과 동일 구조 적용 (try/except + `logger.warning/error(..., exc_info=True)`)
   - [x] 잔존 프로세스 0건 확인
 - **비고**: B2-03-02 골격은 T1-S3에서 선제 처리되었으나, 상태 정리(`_compute_running=False`) 누락이 본 세션에서 보완됨. ruff F401 unused import 2건(`time`, `_check_realtime_latency`)은 본 세션 수정 범위 밖 — HANDOVER.md 미해결 문제에 기록.
-- **커밋**: (본 세션에서 커밋 예정)
+- **커밋**: `4231651 fix(backend): T2-S8 엔진 종료 finally / 파이프라인 서브루프 격리 (B1-02-02/03, B2-03-02)`
 
 ### T2-S9 — confirmed 빈 폴백 제거 / DB writer / engine_cache 치명 오류 처리
 
