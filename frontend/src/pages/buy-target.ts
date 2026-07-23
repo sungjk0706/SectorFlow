@@ -8,7 +8,7 @@ import { notifyPageActive, notifyPageInactive } from '../api/ws'
 import { createCardHeaderWithMargin } from '../components/common/card-header'
 import { createSearchInput } from '../components/common/search-input'
 import { globalSettingsManager } from '../settings'
-import { createStockNameColumn, createSeqCell, makeCodeColumn, makeChangeColumn, makeRateColumn, makeStrengthColumn, createAmountCell, createPriceCell, createNumberCell, FONT_SIZE, FONT_WEIGHT, COLOR } from '../components/common/ui-styles'
+import { createStockNameColumn, createSeqCell, makeCodeColumn, makeChangeColumn, makeRateColumn, createAmountCell, createPriceCell, createNumberCell, FONT_SIZE, FONT_WEIGHT, COLOR } from '../components/common/ui-styles'
 import { createBadgeRow, createBadge, updateBadge, type BadgeHandle, type BadgeStatus } from '../components/common/badge'
 import { computeOrderBlockStatus } from '../utils/order-block-status'
 import { filterStocksBySearch } from './sector-stock'
@@ -46,7 +46,6 @@ const COLUMNS: ColumnDef<SectorStock>[] = [
   },
   makeChangeColumn<SectorStock>((t) => t.change != null ? Number(t.change) : null),
   makeRateColumn<SectorStock>((t) => t.change_rate != null ? Number(t.change_rate) : null),
-  makeStrengthColumn<SectorStock>((t) => t.strength != null ? parseFloat(String(t.strength)) : null),
   {
     key: 'trade_amount', label: '거래대금(억)', align: 'right', type: 'amount', maxWidth: 126,
     render: (t) => {
