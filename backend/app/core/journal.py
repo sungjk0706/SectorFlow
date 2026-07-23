@@ -14,7 +14,6 @@
 from __future__ import annotations
 import logging
 import time
-from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 from backend.app.services.engine_utils import LazyLock
@@ -31,43 +30,21 @@ class JournalEventType(str, Enum):
     """저널 이벤트 타입"""
     SETTINGS_CHANGE = "settings_change"
     ORDER_REQUEST = "order_request"
-    FILL_EVENT = "fill_event"
-    ORDER_STATUS_UPDATE = "order_status_update"  # OMS용 상태 업데이트 추가
-
-
-@dataclass
-class JournalEntry:
-    """저널 엔트리"""
-    event_type: JournalEventType
-    timestamp: float
-    data: dict[str, Any]
-    seq: int  # SQLite id와 매핑
 
 
 # ── 파일 입출력 ────────────────────────────────────────────────────────────────
 
 async def _append_entry(event_type: Any, timestamp: float | None = None, data: dict | None = None) -> int:
     """저널 엔트리를 메모리에 추가하고 seq 반환"""
-    # 1. dataclass 및 인자 하위 호환 파싱
-    if hasattr(event_type, "event_type"):  # JournalEntry dataclass
-        entry = event_type
-        evt_type = entry.event_type.value if hasattr(entry.event_type, "value") else str(entry.event_type)
-        evt_ts = entry.timestamp
-        evt_data = entry.data
-    else:
-        evt_type = event_type
-        evt_ts = timestamp
-        evt_data = data
-
     seq = 0
     try:
         async with _journal_lock:
             seq = len(_journal_entries) + 1
             _journal_entries.append({
                 "id": seq,
-                "event_type": evt_type,
-                "timestamp": evt_ts,
-                "data": evt_data
+                "event_type": event_type,
+                "timestamp": timestamp,
+                "data": data
             })
     except Exception as e:
         logger.error("[연산] 메모리 쓰기 실패: %s", e, exc_info=True)

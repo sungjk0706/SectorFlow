@@ -250,24 +250,4 @@ def evaluate_stock_filter(item: dict, stk_cd: str) -> StockFilterEvaluation:
     )
 
 
-def is_excluded(item: dict, stk_cd: str) -> tuple[bool, str]:
-    """
-    ka10099 응답의 개별 종목 dict 를 받아 매매 부적격 여부를 판정.
-
-    Parameters
-    ----------
-    item : dict
-        ka10099 응답 list 내 개별 종목 딕셔너리.
-    stk_cd : str
-        6자리 종목코드 (정규화 완료된 값).
-
-    Returns
-    -------
-    (excluded: bool, reason: str)
-        excluded=True 이면 매매 부적격. reason 에 사유 문자열.
-    """
-    result = evaluate_stock_filter(item, stk_cd)
-    return result.excluded, result.primary_reason
-
-
 

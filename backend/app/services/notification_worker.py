@@ -91,8 +91,3 @@ class NotificationWorker:
             except asyncio.CancelledError:
                 pass
         logger.info("[알림] 워커 종료 완료")
-
-    @classmethod
-    def reset_instance(cls) -> None:
-        """테스트용 싱글톤 리셋."""
-        cls._instance = None

@@ -177,13 +177,12 @@ class TestCallbacks:
         mgr = _make_manager_with_connectors({"kiwoom": conn})
         cb = MagicMock()
         mgr.set_message_callback(cb)
-        assert mgr._callback is cb
+        conn.set_message_callback.assert_called_once_with(cb)
 
     def test_set_message_callback_empty_connectors(self):
         mgr = _make_manager_with_connectors({})
         cb = MagicMock()
         mgr.set_message_callback(cb)
-        assert mgr._callback is cb
 
     def test_set_reconnect_callback_sets_on_supporting_connectors(self):
         conn1 = _mock_connector()

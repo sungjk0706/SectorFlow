@@ -1,6 +1,6 @@
 """notification_worker.py 단위 테스트 — asyncio.Queue 기반 알림 워커 검증.
 
-NotificationWorker 싱글톤의 start/enqueue/_handle/shutdown/reset_instance 동작 검증.
+NotificationWorker 싱글톤의 start/enqueue/_handle/shutdown 동작 검증.
 hang 방지: 실제 asyncio.create_task / Queue 사용하지 않고 mock으로 대체.
 """
 from __future__ import annotations
@@ -11,14 +11,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.app.services.notification_worker import NotificationWorker
-
-
-@pytest.fixture(autouse=True)
-def _reset_worker():
-    """각 테스트 전후로 싱글톤 리셋."""
-    NotificationWorker.reset_instance()
-    yield
-    NotificationWorker.reset_instance()
 
 
 def _make_worker():
@@ -33,16 +25,6 @@ class TestSingleton:
         a = NotificationWorker.get_instance()
         b = NotificationWorker.get_instance()
         assert a is b
-
-    def test_reset_instance_clears(self):
-        a = NotificationWorker.get_instance()
-        NotificationWorker.reset_instance()
-        b = NotificationWorker.get_instance()
-        assert a is not b
-
-    def test_reset_instance_none(self):
-        NotificationWorker.reset_instance()
-        assert NotificationWorker._instance is None
 
 
 # ── __init__ ───────────────────────────────────────────────────────────────────

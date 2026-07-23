@@ -66,7 +66,7 @@ class KiwoomOrderProvider(OrderProvider):
         self,
         auth_provider: Optional[KiwoomAuthProvider] = None,
     ):
-        self._auth = auth_provider
+        pass
 
     async def send_order(
         self,
@@ -106,7 +106,6 @@ class KiwoomStockProvider:
                 f"KiwoomStockProvider는 KiwoomAuthProvider만 지원합니다. "
                 f"전달된 타입: {type(auth_provider).__name__}"
             )
-        self._auth = auth_provider
         self._rest_api = auth_provider.rest_api if auth_provider else None
 
     async def fetch_all_stocks(
@@ -120,15 +119,6 @@ class KiwoomStockProvider:
         from backend.app.core.kiwoom_stock_rest import fetch_ka10099_unified
         return await fetch_ka10099_unified(self._rest_api, http_timeout=http_timeout)
 
-    async def fetch_stock_daily_price(
-        self, stk_cd: str, qry_dt: str
-    ) -> dict | None:
-        """ka10081 단건 조회 -- 장외 시간 확정 종가·등락률·거래대금 반환 (1일봉)."""
-        if self._rest_api is None:
-            return None
-        from backend.app.core.kiwoom_stock_rest import fetch_ka10081_daily_price
-        return await fetch_ka10081_daily_price(self._rest_api, stk_cd, qry_dt)
-
     async def fetch_stock_5day_data(
         self, stk_cd: str, qry_dt: str
     ) -> dict | None:
@@ -137,21 +127,6 @@ class KiwoomStockProvider:
             return None
         from backend.app.core.kiwoom_stock_rest import fetch_ka10081_daily_5d_data
         return await fetch_ka10081_daily_5d_data(self._rest_api, stk_cd, qry_dt)
-
-    async def fetch_all_stocks_5day(
-        self,
-        krx_codes: list[str],
-        qry_dt: str,
-        interval_sec: float = 0.3,
-        on_progress: "Callable[[int, int], None] | None" = None,
-    ) -> dict[str, dict]:
-        """전체 종목 ka10081 순차 조회 -- 5일봉 데이터 채우기용."""
-        if self._rest_api is None:
-            return {}
-        from backend.app.core.kiwoom_stock_rest import fetch_ka10081_all_stocks_5day
-        return await fetch_ka10081_all_stocks_5day(
-            self._rest_api, krx_codes, qry_dt, interval_sec=interval_sec, on_progress=on_progress
-        )
 
     async def fetch_all_stocks_daily_confirmed(
         self,
@@ -177,10 +152,5 @@ class KiwoomWebSocketProvider(WebSocketProvider):
         self,
         auth_provider: Optional[KiwoomAuthProvider] = None,
     ):
-        self._auth = auth_provider
-
-    def get_ws_uri(self) -> str:
-        from backend.app.core.broker_urls import build_broker_urls
-
-        return build_broker_urls("kiwoom")["ws_uri"]
+        pass
 

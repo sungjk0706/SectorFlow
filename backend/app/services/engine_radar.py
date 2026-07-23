@@ -13,18 +13,6 @@ logger = logging.getLogger(__name__)
 
 # ── 종목 조회 ─────────────────────────────────────────────────
 
-def get_trade_amount_cache() -> dict[str, int | None]:
-    """실시간 거래대금 캐시 반환 (master_stocks_cache 기반, 백만원 단위).
-
-    None = 실시간 데이터 미수신 — 0으로 폴백하지 않고 None 유지 (P20 폴백 금지).
-    """
-    result: dict[str, int | None] = {}
-    for cd, stock in engine_state.state.master_stocks_cache.items():
-        ta = stock.get("trade_amount")
-        result[cd] = int(ta) if ta is not None else None
-    return result
-
-
 def get_high_price_5d_cache() -> dict[str, int]:
     """5일 전고점 캐시 반환."""
     return {cd: int(stock.get("high_5d_price", 0) or 0) for cd, stock in engine_state.state.master_stocks_cache.items()}

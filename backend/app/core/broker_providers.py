@@ -70,8 +70,3 @@ class OrderProvider(ABC):
 # ── WebSocket Provider ────────────────────────────────────────────────
 class WebSocketProvider(ABC):
     """실시간 WebSocket 연결."""
-
-    @abstractmethod
-    def get_ws_uri(self) -> str:
-        """WebSocket 접속 URI."""
-        ...

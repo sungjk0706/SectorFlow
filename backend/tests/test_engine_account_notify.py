@@ -15,7 +15,6 @@ from backend.app.services.engine_account_notify import (
     _snap_equal,
     _compute_position_delta,
     init_sent_caches,
-    _is_relevant_code,
     _rebuild_positions_cache,
     _rebuild_layout_cache,
     broadcast_engine_status_ws,
@@ -183,34 +182,6 @@ class TestInitSentCaches:
         init_sent_caches([], [], {})
         assert notify_cache.position_sent == {}
         assert notify_cache.positions_code_set == set()
-
-
-# ── _is_relevant_code ─────────────────────────────────────────────────────────────
-
-class TestIsRelevantCode:
-    def test_in_positions(self):
-        notify_cache.positions_code_set = {"005930"}
-        notify_cache.layout_code_set = set()
-        notify_cache.buy_targets_code_set = set()
-        assert _is_relevant_code("005930") is True
-
-    def test_in_layout(self):
-        notify_cache.positions_code_set = set()
-        notify_cache.layout_code_set = {"000660"}
-        notify_cache.buy_targets_code_set = set()
-        assert _is_relevant_code("000660") is True
-
-    def test_in_buy_targets(self):
-        notify_cache.positions_code_set = set()
-        notify_cache.layout_code_set = set()
-        notify_cache.buy_targets_code_set = {"035420"}
-        assert _is_relevant_code("035420") is True
-
-    def test_not_relevant(self):
-        notify_cache.positions_code_set = set()
-        notify_cache.layout_code_set = set()
-        notify_cache.buy_targets_code_set = set()
-        assert _is_relevant_code("999999") is False
 
 
 # ── _rebuild_positions_cache ──────────────────────────────────────────────────────

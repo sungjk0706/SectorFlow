@@ -7,19 +7,6 @@ engine_service에서 분리된 순수 함수만 둔다 (로직·입출력 동일
 """
 
 
-def _ws_int(vals: dict, key: str, default: int = 0) -> int:
-    try:
-        v = vals.get(key, default)
-        if v is None:
-            return default
-        s = str(v).replace(",", "").replace("+", "").strip()
-        if not s or s == "-":
-            return default
-        return int(float(s))
-    except (ValueError, TypeError):
-        return default
-
-
 def _ws_fid_raw(vals: dict, fid: str):
     """REAL values -- FID 키가 문자열 '13' 또는 정수 13 인 경우 모두 조회."""
     if not isinstance(vals, dict):
@@ -31,24 +18,6 @@ def _ws_fid_raw(vals: dict, fid: str):
     except (ValueError, TypeError):
         return None
     return vals.get(ik)
-
-
-def _ws_fid_key_present(vals: dict, fid: str) -> bool:
-    return _ws_fid_raw(vals, fid) is not None
-
-
-def _ws_fid_float(vals: dict, fid: str, default: float = 0.0) -> float:
-    """REAL values FID -> float (지수 포인트 등 소수점 필요한 경우)."""
-    v = _ws_fid_raw(vals, fid)
-    if v is None:
-        return default
-    try:
-        s = str(v).replace(",", "").replace("+", "").strip()
-        if not s or s == "-":
-            return default
-        return float(s)
-    except (ValueError, TypeError):
-        return default
 
 
 def _ws_fid_int(vals: dict, fid: str, default: int = 0) -> int:
@@ -201,18 +170,3 @@ def parse_fid290_session(vals: dict) -> str:
     if v is None:
         return ""
     return str(v).strip()
-
-
-def is_nxt_tick(vals: dict) -> bool:
-    """체결 데이터가 NXT 거래소 체결인지 판단 (FID 9081 = '2')."""
-    return parse_fid9081_exchange(vals) == "2"
-
-
-def is_nxt_premarket(vals: dict) -> bool:
-    """NXT 프리마켓 체결 여부 (FID 290 = 'P')."""
-    return parse_fid290_session(vals) == "P"
-
-
-def is_nxt_aftermarket(vals: dict) -> bool:
-    """NXT 애프터마켓 체결 여부 (FID 290 = 'U')."""
-    return parse_fid290_session(vals) == "U"

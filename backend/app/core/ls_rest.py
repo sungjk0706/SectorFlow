@@ -422,31 +422,3 @@ class LsRestAPI:
             credit_code=credit_code, loan_date=loan_date, member_code=member_code,
         )
 
-    # ========== 계좌 관련 메서드 ==========
-
-    async def get_balance(
-        self,
-        prcgb: str = "1", # 1: 평균단가, 2: BEP단가
-        chegb: str = "2", # 0: 결제기준, 2: 체결기준
-        dangb: str = "0", # 0: 정규장, 1: 시간외
-        charge: str = "1", # 0: 제비용미포함, 1: 제비용포함
-        cts_expcode: str = "",
-    ) -> Optional[dict]:
-        """주식잔고2 (t0424) 조회"""
-        url = f"{self.base_url}/stock/accno"
-        headers = {
-            "tr_cd": "t0424",
-            "tr_cont": "N",
-            "tr_cont_key": "",
-        }
-        body = {
-            "t0424InBlock": {
-                "prcgb": prcgb,
-                "chegb": chegb,
-                "dangb": dangb,
-                "charge": charge,
-                "cts_expcode": cts_expcode,
-            }
-        }
-        return await self.call_api(url, method="POST", headers=headers, body=body)
-

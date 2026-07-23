@@ -5,17 +5,13 @@
 - OAuth2 client_credentials: App Key, App Secret -> Access Token
 """
 from __future__ import annotations
-from typing import Callable, Optional
+from typing import Optional
 import asyncio
 import logging
 import time
 from dataclasses import dataclass
 import httpx
-from backend.app.core.broker_urls import build_broker_urls, BROKER_DISPLAY_NAMES, KIWOOM_REST_REAL
-from backend.app.core.kiwoom_stock_rest import (
-    fetch_ka10081_daily_price as _ka10081_fetch_single,
-    fetch_ka10081_all_stocks_daily_confirmed as _ka10081_fetch_all,
-)
+from backend.app.core.broker_urls import BROKER_DISPLAY_NAMES, KIWOOM_REST_REAL
 
 logger = logging.getLogger(__name__)
 
@@ -296,24 +292,6 @@ class KiwoomRestAPI:
             return None
         return self._token_info.token if self._token_info else None
 
-    async def get_auth_headers(self, api_id: str) -> Optional[dict]:
-        """비동기 안전 인증 헤더 생성 — 토큰 확인/갱신 + 헤더 dict 반환.
-
-        _post_ka10095_chunk() 등 외부 함수에서 api._ensure_token() + api._token_info.token을
-        직접 접근하는 대신 이 메서드를 사용하여 토큰 불일치를 원천 차단한다.
-        토큰 확보 실패 시 None 반환.
-        """
-        if not await self._ensure_token():
-            return None
-        assert self._token_info is not None
-        return {
-            "Content-Type": "application/json;charset=UTF-8",
-            "authorization": f"Bearer {self._token_info.token}",
-            "api-id": api_id,
-            "cont-yn": "N",
-            "next-key": "",
-        }
-
     async def _request(self, api_id: str, body: Optional[dict] = None,
                  cont_yn: str = "N", next_key: str = "") -> Optional[dict]:
         if not await self._ensure_token():
@@ -424,13 +402,6 @@ class KiwoomRestAPI:
             target["acnt_evlt_remn_indv_tot"] = all_items
         return result
 
-    async def get_account_number(self) -> Optional[str]:
-        api_id = getattr(self, "_account_tr_id", self.API_ID_ACCOUNT)
-        data = await self._request(api_id)
-        if not data:
-            return None
-        return data.get("acctNo") or (data.get("body") or {}).get("acctNo")
-
     async def get_deposit_detail(self, acnt_no: str = "", qry_tp: str = "3") -> Optional[dict]:
         """
         kt00001 예수금상세현황 조회.
@@ -450,82 +421,6 @@ class KiwoomRestAPI:
         api_id = getattr(self, "_balance_tr_id", "kt00018")
         body = {"qry_tp": qry_tp, "dmst_stex_tp": dmst_stex_tp}
         return await self._paginated_request(api_id, body=body)
-
-    async def fetch_ka10081_daily_price(self, stk_cd: str, qry_dt: str) -> Optional[dict]:
-        """ka10081 단건 조회 -- 장외 시간 확정 종가·등락률·거래대금 반환 (5일데이터 제외)."""
-        return await _ka10081_fetch_single(self, stk_cd, qry_dt)
-
-    async def fetch_ka10081_sector_all(
-        self,
-        krx_codes: list[str],
-        qry_dt: str,
-        interval_sec: float = 0.1,
-        on_progress: "Callable[[int, int], None] | None" = None,
-    ) -> dict[str, dict]:
-        """전체 종목 ka10081 순차 조회 -- 장외 시간 확정 데이터용."""
-        return await _ka10081_fetch_all(self, krx_codes, qry_dt, interval_sec=interval_sec, on_progress=on_progress)
-
-    async def fetch_market_stock_name_map(self) -> dict[str, str]:
-        """시장 종목명 매핑 조회. {6자리 종목코드: 종목명}."""
-        raise NotImplementedError("fetch_market_stock_name_map is not implemented")
-
-    async def fetch_ka20001_index(self, mrkt_tp: str, inds_cd: str) -> Optional[dict]:
-        """ka20001 -- 업종현재가요청. 지수(현재가·등락률) + 상승/하락 종목수.
-
-        mrkt_tp: "0"=코스피, "1"=코스닥
-        inds_cd: 업종코드 (예: "001"=코스피종합, "101"=코스닥종합)
-        반환: {"price", "change", "rate", "up_count", "down_count"} 또는 None
-        """
-        url = f"{self.base_url}/api/dostk/sect"
-        resp, _ = await self._call_api(url, "ka20001", {"mrkt_tp": mrkt_tp, "inds_cd": inds_cd},
-                                  timeout=10.0, label=f"ka20001/{inds_cd}")
-        if resp is None:
-            return None
-
-        try:
-            data = resp.json()
-        except Exception:
-            logger.warning("[스케줄] %s 업종별 거래량 조회(ka20001) JSON 해석 실패 (업종코드=%s)", _BROKER_DISPLAY, inds_cd, exc_info=True)
-            return None
-
-        def _f(v) -> float:
-            try:
-                return float(str(v or "0").replace(",", "").replace("+", "").strip())
-            except (ValueError, TypeError):
-                return 0.0
-
-        def _i(v) -> int:
-            try:
-                return int(str(v or "0").replace(",", "").strip())
-            except (ValueError, TypeError):
-                return 0
-
-        price  = _f(data.get("cur_prc") or data.get("pric") or 0)
-        change = _f(data.get("pred_pre") or 0)
-        rate   = _f(data.get("flu_rt") or 0)
-        sig = str(data.get("pred_pre_sig") or "").strip()
-        if sig in ("4", "5", "44", "45"):
-            change = -abs(change)
-            rate   = -abs(rate)
-
-        return {
-            "price": abs(price), "change": change, "rate": rate,
-            "up_count": _i(data.get("rising")),
-            "down_count": _i(data.get("fall")),
-        }
-
-    async def fetch_ka10099_market_code_list(self, mrkt_tp: str) -> list[str]:
-        """
-        ka10099 -- 시장별 종목 코드 리스트 조회.
-        mrkt_tp: "0"=코스피, "10"=코스닥
-        반환: 종목코드 문자열 리스트 (6자리, 실패 시 빈 리스트)
-        """
-        result = await self.fetch_ka10099_full(mrkt_tp)
-        return [cd for cd, _, _ in result]
-
-    async def fetch_market_stock_list(self, mrkt_tp: str) -> list[tuple[str, bool, str]]:
-        """시장별 종목 코드 + NXT 중복상장 여부 + 시장구분코드 동시 조회 (별칭)."""
-        return await self.fetch_ka10099_full(mrkt_tp)
 
     async def fetch_ka10099_full(self, mrkt_tp: str) -> list[tuple[str, bool, str]]:
         """
@@ -595,47 +490,3 @@ class KiwoomRestAPI:
             logger.debug("[연결] 전체 종목 조회(ka10001) 실패 %s: %s", stk_cd, e, exc_info=True)
             return ""
 
-    async def fetch_nxt_enable_map(self, codes: list[str], interval_sec: float = 0.17) -> dict[str, bool]:
-        """
-        종목 리스트 전체 ka10001 순차 조회 -> {종목코드: NXT여부} 반환.
-        interval_sec: 호출 간격 (초당 ~6건, 키움 제한 안전 마진)
-        """
-        result: dict[str, bool] = {}
-        for i, cd in enumerate(codes):
-            if i > 0:
-                await asyncio.sleep(interval_sec)
-            val = await self.fetch_ka10001_nxt_enable(cd)
-            result[cd] = (val == "Y")
-        return result
-
-
-async def kiwoom_try_token(app_key: str, app_secret: str) -> tuple[bool, Optional[str], Optional[dict]]:
-    """
-    키움 OAuth2 토큰 발급 시도. (success, token, error_detail) 반환.
-    error_detail: 실패 시 키움 응답 {err_cd, err_msg, ...} 또는 예외 정보
-    """
-    urls = build_broker_urls("kiwoom")
-    url = urls["token_url"]
-    body = {
-        "grant_type": "client_credentials",
-        "appkey": (app_key or "").strip(),
-        "secretkey": (app_secret or "").strip(),
-    }
-    if not body["appkey"] or not body["secretkey"]:
-        return False, None, {"err_msg": "App Key / Secret 없음"}
-    try:
-        async with httpx.AsyncClient() as client:
-            resp = await client.post(url, headers={"Content-Type": "application/json;charset=UTF-8"}, json=body, timeout=15)
-        data = resp.json() if resp.text else {}
-        if resp.status_code != 200:
-            return False, None, {"status": resp.status_code, "url": url, **data}
-        token = data.get("token") or data.get("access_token")
-        if not token:
-            # return_msg / return_code 가 있으면 우선 노출 (8030 등 키움 앱레벨 오류)
-            kiwoom_msg = data.get("return_msg", "")
-            kiwoom_code = data.get("return_code", "")
-            err_msg = f"[{kiwoom_code}] {kiwoom_msg}" if kiwoom_msg else "토큰 필드 없음"
-            return False, None, {"err_msg": err_msg, **data}
-        return True, token, None
-    except Exception as e:
-        return False, None, {"err_msg": str(e), "url": url}

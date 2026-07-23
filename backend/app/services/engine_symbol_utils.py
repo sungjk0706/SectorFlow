@@ -7,7 +7,6 @@ engine_service에서 분리된 순수 함수만 둔다 (로직·입출력 동일
 """
 
 
-
 def is_nxt_enabled(stk_cd: str) -> bool:
     """
     종목코드가 NXT 중복상장 종목인지 반환.
@@ -48,8 +47,6 @@ def get_stock_market(stk_cd: str) -> str | None:
     return None
 
 
-
-
 def _base_stk_cd(stk_cd: str) -> str:
     """순수 종목코드 반환 (_AL/_NX 접미사 제거)."""
     s = str(stk_cd or "").strip().upper()
@@ -60,23 +57,6 @@ def _base_stk_cd(stk_cd: str) -> str:
     if s.isdigit():
         return s.zfill(6)[-6:]
     return s
-
-
-def _resolve_bucket_key(raw_cd: str, bucket: dict) -> str | None:
-    """
-    REAL 수신 종목코드와 레이더/작전 dict 키가 표기만 다를 때(6자리·접두 등) 실제 키 반환.
-    """
-    if not raw_cd or not bucket:
-        return None
-    if raw_cd in bucket:
-        return raw_cd
-    nk = _base_stk_cd(raw_cd)
-    if nk in bucket:
-        return nk
-    for k in bucket:
-        if _base_stk_cd(str(k)) == nk:
-            return str(k)
-    return None
 
 
 def _dict_get_fid(d: dict | None, fid: str):

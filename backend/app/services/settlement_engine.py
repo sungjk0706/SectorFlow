@@ -50,11 +50,6 @@ def get_orderable() -> int:
     return _orderable
 
 
-def get_initial_deposit() -> int:
-    """초기 투자금(설정값) 반환."""
-    return _initial_deposit
-
-
 # ── 매수 관련 ───────────────────────────────────────────────────────────────
 
 def check_buy_power(order_amount: int, daily_limit: int = 0, daily_spent: int = 0) -> tuple[bool, str]:

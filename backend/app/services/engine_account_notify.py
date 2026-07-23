@@ -142,7 +142,7 @@ def init_sent_caches(sector_stocks: list[dict], positions: list[dict], snapshot:
     notify_cache.snapshot_sent = dict(snapshot)
     notify_cache.prev_scores = []
     notify_cache.prev_buy_targets_map = None
-    # Set 캐시 동기화 — _is_relevant_code O(1) 조회용
+    # Set 캐시 동기화 — positions_code_set O(1) 조회용
     _rebuild_positions_cache(positions)
 
 
@@ -279,21 +279,6 @@ async def notify_desktop_sector_refresh(*, force: bool = False) -> None:
     await notify_desktop_sector_scores(force=force)
 
 
-def _is_relevant_code(nk: str) -> bool:
-    """프론트에서 실제 사용하는 종목 코드인지 판별 (업종+보유+레이아웃). set O(1) 조회."""
-    try:
-        # _radar_cnsr_order 삭제: 제로-체크 보장 (구독된 종목만 틱 수신)
-        if nk in notify_cache.positions_code_set:
-            return True
-        if nk in notify_cache.layout_code_set:
-            return True
-        if nk in notify_cache.buy_targets_code_set:
-            return True
-    except Exception as e:
-        logger.error("[시스템] 종목 %s 판별 실패: %s", nk, e, exc_info=True)
-    return False
-
-
 async def notify_orderbook_update(code: str, bid: int, ask: int) -> None:
     """매수 후보 종목의 호가잔량 변경 시 프론트에 즉시 전송 (이벤트 기반)."""
     payload = {"code": code, "bid": bid, "ask": ask}
@@ -356,7 +341,7 @@ async def notify_buy_targets_update() -> None:
         if code:
             cur_map[code] = t
 
-    # buy_targets_code_set 갱신 (_is_relevant_code 필터링용)
+    # buy_targets_code_set 갱신 (매수 후보 종목 코드 캐시)
     notify_cache.buy_targets_code_set.clear()
     notify_cache.buy_targets_code_set.update(cur_map.keys())
 

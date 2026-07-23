@@ -111,20 +111,6 @@ async def refresh_engine_integrated_system_settings_cache(user_id: str | None = 
         raise
 
 
-async def reload_engine_settings() -> None:
-    """엔진 런타임 중 설정 재로드 (필터 변경 등)."""
-    await refresh_engine_integrated_system_settings_cache(engine_state.state.engine_user_id or None, use_root=True)
-    # broker 설정 변경 시 BrokerRouter 캐시 초기화
-    from backend.app.core.broker_factory import reset_router
-    reset_router()
-    logger.info("[설정] 설정 재로드 — 증권사 라우터 캐시 초기화")
-
-    # 설정 재로드 완료 후 engine-reload-complete 이벤트 전송
-    from backend.app.services.engine_account_notify import _broadcast
-    await _broadcast("engine-reload-complete", {"status": "complete"})
-    logger.info("[설정] 설정 재로드 완료 — 엔진 갱신 완료 전송")
-
-
 # ── 민감 정보 마스킹 ─────────────────────────────────────────────────
 
 _SENSITIVE_SETTINGS_KEYS: frozenset[str] = frozenset({

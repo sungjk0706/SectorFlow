@@ -164,7 +164,6 @@ def apply_last_price_to_positions_inplace(
             buy_amount = int(s.get("buy_amount", 0) or 0)
             if qty > 0 and buy_amount > 0:
                 cmsn = int(s.get("sum_cmsn", s.get("pur_cmsn", 0)) or 0)
-                tax = int(s.get("tax", 0) or 0)
                 eval_amt = price * qty
                 pnl = eval_amt - buy_amount
                 rate = round(pnl / buy_amount * 100, 2) if buy_amount else 0.0

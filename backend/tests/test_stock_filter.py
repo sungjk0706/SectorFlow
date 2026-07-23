@@ -7,7 +7,6 @@ from backend.app.core.stock_filter import (
     _stock_name,
     _preferred_reason,
     evaluate_stock_filter,
-    is_excluded,
     to_display_reason,
 )
 
@@ -307,34 +306,6 @@ class TestEvaluateStockFilter:
     def test_code_field_set(self):
         result = evaluate_stock_filter(self._normal_item(), "005930")
         assert result.code == "005930"
-
-
-# ── is_excluded ─────────────────────────────────────────────────────
-
-class TestIsExcluded:
-    def _normal_item(self) -> dict:
-        return {
-            "marketCode": "0",
-            "orderWarning": "0",
-            "state": "정상",
-            "hname": "삼성전자",
-            "companyClassName": "보통주",
-            "auditInfo": "",
-            "listCount": "100000",
-            "lastPrice": "70000",
-        }
-
-    def test_normal(self):
-        excluded, reason = is_excluded(self._normal_item(), "005930")
-        assert excluded is False
-        assert reason == ""
-
-    def test_excluded(self):
-        item = self._normal_item()
-        item["orderWarning"] = "5"
-        excluded, reason = is_excluded(item, "005930")
-        assert excluded is True
-        assert reason == "투자경고"
 
 
 # ── to_display_reason ───────────────────────────────────────────────

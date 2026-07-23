@@ -1,7 +1,6 @@
 """logger.py 단위 테스트 — 로거 설정 + 파일 라이터 + InterceptHandler 검증.
 
 _get_file_queue: asyncio.Queue 지연 초기화
-_get_daily_log_path: 일별 로그 파일 경로
 _rotate_old_logs: 오래된 로그 파일 삭제
 _info_file_sink: 큐 적재 싱크
 InterceptHandler: 표준 logging → loguru 리다이렉트
@@ -13,8 +12,6 @@ stop_file_writers: 태스크 정지
 from __future__ import annotations
 
 import logging
-from datetime import datetime
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -22,11 +19,9 @@ import pytest
 from backend.app.core import logger as logger_mod
 from backend.app.core.logger import (
     LOG_DIR,
-    LOG_FILE,
     _MAX_FILE_SIZE,
     _BACKUP_COUNT,
     _get_file_queue,
-    _get_daily_log_path,
     _info_file_sink,
     InterceptHandler,
     log_progress,
@@ -40,10 +35,6 @@ from backend.app.core.logger import (
 class TestConstants:
     def test_log_dir_path(self):
         assert LOG_DIR.name == "logs"
-
-    def test_log_file_path(self):
-        assert LOG_FILE.name == "trading.log"
-        assert LOG_FILE.parent == LOG_DIR
 
     def test_max_file_size_10mb(self):
         assert _MAX_FILE_SIZE == 10 * 1024 * 1024
@@ -66,25 +57,6 @@ class TestGetFileQueue:
         q1 = _get_file_queue()
         q2 = _get_file_queue()
         assert q1 is q2
-
-
-# ── _get_daily_log_path ───────────────────────────────────────────────────────────
-
-class TestGetDailyLogPath:
-    def test_returns_correct_format(self):
-        path = _get_daily_log_path("trading.log")
-        today = datetime.now().strftime("%Y-%m-%d")
-        assert path.name == f"trading_{today}.log"
-        assert path.parent == LOG_DIR
-
-    def test_strips_log_extension(self):
-        path = _get_daily_log_path("debug.log")
-        today = datetime.now().strftime("%Y-%m-%d")
-        assert path.name == f"debug_{today}.log"
-
-    def test_returns_path_object(self):
-        path = _get_daily_log_path("trading.log")
-        assert isinstance(path, Path)
 
 
 # ── _info_file_sink ────────────────────────────────────────────────────────────────

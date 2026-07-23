@@ -171,10 +171,3 @@ DEFAULT_SYSTEM_CONFIG: dict[str, Any] = {
 
 # broker_credentials는 기본값 없음 (사용자 입력 필수)
 DEFAULT_BROKER_CREDENTIALS: dict[str, Any] = {}
-
-# 통합 기본값
-DEFAULT_SETTINGS: dict[str, Any] = {
-    **DEFAULT_USER_SETTINGS,
-    **DEFAULT_SYSTEM_CONFIG,
-    **DEFAULT_BROKER_CREDENTIALS,
-}

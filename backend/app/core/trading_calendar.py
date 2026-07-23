@@ -267,7 +267,6 @@ def _generate_trading_days(year: int) -> dict[int, set[str]]:
 
 async def refresh_trading_days_for_year(year: int) -> None:
     """특정 연도의 거래일 캐시를 자체 휴일 계산으로 재생성 후 DB에 저장 (연 1회 갱신용)."""
-    global _trading_days_cache
     from backend.app.db.stock_tables import save_trading_days_cache
 
     new_data = _generate_trading_days(year)

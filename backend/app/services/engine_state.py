@@ -14,7 +14,6 @@ from backend.app.services.engine_utils import LazyEvent
 
 if TYPE_CHECKING:
     from backend.app.core.connector_manager import ConnectorManager
-    from backend.app.core.broker_providers import AuthProvider
     from backend.app.domain.models import SectorSummary
 
 
@@ -27,16 +26,13 @@ class EngineState:
         self.shutdown_requested: bool = False
         self.connector_manager: "ConnectorManager | None" = None  # type: ignore[name-defined]
         self.active_connector: BrokerConnector | None = None
-        self.active_auth_provider: "AuthProvider | None" = None  # type: ignore[name-defined]
         self.broker_tokens: dict[str, str] = {}  # {broker_id: access_token}
         self.engine_task: asyncio.Task | None = None
         self.engine_loop_ref: asyncio.AbstractEventLoop | None = None
         self.access_token: str | None = None
         self.login_ok = False
         self.engine_user_id: str = ""
-        self.last_ws_limit_warn_ts: float = 0.0
         self.realtime_latency_exceeded: bool = False
-        self.avg_amt_needs_bg_refresh: bool = False
 
         # ── Locks & Events ───────────────────────────────────────────────────────
         self.data_ready_event: LazyEvent = LazyEvent()
@@ -62,8 +58,6 @@ class EngineState:
         self.confirmed_refresh_running: bool = False
         self.confirmed_refresh_running_confirmed: bool = False  # 확정시세 다운로드 전용
         self.confirmed_refresh_running_5d: bool = False         # 5일봉 다운로드 전용
-        self.confirmed_refresh_message: str = ""
-        self.latest_filter_summary: str = ""
         self.latest_filter_summary_meta: str = ""
         self.master_stocks_cache: dict[str, dict] = {}
         self.market_phase: dict = {
@@ -92,7 +86,6 @@ class EngineState:
         self.broker_rest_totals: dict = {
             "total_eval": 0, "total_pnl": 0, "total_buy": 0, "total_rate": 0.0,
         }
-        self.latest_stock_info: dict = {}
         self.auto_trade: AutoTradeManager | None = None
         self.integrated_system_settings_cache: dict = {}
         self.broker_spec: list = []
@@ -102,17 +95,11 @@ class EngineState:
 
         # ── 상수 ────────────────────────────────────────────────────────────────
         self.REG_POST_ACK_GAP_SEC = 0.35
-        self.REG_RATE_LIMIT_RESUB_SEC = 30.0
-        self.REG_STOCK_LOG_CHUNK_SIZE = 20
-        self.REG_REAL_DEBUG_EXTRA_LOG = False
-        self.AVG_AMT_CHUNK_SIZE = 50
-        self.INDUSTRY_CHUNK_SIZE = 10
 
         # ── 스케줄러 상태 ───────────────────────────────────────────────────────
         self.last_reset_date: str = ""
         self.krx_remove_done: bool = False
         self.confirmed_done: bool = False
-        self.ws_subscribe_window_active: bool | None = None
         self.auto_trade_timer_handles: list = []
         self.midnight_timer_handle: asyncio.TimerHandle | None = None
         self.timetable_timer_handle: asyncio.TimerHandle | None = None  # 타임테이블 단일 타이머

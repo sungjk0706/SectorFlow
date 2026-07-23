@@ -334,7 +334,6 @@ class LsConnector(BrokerConnector):
         self._receive_callback: Callable | None = None
         self._on_reconnect_success: Callable | None = None
         self._lock: asyncio.Lock | None = None
-        self._received_count = 0
         self._reconnecting: bool = False
         self._stop_reconnect: bool = False
         self._ws_queue: asyncio.Queue | None = None  # Producer-Consumer Queue
@@ -566,59 +565,6 @@ class LsConnector(BrokerConnector):
             _BROKER_DISPLAY, len(codes), total_ok, total_fail,
         )
 
-    async def register_account(self, tr_cd: str = "SC0") -> bool:
-        """계좌 등록 (LS WebSocket: tr_type=1).
-
-        명세서: header {token, tr_type="1"}, body {tr_cd, tr_key=""}
-        tr_key는 계좌 등록/해제 시 필수값 아님 (명세서: Required=N).
-        주문 관련 TR 코드: SC0(접수), SC1(체결), SC2(정정), SC3(취소), SC4(거부).
-        """
-        if not self.is_connected() or not self._socket:
-            logger.warning("[계좌] %s 계좌 등록 실패 — 연결 없음 (TR코드=%s)", _BROKER_DISPLAY, tr_cd)
-            return False
-        payload = {
-            "header": {
-                "token": self._token,
-                "tr_type": "1"  # 1: 계좌 등록
-            },
-            "body": {
-                "tr_cd": tr_cd,
-                "tr_key": ""
-            }
-        }
-        success = await self._socket.send(payload)
-        if success:
-            logger.info("[계좌] %s 계좌 등록 완료 (TR코드=%s)", _BROKER_DISPLAY, tr_cd)
-        else:
-            logger.warning("[계좌] %s 계좌 등록 실패 (TR코드=%s)", _BROKER_DISPLAY, tr_cd)
-        return success
-
-    async def unregister_account(self, tr_cd: str = "SC0") -> bool:
-        """계좌 해제 (LS WebSocket: tr_type=2).
-
-        명세서: header {token, tr_type="2"}, body {tr_cd, tr_key=""}
-        tr_key는 계좌 등록/해제 시 필수값 아님 (명세서: Required=N).
-        """
-        if not self.is_connected() or not self._socket:
-            logger.warning("[계좌] %s 계좌 해제 실패 — 연결 없음 (TR코드=%s)", _BROKER_DISPLAY, tr_cd)
-            return False
-        payload = {
-            "header": {
-                "token": self._token,
-                "tr_type": "2"  # 2: 계좌 해제
-            },
-            "body": {
-                "tr_cd": tr_cd,
-                "tr_key": ""
-            }
-        }
-        success = await self._socket.send(payload)
-        if success:
-            logger.info("[계좌] %s 계좌 해제 완료 (TR코드=%s)", _BROKER_DISPLAY, tr_cd)
-        else:
-            logger.warning("[계좌] %s 계좌 해제 실패 (TR코드=%s)", _BROKER_DISPLAY, tr_cd)
-        return success
-
     async def subscribe_jif(self) -> bool:
         """장운영정보(JIF) 실시간 구독 등록."""
         if not self.is_connected() or not self._socket:
@@ -687,25 +633,8 @@ class LsConnector(BrokerConnector):
             logger.warning("[구독] %s 실시간뉴스 구독 실패", _BROKER_DISPLAY)
         return success
 
-    async def unsubscribe_news(self) -> bool:
-        """실시간 뉴스(NWS) 구독 해지."""
-        if not self.is_connected() or not self._socket:
-            return False
-        payload = {
-            "header": {
-                "token": self._token,
-                "tr_type": "4"
-            },
-            "body": {
-                "tr_cd": "NWS",
-                "tr_key": "NWS001"
-            }
-        }
-        return await self._socket.send(payload)
-
     async def _on_ws_message(self, payload: dict) -> None:
         """_LsSocket 콜백 → 핸들러 직접 호출."""
-        self._received_count += 1
         if self._receive_callback:
             if asyncio.iscoroutinefunction(self._receive_callback):
                 await self._receive_callback(payload)

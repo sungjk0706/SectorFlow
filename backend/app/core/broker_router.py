@@ -15,7 +15,6 @@ from backend.app.core.broker_providers import (
 )
 from backend.app.core.broker_registry import (
     MUST_SAME_BROKER_PAIRS,
-    PROVIDER_REGISTRY,
     _create_provider,
 )
 from backend.app.core.broker_urls import BROKER_DISPLAY_NAMES
@@ -39,7 +38,6 @@ class BrokerRouter:
     사용법:
         router = BrokerRouter()
         router.order.send_order(...)  # 전역 설정
-        router.get_provider("order", "sector_ranking") # 페이지 오버라이드
     """
 
     # 페이지별 허용 기능 매핑 (해당 페이지가 사용하는 기능만)
@@ -170,102 +168,3 @@ class BrokerRouter:
             display_feature = _FEATURE_DISPLAY.get(feature, feature)
             parts.append(f"{display_feature}=설정됨")
         return "[증권사] " + ", ".join(parts)
-
-    # ── 페이지 컨텍스트 지원 ──────────────────────────────────────────
-
-    def get_provider(self, feature: str, page: str | None = None) -> object:
-        """
-        기능별 Provider 반환.
-        - page=None → 전역 설정 (기존 동작)
-        - page="sector_ranking" 등 → page_overrides 적용
-        """
-        from backend.app.services.engine_state import state
-        if page is None:
-            return self._providers[feature]
-
-        cache_key = (page, feature)
-        if cache_key in self._page_providers:
-            return self._page_providers[cache_key]
-
-        # page_overrides에서 해당 페이지·기능의 증권사 조회
-        page_overrides = state.integrated_system_settings_cache.get("page_overrides") or {}
-        page_config = page_overrides.get(page) or {}
-        broker_name = page_config.get(feature)
-
-        if not broker_name:
-            # 오버라이드 없음 → 전역 Provider 반환
-            return self._providers[feature]
-
-        broker_name = str(broker_name).lower().strip()
-        # 전역과 동일한 증권사면 전역 Provider 재사용
-        if broker_name == self._broker_map.get(feature):
-            return self._providers[feature]
-
-        # 오버라이드 증권사의 Provider 생성.
-        # ValueError(미지원 증권사/기능)는 validate_page_overrides가 사전 검증하므로
-        # 런타임 도달 시 비정상 상태 — 폴백으로 덮지 않고 예외 전파 (P20/P21).
-        provider = _create_provider(
-            feature, broker_name, state.integrated_system_settings_cache, self._auth_cache
-        )
-        if provider is None:
-            raise ValueError(f"지원하지 않는 증권사: {broker_name!r}")
-        self._page_providers[cache_key] = provider
-        return provider
-
-    def invalidate_page(self, page: str | None = None) -> None:
-        """페이지별 Provider 캐시 무효화. page=None이면 전체 무효화."""
-        if page is None:
-            self._page_providers.clear()
-        else:
-            keys_to_remove = [k for k in self._page_providers if k[0] == page]
-            for k in keys_to_remove:
-                del self._page_providers[k]
-
-    def validate_page_overrides(self) -> list[str]:
-        """page_overrides 설정 검증. 경고 메시지 리스트 반환."""
-        from backend.app.services.engine_state import state
-        messages: list[str] = []
-        page_overrides = state.integrated_system_settings_cache.get("page_overrides") or {}
-
-        for page, config in page_overrides.items():
-            if page not in self.PAGE_FEATURES:
-                continue
-            if not isinstance(config, dict):
-                continue
-            allowed = self.PAGE_FEATURES[page]
-            for feature, broker_name in config.items():
-                if feature not in allowed:
-                    continue
-                broker_name = str(broker_name).lower().strip()
-                # Provider 구현 존재 확인
-                broker_providers = PROVIDER_REGISTRY.get(broker_name)
-                if not broker_providers or feature not in broker_providers:
-                    feat_display = _FEATURE_DISPLAY.get(feature, feature)
-                    messages.append(
-                        f"{broker_name}은(는) {feat_display} 기능을 지원하지 않습니다"
-                    )
-                    continue
-                # API 키 존재 확인
-                key = state.integrated_system_settings_cache.get(f"{broker_name}_app_key")
-                secret = state.integrated_system_settings_cache.get(f"{broker_name}_app_secret")
-                if not key or not secret:
-                    messages.append("증권사 API 키가 설정되지 않았습니다")
-
-        return messages
-
-    def get_spec(self, role_key: str, feature: str | None = None) -> str | None:
-        """role_key에 해당하는 spec(TR ID 등) 조회.
-
-        feature가 주어지면 해당 기능의 broker_name을 사용,
-        아니면 _broker_map의 첫 번째 broker를 사용.
-        """
-        broker_name = None
-        if feature and feature in self._broker_map:
-            broker_name = self._broker_map[feature]
-        elif self._broker_map:
-            broker_name = next(iter(self._broker_map.values()))
-        if not broker_name:
-            return None
-        role_mappings = self._specs.get(broker_name, {})
-        val = role_mappings.get(role_key)
-        return str(val) if val is not None else None

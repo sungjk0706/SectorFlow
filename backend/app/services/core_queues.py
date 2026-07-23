@@ -67,35 +67,8 @@ def get_control_queue() -> asyncio.PriorityQueue:
     return _control_queue
 
 
-# ── 시세 큐 누락 정책 (무손실 최신화) ─────────────────────────────────────────
-def put_tick_with_drop_policy(data: dict) -> None:
-    """
-    tick_queue에 데이터 삽입 - 누락 정책 적용.
-
-    정책:
-    - 큐가 가득 찼을 때 (QueueFull), 가장 오래된 데이터를 즉시 버리고 최신 시세를 밀어넣음.
-    - 시장 폭락 시 틱 폭주 대비 - 무손실 최신화 보장.
-
-    Args:
-        data: 시세 데이터 (dict)
-    """
-    queue = get_tick_queue()
-
-    try:
-        queue.put_nowait(data)
-    except asyncio.QueueFull:
-        try:
-            queue.get_nowait()
-            queue.put_nowait(data)
-            logger.warning("[시스템] 틱 큐 누락 발생 - 최신 데이터 유지")
-        except asyncio.QueueEmpty:
-            queue.put_nowait(data)
-
-
 def clear_all_queues() -> None:
     """모든 큐 비우기 (엔진 정지 시 호출)."""
-    global _tick_queue, _broadcast_queue, _control_queue
-
     if _tick_queue:
         while not _tick_queue.empty():
             _tick_queue.get_nowait()

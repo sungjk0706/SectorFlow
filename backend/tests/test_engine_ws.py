@@ -20,11 +20,8 @@ from backend.app.services.engine_ws import (
     _ws_send_remove_fire_and_forget,
     _broker_message_handler,
     _handle_ws_data,
-    _subscribe_stock_realtime_when_ready,
     _subscribe_account_realtime,
-    _log_reg_stock_chunk,
     _subscribe_positions_stocks_realtime,
-    _subscribe_sector_stocks_0b,
     _ensure_ws_subscriptions_for_positions,
     _run_sector_reg_pipeline,
     _cleanup_stale_ws_subscriptions_on_session_ready,
@@ -256,53 +253,6 @@ class TestHandleWsData:
             mock_dispatch.assert_awaited_once_with({"trnm": "LOGIN"})
 
 
-# ── _subscribe_stock_realtime_when_ready ────────────────────────────────────────────
-
-class TestSubscribeStockRealtimeWhenReady:
-    @pytest.mark.asyncio
-    async def test_empty_code(self):
-        mock_state = _mock_state()
-        with patch("backend.app.services.engine_state.state", mock_state):
-            await _subscribe_stock_realtime_when_ready("")
-
-    @pytest.mark.asyncio
-    async def test_already_subscribed(self):
-        mock_state = _mock_state()
-        mock_state.master_stocks_cache = {"005930": {"_subscribed": True}}
-        mock_state.ws_reg_pipeline_done = None
-        with patch("backend.app.services.engine_state.state", mock_state):
-            await _subscribe_stock_realtime_when_ready("005930")
-
-    @pytest.mark.asyncio
-    async def test_no_ws_connection(self):
-        mock_state = _mock_state()
-        mock_state.master_stocks_cache = {"005930": {"_subscribed": False}}
-        with patch("backend.app.services.engine_state.state", mock_state):
-            await _subscribe_stock_realtime_when_ready("005930")
-
-    @pytest.mark.asyncio
-    async def test_subscribe_success(self):
-        mock_cm = MagicMock()
-        mock_cm.is_connected.return_value = True
-        mock_cm.subscribe_stocks = AsyncMock(return_value=True)
-        mock_state = _mock_state(connector_manager=mock_cm)
-        mock_state.master_stocks_cache = {"005930": {"_subscribed": False}}
-        with patch("backend.app.services.engine_state.state", mock_state):
-            await _subscribe_stock_realtime_when_ready("005930")
-            assert mock_state.master_stocks_cache["005930"]["_subscribed"] is True
-
-    @pytest.mark.asyncio
-    async def test_subscribe_failure(self):
-        mock_cm = MagicMock()
-        mock_cm.is_connected.return_value = True
-        mock_cm.subscribe_stocks = AsyncMock(return_value=False)
-        mock_state = _mock_state(connector_manager=mock_cm)
-        mock_state.master_stocks_cache = {"005930": {"_subscribed": False}}
-        with patch("backend.app.services.engine_state.state", mock_state):
-            await _subscribe_stock_realtime_when_ready("005930")
-            assert "_subscribed" not in mock_state.master_stocks_cache["005930"]
-
-
 # ── _subscribe_account_realtime ─────────────────────────────────────────────────────
 
 class TestSubscribeAccountRealtime:
@@ -311,13 +261,6 @@ class TestSubscribeAccountRealtime:
         with patch("backend.app.services.engine_ws_reg.subscribe_account_realtime", new_callable=AsyncMock) as mock_fn:
             await _subscribe_account_realtime()
             mock_fn.assert_awaited_once()
-
-
-# ── _log_reg_stock_chunk ────────────────────────────────────────────────────────────
-
-class TestLogRegStockChunk:
-    def test_no_exception(self):
-        _log_reg_stock_chunk("batch", 1, 100, 95, 3, 2)
 
 
 # ── _subscribe_positions_stocks_realtime ────────────────────────────────────────────
@@ -340,17 +283,6 @@ class TestSubscribePositionsStocksRealtime:
             mock_state.master_stocks_cache = {"005930": {"_subscribed": False}}
             await _subscribe_positions_stocks_realtime()
             mock_set.assert_not_called()
-
-
-# ── _subscribe_sector_stocks_0b ─────────────────────────────────────────────────────
-
-class TestSubscribeSectorStocks0b:
-    @pytest.mark.asyncio
-    async def test_delegates(self):
-        with patch("backend.app.services.engine_ws_reg.subscribe_sector_stocks_0b", new_callable=AsyncMock), \
-             patch("backend.app.services.ws_subscribe_control._set_status") as mock_set:
-            await _subscribe_sector_stocks_0b()
-            mock_set.assert_called_once_with(quote=True)
 
 
 # ── subscribe_sector_stocks_0b 한도 적용 로직 (engine_ws_reg 직접 검증) ──────────────

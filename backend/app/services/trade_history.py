@@ -223,15 +223,6 @@ async def _broadcast_full_buy_history(trade_mode: str) -> None:
         logger.warning("[정산] 매수 내역 실시간 화면 전송 실패: %s", e)
 
 
-async def _broadcast_order_filled(fill_data: dict) -> None:
-    """체결 이벤트 발행 -- 거래내역 테이블 즉시 갱신용."""
-    try:
-        from backend.app.web.ws_manager import ws_manager
-        await ws_manager.broadcast("order-filled", fill_data)
-    except Exception as e:
-        logger.warning("[정산] 체결 이벤트 실시간 화면 전송 실패: %s", e)
-
-
 # ── Lifecycle Management (No-op in SQLite architecture) ────────────────────────
 
 def _reset_global_state() -> None:
@@ -296,20 +287,6 @@ async def record_buy(
     await _insert_trade(rec)
     await _broadcast_buy_append(rec)
     return rec
-
-
-async def _calc_avg_buy_price(stk_cd: str) -> int:
-    """매수 이력에서 해당 종목의 가중평균 매입가를 역산. 매수 기록 없으면 0."""
-    async with _history_lock:
-        tot_amt = 0
-        tot_qty = 0
-        for rec in _buy_history:
-            if rec["stk_cd"] == stk_cd:
-                tot_amt += rec["price"] * rec["qty"]
-                tot_qty += rec["qty"]
-        if tot_qty == 0:
-            return 0
-        return round(tot_amt / tot_qty)
 
 
 async def record_sell(
@@ -686,12 +663,3 @@ async def build_positions_from_trades(trade_mode: str) -> dict[str, dict]:
         all_trades.sort(key=lambda r: r["ts"])
         lots = _build_fifo_lots(all_trades, trade_mode)
         return {cd: pos for cd, q in lots.items() if (pos := _position_from_lots(cd, q)) is not None}
-
-
-async def get_earliest_buy_date(stk_cd: str, trade_mode: str) -> str:
-    """해당 종목의 최초 매수일 조회. SSOT: build_positions_from_trades()에서 파생.
-
-    FIFO 기준 잔여 lot 중 가장 오래된 매수일을 반환.
-    """
-    positions = await build_positions_from_trades(trade_mode)
-    return positions.get(stk_cd, {}).get("buy_date", "")
