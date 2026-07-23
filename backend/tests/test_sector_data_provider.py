@@ -111,7 +111,6 @@ class TestGetBuyTargetsSectorStocks:
         mock_stock.sector = "반도체"
         mock_stock.guard_pass = True
         mock_stock.boost_score = 1.5
-        mock_stock.trade_amount_rank = 1
 
         mock_bt = MagicMock()
         mock_bt.stock = mock_stock
@@ -148,7 +147,6 @@ class TestGetBuyTargetsSectorStocks:
         mock_stock.sector = "반도체"
         mock_stock.guard_pass = False
         mock_stock.boost_score = 0
-        mock_stock.trade_amount_rank = 5
 
         mock_bt = MagicMock()
         mock_bt.stock = mock_stock

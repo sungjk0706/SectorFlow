@@ -18,7 +18,6 @@ import {
   applySectorScores,
   stocksToMap,
   rebuildBuyTargetIndex,
-  recalcTradeAmountRank,
   hotStore,
   applyInitialSnapshotHot,
   normalizeStockCode,
@@ -154,7 +153,6 @@ export function bindWSToStore(
         buyTargets = buyTargets === state.buyTargets ? [...buyTargets, ...addedWithRealtime] : [...buyTargets, ...addedWithRealtime]
       }
       if (buyTargets === state.buyTargets) return state
-      recalcTradeAmountRank(buyTargets)
       rebuildBuyTargetIndex(buyTargets)
       return { buyTargets }
     })

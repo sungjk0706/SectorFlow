@@ -94,20 +94,6 @@ export function getPositionIndex(stkCd: string): number | undefined {
   return _positionIndexCache.get(normalizeStockCode(stkCd))
 }
 
-/* ── trade_amount_rank 재계산 (백엔드 buy_filter.py와 동일 로직: 통과 종목만 대상) ── */
-export function recalcTradeAmountRank(targets: SectorStock[]): void {
-  // 차단 종목은 순위에서 제외 (trade_amount_rank = -1)
-  for (const t of targets) {
-    if (!t.guard_pass) {
-      t.trade_amount_rank = -1
-    }
-  }
-  const passSorted = targets.filter(t => t.guard_pass).sort((a, b) => (b.trade_amount ?? 0) - (a.trade_amount ?? 0))
-  for (let i = 0; i < passSorted.length; i++) {
-    passSorted[i].trade_amount_rank = i
-  }
-}
-
 /* ── 실시간 데이터 액션 함수 ── */
 
 /* ── account-update: 계좌·보유종목 갱신 (delta 지원) ── */
@@ -351,33 +337,13 @@ export function applyRealData(item: RealDataEvent): void {
 
       if (!(t.cur_price === price && t.change === change && t.change_rate === rate &&
             t.strength === strength && t.trade_amount === amount)) {
-        const oldRank0 = bt.find(x => x.trade_amount_rank === 0)?.code
         // In-place mutation
         t.cur_price = price;
         t.change = change;
         t.change_rate = rate;
         t.strength = strength;
         t.trade_amount = amount;
-        recalcTradeAmountRank(bt)
-        const newRank0 = bt.find(x => x.trade_amount_rank === 0)?.code
         changed = true;
-        // rank-0가 변경된 경우 기존/신규 rank-0 종목의 셀도 갱신
-        if (oldRank0 !== newRank0) {
-          if (oldRank0 && oldRank0 !== code) {
-            try {
-              window.dispatchEvent(new CustomEvent('real-data-tick', { detail: oldRank0 }))
-            } catch (e) {
-              console.error('[hotStore] dispatchEvent error (real-data-tick):', e)
-            }
-          }
-          if (newRank0 && newRank0 !== code) {
-            try {
-              window.dispatchEvent(new CustomEvent('real-data-tick', { detail: newRank0 }))
-            } catch (e) {
-              console.error('[hotStore] dispatchEvent error (real-data-tick):', e)
-            }
-          }
-        }
       }
     }
   }
@@ -521,7 +487,6 @@ export function applyBuyTargetsUpdate(data: { buy_targets: SectorStock[] }): voi
       && p.high_5d === n.high_5d
   })
   if (!same) {
-    recalcTradeAmountRank(incoming)
     rebuildBuyTargetIndex(incoming)
     hotStore.setState({ buyTargets: incoming })
   }

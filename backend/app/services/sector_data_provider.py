@@ -147,7 +147,6 @@ def _build_target_entry(bt) -> dict:
         "guard_pass": s.guard_pass,
         "reason": bt.reason,
         "boost_score": s.boost_score,
-        "trade_amount_rank": s.trade_amount_rank,
         "high_5d": int(cache_entry.get("high_5d_price", 0) or 0),
         "order_ratio": cache_entry.get("order_ratio"),
         "program_net_buy": cache_entry.get("program_net_buy"),
