@@ -8,6 +8,7 @@
 
 | 날짜 | 세션 | 작업 | 상태 |
 |------|------|------|------|
+| 2026-07-23 | T3-S26 | 전 페이지 패널 padding 8px 통일 (shell 기본값 변경 + sector-ranking 중복 오버라이드 제거) — P23/P24/P10 (프론트엔드) | 완료 |
 | 2026-07-23 | T3-S25 | 업종순위 페이지 가운데·우측 패널 padding 16px→8px (컬럼 너비 확보) — P21/P23 (프론트엔드) | 완료 |
 | 2026-07-23 | T3-S24 | 매수/매도 상태 배지 판정 로직 공통 추출 (computeOrderBlockStatus) — P10/P23/P25 (프론트엔드) | 완료 |
 | 2026-07-23 | T3-S23 | 배지 폰트 위계 조정 + 보유종목 배지 라벨 축약 (P23/P21) (프론트엔드) | 완료 |
@@ -25,6 +26,43 @@
 ---
 
 ## 직전 완료 작업
+
+### T3-S26 전 페이지 패널 padding 8px 통일 — 완료 (2026-07-23) — P23 일관성 + P24 단순성 + P10 SSOT (프론트엔드, frontend-fix)
+
+**세션**: 단일 세션. shell.ts의 패널 기본 padding을 16px → 8px로 변경하여 모든 페이지의 패널 여백을 통일. sector-ranking-page에 남아있던 padding 오버라이드/복원 중복 코드와 `DEFAULT_TRIPLE_*_PADDING` 상수도 함께 제거.
+
+**배경**: T3-S25에서 sector-ranking-page의 가운데·우측 패널 padding을 8px로 축소하면서 다른 페이지(stock-classification, buy-target, sell-position, profit-overview, profit-detail)는 여전히 shell 기본값 16px를 사용해 P23(일관성) 위반 상태. sector-ranking-page는 mount 시 8px 오버라이드 + unmount 시 16px 복원 코드를 가지고 있어 P10(SSOT) 위반(shell 기본값과 중복 관리) + P24(단순성) 위반(페이지마다 오버라이드/복원 중복).
+
+**작업 내용** (2건, 2개 파일):
+1. **`shell.ts` 패널 기본 padding 16px → 8px** — `shell.ts:85,96,99,102`. rightPanel(dual/full/single 데이터 영역) + tripleLeft/Center/Right(triple 3컬럼) 4곳. leftPanel(dual 설정 영역)은 이미 8px이므로 변경 없음.
+2. **`sector-ranking-page.ts` 중복 코드 제거** — `DEFAULT_TRIPLE_LEFT/CENTER/RIGHT_PADDING` 상수 3개(15-17행) + mount 시 padding 오버라이드 3줄(36,41,42행) + unmount 시 padding 복원 3줄(79,81,83행) 제거. flex/width/minWidth 오버라이드는 패널 비율/너비 설정이므로 유지.
+
+**수정 파일**: 2개 (프론트엔드).
+- `frontend/src/layout/shell.ts` (패널 기본 padding 4곳 16px → 8px)
+- `frontend/src/pages/sector-ranking-page.ts` (padding 상수 3개 + 오버라이드 3줄 + 복원 3줄 제거, 총 10줄 감소)
+
+**아키텍처 원칙 부합**:
+- P23 (일관성): 모든 페이지(8개 라우트) 패널 padding 8px 통일. 기존 sector-ranking만 8px, 나머지 16px 불일치 해소.
+- P24 (단순성): 단일 소스(shell.ts) 1곳에서 관리. sector-ranking의 중복 오버라이드/복원 코드 ~10줄 제거. 페이지마다 mount/unmount에 오버라이드+복원 추가하는 대안 대비 코드 단순.
+- P10 (SSOT): padding 진실 소스 shell.ts 1곳. 기존 `DEFAULT_*_PADDING` 상수가 shell 기본값과 중복 관리하던 것 제거.
+- P21 (사용자 투명성): 해당 없음 (여백 시각적 변화만).
+- P25 (격리된 실패): 해당 없음 (CSS 수치 변경).
+
+**영향 범위**: 프론트엔드 2파일. 백엔드/DB/테스트 영향 없음. 자동 적용 페이지 8개: sector-ranking, buy-settings, sell-settings, profit-overview, profit-detail, stock-classification, stock-detail, general-settings. 핵심 매매 로직 아님 → 규칙 0-4 해당 없음. **롤백 아님** — shell 기본값 변경은 신규 통일이지 이전 상태로 회귀가 아님. 단, sector-ranking-page의 오버라이드/복원 코드 제거는 T3-S25에서 추가한 코드 제거에 해당하나, 사용자가 사전조사 보고 시 "sector-ranking의 중복 오버라이드/복원 코드와 DEFAULT_*_PADDING 상수도 함께 제거"로 명시하고 사용자가 "진행해" 승인했으므로 규칙 0-3/0-5 준수.
+
+**UI 기준 화면 변화 (규칙 0-4)**:
+- 모든 페이지의 패널 내부 좌우 여백이 16px → 8px로 감소. 콘텐츠가 더 넓게 표시됨.
+- 업종순위 페이지: 기존과 동일 (이미 8px 적용 중).
+- 매수 후보/보유 종목/수익률 요약/수익률 상세/종목 분류/종목 상세/일반 설정: 좌우 여백이 좁아지고 콘텐츠 영역이 넓어짐.
+- 페이지 전환 시 여백이 일관되게 8px로 유지됨 (이전에는 업종순위만 8px, 나머지 16px로 전환 시 여백 튀는 현상).
+
+**검증**:
+- `npm run build` (tsc -b + vite build) 통과 — 77 모듈 변환, 822ms, 타입 오류 없음 ✓
+- 브라우저 검증: 사용자 확인 대기
+
+**작업 중 발견 문제**: 본 세션에서 해결 완료. 추가 발견 문제 없음.
+
+---
 
 ### T3-S25 업종순위 페이지 가운데·우측 패널 padding 16px→8px — 완료 (2026-07-23) — P21 가독성 + P23 일관성 (프론트엔드, frontend-fix)
 
@@ -58,7 +96,7 @@
 
 **작업 중 발견 문제**:
 1. **업종순위 테이블 "평균거래(억)" 라벨 짤림 현상** — 임계치 수신율 달성 전에는 라벨이 잘리고, 달성 후에는 정상 표시. 조사 결과 아래 "다음 세션 진행 대기" 섹션 참조.
-2. **다른 페이지 패널 padding 8px 통일 검토** — stock-classification, buy-target, sell-position, profit-overview, profit-detail 페이지도 shell 기본값 16px를 사용 중. sector-ranking-page와 동일 패턴으로 8px 통일 검토 필요. 아래 "다음 세션 진행 대기" 섹션 참조.
+2. **다른 페이지 패널 padding 8px 통일 검토** — stock-classification, buy-target, sell-position, profit-overview, profit-detail 페이지도 shell 기본값 16px를 사용 중. sector-ranking-page와 동일 패턴으로 8px 통일 검토 필요. → **T3-S26에서 해결 완료** (shell 기본값 8px로 전 페이지 통일).
 
 ---
 
@@ -487,12 +525,7 @@
 - **정확한 원인 파악에 필요한 추가 검증**: 브라우저 개발자 도구로 임계치 전후의 computed `gridTemplateColumns` px 값과 `scrollContainer.clientWidth` 확인 필요.
 - **수정 방향 후보**: (1) `initFromRows`를 빈 데이터일 때 실행하지 않고 첫 유효 데이터까지 지연, (2) `initFromRows` 재계산 허용 (initialized 플래그 제거 또는 리셋 기능 추가), (3) label 폭에 안전 여백 추가. 어느 방향이든 P21(사용자 투명성) + P24(단순성) + P23(다른 DataTable과 일관성) 검토 필요.
 
-**다른 페이지 패널 padding 8px 통일 검토 (T3-S25 발견)** — T3-S25에서 sector-ranking-page의 가운데·우측 패널 padding을 16px→8px로 축소하여 좌측 패널(8px)과 일치시킴. 다른 페이지도 shell 기본값 16px를 사용 중이므로 동일 패턴으로 8px 통일 검토 필요.
-
-- **대상 페이지**: stock-classification, buy-target, sell-position, profit-overview, profit-detail
-- **현재 상태**: `shell.ts:96,99,102`에서 tripleLeft/tripleCenter/tripleRight 모두 `padding:16px` 기본값. dual 레이아웃의 `leftPanel`은 8px, `rightPanel`은 16px (`shell.ts:80,85`).
-- **검토 조건**: (1) 각 페이지에서 패널 padding을 8px로 오버라이드할지, (2) shell 기본값 자체를 8px로 변경할지 결정 필요. shell 기본값 변경 시 모든 페이지에 일괄 적용되므로 영향 범위 넓지만 P23 일관성 측면에서 단순. (3) unmount 시 기본값 복원 패턴 (sector-ranking-page와 동일).
-- **사전조사 필요**: 각 페이지의 패널 구조(dual vs triple), 기존 padding 오버라이드 여부, 시각적 영향(여백 축소로 인한 레이아웃 변화) 확인.
+**다른 페이지 패널 padding 8px 통일 검토 (T3-S25 발견)** — T3-S25에서 sector-ranking-page의 가운데·우측 패널 padding을 16px→8px로 축소하여 좌측 패널(8px)과 일치시킴. 다른 페이지도 shell 기본값 16px를 사용 중이므로 동일 패턴으로 8px 통일 검토 필요. → **T3-S26에서 해결 완료** (shell 기본값 16px→8px로 전 페이지 통일 + sector-ranking 중복 오버라이드/복원 코드 제거).
 
 **실전모드 수수료 대응 (P18 갭)** — 실전 전환 직전 별도 세션에서 처리 필요. 상세는 "미해결 문제" 섹션 참조.
 
