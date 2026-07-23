@@ -8,6 +8,7 @@
 
 | 날짜 | 세션 | 작업 | 상태 |
 |------|------|------|------|
+| 2026-07-24 | CLEAN-02 | 프로젝트 폴더 추가 용량 정리 — 캐시/PDF/DB백업/worktree 고아브랜치 정리(18MB) + .venv 개발도구 제거(113MB) + 방치 브랜치 삭제 = 총 131MB 절감 (339MB→208MB) — P24/P25 | 완료 |
 | 2026-07-24 | CLEAN-01 | 프로젝트 폴더 용량 정리 — 캐시 22MB 삭제 + DB 백업 파일 9.6MB 정리(최근 1세트만 남김) + 백업 자동 정리 로직 추가(기동 시 최근 1세트만 유지) — P10/P16/P22/P25 | 완료 |
 | 2026-07-24 | GS-S4 | 일반설정 탭 재분류 다단계 워크플로우 4세션 — Step 2 UI 변경 (5→7개 탭, 토글 이동, 상태 배지, 뉴스/화면 탭 신설) — P21/P23/P24 | 완료 (워크플로우 전체 완료) |
 | 2026-07-24 | GS-S3 | 일반설정 탭 재분류 다단계 워크플로우 3세션 — Step 1 파일 분할 (1443줄 → 7개 파일, 순수 이동) — P10/P23/P24 | 완료 |
@@ -25,6 +26,14 @@
 
 ## 직전 완료 작업
 
+### CLEAN-02 프로젝트 폴더 추가 용량 정리 + .venv 경량화 (2026-07-24)
+- **작업**: CLEAN-01 이후 추가 용량 정리 2단계. (1) 1단계(A+D+DB백업+worktree): 화면 빌드 결과(`frontend/dist` 556K) + 빌드 캐시(`tsconfig.tsbuildinfo`) + 테스트 임시(`.pytest_cache`) + Python 캐시 9개(`backend/**/__pycache__`) + `.DS_Store` 3개 삭제. 키움 REST API 문서 PDF(15MB) 삭제. DB 백업 3개(`stocks.db.20260723_234321.backup` 외 2개, 1.2MB) 삭제. 미사용 worktree 2개(`amber-einstein`/`enamel-camshaft`) + 고아 브랜치 2개 + `.git/filter-repo` 잔재 정리. (2) 2단계(.venv 경량화): 실행 파일(`SectorFlow.command`/`main.py`)이 호출하지 않는 개발 도구 제거 — mypy/mypyc(38MB 바이너리 포함)/ruff/pytest 4종/coverage/pygments + mypy/pytest 전용 의존성 7개. `typing_extensions`는 실행 패키지(fastapi/pydantic)가 필요하므로 유지.
+- **수정**: 코드 변경 없음 (삭제 전용). `.venv` 패키지 제거만 수행 (pip uninstall).
+- **안전장치**: (1) 삭제 전 git 추적 여부 전수 확인 — PDF/dist/DB백업/.DS_Store 모두 `.gitignore` 등록 비추적 파일, git 영향 0. (2) worktree는 `git worktree remove --force`로 정상 경로 제거, 브랜치는 main에 이미 흡수됨(929 커밋 앞섬, 브랜치만의 새 커밋 0개) 확인 후 삭제. (3) .venv 패키지 제거 전 의존성 그래프 분석 — 공유 의존성(`typing_extensions`)은 실행 패키지가 필요하므로 유지, mypy/pytest 전용 의존성만 제거. (4) 제거 후 실행 필수 패키지 13개 import 검증 + 백엔드 앱 로드 검증(라우트 35개 정상) 통과.
+- **검증**: `.venv/bin/python -c "import fastapi, uvicorn, pydantic, ..."` 전부 통과 / `from backend.app.web.app import app` 로드 성공(라우트 35개) / 프로그램 실행 영향 없음 확인 / 사용자 사전 압축 백업 완료 상태에서 진행
+- **효과**: 전체 339MB → 208MB (131MB 절감, 39% 감소). `.venv` 197MB → 84MB (113MB 절감). `docs` 15MB → 904KB. `backend` 8.8MB → 6.7MB. 향후 에이전트가 mypy/pytest 실행 시 일시적 재설치 필요 (사용자 직접 조작 불필요).
+- **보류**: C(.git history에서 HANDOVER.md 과거 버전 제거, 10~12MB 절감 가능) — 이미 7월 8일 filter-repo 실행 이력이 있어 복잡도 가중, 위험 대비 이익 작아 보류. `.git` 50MB 이상 시 재검토.
+
 ### CLEAN-01 프로젝트 폴더 용량 정리 + 백업 자동 정리 로직 (2026-07-24)
 - **작업**: (1) 캐시 4종 삭제 — `.mypy_cache`(15M) + `backend/tests/__pycache__`(6.5M) + `.pytest_cache`(316K) + `.ruff_cache`(28K) = 약 22MB. (2) DB 백업 파일 정리 — `backend/data/`의 `.backup` 파일 9세트(27개) 중 최근 1세트(20260723_234321)만 남기고 8세트(24개) 삭제 = 약 9.6MB. (3) 백업 자동 정리 로직 추가 — `backend/app/db/database.py`에 `cleanup_old_backups(keep=1)` 함수 추가, `backend/app/web/app.py` lifespan startup에서 DB 초기화 직후 호출. 매 기동 시 최근 1세트(db/shm/wal 3종)만 남기고 오래된 백업 자동 삭제.
 - **수정**: `backend/app/db/database.py` (+59줄: `_db_dir()` 경로 계산 + `cleanup_old_backups()` 정리 함수), `backend/app/web/app.py` (+7줄: startup에서 호출, P25 격리 try/except), `backend/tests/test_db_backup_cleanup.py` (신규 115줄: 6개 테스트 케이스).
@@ -32,36 +41,7 @@
 - **검증**: pytest 6/6 통과 / ruff 통과 / mypy 통과(수정 파일) / 런타임 기동 확인(239ms, 백업 정리 관련 에러 없음) / 커밋 (해시는 git log 참조)
 - **효과**: `backend/data/` 12MB → 2.4MB. 향후 마이그레이션 백업 누적 방지.
 
-### GS-S4 일반설정 탭 재분류 다단계 워크플로우 4세션 — Step 2 UI 변경 (2026-07-24)
-- **작업**: 일반설정 탭 5→7개 재분류 + 자동매수/매도 토글 이동 + 상태 배지 추가. (1) 시간 설정 탭: 자동매수/매도 시간 행 우측에 토글 통합 (한 행에서 시간+켜짐/꺼짐 조작). (2) 자동매매 탭: 토글 제거 → '켜짐'/'꺼짐' 작은 배지(읽기 전용, 클릭 불가)로 상태 표시 (P21). (3) 뉴스 설정 탭 신설: 호재 키워드 칩 + 가산점 유지 시간. (4) 화면 설정 탭 신설: 실시간 현재가 플래시 효과 토글. (5) syncFromSettings 분할: syncAutoTradeTab(마스터+배지+안전장치) / syncTimeSettingsTab(시간+토글+타임테이블+구독한도) / syncNewsSettingsTab / syncDisplaySettingsTab.
-- **수정**: 신규 2파일(news-settings 81줄, display-settings 38줄) + 수정 4파일(auto-trade 337줄, time-settings 266줄, shared 250줄, main 219줄). 모두 500줄 이하 (P24). 배지 색상 기존 표준 색상 재사용 (켜짐=COLOR.up/upBg, 꺼짐=COLOR.disabled/neutralBg — P23). 매매 로직 자체 변경 없음 (설정 키·저장 로직 동일).
-- **검증**: typecheck exit 0 / build 성공 (1.78s) / vitest 116/116 통과 / 커밋 (해시는 git log 참조)
-- **워크플로우 전체 완료**: Step 1(파일 분할) + Step 2(UI 변경) 완료. 계획서/설계서 삭제 (규칙 11).
-
-### GS-S3 일반설정 탭 재분류 다단계 워크플로우 3세션 — Step 1 파일 분할 (2026-07-24)
-- **작업**: `general-settings.ts` 1443줄 단일 파일 → 7개 파일로 분할 (순수 이동, 동작 변경 없음). 기존 `profit-*` 분할 패턴 준수 (pages/ 폴더 평행 파일, 상태 객체를 함수 인자로 전달 — P23/P10).
-- **수정**: 메인 272줄 + shared 243줄 + time-settings 210줄 + auto-trade 381줄 + telegram 104줄 + account 169줄 + api-settings 195줄 (모두 500줄 이하, P24). 모듈 상태를 `GeneralSettingsState` 객체로 래핑하여 shared에서 export, 각 탭 함수는 `state` 인자로 전달.
-- **검증**: typecheck exit 0 / build 성공 (1.53s) / vitest 116/116 통과 / UI 동작 변화 없음 (순수 이동) / 커밋 77252ec
-
-### UI-01 매수설정 가산점 행 순서 교체 (2026-07-24)
-- **작업**: 매수설정 "매수 가산점 (+N)" 섹션 행 순서를 사용자 요청대로 조정. 기존 5일고가→프로그램순매수→뉴스→호가잔량비 순서를 5일고가→뉴스→프로그램순매수→호가잔량비로 변경. 논리적 그룹(가격 돌파 → 뉴스 이벤트 → 프로그램 거래 → 호가 미시구조) 순서로 직관성 향상.
-- **수정**: `frontend/src/pages/buy-settings.ts` `buildBoostSection` 내 프로그램 순매수 블록과 뉴스 호재 블록의 `appendChild` 순서만 맞바꿈 (12줄 삽입/12줄 삭제). 모듈 상태 참조(`boostProgramToggle`/`boostNewsToggle`)와 `syncBoost` 동기화는 DOM 순서 무관하므로 영향 없음.
-- **검증**: typecheck 통과 / lint 스크립트 프로젝트에 없음 / build 성공 / 코드베이스 영향 범위 단일 파일 단일 함수 / 커밋 d89d4cb
-
-### SKILL-03 backend-fix/frontend-fix/safe-trade 스킬에 problem-solve 섹션 1-1 참조 추가 (2026-07-24)
-- **작업**: SKILL-01에서 신설한 problem-solve 섹션 1-1(사용자 의도 파악 질문 프로세스)을 3개 전문 스킬의 사전조사 섹션에 참조 추가. problem-solve가 기본 질문 프로세스를 정의하고 각 전문 스킬은 그것을 참조하며 영역 특화 질문을 추가하는 역할 분담 구조 확립 (P10 SSOT — 중복 기술 방지).
-- **수정**: 3파일 각 1줄 추가 —
-  - `backend-fix/SKILL.md`: 모호함 감지 시 5개 카테고리 선별 질문, 단일 버그는 경량 적용, 거래 로직 수정 시 safe-trade 거래 특화 질문 추가 적용 안내
-  - `frontend-fix/SKILL.md`: 동일 + 프론트엔드 특성상 "UI 조작 위치/UX"와 "검증 기준(화면 확인 방법)" 카테고리 우선 검토 명시
-  - `safe-trade/SKILL.md`: problem-solve 1-1 기본 카테고리 적용 후 거래 특화 3종(실전/모의 전환, 주문 경로 영향, 리스크 임계값) 추가 적용, 돈 직결이므로 모호성 적어도 임계값/모드 전환은 반드시 확인 명시
-- **검증**: 세 스킬 모두 problem-solve 1-1 참조로 중복 기술 회피(P10) / 각 스킬 영역 특화 질문 유지(P23) / 과잉 질문 금지 원칙 명시(P24) / 코드베이스 영향 없음
-
-### SKILL-02 AGENTS.md 섹션4 다단계 워크플로우 1세션 problem-solve 섹션 1-1 참조 연결 + 디자인 파일 "사용자 결정 항목" 의무화 (2026-07-24)
-- **작업**: SKILL-01에서 신설한 problem-solve 섹션 1-1과 AGENTS.md 섹션4 1세션 사이 끊긴 참조 연결 + 디자인 파일 "사용자 결정 항목" 의무화.
-- **수정**: `AGENTS.md` (1파일, 2줄 변경) — 1세션 step 2 problem-solve 섹션 1-1 적용 명시 / step 3 디자인 파일 "사용자 결정 항목" 섹션 의무화(2세션 태스크 파일로 전달)
-- **검증**: problem-solve 1-1 "질문 결과 기록"과 일치 확인 / 1세션→2세션 "사용자 결정 항목" 연결 확인 / 코드베이스 영향 없음 / 커밋 d3cfc50
-
-> SKILL-01, NWS-S7, NWS-S6, T4-S01, MEM-01, T3-S31/S32 등 이전 완료 작업 상세는 git history 참조 (규칙 7 — 직전 완료 작업 최근 1~2건 유지).
+> GS-S4, GS-S3, UI-01, SKILL-03, SKILL-02, SKILL-01, NWS-S7, NWS-S6, T4-S01, MEM-01, T3-S31/S32 등 이전 완료 작업 상세는 git history 참조 (규칙 7 — 직전 완료 작업 최근 1~2건 유지).
 
 ---
 
