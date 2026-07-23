@@ -146,4 +146,8 @@ async def _load_caches_preboot(settings: dict) -> None:
             logger.warning("[데이터] 데이터동기화중 재시도 실패(무시): %s", _catchup_err, exc_info=True)
 
     except Exception as _cache_err:
-        logger.warning("[데이터] 저장데이터 로드 실패 (무시, 기존 흐름으로 진행): %s", _cache_err)
+        # 치명 오류 (master_stocks_table 없음 포함)를 "무시하고 진행"하지 않음 (P20 폴백 금지).
+        # log-and-rethrow — 호출자(engine_loop.py:34)에서 "감소 모드로 기동" 에러 로그 +
+        # engine-ready 화면 전송(P21) 처리. 빈 캐시로 정상인 척 진행하는 것 차단.
+        logger.error("[데이터] 캐시 선행 로드 치명 오류: %s", _cache_err, exc_info=True)
+        raise

@@ -896,8 +896,16 @@ async def _step5_download_daily_confirmed(
     try:
         confirmed = await _sector.fetch_all_stocks_daily_confirmed(all_codes, qry_dt, interval_sec=0.3, on_progress=_on_progress)
     except Exception as exc:
-        logger.warning("[다운로드] 전종목 조회 실패: %s", exc, exc_info=True)
-        confirmed = {}
+        # 전종목 조회 실패 — 빈 폴백으로 후속 파이프라인 진행 금지 (P20 폴백 금지).
+        # 빈 confirmed로 _run_post_confirmed_pipeline 실행 시 빈 캐시 저장 시도 위험.
+        # 실패를 화면에 알리고 파이프라인 중단 (P21 사용자 투명성).
+        logger.error("[다운로드] 전종목 조회 실패 — 파이프라인 중단: %s", exc, exc_info=True)
+        _broadcast_confirmed_progress(
+            total, total,
+            message=f"❌ 1일봉챠트 시세 다운로드 실패 — 파이프라인 중단 ({total:,}종목)",
+            step=5, failed_count=total,
+        )
+        return 0, total, False
 
     fetched = len(confirmed)
     failed = total - fetched
