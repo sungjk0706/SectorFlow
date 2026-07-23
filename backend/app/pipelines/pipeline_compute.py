@@ -646,28 +646,33 @@ async def _phase2_batch_recompute_loop() -> None:
     while _compute_running:
         await asyncio.sleep(0.2)
 
-        # 수신율 계산 및 전송 (변경 시에만) — per-tick O(n) 계산 제거, 배치 처리
-        if _receive_rate_dirty:
-            await _calculate_receive_rate()
-            await _send_receive_rate(get_current_receive_rate())
-            _receive_rate_dirty = False
-            # 수신 종목 수 증가 시에만 로그 출력 (P21 사용자 투명성)
-            _p2_krx_received = _current_receive_rate["krx"]["received"]
-            _p2_nxt_received = _current_receive_rate["nxt"]["received"]
-            if _p2_krx_received != _prev_p2_krx_received or _p2_nxt_received != _prev_p2_nxt_received:
-                log_receive_rate_progress(
-                    _p2_krx_received, _current_receive_rate["krx"]["total"],
-                    _p2_nxt_received, _current_receive_rate["nxt"]["total"],
-                    0.0, waiting=False,
-                )
-                _prev_p2_krx_received = _p2_krx_received
-                _prev_p2_nxt_received = _p2_nxt_received
+        try:
+            # 수신율 계산 및 전송 (변경 시에만) — per-tick O(n) 계산 제거, 배치 처리
+            if _receive_rate_dirty:
+                await _calculate_receive_rate()
+                await _send_receive_rate(get_current_receive_rate())
+                _receive_rate_dirty = False
+                # 수신 종목 수 증가 시에만 로그 출력 (P21 사용자 투명성)
+                _p2_krx_received = _current_receive_rate["krx"]["received"]
+                _p2_nxt_received = _current_receive_rate["nxt"]["received"]
+                if _p2_krx_received != _prev_p2_krx_received or _p2_nxt_received != _prev_p2_nxt_received:
+                    log_receive_rate_progress(
+                        _p2_krx_received, _current_receive_rate["krx"]["total"],
+                        _p2_nxt_received, _current_receive_rate["nxt"]["total"],
+                        0.0, waiting=False,
+                    )
+                    _prev_p2_krx_received = _p2_krx_received
+                    _prev_p2_nxt_received = _p2_nxt_received
 
-        # sector-scores 전송 (delta — 변경된 업종만)
-        await notify_desktop_sector_scores(force=False)
+            # sector-scores 전송 (delta — 변경된 업종만)
+            await notify_desktop_sector_scores(force=False)
 
-        if has_dirty_sectors():
-            await _flush_sector_recompute_impl()
+            if has_dirty_sectors():
+                await _flush_sector_recompute_impl()
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            logger.error("[연산] Phase2 재계산 루프 오류 (계속): %s", e, exc_info=True)
 
 
 async def _sector_recompute_loop_impl(broadcast_queue: asyncio.Queue) -> None:
@@ -683,4 +688,6 @@ async def _sector_recompute_loop_impl(broadcast_queue: asyncio.Queue) -> None:
         await _phase2_batch_recompute_loop()
     except asyncio.CancelledError:
         logger.info("[연산] 백그라운드 업종 점수 재계산 반복 취소됨")
+    except Exception as e:
+        logger.error("[연산] 업종 점수 재계산 루프 치명 오류: %s", e, exc_info=True)
 

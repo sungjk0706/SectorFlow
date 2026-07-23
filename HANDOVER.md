@@ -6,6 +6,43 @@
 
 ## 직전 완료 작업
 
+### T1-S3 업종 점수 재계산 루프 격리 — 완료 (2026-07-23) — B2-03-01/02 완료
+
+**세션**: 단일 세션. 백엔드 코드 수정 (backend-fix 스킬). 세션 라벨 T1-S3 (`p25_fix_tasks.md`의 T1-S3 항목, 위반 ID B2-03-01 HIGH + B2-03-02 MEDIUM).
+
+**배경**: P25 수정 계획 Tier 1 세션. `pipeline_compute.py`의 업종 점수 재계산 백그라운드 루프가 예외 발생 시 루프 전체 즉시 종료되어 업종 점수 화면 갱신이 영구 중단되는 P25 위반 해결. B2-03-02는 T2-S8에 포함되어 있었으나 동일 파일 인접 함수라 본 세션에서 선제 처리.
+
+**작업 내용**:
+1. **B2-03-01 (HIGH) 완료** — `backend/app/pipelines/pipeline_compute.py` `_phase2_batch_recompute_loop` (638-675줄): while 루프 본문을 try로 감싸고 `except asyncio.CancelledError: break` + `except Exception as e: logger.error("[연산] Phase2 재계산 루프 오류 (계속): %s", e, exc_info=True)` 추가. `await asyncio.sleep(0.2)`는 try 밖 유지 (sleep 취소 시 정상 종료). 0.2초 주기 재계산 중 한 단계 예외 발생해도 루프가 멈추지 않고 다음 주기 계속 실행.
+2. **B2-03-02 (MEDIUM) 완료** — `backend/app/pipelines/pipeline_compute.py` `_sector_recompute_loop_impl` (678-692줄): 기존 `except asyncio.CancelledError` 외에 `except Exception as e: logger.error("[연산] 업종 점수 재계산 루프 치명 오류: %s", e, exc_info=True)` 추가. Phase 1/Phase 2 어느 단계 치명 오류 발생 시 로깅 후 종료 (무한 재시도 위험 방지, P24 단순성).
+
+**수정 파일**: 1개 (+9/-3줄).
+- `backend/app/pipelines/pipeline_compute.py` (+9/-3)
+
+**아키텍처 원칙 부합**:
+- P25 (격리된 실패): 0.2초 재계산 루프에서 단일 예외 시 해당 주기만 건너뛰고 루프 유지 → 업종 점수 화면 갱신 지속 — 해결.
+- P23 (일관성): `_compute_loop_impl` (285-319줄)의 `try/while/try/except CancelledError:break/except Exception:logger.error` 패턴과 동일 구조 — 준수.
+- P20 (폴백 금지): `logger.error(..., exc_info=True)` 명시 로깅 (silent pass 금지) — 준수.
+- P21 (사용자 투명성): 예외 발생 시 로그로 사용자/로그에서 원인 파악 가능 — 준수.
+- P16 (살아있는 경로): 예외 후 루프 계속 실행 → 경로 유지 — 준수.
+- P24 (단순성): 기존 패턴 복제, 신규 추상화 없음 — 준수.
+
+**검증**:
+- `py_compile` 통과.
+- `pytest backend/tests/test_pipeline_compute.py -v --timeout=15` — 93개 테스트 전부 통과 (0.21s).
+- `python -W error::RuntimeWarning main.py` 기동 — RuntimeWarning/Traceback/Error 0건. Phase 1 임계값 대기 → 95.8%/100% 통과 → Phase 2 진입 정상 동작 확인 (기동 후 23초).
+- 잔존 프로세스 0건 확인.
+
+**핵심 결정**:
+- `_sector_recompute_loop_impl`의 `except Exception`에서 재시도 없이 종료: 무한 재시도 위험 방지 (P24 단순성). done_callback의 `t.exception()` 로깅과 중복되지 않음 (except에서 잡으면 exception 전파 안 됨).
+- B2-03-02 선제 처리: T2-S8 태스크에 포함되어 있었으나 동일 파일 인접 함수라 본 세션에서 함께 처리. T2-S8 진행 시 engine_loop.py만 남음 (B1-02-02/03).
+
+**다음 세션 대기 사항**:
+- **주의 — 태스크 라벨 불일치**: 사용자가 "다음 세션: T1-S4 (B1-02-01/04 엔진 루프 격리)"라고 지시했으나, `p25_fix_tasks.md`에서 B1-02-01/04는 **T1-S2** 항목(57-72줄)이고, **T1-S4**는 B3-05-01(`_save_confirmed_cache` 반환값 정정, market_close_pipeline.py) 항목(89-104줄)임. 다음 세션에서 사용자에게 불일치 확인 필요 — T1-S2(engine_loop.py)로 진행할지 T1-S4(market_close_pipeline.py)로 진행할지.
+- Tier 1 잔존: T1-S2 (B1-02-01/04 engine_loop.py), T1-S4 (B3-05-01 market_close_pipeline.py). 세션당 1단계 원칙(규칙 0-1) 준수.
+
+---
+
 ### T1-S6 헤더 칩 순차 갱신 격리 — 완료 (2026-07-23) — A3-07-04 완료
 
 **세션**: 단일 세션. 프론트엔드 코드 수정 (frontend-fix 스킬). 세션 라벨 T1-S6 (`p25_fix_tasks.md`의 T1-S6 항목, 위반 ID A3-07-04).
