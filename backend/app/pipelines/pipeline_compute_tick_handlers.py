@@ -334,3 +334,55 @@ async def _handle_real_pgm_tick(
 
     except Exception as e:
         logger.error("[연산] 프로그램 순매수 틱(PGM) 처리 오류: %s", e, exc_info=True)
+
+
+async def _handle_nws_news(item: dict) -> None:
+    """NWS 실시간 뉴스 처리 — 호재 키워드 매칭 시 news_boost_cache 갱신 (5분 TTL).
+
+    JIF와 동일하게 tick_queue를 우회하여 engine_ws_dispatch → 본 핸들러 직접 호출 (P23).
+    P7: 매 뉴스마다 매수후보 전체 순회 금지 — master_stocks_cache O(1) 조회.
+    P13: 키워드 사전은 메모리 상주 (engine_state.news_keywords_cache).
+    P20: code 빈 뉴스는 폴백 없이 스킵 + debug 로깅.
+    P25: NWS 처리 실패가 다른 틱 처리 블로킹 금지.
+    """
+    import time
+    from backend.app.services import engine_state
+    from backend.app.services.engine_symbol_utils import _base_stk_cd
+    try:
+        title = str(item.get("title", "")).strip()
+        code_raw = str(item.get("code", "")).strip()
+        if not title:
+            return
+        if not code_raw:
+            logger.debug("[연산] 뉴스 제목 수신 (종목코드 없음, 스킵): %s", title[:60])
+            return
+
+        # 복수 종목코드 파싱 (공백/쉼표 구분, 최대 240자)
+        codes = [_base_stk_cd(c.strip()) for c in code_raw.replace(",", " ").split() if c.strip()]
+        codes = [c for c in codes if c]
+        if not codes:
+            logger.debug("[연산] 뉴스 제목 수신 (유효 종목코드 없음, 스킵): %s", title[:60])
+            return
+
+        # 호재 키워드 매칭 (메모리 상주 사전, P13)
+        keywords = engine_state.state.news_keywords_cache
+        if not keywords:
+            return  # 키워드 미설정 시 가산점 부여 안 함 (P20 폴백 금지)
+        matched = any(kw in title for kw in keywords)
+        if not matched:
+            return  # 호재 키워드 미포함 시 스킵 (자연스러운 경로, silent 아님)
+
+        # 매수후보 테이블 내 종목만 가산점 부여 (1차 필터 우회 금지)
+        master_cache = engine_state.state.master_stocks_cache
+        score = engine_state.state.news_boost_score
+        now = time.monotonic()
+        hit_codes = []
+        for code in codes:
+            if code in master_cache:  # O(1) 조회 (P7)
+                engine_state.state.news_boost_cache[code] = (score, now)
+                hit_codes.append(code)
+        if hit_codes:
+            logger.info("[연산] 뉴스 가산점 부여 — 종목=%s 키워드 매칭: %s", hit_codes, title[:60])
+
+    except Exception as e:
+        logger.error("[연산] 뉴스(NWS) 처리 오류: %s", e, exc_info=True)

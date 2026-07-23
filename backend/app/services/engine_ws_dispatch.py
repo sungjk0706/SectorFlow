@@ -172,7 +172,7 @@ async def _handle_real_balance(item: dict, vals: dict) -> None:
 
 
 async def handle_ws_data(data: dict) -> None:
-    """비동기 호출 — LOGIN/REG/JIF 처리. REAL은 tick_queue → pipeline_compute에서 처리."""
+    """비동기 호출 — LOGIN/REG/JIF/NWS 처리. REAL은 tick_queue → pipeline_compute에서 처리."""
     try:
         trnm = data.get("trnm")
         if trnm == "LOGIN":
@@ -182,6 +182,9 @@ async def handle_ws_data(data: dict) -> None:
             return
         elif trnm == "JIF":
             await _handle_jif(data)
+        elif trnm == "NWS":
+            from backend.app.pipelines.pipeline_compute_tick_handlers import _handle_nws_news
+            await _handle_nws_news(data)
     except Exception:
         logger.error("[연결] 메시지 처리 오류 (메시지유형=%s): %s", data.get("trnm"), data, exc_info=True)
 
