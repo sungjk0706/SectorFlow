@@ -1,0 +1,150 @@
+WEBSOCKET [기타] 실시간 시세
+기본정보
+Method
+POST
+운영 도메인
+wss://openapi.ls-sec.co.kr:9443
+모의투자 도메인
+wss://openapi.ls-sec.co.kr:29443
+URL
+/websocket
+Format
+JSON
+Content-Type
+application/json; charset=UTF-8
+Description
+장운영정보 등 기타 정보를 실시간으로 확인할 수 있습니다.
+
+실시간뉴스제목패킷
+NWS
+-
+요청
+Header
+Element
+한글명
+type
+Required
+Length
+Description
+token
+접근토큰
+String
+Y
+1000
+Access Token을 설정하기 위한 Header Parameter
+tr_type
+거래 Type
+String
+Y
+1
+1: 계좌등록, 2: 계좌해제, 3: 실시간 시세 등록, 4: 실시간 시세 해제
+Body
+Element
+한글명
+type
+Required
+Length
+Description
+tr_cd
+거래 CD
+String
+Y
+3
+LS증권 거래코드
+tr_key
+단축코드
+String
+N
+8
+단축코드 6자리 또는 8자리 (단건, 연속), (계좌등록/해제 일 경우 필수값 아님)
+응답
+Header
+Element
+한글명
+type
+Required
+Length
+Description
+tr_cd
+거래 CD
+String
+Y
+3
+LS증권 거래코드
+Body
+Element
+한글명
+type
+Required
+Length
+Description
+date
+날짜
+String
+Y
+8
+
+time
+시간
+String
+Y
+6
+
+id
+뉴스구분자
+String
+Y
+2
+
+realkey
+키값
+String
+Y
+24
+
+title
+제목
+String
+Y
+300
+
+code
+단축종목코드
+String
+Y
+240
+
+bodysize
+BODY길이
+String
+Y
+8
+
+Example
+Request
+{
+ "header": {
+  "token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiJ9.eyJzdWIiOiJ0b2tlbiIsImF1ZCI6IjY2NDVmOGU0LTRkYzEtNDk4ZS05MjEzLTJlYTU5YjNmYjk2MyIsIm5iZiI6MTY4NjY5NjA3MCwiZ3JhbnRfdHlwZSI6IkNsaWVudCIsImlzcyI6InVub2d3IiwiZXhwIjoxNjg2NzgyNDcwLCJpYXQiOjE2ODY2OTYwNzAsImp0aSI6IlBTRU1CcWF5Q1N6QmxnTjZ3SlRkUTV5dkRNdjllWjlNZWJ2UCJ9.0roE4en_J2M3PDFr8xrZK4l0pw4uz5-kIc7I_w-E2gXlfMvIdIYqTn3LH_kr-V_iOhiOU-dLRrRbbavzNHJX3Q",
+  "tr_type": "3"
+ },
+ "body": {
+  "tr_cd": "NWS",
+  "tr_key": "NWS001"
+ }
+}
+Response
+{
+ "header": {
+  "tr_cd": "NWS",
+  "tr_key": "NWS001"
+ },
+ "body": {
+  "date": "20230614",
+  "code": "000000011810",
+  "realkey": "202306140952172704000165",
+  "bodysize": "4841",
+  "time": "095217",
+  "id": "27",
+  "title": "STX, ‘2차전지 핵심’ 수산화리튬 사업 박차…中 영정리튬과 MOU"
+ }
+}
