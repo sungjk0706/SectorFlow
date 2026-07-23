@@ -109,7 +109,8 @@ class EngineState:
         self.timetable_timer_handle: asyncio.TimerHandle | None = None  # 타임테이블 단일 타이머
         self.last_jif_received_at: datetime | None = None               # JIF 헬스체크용
         # ── JIF 카운트다운 override (P10 SSOT — JIF 1순위, 시간표 보조) ──
-        # {label, remaining_sec, expires_at} | None — 만료 시 _get_active_override()가 None 반환 (P20)
+        # {label, remaining_sec, expires_at} | None — 만료 시 _get_active_override()가 None 반환 (P20).
+        # expires_at는 만료 판정 전용 내부 필드 — _get_active_override() 반환 시 제외 (브로드캐스트 payload에 미포함).
         self.krx_countdown_override: dict | None = None
         self.nxt_countdown_override: dict | None = None
         # ── 사전 트리거 멱등성 가드 (안 D 4단계 — 날짜 기반, P22 데이터 정합성) ──

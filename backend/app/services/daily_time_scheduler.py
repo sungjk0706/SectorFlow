@@ -260,9 +260,10 @@ def _get_active_override(market: str) -> dict | None:
     """JIF 카운트다운 override 활성 여부 반환 (만료 시 None — P20 폴백 금지).
 
     market: "krx" | "nxt"
-    반환: {label, remaining_sec, expires_at} | None
+    반환: {label, remaining_sec} | None
       - override 미설정 시 None
       - override 만료(expires_at 경과) 시 None (만료된 값 사용 금지 — P20)
+      - expires_at는 만료 판정 전용 내부 필드 — 반환 payload에서 제외 (datetime JSON 직렬화 오류 차단)
     P10 SSOT: engine_state.state.{krx,nxt}_countdown_override 단일 소스.
     P24 단순성: 순수 함수, 50줄 이하.
     """
@@ -276,7 +277,9 @@ def _get_active_override(market: str) -> dict | None:
     if expires_at is None or _kst_now() >= expires_at:
         # 만료 — None 반환 (P20: 만료된 값 사용 금지)
         return None
-    return override
+    # expires_at는 만료 판정 전용 내부 필드 — 브로드캐스트 payload에서 제외 (P10 SSOT, P24 단순성).
+    # 프론트엔드 타입({label, remaining_sec})과 정합, datetime JSON 직렬화 오류 원천 차단.
+    return {"label": override["label"], "remaining_sec": override["remaining_sec"]}
 
 
 KRX_INACTIVE_PHASES = frozenset({
