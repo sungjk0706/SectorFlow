@@ -1,9 +1,9 @@
 # 태스크 파일: 실시간 뉴스(NWS) 매수 가산점 구현
 
-> **상태**: 3세션 구현 완료 (4~7세션 대기)
-> **작성일**: 2026-07-24 (2세션) / 3세션 구현 2026-07-24
+> **상태**: 4세션 구현 완료 (5~7세션 대기)
+> **작성일**: 2026-07-24 (2세션) / 3~4세션 구현 2026-07-24
 > **설계서**: `docs/architecture_news_boost_design.md`
-> **다단계 워크플로우**: 1세션(설계) ✅ → 2세션(사전조사+태스크) ✅ → 3세션(백엔드 NWS 인프라) ✅ → 4~7세션(구현 대기)
+> **다단계 워크플로우**: 1세션(설계) ✅ → 2세션(사전조사+태스크) ✅ → 3세션(백엔드 NWS 인프라) ✅ → 4세션(백엔드 가산점 로직+설정) ✅ → 5~7세션(구현 대기)
 > **관련 원칙**: P4 · P7 · P10 · P11 · P13 · P15 · P16 · P20 · P21 · P22 · P23 · P24 · P25
 
 ---
@@ -110,11 +110,17 @@ P4 ✅ P7 ✅ P10 ✅ P11 ✅ P13 ✅ P15 ✅ P16 ✅ P20 ✅ P21 ✅ P22 ✅ P2
 
 ---
 
-### 4세션: 백엔드 가산점 로직 + 설정
+### 4세션: 백엔드 가산점 로직 + 설정 ✅
 
 **목표**: `news_boost_cache` → 매수 가산점 반영 + 설정 기본값/검증/동기화
 
-**수정 파일 (6파일)**:
+> **바로잡음 (4세션 구현 중)**: 태스크 파일은 동기화 위치를 `engine_state.py`로 기재했으나,
+> `integrated_system_settings_cache` 갱신은 `engine_config.py`의 `refresh_engine_integrated_system_settings_cache()`에서
+> 단일 소스로 수행 (P10/P17). 따라서 `engine_state.py`가 아닌 `engine_config.py`에 동기화 로직 추가.
+> 추가로 초기 기동 시 `app.py`에서도 `build_engine_settings_dict` 직후 동기화 필요 →
+> `_sync_nws_settings_to_state()` 헬퍼로 추출하여 양쪽에서 호출 (P10 SSOT — 단일 로직, P24 단순성 — 중복 제거).
+
+**수정 파일 (7파일 — engine_state.py 제외, engine_config.py + app.py 추가)**:
 1. `backend/app/domain/buy_filter.py`
    - 라인 51 이후: `calculate_boost_score()`에 4번째 가산점 로직 추가
      - `if boost_news_on: news_score = news_boost_cache.get(stock.code, 0.0); if news_score > 0: score += boost_news_score`
@@ -144,11 +150,15 @@ P4 ✅ P7 ✅ P10 ✅ P11 ✅ P13 ✅ P15 ✅ P16 ✅ P20 ✅ P21 ✅ P22 ✅ P2
      - `news_boost_ttl_sec`: 0~3600 범위
      - `news_keywords`: 2000자 이하
 
-6. `backend/app/services/engine_state.py` (설정 동기화)
-   - 설정 로드 시점 (`backend/app/web/app.py` 라인 88-95 `build_engine_settings_dict()` 호출 후)에 `news_keywords_cache`, `news_boost_score`, `news_boost_ttl_sec`를 `engine_state.state`에 동기화
-   - **주의**: 기존 `integrated_system_settings_cache` 갱신 로직과 동일 위치에서 갱신
+6. `backend/app/services/engine_config.py` (설정 동기화 — 바로잡음)
+   - `_sync_nws_settings_to_state(fresh)` 헬퍼 추가 — `news_keywords_cache`(쉼표 → list), `news_boost_score`, `news_boost_ttl_sec` 동기화
+   - `refresh_engine_integrated_system_settings_cache()` 내 캐시 갱신 후 헬퍼 호출
 
-**검증**: py_compile + ruff + typecheck + 런타임 기동 + 테스트 (기존 69개 통과 유지)
+7. `backend/app/web/app.py` (초기 기동 동기화 — 바로잡음)
+   - `build_engine_settings_dict()` 직후 `_sync_nws_settings_to_state(normalized)` 호출
+   - 초기 기동 시에도 NWS 설정이 메모리에 상주하도록 보장 (P13)
+
+**검증**: py_compile ✅ + ruff ✅ + mypy (신규 에러 없음) ✅ + 런타임 기동 정상 (197ms, RuntimeWarning 없음) ✅ + 잔존 프로세스 0건 ✅ + 기존 테스트 2834개 통과 ✅
 
 ---
 

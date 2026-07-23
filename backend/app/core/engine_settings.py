@@ -247,6 +247,12 @@ def _build_boost_settings(merged: dict) -> dict:
     boost_order_ratio_score = max(float(_v if _v is not None else 1.0), 0)
     _v = merged.get("boost_program_net_buy_score")
     boost_program_net_buy_score = max(float(_v if _v is not None else 1.0), 0)
+    # ── 4. 뉴스 호재 가산점 (NWS) ──
+    _v = merged.get("boost_news_score")
+    boost_news_score = max(float(_v if _v is not None else 1.0), 0)
+    _v = merged.get("news_boost_ttl_sec")
+    news_boost_ttl_sec = int(_v if _v is not None else 300)
+    news_keywords = str(merged.get("news_keywords", "") or "")
     return {
         "boost_high_breakout_on": bool(merged.get("boost_high_breakout_on")),
         "boost_high_breakout_score": boost_high_breakout_score,
@@ -255,6 +261,10 @@ def _build_boost_settings(merged: dict) -> dict:
         "boost_order_ratio_score": boost_order_ratio_score,
         "boost_program_net_buy_on": bool(merged.get("boost_program_net_buy_on")),
         "boost_program_net_buy_score": boost_program_net_buy_score,
+        "boost_news_on": bool(merged.get("boost_news_on")),
+        "boost_news_score": boost_news_score,
+        "news_boost_ttl_sec": news_boost_ttl_sec,
+        "news_keywords": news_keywords,
     }
 
 

@@ -94,6 +94,10 @@ async def lifespan(app: FastAPI):
     state.integrated_system_settings_cache.clear()
     state.integrated_system_settings_cache.update(normalized)
 
+    # NWS 가산점 설정 동기화 (P13 — 메모리 상주, P10 SSOT — 단일 로직)
+    from backend.app.services.engine_config import _sync_nws_settings_to_state
+    _sync_nws_settings_to_state(normalized)
+
 
     from backend.app.services.daily_time_scheduler import start_daily_time_scheduler
     

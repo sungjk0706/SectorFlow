@@ -8,6 +8,7 @@
 
 | 날짜 | 세션 | 작업 | 상태 |
 |------|------|------|------|
+| 2026-07-24 | NWS-S4 | 실시간 뉴스(NWS) 매수 가산점 백엔드 가산점 로직+설정 구현 (다단계 워크플로우 4세션) — P10/P13/P15/P16/P20/P21/P23/P24/P25 | 완료 (5세션 대기) |
 | 2026-07-24 | NWS-S3 | 실시간 뉴스(NWS) 매수 가산점 백엔드 NWS 인프라 구현 (다단계 워크플로우 3세션) — P4/P7/P10/P11/P13/P16/P20/P21/P23/P25 | 완료 (4세션 대기) |
 | 2026-07-24 | NWS-S2 | 실시간 뉴스(NWS) 매수 가산점 심층 사전조사 + 태스크 파일 작성 (다단계 워크플로우 2세션) — P4/P7/P10/P11/P13/P15/P16/P20/P21/P22/P23/P24/P25 | 사전조사+태스크 완료 (구현 대기) |
 | 2026-07-23 | NWS-S1 | 실시간 뉴스(NWS) 매수 가산점 설계 — 디자인 파일 작성 (다단계 워크플로우 1세션) — P4/P7/P10/P11/P13/P15/P16/P20/P21/P22/P23/P24/P25 | 설계 완료 (구현 대기) |
@@ -22,6 +23,13 @@
 ---
 
 ## 직전 완료 작업
+
+### NWS-S4 실시간 뉴스(NWS) 매수 가산점 백엔드 가산점 로직+설정 구현 (2026-07-24)
+- **작업**: 다단계 워크플로우 4세션(백엔드 가산점 로직+설정). `news_boost_cache` → 매수 가산점 반영 + 설정 기본값/검증/동기화. 사전조사 중 태스크 파일의 동기화 위치 오류 발견 — 태스크 파일은 `engine_state.py`에 동기화하라고 기재했으나, `integrated_system_settings_cache` 갱신은 `engine_config.py`의 `refresh_engine_integrated_system_settings_cache()`에서 단일 소스로 수행 (P10/P17). 사용자 승인 하에 `engine_config.py`로 정정. 추가로 초기 기동 시 `app.py`에서도 동기화 필요 → `_sync_nws_settings_to_state()` 헬퍼로 추출하여 양쪽에서 호출 (P10 SSOT — 단일 로직, P24 단순성 — 중복 제거).
+- **수정**: 백엔드 7파일 — `buy_filter.py` (4번째 가산점 로직 + `create_buy_targets` 파라미터 + `build_buy_targets_from_settings` 전달), `sector_data_provider.py` (매수후보 `news_boost` 필드, `get_news_boost_cache()` 한 번 조회 후 전달 P7), `engine_settings.py` (`_build_boost_settings()` NWS 설정 4개), `settings_defaults.py` (NWS 기본값 4개), `settings_store.py` (`_validate_numeric_fields()` NWS 검증 3개), `engine_config.py` (`_sync_nws_settings_to_state()` 헬퍼 + `refresh_engine_integrated_system_settings_cache()` 내 호출), `app.py` (초기 기동 시 헬퍼 호출)
+- **영향 범위**: 매수 가산점 4번째 "📰뉴스 호재" 추가. 기본값 `boost_news_on=False`이므로 사용자가 매수설정에서 켜기 전까지 기존 동작 유지. 거래 로직 변경 없음 (P15). DB 스키마 변경 없음 (설정 키만 `integrated_system_settings` 테이블에 증분 추가).
+- **사용자 결정**: 동기화 위치 `engine_config.py`로 정정 승인
+- **검증**: py_compile 통과 / ruff 통과 / mypy 신규 에러 없음 / 런타임 기동 정상 (197ms, RuntimeWarning 없음) / 잔존 프로세스 0건 / 기존 테스트 2834개 통과 / buy_filter 테스트 54개 통과
 
 ### NWS-S3 실시간 뉴스(NWS) 매수 가산점 백엔드 NWS 인프라 구현 (2026-07-24)
 - **작업**: 다단계 워크플로우 3세션(백엔드 NWS 인프라 구현). NWS 메시지 수신 → `news_boost_cache` 갱신 경로 구축. 사전조사 중 태스크 파일의 디스패치 위치 오류 발견 — NWS는 JIF와 동일하게 tick_queue 우회하여 `engine_ws_dispatch.py` 경로로 처리되나, 태스크 파일은 `pipeline_compute.py`에 분기를 넣도록 잘못 기재 (죽은 코드 P16 위반 발생). 설계서 섹션 3.7.1이 이미 "디스패치 위치 확인 필요"로 명시했으나 태스크 작성 시 확인 누락. 사용자 승인 하에 바로잡아 진행: `pipeline_compute.py` 제외, `engine_ws.py` + `engine_ws_dispatch.py` 추가.
@@ -62,9 +70,9 @@
 ## 다음 세션 진행 대기
 
 **다단계 작업 진행 중 — NWS 실시간 뉴스 매수 가산점 (설계 → 태스크 → 구현)**:
-- **현재 단계**: 3세션(백엔드 NWS 인프라) 완료. 4세션(백엔드 가산점 로직+설정) 대기.
-- **다음 세션 작업**: 4세션 — 백엔드 가산점 로직 + 설정 (buy_filter.py 4번째 가산점 + sector_data_provider.py 매수후보 news_boost 필드 + engine_settings.py NWS 설정 빌드 + settings_defaults.py 기본값 4개 + settings_store.py 검증 + engine_state.py 설정 동기화). `news_boost_cache` → 매수 가산점 반영 + 설정 기본값/검증/동기화.
-- **참조 문서**: `docs/architecture_news_boost_design.md` (설계서) + `docs/plan_news_boost.md` (태스크 파일 — 4~7세션 단계별 상세)
+- **현재 단계**: 4세션(백엔드 가산점 로직+설정) 완료. 5세션(프론트엔드 매수설정+매수후보 테이블) 대기.
+- **다음 세션 작업**: 5세션 — 프론트엔드 매수설정 + 매수후보 테이블 (types/index.ts AppSettings 4개 키 + SectorStock news_boost 필드 / buy-settings.ts 4번째 가산점 행 / buy-target.ts 📰뉴스 컬럼 5일고가 앞). 매수설정 4번째 가산점 토글/점수 UI + 매수후보 📰뉴스 컬럼.
+- **참조 문서**: `docs/architecture_news_boost_design.md` (설계서) + `docs/plan_news_boost.md` (태스크 파일 — 5~7세션 단계별 상세)
 
 **사용자 지시 시 진행 가능 항목 (audit 문서 잔여)**:
 - B-13 보류 5건 (B13-03/04/06/07/08, LOW/INFO 등급) — `docs/architecture_audit_plan.md` 섹션 7 참조
