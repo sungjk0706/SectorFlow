@@ -6,6 +6,45 @@
 
 ## 직전 완료 작업
 
+### P25 전수 조사 세션 2: B1 엔진 코어 루프 조사 완료 (2026-07-23)
+
+**세션**: 단일 세션. 조사 보고서 1파일 갱신. 조사만 수행 (코드 수정 없음).
+
+**배경**: P25 전수 조사 9세션 중 세션 2. B1 엔진 코어 루프 영역(`engine_lifecycle.py`, `engine_loop.py`, `engine_ws_dispatch.py`, `engine_ws.py`, `engine_ws_fill_followup.py`, `engine_ws_parsing.py`, `engine_ws_reg.py` 7개) 조사. 우선순위 2위 — 매 틱·매 이벤트 통과 경로, 한 번 중단 시 자동매매 전체 정지 위험.
+
+**조사 파일**: 7개 메인 파일 (engine_lifecycle 328줄, engine_loop 395줄, engine_ws_dispatch 401줄, engine_ws 271줄, engine_ws_fill_followup 29줄, engine_ws_parsing 218줄, engine_ws_reg 490줄) + 4개 보조 파일 (kiwoom_connector, ls_connector, app.py, engine_service — 호출자 격리 확인용)
+
+**식별 위반 7건**:
+- **B1-02-01 (HIGH)**: `engine_loop.py:304` while 루프 본문 내 `is_ws_subscribe_window` 호출이 try/except 없음. throw 시 외부 try(159)에서 catch → 엔진 루프 전체 종료. 한 번의 오류가 엔진을 영구 정지.
+- **B1-02-02 (MEDIUM)**: `engine_loop.py:374,377` finally 블록 `disconnect_all()`/`disconnect()` 무보호. throw 시 후속 정리 스킵 → 엔진 상태 불일치.
+- **B1-02-03 (MEDIUM)**: `engine_loop.py:387,389` finally 블록 REST 정리 루프에서 `_reset_client()`/`aclose()` 무보호. 한 증권사 실패 시 나머지 스킵.
+- **B1-02-04 (HIGH)**: `engine_loop.py:31` `_cache_and_bootstrap`에서 `_load_caches_preboot` 무보호. throw 시 엔진 루프 종료. 캐시 로드 실패가 엔진 기동 전체 차단.
+- **B1-02-05 (LOW)**: `engine_ws_dispatch.py:149-153` `_handle_real_00` 내 `on_fill_update`/`_on_fill_after_ws` 무보호. 호출자(pipeline_compute) 의존 — 세션 3에서 확인.
+- **B1-02-06 (LOW)**: `engine_ws_dispatch.py:162` `_handle_real_balance` 내 `_apply_balance_realtime` 무보호. 호출자 의존 — 세션 3에서 확인.
+- **B1-02-07 (LOW)**: `engine_lifecycle.py:38` `start_engine` 내 `_refresh_positions_if_dirty` 무보호. 주 호출자(app.py)는 격리 있으나 engine_service.py:93 경유 시 미확인 — 세션 6에서 확인.
+
+**핵심 발견**:
+- `schedule_engine_task` (engine_lifecycle.py:279-309) 중앙 격리 메커니즘은 P25 준수 (done_callback 로깅 + coro.close() 정리). 이 패턴을 사용하는 모든 경로는 격리 확보.
+- 커넥터 recv 루프 (Kiwoom/LS)는 전체 루프 try/except, 비-연결오류 시 로깅+계속. P25 준수, P23 일관.
+- 사전 위반 후보 `engine_loop.py:343-344` create_task 직접 호출은 **위반 아님**으로 확정 — 로컬 이벤트 대기 태스크, asyncio.wait + cancel로 정상 정리.
+- `handle_ws_data` (engine_ws_dispatch.py:165-177)의 try/except가 LOGIN/REG/UNREG/REMOVE/JIF 핸들러를 격리. 양호.
+- 엔진 루프의 취약점은 while 루프 본문 내 개별 무보호 호출(B1-02-01)과 finally 정리 루프의 무보호 호출(B1-02-02, B1-02-03). 이들은 한 예외가 엔진 전체를 종료시키거나 정리를 불완전하게 만듦.
+
+**수정 방향 (참고용, 승인 시 별도 세션)**:
+- B1-02-01: while 루프 본문을 try/except로 감싸고, 예외 시 로깅 + sleep(1) 후 계속. 루프 종료는 engine_stop_event에서만 유도
+- B1-02-02: disconnect_all/disconnect를 try/except로 감싸고, 후속 정리는 항상 실행
+- B1-02-03: _reset_client/aclose를 기존 revoke_token try/except 블록 내로 통합
+- B1-02-04: _load_caches_preboot를 try/except로 감싸고, 실패 시 빈 캐시로 기동 또는 안전한 종료 + 프론트엔드 상태 전송(P21)
+- B1-02-05~07: 세션 3/6에서 호출자 격리 확인 후 결정
+
+**검증**: 조사만 수행 — typecheck/build 불필요. 잔존 프로세스 0건.
+
+**화면 영향**: 없음 (조사 보고서 작성).
+
+**다음 세션 대기 사항**: 세션 3 (B2 파이프라인 연산 루프 조사) 진행 대기. 조사 보고서 `docs/p25_isolated_failure_investigation.md` 섹션 5에 결과 누적 예정. 세션 2에서 식별한 B1-02-05/06(호출자 의존)의 확인이 세션 3에서 pipeline_compute.py 호출부 격리 점검과 함께 수행될 예정.
+
+---
+
 ### P25 전수 조사 세션 1: A1 WS 디스패치 조사 완료 (2026-07-23)
 
 **세션**: 단일 세션. 조사 보고서 1파일 갱신. 조사만 수행 (코드 수정 없음).
@@ -972,6 +1011,17 @@
 
 ## 미해결 문제 (발견 즉시 기록)
 
+### P25 전수 조사 — 세션 2 (B1 엔진 코어 루프) 위반 7건 식별 (2026-07-23)
+- 조사 보고서: `docs/p25_isolated_failure_investigation.md` 섹션 2(매트릭스) + 섹션 4(세션 2 결과) 참조
+- **B1-02-01 (HIGH)**: `engine_loop.py:304` while 루프 본문 내 `is_ws_subscribe_window` 무보호. throw 시 엔진 루프 전체 종료
+- **B1-02-02 (MEDIUM)**: `engine_loop.py:374,377` finally 블록 `disconnect_all()`/`disconnect()` 무보호. throw 시 후속 정리 스킵
+- **B1-02-03 (MEDIUM)**: `engine_loop.py:387,389` finally 블록 REST 정리 루프 `_reset_client()`/`aclose()` 무보호. 한 증권사 실패 시 나머지 스킵
+- **B1-02-04 (HIGH)**: `engine_loop.py:31` `_load_caches_preboot` 무보호. throw 시 엔진 기동 전체 차단
+- **B1-02-05 (LOW)**: `engine_ws_dispatch.py:149-153` `_handle_real_00` 내 `on_fill_update`/`_on_fill_after_ws` 무보호. 호출자 의존 — 세션 3에서 확인
+- **B1-02-06 (LOW)**: `engine_ws_dispatch.py:162` `_handle_real_balance` 내 `_apply_balance_realtime` 무보호. 호출자 의존 — 세션 3에서 확인
+- **B1-02-07 (LOW)**: `engine_lifecycle.py:38` `_refresh_positions_if_dirty` 무보호. 주 호출자는 격리 있으나 engine_service.py:93 경유 시 미확인 — 세션 6에서 확인
+- 수정은 별도 승인 세션에서 진행 (조사는 보고까지만)
+
 ### P25 전수 조사 — 세션 1 (A1 WS 디스패치) 위반 5건 식별 (2026-07-23)
 - 조사 보고서: `docs/p25_isolated_failure_investigation.md` 섹션 2(매트릭스) + 섹션 3(세션 1 결과) 참조
 - **A1-01-01 (CRITICAL)**: `ws.ts:193` `_dispatchMessage` 핸들러별 try/catch 없음. 한 핸들러 throw 시 같은 이벤트 후속 핸들러 미실행 + 예외 상위 전파
@@ -989,15 +1039,18 @@
 
 ## 다음 세션 작업
 
-**잔여 F-06**: 없음 (F06-01/02/03 완료)
+**P25 전수 조사 세션 3 (B2 파이프라인 연산 루프 조사)**:
+- 조사 파일: `pipeline_compute.py`, `pipeline_compute_tick_handlers.py`, `pipeline_gateway.py`
+- 조사 범위:
+  - `pipeline_compute.py:209,214` create_task 직접 호출 (schedule_engine_task 미사용 — P23 위반 후보)
+  - `pipeline_compute.py:247` `while True` 루프 내부 예외 격리
+  - `_compute_loop_impl` / `_sector_recompute_loop_impl` 루프 실패 시 전파 경로
+  - tick_handlers의 틱 핸들러 예외 전파 경로
+  - **세션 2 연계**: B1-02-05/06 (`_handle_real_00`/`_handle_real_balance` 호출부인 pipeline_compute.py:487,492)의 격리 여부 확인
+- 조사 보고서: `docs/p25_isolated_failure_investigation.md` 섹션 5에 결과 누적 예정
+- 조사만 수행 (코드 수정 없음)
 
-**잔여 F-05 (별도 세션 each)**:
-- ~~`profit-overview.ts` 742줄 (500줄 초과) — `renderSectorStockPnl` 146줄 분할 포함~~ → 완료 (F-05-a 세션)
-- ~~`profit-detail.ts` 674줄 (500줄 초과)~~ → 완료 (F-05-b 세션, 4개 파일 분할 166/52/215/326줄)
-
-**잔여 F-05**: 없음 (F-05-a + F-05-b 완료)
-
-**백엔드**: 없음 (accumulated_investment 누락 수정 완료)
+**P25 전수 조사 전체 진행률**: 2/9 세션 완료 (세션 1, 2 완료. 세션 3~9 대기)
 
 **audit 문서에 기록된 잔여 항목 (사용자 지시 시 진행)**:
 - B-13 보류 5건 (B13-03/04/06/07/08, LOW/INFO 등급) — `docs/architecture_audit_plan.md` 섹션 7 참조

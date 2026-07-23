@@ -101,6 +101,13 @@ AGENTS.md 섹션3 규칙 0-1 (세션당 1단계 원칙) 준수.
 | A1-01-03 | A1 WS 디스패치 | `frontend/src/api/ws.ts:172,181` | `_handleBinaryFrame`/`_handleTextFrame` catch 블록이 "디코딩 실패"/"파싱 실패"로 로깅. 실제로는 핸들러 예외일 수도 있어 로그 메시지가 원인을 잘못 표시 | 잘못된 로그로 디버깅 방해. P21(사용자 투명성) — 개발자가 원인 파악 불가. P23(일관성) — 에러 분류 불일치 | MEDIUM | P21, P23 | 세션 1 | 미승인 |
 | A1-01-04 | A1 WS 디스패치 | `frontend/src/binding.ts` (33개 핸들러 전체) | 33개 onEvent 핸들러 중 어느 것도 내부 try/catch 없음. store.ts setState listener 루프는 F-02 fix로 보호되나, (a) 핸들러 본문 로직(destructuring, recalcTradeAmountRank, rebuildBuyTargetIndex, 중첩 property access), (b) setState의 updater 함수(`partial(state)` — store.ts:19), (c) applyXxx 함수 본문은 보호되지 않음. throw 시 A1-01-01/02로 전파 | 고위험 핸들러: `buy-targets-delta`(114-161, 복잡 로직), `sector-scores`(287-310, 중첩 접근), `sector-stocks-delta`(95-112), `circuit_breaker_open`(318-322, showToast). 이들 throw 시 WS 디스패치 단계에서 다른 이벤트까지 손실 | HIGH | P25, P16 | 세션 1 | 미승인 |
 | A1-01-05 | A1 WS 디스패치 | `frontend/src/api/ws.ts:132-136` | `_scheduleReconnect`의 setTimeout 콜백이 `_connect()` 호출 시 try/catch 없음. `_connect` 동기 throw 시 재연결 루프 영구 중단 | `_connect`는 단순 WebSocket 생성으로 동기 throw 확률 낮음. 단, `disconnect()` 내부 오류 시 throw 가능. 발생 시 WS 영구 단절 | LOW | P25 | 세션 1 | 미승인 |
+| B1-02-01 | B1 엔진 코어 루프 | `backend/app/services/engine_loop.py:304` | `run_engine_loop` while 루프 본문 내 `is_ws_subscribe_window(_settings)` 호출이 try/except 없음. throw 시 외부 try(159)에서 catch → 엔진 루프 전체 종료 | 한 번의 `is_ws_subscribe_window` 오류가 엔진 루프를 영구 종료 → 자동매매 전체 정지. WS 구간 감지 루프가 단일 예외로 사망 | HIGH | P25, P7 | 세션 2 | 미승인 |
+| B1-02-02 | B1 엔진 코어 루프 | `backend/app/services/engine_loop.py:374,377` | `run_engine_loop` finally 블록 내 `disconnect_all()`/`disconnect()` 호출에 try/except 없음. throw 시 후속 정리(connector_manager=None, broker_rest_apis.clear(), running=False, broadcast_engine_status()) 스킵 | 엔진 정지 시 커넥터 정리 실패 → 엔진 상태 불일치(running=True 잔존, REST API 미정리). 다음 기동 시 잔존 상태 간섭 | MEDIUM | P25, P22 | 세션 2 | 미승인 |
+| B1-02-03 | B1 엔진 코어 루프 | `backend/app/services/engine_loop.py:387,389` | `run_engine_loop` finally 블록 REST API 정리 루프에서 `_reset_client()`/`aclose()` 호출에 try/except 없음. `revoke_token()`은 try/except(382-385) 있으나 그 다음 호출들이 무보호 | 한 증권사 클라이언트 정리 실패 시 나머지 증권사 정리 스킵 → 일부 REST 클라이언트 미정리(리소스 누수) | MEDIUM | P25 | 세션 2 | 미승인 |
+| B1-02-04 | B1 엔진 코어 루프 | `backend/app/services/engine_loop.py:31` | `_cache_and_bootstrap`에서 `_load_caches_preboot(settings)` 호출에 try/except 없음. throw 시 `run_engine_loop` try(159)에서 catch → 엔진 루프 종료 | 캐시 로드 실패(DB 오류, 파일 오류 등)가 엔진 기동 전체 차단. 엔진 기동 실패 시 자동매매 불가 | HIGH | P25, P16 | 세션 2 | 미승인 |
+| B1-02-05 | B1 엔진 코어 루프 | `backend/app/services/engine_ws_dispatch.py:149-153` | `_handle_real_00` 내 `auto_trade.on_fill_update()`와 `engine_account._on_fill_after_ws()` 호출에 try/except 없음. throw 시 호출자(pipeline_compute.py:487)로 전파 | 주문체결 처리 중 예외 시 호출자로 전파. 호출자(pipeline_compute)의 격리 여부는 세션 3에서 확인. 세션 2 범위에서는 "호출자 의존" | LOW | P25 | 세션 2 | 미승인 |
+| B1-02-06 | B1 엔진 코어 루프 | `backend/app/services/engine_ws_dispatch.py:162` | `_handle_real_balance` 내 `engine_account._apply_balance_realtime()` 호출에 try/except 없음. throw 시 호출자(pipeline_compute.py:492)로 전파 | 잔고 처리 중 예외 시 호출자로 전파. 호출자 격리 여부는 세션 3에서 확인 | LOW | P25 | 세션 2 | 미승인 |
+| B1-02-07 | B1 엔진 코어 루프 | `backend/app/services/engine_lifecycle.py:38` | `start_engine` 내 `dry_run._refresh_positions_if_dirty()` 호출에 try/except 없음. throw 시 start_engine throw | 주 호출자(app.py:123 `_engine_init_background`)는 try/except(122-144)로 격리 → P25 준수. 단, engine_service.py:93 경유 호출 시 해당 함수의 try/except 여부는 세션 6에서 확인 | LOW | P25 | 세션 2 | 미승인 |
 
 ### 등급 정의
 - **CRITICAL**: 한 구성요소 실패가 시스템 전체 중단 유발 (자동매매 정지, 화면 전체 멈춤)
@@ -201,19 +208,163 @@ ws.onmessage (ws.ts:104)
 
 ## 4. 세션 2: B1 엔진 코어 루프 조사
 
-> 상태: 미시작
-> 조사 파일: `engine_lifecycle.py`, `engine_loop.py`, `engine_ws_dispatch.py`, `engine_ws.py`, `engine_ws_fill_followup.py`, `engine_ws_parsing.py`, `engine_ws_reg.py`
+> 상태: 완료 (2026-07-23)
+> 조사 파일: `engine_lifecycle.py` (328줄), `engine_loop.py` (395줄), `engine_ws_dispatch.py` (401줄), `engine_ws.py` (271줄), `engine_ws_fill_followup.py` (29줄), `engine_ws_parsing.py` (218줄), `engine_ws_reg.py` (490줄)
+> 보조 조사 파일: `kiwoom_connector.py` (_recv_loop), `ls_connector.py` (_recv_loop), `app.py` (start_engine 호출자), `engine_service.py` (on_trade_mode_switched 호출자)
 > 조사 범위:
 > - `schedule_engine_task` (engine_lifecycle.py:279-309) 중앙 격리 메커니즘 검증
 > - `engine_loop.py:302` 메인 루프 while 내부 try/except 전파 차단
 > - `engine_loop.py:343-344` create_task 직접 호출 (stop_wait/change_wait) 격리
 > - engine_ws_* 6개 파일의 이벤트 핸들러 예외 전파 경로
+> - 커넥터 recv 루프에서 핸들러 호출 시 예외 격리 (P23 일관성 점검)
 
 ### 4.1 조사 결과
-_작성 예정_
+
+#### 4.1.1 엔진 코어 호출 경로 (정상 시)
+
+```
+app.py lifespan → _engine_init_background (app.py:121, try/except 보호)
+  → start_engine (engine_lifecycle.py:22)
+    → asyncio.create_task(_engine_loop()) (line 30, 엔진 메인 태스크)
+      → _engine_loop (engine_lifecycle.py:48, try/except 보호)
+        → run_engine_loop (engine_loop.py:133)
+          → try (159) {
+              _init_ws_subscribe_state, _cache_and_bootstrap, _get_all_tokens_async, _load_spec
+              → asyncio.gather (208, 3개 병렬)
+              → start_compute_loop (296)
+              → while not engine_stop_event.is_set() (302, 메인 루프)
+                → is_ws_subscribe_window (304) ← 무보호
+                → WS 연결/해제 (308-341, 개별 try/except 보호)
+                → stop_wait/change_wait create_task (343-344, asyncio.wait + cancel)
+            } except CancelledError (353) / except Exception (355)
+          → finally (359) { stop_compute_loop (try/except), disconnect_all (무보호), REST 정리 루프 (부분 보호) }
+
+커넥터 recv 루프:
+_KiwoomSocket._recv_loop (kiwoom_connector.py:95, try/except 전체 루프)
+  → REAL → tick_queue (138, QueueFull try/except)
+  → LOGIN/REG/UNREG/REMOVE → _on_message (133,151)
+    → _on_ws_message (kiwoom_connector.py:376)
+      → _broker_message_handler (engine_ws.py:93)
+        → _handle_ws_data (engine_ws.py:106)
+          → engine_ws_dispatch.handle_ws_data (165, try/except 보호)
+            → _handle_login / _handle_reg / _handle_jif
+
+REAL 틱 처리 (세션 3 범위, 참고):
+tick_queue → pipeline_compute → _handle_real_00 / _handle_real_balance (engine_ws_dispatch.py)
+```
+
+#### 4.1.2 보호 계층 분석 (어디까지 막아주는가)
+
+| 계층 | 위치 | try/except | 보호 대상 | 비고 |
+|------|------|-----------|-----------|------|
+| 엔진 메인 태스크 | `_engine_loop` engine_lifecycle.py:48-56 | O | run_engine_loop 전체 | 양호. 루프 예외 시 로깅 후 종료 |
+| 엔진 루프 진입 | `run_engine_loop` engine_loop.py:159-358 | O (전체) | 루프 본문 전체 | **문제**: while 내 개별 호출이 무보호면 루프 전체 종료 (B1-02-01) |
+| WS 구간 감지 루프 | `while` engine_loop.py:302-351 | X (루프 본문) | is_ws_subscribe_window 호출 | **핵심 위반**: 304줄 throw 시 루프 종료 (B1-02-01) |
+| WS 연결 초기화 | engine_loop.py:308-330 | O (개별) | ConnectorManager 생성/연결 | 양호. 실패 시 connector_manager=None |
+| WS 연결 해제 | engine_loop.py:333-341 | O (개별) | disconnect_all | 양호 |
+| stop_wait/change_wait | engine_loop.py:343-350 | O (asyncio.wait + cancel) | 로컬 대기 태스크 | 양호. pending cancel로 정리 |
+| finally 정리 - compute | engine_loop.py:365-368 | O | stop_compute_loop | 양호 |
+| finally 정리 - 커넥터 | engine_loop.py:374,377 | X | disconnect_all/disconnect | **위반**: throw 시 후속 정리 스킵 (B1-02-02) |
+| finally 정리 - REST 루프 | engine_loop.py:381-389 | 부분 | revoke_token(O) / _reset_client,aclose(X) | **위반**: 한 증권사 실패 시 나머지 스킵 (B1-02-03) |
+| 캐시+부트스트랩 | `_cache_and_bootstrap` engine_loop.py:22-39 | 부분 | broadcast(O) / _load_caches_preboot(X) | **위반**: 캐시 로드 실패 시 엔진 종료 (B1-02-04) |
+| 토큰 발급 | `_get_all_tokens_async` engine_loop.py:42-103 | O (per-broker + gather) | 개별 증권사 토큰 발급 | 양호. gather return_exceptions=True |
+| 브로커 스펙 로드 | `_load_broker_spec_async` engine_loop.py:106-130 | O (전체) | 스펙 로드 | 양호. 실패 시 빈 리스트 |
+| schedule_engine_task | engine_lifecycle.py:279-309 | O (전체) | 코루틴 스케줄 + done_callback | 양호. 중앙 격리 메커니즘 |
+| WS 디스패치 | `handle_ws_data` engine_ws_dispatch.py:165-177 | O (전체) | LOGIN/REG/UNREG/REMOVE/JIF 핸들러 | 양호. 핸들러 예외 시 로깅 |
+| _handle_login | engine_ws_dispatch.py:55-64 | O (REG 트리거) | REG 파이프라인 트리거 | 양호 |
+| _handle_reg | engine_ws_dispatch.py:91-121 | O (try/finally) | REG 응답 처리 | 양호. finally에서 _notify_reg_ack 보장 |
+| _handle_real_00 | engine_ws_dispatch.py:139-155 | 부분 | 902 파싱(O) / on_fill_update, _on_fill_after_ws(X) | **위반**: 자동매매 콜백 무보호 (B1-02-05). 호출자 의존 |
+| _handle_real_balance | engine_ws_dispatch.py:158-162 | X | _apply_balance_realtime | **위반**: 잔고 처리 무보호 (B1-02-06). 호출자 의존 |
+| _notify_krx_cb_telegram | engine_ws_dispatch.py:390-400 | O | 텔레그램 알림 | 양호 |
+| 커넥터 recv 루프 | kiwoom_connector.py:95-172, ls_connector.py:95-164 | O (전체 루프) | recv + 핸들러 호출 | 양호. 비-연결오류 시 로깅+계속. P23 일관성 |
+| _ensure_ws_subscriptions | engine_ws.py:202-215 | O (try/except/finally) | 구독 전송 | 양호 |
+| _run_sector_reg_pipeline | engine_ws.py:218-235 | O (try/except/finally) | REG 파이프라인 | 양호. finally에서 event set 보장 |
+| subscribe_index_realtime | engine_ws_reg.py:333-354 | O | 업종지수 구독 | 양호 |
+| subscribe_account_realtime | engine_ws_reg.py:357-389 | O | 계좌 구독 | 양호 |
+| subscribe_positions_stocks | engine_ws_reg.py:392-432 | 부분 | subscribe_stocks 실패 시 롤백 | 양호. 실패 시 _subscribed 플래그 롤백 |
+| restore_subscriptions | engine_ws_reg.py:439-490 | O (0J/00/04 각각) | 재연결 후 구독 복원 | 양호. 각 단계별 try/except |
+| _unreg_grp | engine_ws_reg.py:201-241 | O (청크별) | REMOVE 전송 | 양호. 청크별 try/except (233-236) |
+| engine_ws_parsing.py | 전체 (218줄) | O (각 파서) | 파싱 함수 | 양호. 순수 함수, try/except 내장 |
+| engine_ws_fill_followup.py | 전체 (29줄) | 해당 없음 | 동기 콜백 래퍼 | 양호. 단순 호출 |
+
+#### 4.1.3 schedule_engine_task 중앙 격리 메커니즘 검증
+
+`schedule_engine_task` (engine_lifecycle.py:279-309)는 엔진 이벤트 루프에 코루틴을 안전하게 스케줄하는 중앙 메커니즘.
+
+**검증 결과 — P25 준수**:
+1. `loop.call_soon_threadsafe(_create_with_callback)` — UI 스레드에서 호출 시 안전 스케줄
+2. `task.add_done_callback(lambda t: logger.warning(...) if t.exception() else None)` — 태스크 실패 시 로깅 (silent 아님, P20 준수)
+3. 스케줄 실패 시 `coro.close()` 정리 — 코루틴 리소스 누수 방지
+4. `coro.close()` 자체도 try/except (296-297, 307-308) — 정리 실패 시에도 로깅
+5. `asyncio.get_running_loop().create_task(coro)` 폴백 경로(299-302)도 동일한 done_callback 적용
+
+**P23 일관성**: `add_done_callback` 패턴이 app.py:142, engine_lifecycle.py:289/301에서 동일 적용. 일관됨.
+
+#### 4.1.4 engine_loop.py:343-344 create_task 직접 호출 분석
+
+사전 위반 후보(1.7절)가 아님. 조사 결과 **위반 아님**:
+- `stop_wait = asyncio.create_task(engine_stop_event.wait())` (343)
+- `change_wait = asyncio.create_task(ws_window_changed_event.wait())` (344)
+- `asyncio.wait([stop_wait, change_wait], return_when=FIRST_COMPLETED)` (345-348)
+- `for p in pending: p.cancel()` (349-350) — pending 태스크 정리
+
+이들은 `schedule_engine_task` 대상이 아님 — 로컬 이벤트 대기 태스크이며 asyncio.wait + cancel로 정상 정리. P25 위반 아님, P23 일관성 위반 아님.
+
+#### 4.1.5 커넥터 recv 루프 P23 일관성 점검
+
+| 커넥터 | _recv_loop | try/except | 비-연결오류 시 | P25 | P23 |
+|--------|-----------|-----------|---------------|-----|-----|
+| Kiwoom | kiwoom_connector.py:95-172 | O (전체 루프) | 로깅+계속 (169-170) | 준수 | — |
+| LS | ls_connector.py:95-164 | O (전체 루프) | 로깅+계속 (160-162) | 준수 | 일관 |
+
+두 커넥터의 recv 루프 패턴 동일 — try/except 전체 루프, 연결 끊김 시 break, 비-연결오류 시 `logger.warning(..., exc_info=True)` + `asyncio.sleep(0.1)` + 계속. P25 준수, P23 일관.
+
+#### 4.1.6 사전 위반 후보(1.7절) 확정 결과
+
+- `engine_loop.py:343-344` create_task 직접 호출 — **위반 아님** (4.1.4 참조)
+- (프론트엔드 후보 1건은 세션 1에서 확정, 백엔드 후보 `pipeline_compute.py:209,214`/`trading.py:477,666`는 세션 3/8에서 조사 예정)
 
 ### 4.2 위반 목록
-_작성 예정_
+
+| ID | 등급 | 파일:줄 | 위반 요약 | 수정 방향 (참고용, 승인 시 별도 세션) |
+|----|------|---------|-----------|---------------------------------------|
+| B1-02-01 | HIGH | engine_loop.py:304 | while 루프 본문 내 `is_ws_subscribe_window` 호출이 무보호. throw 시 엔진 루프 전체 종료 | while 루프 본문을 try/except로 감싸고, 예외 시 `logger.warning(..., exc_info=True)` + `await asyncio.sleep(1)` 후 계속. 루프 종료는 engine_stop_event에서만 유도 |
+| B1-02-02 | MEDIUM | engine_loop.py:374,377 | finally 블록 `disconnect_all()`/`disconnect()` 무보호. throw 시 후속 정리 스킵 | `disconnect_all()`/`disconnect()`를 try/except로 감싸고, 실패 시 `logger.warning(..., exc_info=True)`. 후속 정리(connector_manager=None 등)는 항상 실행 |
+| B1-02-03 | MEDIUM | engine_loop.py:387,389 | finally 블록 REST 정리 루프에서 `_reset_client()`/`aclose()` 무보호. 한 증권사 실패 시 나머지 스킵 | `_reset_client()`/`aclose()`를 기존 `revoke_token()` try/except 블록 내로 통합. 한 증권사 정리 실패 시 로깅 후 다음 증권사 계속 |
+| B1-02-04 | HIGH | engine_loop.py:31 | `_cache_and_bootstrap`에서 `_load_caches_preboot` 무보호. throw 시 엔진 루프 종료 | `_load_caches_preboot`를 try/except로 감싸고, 실패 시 `logger.error(..., exc_info=True)` + 빈 캐시로 기동 허용 또는 안전한 종료. 기동 실패 시 프론트엔드에 상태 전송(P21) |
+| B1-02-05 | LOW | engine_ws_dispatch.py:149-153 | `_handle_real_00` 내 `on_fill_update`/`_on_fill_after_ws` 무보호. 호출자(pipeline_compute) 의존 | 세션 3에서 pipeline_compute 호출부 격리 확인 후 결정. 호출자 격리 있으면 본문 try/catch 선택적, 없으면 본문 try/catch 필수 |
+| B1-02-06 | LOW | engine_ws_dispatch.py:162 | `_handle_real_balance` 내 `_apply_balance_realtime` 무보호. 호출자 의존 | B1-02-05와 동일. 세션 3에서 확인 후 결정 |
+| B1-02-07 | LOW | engine_lifecycle.py:38 | `start_engine` 내 `_refresh_positions_if_dirty` 무보호. 주 호출자(app.py)는 격리 있으나 engine_service.py:93 경유 시 미확인 | 세션 6에서 engine_service.py:90-93 경로 확인 후 결정. 필요 시 `_refresh_positions_if_dirty`를 try/except로 감싸고 실패 시 경고 로그 + 계속 |
+
+### 4.3 교차 원칙 점검 (세션 2 범위)
+
+| 원칙 | 해당 여부 | 비고 |
+|------|-----------|------|
+| P7 (블로킹 금지) | 해당 | B1-02-01: is_ws_subscribe_window throw 시 엔진 루프 중단 = 자동매매 블로킹. 매 루프 반복 호출 경로 |
+| P9 (파이프라인 독립) | 해당 아님 | 엔진 코어 루프는 파이프라인 아님. start_compute_loop 호출은 파이프라인 시작점이나 루프 자체는 코어 |
+| P16 (살아있는 경로) | 해당 | B1-02-04: 캐시 로드 실패 시 엔진 루프 사망 — 경로가 살아있지 않음. schedule_engine_task의 done_callback은 살아있는 경로 유지 |
+| P20 (폴백 금지) | 해당 아님 | 본 세션에서 silent `except: pass` 없음. 모든 catch는 logger.warning/error + exc_info=True. 무보호 호출(B1-02-01~04)은 catch 자체가 없어 P20 대상 아님 |
+| P23 (일관성) | 해당 | schedule_engine_task vs 직접 create_task 혼용 — engine_loop.py:30(엔진 메인), 343-344(로컬 대기)는 schedule_engine_task 불필요. 일관성 유지. 커넥터 recv 루프 패턴 Kiwoom/LS 동일 |
+
+### 4.4 양호 항목 (P25 준수 확인)
+
+- `schedule_engine_task` (engine_lifecycle.py:279-309): 중앙 격리 메커니즘. done_callback 로깅 + coro.close() 정리. **P25 준수**
+- `_engine_loop` (engine_lifecycle.py:48-56): try/except로 run_engine_loop 감쌈. **P25 준수**
+- `handle_ws_data` (engine_ws_dispatch.py:165-177): try/except로 LOGIN/REG/UNREG/REMOVE/JIF 핸들러 격리. **P25 준수**
+- `_handle_login` (engine_ws_dispatch.py:55-64): REG 파이프라인 트리거 try/except. **P25 준수**
+- `_handle_reg` (engine_ws_dispatch.py:91-121): try/finally로 REG 처리 격리. **P25 준수**
+- `_notify_krx_cb_telegram` (engine_ws_dispatch.py:390-400): try/except로 알림 격리. **P25 준수**
+- `_recv_loop` (kiwoom_connector.py:95-172, ls_connector.py:95-164): 전체 루프 try/except, 비-연결오류 시 로깅+계속. **P25 준수, P23 일관**
+- `_broker_message_handler` (engine_ws.py:93-103): handle_ws_data의 try/except가 격리. **P25 준수**
+- `_ensure_ws_subscriptions_for_positions` (engine_ws.py:202-215): try/except/finally. **P25 준수**
+- `_run_sector_reg_pipeline` (engine_ws.py:218-235): try/except/finally. **P25 준수**
+- `subscribe_index_realtime` (engine_ws_reg.py:333-354): try/except. **P25 준수**
+- `subscribe_account_realtime` (engine_ws_reg.py:357-389): try/except. **P25 준수**
+- `restore_subscriptions_after_reconnect` (engine_ws_reg.py:439-490): 0J/00/04 복원 각각 try/except. **P25 준수**
+- `_unreg_grp` (engine_ws_reg.py:201-241): 청크별 try/except (233-236). **P25 준수**
+- `engine_ws_parsing.py` (전체): 순수 파싱 함수, try/except 내장. **P25 준수**
+- `engine_ws_fill_followup.py` (전체): 동기 콜백 래퍼, 단순. **P25 준수**
+- `engine_loop.py:343-344` create_task 직접 호출: 로컬 대기 태스크, asyncio.wait + cancel로 정리. **위반 아님**
 
 ---
 
@@ -357,3 +508,4 @@ _세션 1~8 완료 후 작성_
 |------|------|-----------|
 | 2026-07-23 | (준비) | 본 보고서 생성 (조사 개요, 매트릭스 빈 템플릿, 세션 1~9 기본 구조) |
 | 2026-07-23 | 세션 1 | A1 WS 디스패치 조사 완료. 위반 5건 식별 (A1-01-01~05). 섹션 2 매트릭스 + 섹션 3 결과 작성. CRITICAL 2건, HIGH 1건, MEDIUM 1건, LOW 1건 |
+| 2026-07-23 | 세션 2 | B1 엔진 코어 루프 조사 완료. 위반 7건 식별 (B1-02-01~07). 섹션 2 매트릭스 + 섹션 4 결과 작성. HIGH 2건, MEDIUM 2건, LOW 3건. 사전 위반 후보 engine_loop.py:343-344는 위반 아님으로 확정. schedule_engine_task 중앙 격리 메커니즘 P25 준수 확인. 커넥터 recv 루프 P23 일관성 확인 |
