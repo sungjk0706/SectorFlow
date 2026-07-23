@@ -229,10 +229,13 @@ export function createFixedMode<T extends object>(
         // 새로운 키 추가
         for (const [key, { row, index }] of newKeyMap) {
           if (!oldKeyMap.has(key)) {
-            const newRow = renderDataRow(row as T, index)
-            newRow.dataset.rowKey = key
-            rowCaches.push(newRow)
-            tbody.appendChild(newRow)
+            // P25: 행 단위 격리 — renderDataRow throw 시 해당 행 스킵, 다음 행 계속
+            try {
+              const newRow = renderDataRow(row as T, index)
+              newRow.dataset.rowKey = key
+              rowCaches.push(newRow)
+              tbody.appendChild(newRow)
+            } catch (e) { console.error('[DataTable] row render error', e) }
           }
         }
 
@@ -303,9 +306,19 @@ export function createFixedMode<T extends object>(
           const currentIsGroup = isGroupRow(row)
 
           if (!rowCaches[i]) {
-            const newRow = currentIsGroup ? renderGroupRow(row as GroupRow) : renderDataRow(row as T, i)
-            rowCaches.push(newRow)
-            tbody.appendChild(newRow)
+            // P25: 행 단위 격리 — renderDataRow/renderGroupRow throw 시 인덱스 정렬 유지용 placeholder 추가, 다음 행 계속
+            try {
+              const newRow = currentIsGroup ? renderGroupRow(row as GroupRow) : renderDataRow(row as T, i)
+              rowCaches.push(newRow)
+              tbody.appendChild(newRow)
+            } catch (e) {
+              console.error('[DataTable] row render error', e)
+              const placeholder = document.createElement('tr')
+              placeholder.setAttribute('data-row-type', 'data')
+              placeholder.style.display = 'none'
+              rowCaches.push(placeholder)
+              tbody.appendChild(placeholder)
+            }
             continue
           }
 
@@ -313,9 +326,12 @@ export function createFixedMode<T extends object>(
           rowEl.style.display = ''
 
           if (currentIsGroup !== wasGroupRow(rowEl)) {
-            const newRow = currentIsGroup ? renderGroupRow(row as GroupRow) : renderDataRow(row as T, i)
-            tbody.replaceChild(newRow, rowEl)
-            rowCaches[i] = newRow
+            // P25: 행 단위 격리 — 교체 실패 시 기존 rowEl 유지, 테이블 전체 중단 방지
+            try {
+              const newRow = currentIsGroup ? renderGroupRow(row as GroupRow) : renderDataRow(row as T, i)
+              tbody.replaceChild(newRow, rowEl)
+              rowCaches[i] = newRow
+            } catch (e) { console.error('[DataTable] row render error', e) }
             continue
           }
 
