@@ -766,7 +766,7 @@ SectorSummary (전체 결과)
   - 필터 통과 종목에 `_filtered` 플래그 설정 → `subscribe_sector_stocks_0b()`에서 WS 구독 대상 선정 (보유종목 포함, 설정 가능 한도 `subscribe.max_0b_count` 기본 200)
   - **필터 미통과 종목**: WS 구독 안됨 → 실시간 시세 수신 없음 → 업종 순위 계산 대상 아님 → 아무 처리도 하지 않음
 - **업종 컷오프**: `min_rise_ratio` 미만 업종은 `is_cutoff_passed=False` (매수 대상 제외, rank는 모든 업종에 부여)
-- **개별 종목 가드**: 상승률 과열(`block_rise_pct`), 하락률 과열(`block_fall_pct`), 체결강도 최소값
+- **개별 종목 가드**: 상승률 과열(`block_rise_pct`), 하락률 과열(`block_fall_pct`)
 
 ### 6.4 증분 연산 모드
 
