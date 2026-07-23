@@ -91,17 +91,20 @@ def _coalesce_batch(batch: list) -> list:
 
 async def _handle_real_0j_tick(item: dict, vals: dict) -> None:
     """0J 업종지수 틱 처리 — 저장 없이 즉시 화면에 전송."""
-    upcode = str(item.get("item", "") or "").strip()
-    if not upcode:
-        return
-    jisu = str(vals.get("10", "") or "").strip()
-    change = str(vals.get("11", "") or "").strip()
-    drate = str(vals.get("12", "") or "").strip()
-    sign = str(vals.get("25", "") or "").strip()
-    if not jisu:
-        return
-    from backend.app.services.engine_account_notify import notify_index_data
-    await notify_index_data(upcode, jisu, change, drate, sign)
+    try:
+        upcode = str(item.get("item", "") or "").strip()
+        if not upcode:
+            return
+        jisu = str(vals.get("10", "") or "").strip()
+        change = str(vals.get("11", "") or "").strip()
+        drate = str(vals.get("12", "") or "").strip()
+        sign = str(vals.get("25", "") or "").strip()
+        if not jisu:
+            return
+        from backend.app.services.engine_account_notify import notify_index_data
+        await notify_index_data(upcode, jisu, change, drate, sign)
+    except Exception as e:
+        logger.error("[연산] 업종지수 틱(0J) 처리 오류: %s", e, exc_info=True)
 
 
 def _apply_01_radar_and_receive_rate(

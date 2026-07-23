@@ -521,9 +521,12 @@ async def _handle_real_tick(
         for item in items:
             if not isinstance(item, dict):
                 continue
-            _hit = await _dispatch_real_item(item, broadcast_queue)
-            if _hit:
-                _account_dirty = True
+            try:
+                _hit = await _dispatch_real_item(item, broadcast_queue)
+                if _hit:
+                    _account_dirty = True
+            except Exception as e:
+                logger.error("[연산] 아이템 처리 오류 (계속): %s", e, exc_info=True)
     except Exception as e:
         logger.error("[연산] 실시간 틱 처리 오류: %s", e, exc_info=True)
     return _account_dirty

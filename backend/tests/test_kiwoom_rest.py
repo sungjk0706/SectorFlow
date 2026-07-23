@@ -442,9 +442,25 @@ class TestKiwoomRestRequest:
         with (
             patch.object(api, "_get_client", AsyncMock(return_value=mock_client)),
             patch.object(api, "_reset_client", AsyncMock()),
+            patch("backend.app.core.kiwoom_rest.asyncio.sleep", new_callable=AsyncMock),
         ):
             data = await api._request("ka00001")
             assert data is None
+
+    async def test_exception_retry_then_success(self):
+        """B4-06-02: _request 예외 시 _call_api 패턴대로 재시도 후 성공 검증."""
+        api = _make_kiwoom_rest()
+        api._token_info = _make_token_info()
+        resp_200 = _mock_httpx_response(200, {"ok": True})
+        mock_client = _mock_httpx_client(post_side_effect=[Exception("first err"), resp_200])
+        with (
+            patch.object(api, "_get_client", AsyncMock(return_value=mock_client)),
+            patch.object(api, "_reset_client", AsyncMock()),
+            patch("backend.app.core.kiwoom_rest.asyncio.sleep", new_callable=AsyncMock),
+        ):
+            data = await api._request("ka00001")
+            assert data is not None
+            assert data["ok"] is True
 
     async def test_429_retry_then_success(self):
         api = _make_kiwoom_rest()
