@@ -6,6 +6,52 @@
 
 ## 직전 완료 작업
 
+### T1-S4 엔진 루프 / 기동 캐시 격리 — 완료 (2026-07-23) — B1-02-01/04 완료
+
+**세션**: 단일 세션. 백엔드 코드 수정 (backend-fix 스킬). 세션 라벨 T1-S4 (사용자 지정 라벨 — `p25_fix_tasks.md` 문서상 T1-S2 항목의 내용, 위반 ID B1-02-01 HIGH + B1-02-04 HIGH).
+
+**배경**: P25 수정 계획 Tier 1 세션. `engine_loop.py`의 (1) WS 구간 감지 while 루프 본문이 무보호 상태로 `is_ws_subscribe_window` 호출이 throw 시 엔진 루프 전체 종료되는 P25 위반, (2) `_cache_and_bootstrap`에서 `_load_caches_preboot`가 무보호로 throw 시 `engine-ready` 브로드캐스트 스킵 → 프론트엔드 hang → P21 위반 해결.
+
+**작업 내용**:
+1. **B1-02-01 (HIGH) 완료** — `backend/app/services/engine_loop.py` `run_engine_loop` while 루프 (306-351줄): while 본문(303~341줄)을 `try/except`로 감싸고 `except asyncio.CancelledError: break` + `except Exception as e: logger.error("[연산] WS 구간 감지 루프 오류 (계속): %s", e, exc_info=True)` + `await asyncio.sleep(1)` (hot-spin 방지) 추가. 이벤트 대기(353줄 `asyncio.wait`)는 try 밖 유지. `is_ws_subscribe_window` throw 시 루프 종료 아닌 error 로그 + 1초 대기 후 continue.
+2. **B1-02-04 (HIGH) 완료** — `backend/app/services/engine_loop.py` `_cache_and_bootstrap` (22-43줄): `_load_caches_preboot`를 `try/except`로 감싸고 실패 시 `logger.error("[연산] 캐시 선행 로드 치명 오류 — 감소 모드로 기동", exc_info=True)` + 계속 진행. `engine-ready` 브로드캐스트는 캐시 로드 성공/실패 무관 항상 실행되도록 분리 (P21 사용자 투명성 — 프론트엔드 hang 방지).
+
+**수정 파일**: 2개.
+- `backend/app/services/engine_loop.py` (+22/-18, while 루프 격리 + _cache_and_bootstrap 격리)
+- `backend/tests/test_engine_loop.py` (+54/-14, 테스트 2건 추가)
+
+**테스트 추가**:
+- `test_load_caches_preboot_exception_still_broadcasts`: `_load_caches_preboot` throw 시 `engine-ready` 브로드캐스트 여전히 실행 확인 (B1-02-04, P21).
+- `test_ws_loop_isolates_subscribe_window_exception`: `is_ws_subscribe_window` throw 시 루프 종료 아닌 `logger.error` + continue 확인 (B1-02-01, P25).
+
+**아키텍처 원칙 부합**:
+- P25 (격리된 실패): `is_ws_subscribe_window` 단일 호출 실패가 엔진 루프 전체 중단하지 않고 continue → 엔진 유지 — 해결. `_load_caches_preboot` 실패 시에도 `engine-ready` 브로드캐스트 보장 → 프론트엔드 hang 방지 — 해결.
+- P21 (사용자 투명성): 캐시 로드 실패 시에도 프론트엔드에 엔진 준비 상태 전송 → 사용자가 상태 인지 — 강화.
+- P23 (일관성): while 루프 격리 패턴은 T1-S3에서 적용한 `_phase2_batch_recompute_loop` (`pipeline_compute.py:646-675`)와 동일 — `except asyncio.CancelledError: break` + `except Exception: logger.error(..., exc_info=True)`.
+- P20 (폴백 금지): `logger.error(..., exc_info=True)` 명시 로깅 (silent pass 금지) — 준수.
+- P16 (살아있는 경로): call-site try/except는 내부 except와 중복 우려 있으나, `engine-ready` 브로드캐스트 보장(P21)이라는 실제 효과로 비-dead-code.
+- P24 (단순성): `_cache_and_bootstrap` 18줄 → 25줄 내외, while 루프는 기존 구조 유지 + try/except 1뎁스 추가. 신규 추상화 없음.
+
+**검증**:
+- `py_compile` 통과.
+- `pytest backend/tests/test_engine_loop.py -v --timeout=15` — 40 passed (기존 38 + 신규 2), 0 failed.
+- `python -W error::RuntimeWarning main.py` 기동 — RuntimeWarning/Traceback/Error 0건. WS 연결 완료, 수신율 100% 도달, 모든 구독 정상 (기동 후 30초).
+- 잔존 프로세스 0건 확인.
+
+**도중 발견 및 수정**:
+- `core_queues` 모듈명을 `core_queue`로 오타 입력(제가 도입). 런타임 기동 시 `ModuleNotFoundError: No module named 'backend.app.services.core_queue'` 발견, 즉시 `core_queues`로 수정. 최종 기동에서 정상 동작 확인.
+
+**핵심 결정**:
+- B1-02-01에서 `logger.warning`이 아닌 `logger.error` 사용: 태스크 파일 수정 방향은 `logger.warning`이었으나, 엔진 루프 전체 종료 위험이므로 치명 오류 등급(`error`) 적용. T1-S3의 `_phase2_batch_recompute_loop` 패턴(`logger.error`)과 일관성 유지 (P23).
+- B1-02-04에서 감소 모드 기동 선택 (기동 중단 아님): 캐시 로드 실패 시에도 엔진은 계속 기동하되 `engine-ready` 브로드캐스트로 프론트엔드에 상태 전송. 기동 중단은 T2-S9(B4-06-03)에서 별도 검토.
+
+**다음 세션 대기 사항**:
+- **사용자 확정**: 다음 세션은 **T1-S5 (B3-05-01 DB 저장 실패 처리, market_close_pipeline.py)**. 사용자가 "T1-S5" 라벨을 사용하되 내용은 B3-05-01로 진행하라고 지시.
+- **태스크 라벨 메모**: `p25_fix_tasks.md`에서 B3-05-01은 문서상 **T1-S4** 항목(95-110줄)이고, 문서상 **T1-S5**는 A3-07-01/02(이미 완료) 항목임. 사용자가 "T1-S5" 라벨을 B3-05-01 작업에 부여했으므로, 다음 세션은 문서상 T1-S4 항목의 내용(B3-05-01)을 "T1-S5" 세션 라벨로 진행.
+- **Tier 1 잔존**: B3-05-01 (market_close_pipeline.py, 다음 세션)만 남음. 사용자가 "Tier 1 마지막"으로 확인. 세션당 1단계 원칙(규칙 0-1) 준수.
+
+---
+
 ### T1-S3 업종 점수 재계산 루프 격리 — 완료 (2026-07-23) — B2-03-01/02 완료
 
 **세션**: 단일 세션. 백엔드 코드 수정 (backend-fix 스킬). 세션 라벨 T1-S3 (`p25_fix_tasks.md`의 T1-S3 항목, 위반 ID B2-03-01 HIGH + B2-03-02 MEDIUM).

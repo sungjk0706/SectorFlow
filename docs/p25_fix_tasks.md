@@ -54,7 +54,7 @@
   - [x] 콘솔: `console.error` 출력 확인 (silent 무시 아님) — 코드 상 `console.error('[WS] 핸들러 실행 실패 (event=...)', err)` / `console.error('[WS] binary frame event 디스패치 실패:', err)` 적용
 - **비고**: A1-01-04는 T1-S1에서 제외 후 별도 세션으로 이관 권장. binding.ts 핸들러 본문 격리는 T2-S7(A1-01-03, A2-04-01/02)와 동일 파일군이므로 T2-S7 진행 시 통합 처리 가능.
 
-### T1-S2 — 엔진 루프 / 기동 캐시 격리
+### T1-S2 — 엔진 루프 / 기동 캐시 격리 — 완료 (2026-07-23)
 
 - **대상 위반 ID**: B1-02-01 (HIGH), B1-02-04 (HIGH)
 - **수정 파일**: `backend/app/services/engine_loop.py`
@@ -65,11 +65,12 @@
   - B1-02-01: while 루프 본문 try/except, `except Exception: logger.warning(..., exc_info=True); continue`
   - B1-02-04: `_load_caches_preboot` try/except, 실패 시 `logger.warning(..., exc_info=True)` + 명시적 감소 모드 또는 기동 중단 + 사용자 알림
 - **검증 방법**:
-  - [ ] `pytest tests/` 관련 테스트 통과 (engine_loop 관련)
-  - [ ] `python -W error::RuntimeWarning main.py` 기동 확인 (async await 누락 경고 없음)
-  - [ ] 런타임: 엔진 시작 → WS 구간 감지 → 정상 동작
-  - [ ] 런타임: `is_ws_subscribe_window` 고의 예외 시 루프 종료 아닌 continue 확인
-  - [ ] 로그: `logger.warning(..., exc_info=True)` 스택트레이스 포함 확인
+  - [x] `pytest tests/` 관련 테스트 통과 (engine_loop 관련) — 40 passed (기존 38 + 신규 2)
+  - [x] `python -W error::RuntimeWarning main.py` 기동 확인 (async await 누락 경고 없음) — RuntimeWarning/Traceback/Error 0건
+  - [x] 런타임: 엔진 시작 → WS 구간 감지 → 정상 동작 — WS 연결 완료, 수신율 100% 도달
+  - [x] 런타임: `is_ws_subscribe_window` 고의 예외 시 루프 종료 아닌 continue 확인 — 단위 테스트로 검증
+  - [x] 로그: `logger.error(..., exc_info=True)` 스택트레이스 포함 확인 — `logger.error` 적용 (warning이 아닌 error, 치명 오류 등급 반영)
+- **비고**: 사용자가 "T1-S4" 세션 라벨로 진행 지시. 문서상 T1-S2 항목의 내용(B1-02-01/04)을 "T1-S4" 세션 라벨로 완료. `core_queues` 모듈명 오타(`core_queue`)를 도중 도입하여 런타임 기동 시 발견, 즉시 수정.
 
 ### T1-S3 — Phase2 recompute 루프 격리 — 완료 (2026-07-23)
 
