@@ -233,10 +233,11 @@
   - A3-07-06: 3개 루프 per-item try/catch
   - A3-07-07: 계좌 행 루프 per-row try/catch
 - **검증 방법**:
-  - [ ] `npm run build` 성공
-  - [ ] 브라우저: 수익 분석 / 업종 분류 / 계좌 현황 페이지 렌더링 정상
-  - [ ] 브라우저: 일부 데이터 오류 시 해당 항목만 누락 + 나머지 정상
-  - [ ] P23 일관성: 4개 파일 per-row/per-cell 패턴 일치 확인
+  - [x] `npm run build` 성공 (typecheck + build 통과, 76 modules, 1.95s)
+  - [ ] 브라우저: 수익 분석 / 업종 분류 / 계좌 현황 페이지 렌더링 정상 (사용자 확인 대기)
+  - [ ] 브라우저: 일부 데이터 오류 시 해당 항목만 누락 + 나머지 정상 (사용자 확인 대기)
+  - [x] P23 일관성: 4개 파일 per-row/per-cell 패턴 일치 확인 (data-table.ts:108-115, store.ts:24-29 표준 패턴과 일관)
+- **비고**: A3-07-03 (data-table.ts extractSamples)은 사전조사 결과 이미 적용되어 있었음 (108-115행 try/catch 확인). 본 세션에서는 안 B 적용 — 공식 3건(A3-07-05/06/07) + A3-07-08(buildStatRow, T3-S15 소속이나 T2-S10으로 편입) 총 4개 파일 6개 지점 수정.
 
 ### T2-S11 — fake_fill_event 정합성 격리 (safe-trade 필수)
 

@@ -279,11 +279,16 @@ function updateStagingChipSectors(): void {
   const state = stockClassificationStore.getState()
   const { stockMoves, sectors } = state
   for (const [code, chip] of stagingChipMap) {
-    const stock = getAllStocks().get(code)
-    let sectorName = stockMoves[code] ?? stock?.sector ?? ''
-    if (sectors[sectorName]) sectorName = sectors[sectorName]
-    const sectorSpan = chip.querySelector('.chip-sector')
-    if (sectorSpan) sectorSpan.textContent = sectorName
+    // P25: 칩 단위 격리 — 한 칩 갱신 throw 시 다음 칩 계속 갱신
+    try {
+      const stock = getAllStocks().get(code)
+      let sectorName = stockMoves[code] ?? stock?.sector ?? ''
+      if (sectors[sectorName]) sectorName = sectors[sectorName]
+      const sectorSpan = chip.querySelector('.chip-sector')
+      if (sectorSpan) sectorSpan.textContent = sectorName
+    } catch (e) {
+      console.error('[stock-classification] staging chip sector update error', e)
+    }
   }
 }
 
@@ -298,11 +303,16 @@ function countStocksBySector(): Record<string, number> {
   for (const s of mergedSectors) counts[s] = 0
 
   for (const [, stock] of getAllStocks()) {
-    let sector = stockMoves[stock.code] ?? stock.sector
-    if (sector === undefined || sector === null) sector = '미분류'
-    if (sectors[sector]) sector = sectors[sector]
-    if (sector && counts[sector] !== undefined) counts[sector]++
-    else if (sector) counts[sector] = 1
+    // P25: 종목 단위 격리 — 한 종목 처리 throw 시 다음 종목 계속 카운트
+    try {
+      let sector = stockMoves[stock.code] ?? stock.sector
+      if (sector === undefined || sector === null) sector = '미분류'
+      if (sectors[sector]) sector = sectors[sector]
+      if (sector && counts[sector] !== undefined) counts[sector]++
+      else if (sector) counts[sector] = 1
+    } catch (e) {
+      console.error('[stock-classification] count stock by sector error', e)
+    }
   }
   return counts
 }
@@ -313,10 +323,15 @@ function getStocksForSector(sectorName: string): Array<{ code: string; name: str
   const result: Array<{ code: string; name: string; market_type?: string; nxt_enable?: boolean }> = []
 
   for (const [, stock] of getAllStocks()) {
-    let sector = stockMoves[stock.code] ?? stock.sector
-    if (sector === undefined || sector === null) sector = '미분류'
-    if (sectors[sector]) sector = sectors[sector]
-    if (sector === sectorName) result.push({ code: stock.code, name: stock.name, market_type: stock.market_type, nxt_enable: stock.nxt_enable })
+    // P25: 종목 단위 격리 — 한 종목 처리 throw 시 다음 종목 계속 수집
+    try {
+      let sector = stockMoves[stock.code] ?? stock.sector
+      if (sector === undefined || sector === null) sector = '미분류'
+      if (sectors[sector]) sector = sectors[sector]
+      if (sector === sectorName) result.push({ code: stock.code, name: stock.name, market_type: stock.market_type, nxt_enable: stock.nxt_enable })
+    } catch (e) {
+      console.error('[stock-classification] get stocks for sector error', e)
+    }
   }
   return result.sort((a, b) => a.name.localeCompare(b.name))
 }

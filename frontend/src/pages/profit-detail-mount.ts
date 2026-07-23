@@ -192,23 +192,35 @@ export function buildStatRow(state: ProfitDetailState): HTMLDivElement {
   state.statCardEls = []
 
   for (let i = 0; i < 6; i++) {
-    const stat = document.createElement('div')
-    stat.style.cssText = STAT_STYLE
+    // P25: 카드 단위 격리 — 한 카드 생성 throw 시 다음 카드 계속 렌더링.
+    // statEls/statCardEls push는 인덱스 기반(state.statCountEl = statEls[0] 등)이므로
+    // 실패 시 더미 push로 인덱스 정합성 유지 (P22).
+    try {
+      const stat = document.createElement('div')
+      stat.style.cssText = STAT_STYLE
 
-    const labelEl = document.createElement('span')
-    Object.assign(labelEl.style, { fontSize: FONT_SIZE.section, color: COLOR.tertiary })
-    labelEl.textContent = STAT_LABELS[i]
+      const labelEl = document.createElement('span')
+      Object.assign(labelEl.style, { fontSize: FONT_SIZE.section, color: COLOR.tertiary })
+      labelEl.textContent = STAT_LABELS[i]
 
-    const valEl = document.createElement('span')
-    Object.assign(valEl.style, { fontSize: FONT_SIZE.section, fontWeight: 'normal' })
-    valEl.textContent = '-'
+      const valEl = document.createElement('span')
+      Object.assign(valEl.style, { fontSize: FONT_SIZE.section, fontWeight: 'normal' })
+      valEl.textContent = '-'
 
-    stat.appendChild(labelEl)
-    stat.appendChild(valEl)
-    statRow.appendChild(stat)
+      stat.appendChild(labelEl)
+      stat.appendChild(valEl)
+      statRow.appendChild(stat)
 
-    statEls.push(valEl)
-    state.statCardEls.push(stat)
+      statEls.push(valEl)
+      state.statCardEls.push(stat)
+    } catch (e) {
+      console.error('[profit-detail] stat card build error', e)
+      const dummyVal = document.createElement('span')
+      dummyVal.textContent = '-'
+      statEls.push(dummyVal)
+      const dummyCard = document.createElement('div')
+      state.statCardEls.push(dummyCard)
+    }
   }
 
   state.statCountEl = statEls[0]
