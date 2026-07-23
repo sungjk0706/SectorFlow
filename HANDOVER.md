@@ -8,7 +8,8 @@
 
 | 날짜 | 세션 | 작업 | 상태 |
 |------|------|------|------|
-| 2026-07-24 | CLEAN-04 | 프론트엔드 죽은 `??` 폴백 15개 정리 — `Number(x) ?? 기본값` → `Number(x ?? 기본값)` (NaN 표시 버그 해결, buy-settings 10개 + sell-settings 5개) — P16/P20/P23 | 완료 (2-2/2-3은 다음 세션 대기) |
+| 2026-07-24 | CLEAN-04 | 프론트엔드 죽은 `??` 폴백 15개 정리 — `Number(x) ?? 기본값` → `Number(x ?? 기본값)` (NaN 표시 버그 해결, buy-settings 10개 + sell-settings 5개) — P16/P20/P23 | 완료 |
+| 2026-07-24 | CLEAN-05 | 프론트엔드 죽은 초기 할당 2개 제거 — stock-classification.ts `let dataExists = false` → `let dataExists: boolean` (try/catch 경로에서 초기값 미사용) — P16/P24 | 완료 (2-3은 다음 세션 대기) |
 | 2026-07-24 | CLEAN-03 | 백엔드 죽은 코드 정리 — 사용되지 않는 import/변수/global 선언/함수/메서드/상태속성/모듈/중복 wrapper 제거 (75개 파일, +43/-2520줄) — P16/P24 | 완료 |
 | 2026-07-24 | CLEAN-02 | 프로젝트 폴더 추가 용량 정리 — 캐시/PDF/DB백업/worktree 고아브랜치 정리(18MB) + .venv 개발도구 제거(113MB) + 방치 브랜치 삭제 = 총 131MB 절감 (339MB→208MB) — P24/P25 | 완료 |
 | 2026-07-24 | CLEAN-01 | 프로젝트 폴더 용량 정리 — 캐시 22MB 삭제 + DB 백업 파일 9.6MB 정리(최근 1세트만 남김) + 백업 자동 정리 로직 추가(기동 시 최근 1세트만 유지) — P10/P16/P22/P25 | 완료 |
@@ -28,6 +29,14 @@
 
 ## 직전 완료 작업
 
+### CLEAN-05 프론트엔드 죽은 초기 할당 2개 제거 (2026-07-24)
+- **작업**: CLEAN-04 프론트엔드 정리 2-2. `stock-classification.ts`의 죽은 초기 할당 2개 제거.
+- **문제**: `onTriggerConfirmedDownload`(줄 474)와 `onTrigger5dDownload`(줄 522)의 `let dataExists = false` 초기값이 어떤 실행 경로에서도 사용되지 않는 dead code. try 성공 시 재할당, try 실패 시 catch에서 return → 초기값 false 도달 불가.
+- **수정 (1개 파일, +2/-2줄)**: `let dataExists = false` → `let dataExists: boolean` (초기화 제거, 타입만 명시). TS 제어 흐름 분석이 catch의 return을 인식하여 try 이후 할당 보장 추론.
+- **아키텍처 원칙**: P16 (살아있는 경로 — dead code 제거) / P24 (단순성 — 불필요한 초기화 제거).
+- **검증**: typecheck 통과 / build 성공 (634ms) / 브라우저 확인 — 1일봉 시세 다운로드·5일봉 거래대금/고가 다운로드 버튼 클릭 시 확인 팝업 정상 표시 / 커밋 `d78bfdc`
+- **보류**: 2-3 명명 중복 4개 (COLUMNS/PADDING/initialState/mount-unmount, 의도된 중복 가능성 검토 필요) — 다음 세션에서 진행
+
 ### CLEAN-04 프론트엔드 죽은 `??` 폴백 15개 정리 (2026-07-24)
 - **작업**: CLEAN-03 백엔드 정리에 이은 프론트엔드 정리 2-1. `Number(x) ?? 기본값` 패턴 15개 수정.
 - **문제**: `Number()`는 항상 number 타입 반환하므로 `??` 우항이 dead code (NaN은 nullish가 아님). 동시에 x가 undefined일 때 `Number(undefined)`=NaN이 `setValue()`로 전달되어 화면에 NaN 표시 가능 버그.
@@ -36,7 +45,7 @@
   - `frontend/src/pages/sell-settings.ts` 5개 (줄 51,57,63,64,71)
 - **아키텍처 원칙**: P16 (살아있는 경로 — dead code 제거) / P20 (폴백 금지 — 잘못된 폴백을 정상 경로로 수정) / P23 (일관성 — profit-columns.ts 기존 패턴과 통일).
 - **검증**: typecheck 통과 / build 성공 (636ms) / 브라우저 확인 — 매수·매도 설정 화면 모든 숫자 정상 표시, NaN 없음 / 커밋 `e605149`
-- **보류**: 2-2 죽은 초기 할당 2개 (`stock-classification.ts:474,522` `let dataExists = false`) / 2-3 명명 중복 4개 (COLUMNS/PADDING/initialState/mount-unmount, 의도된 중복 가능성 검토 필요) — 다음 세션에서 진행.
+- **보류**: 2-3 명명 중복 4개 (COLUMNS/PADDING/initialState/mount-unmount, 의도된 중복 가능성 검토 필요) — 다음 세션에서 진행.
 
 ### CLEAN-03 백엔드 죽은 코드 정리 (2026-07-24)
 - **작업**: 연속 개발 과정에서 누적된 백엔드 죽은 코드/중복 코드 정리. 사전 조사 보고서 102개 항목 검증(정확도 99%, 오진단 1건 제외) 후 7단계로 분할 정리.
