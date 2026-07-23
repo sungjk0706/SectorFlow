@@ -146,11 +146,16 @@ async def _handle_real_00(item: dict, vals: dict) -> None:
     except (ValueError, TypeError) as e:
         logger.warning("[매매] %s 파싱 실패 902=%r: %s", raw_cd, vals.get("902"), e)
         unex = 0
-    if engine_state.state.auto_trade:
-        await engine_state.state.auto_trade.on_fill_update(raw_cd, side, unex, engine_state.state.access_token)
+    # P25 격리된 실패: 체결 콜백/잔고 갱신 예외 시에도 지연 측정은 유지하고 함수는 정상 반환.
+    # 호출자(pipeline_compute._dispatch_real_item)의 per-item try/except(B2-03-03)와 다단계 방어.
+    try:
+        if engine_state.state.auto_trade:
+            await engine_state.state.auto_trade.on_fill_update(raw_cd, side, unex, engine_state.state.access_token)
 
-    # [근본해결] 부분 체결(unex > 0) 포함 모든 체결 발생 시 즉시 계좌 상태 반영
-    await engine_account._on_fill_after_ws()
+        # [근본해결] 부분 체결(unex > 0) 포함 모든 체결 발생 시 즉시 계좌 상태 반영
+        await engine_account._on_fill_after_ws()
+    except Exception as e:
+        logger.warning("[매매] 체결 콜백/잔고 갱신 오류 (계속): %s", e, exc_info=True)
 
     _check_realtime_latency(_ts)
 
@@ -159,7 +164,11 @@ async def _handle_real_balance(item: dict, vals: dict) -> None:
     """04/80 잔고 처리 — 실시간 잔고 변동 반영."""
     # REAL 04는 flat 구조 -- FID가 values 안이 아닌 item 루트에 직접 위치
     # item 자체를 vals로 사용 (키움 공식 답변 확인)
-    await engine_account._apply_balance_realtime(item, item)
+    # P25 격리된 실패: 잔고 반영 예외 시 호출자로 전파 차단. 형제 item 처리 유지.
+    try:
+        await engine_account._apply_balance_realtime(item, item)
+    except Exception as e:
+        logger.warning("[계좌] 실시간 잔고 반영 오류 (계속): %s", e, exc_info=True)
 
 
 async def handle_ws_data(data: dict) -> None:

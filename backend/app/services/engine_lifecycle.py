@@ -32,10 +32,14 @@ async def start_engine(user_id: str = "") -> bool:
     # ── 테스트모드: 거래내역 기반 포지션 구축 ──────────────────────────────────
     # 테스트모드는 증권사 서버가 없으므로 trades 테이블(SSOT)에서 포지션 구축.
     # 실전투자 모드는 증권사 서버가 SSOT이므로 별도 대조 불필요.
+    # P25 격리된 실패: 포지션 구축 실패 시에도 엔진 기동은 계속. 호출자(app.py/engine_service)와 다단계 방어.
     if is_test_mode(engine_state.state.integrated_system_settings_cache):
         logger.info("[연산] 테스트모드 - 거래내역 기반 포지션 구축")
         from backend.app.services import dry_run
-        await dry_run._refresh_positions_if_dirty()
+        try:
+            await dry_run._refresh_positions_if_dirty()
+        except Exception as e:
+            logger.warning("[연산] 테스트모드 포지션 구축 실패 — 엔진은 계속 가동: %s", e, exc_info=True)
 
     # ── Pending Settings Changes 적용 ───────────────────────────────────────
     # 엔진 미실행 중 변경된 설정이 있으면 기동 시 반영
