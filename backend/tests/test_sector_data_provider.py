@@ -164,6 +164,66 @@ class TestGetBuyTargetsSectorStocks:
             assert len(result) == 1
             assert result[0]["guard_pass"] is False
 
+    @pytest.mark.asyncio
+    async def test_news_boost_field_included(self):
+        """news_boost 필드가 매수후보 엔트리에 포함되는지 확인 (NWS-S7)."""
+        mock_stock = MagicMock()
+        mock_stock.code = "005930"
+        mock_stock.name = "삼성전자"
+        mock_stock.avg_amt_5d = 50000
+        mock_stock.market_type = "코스피"
+        mock_stock.nxt_enable = True
+        mock_stock.sector = "반도체"
+        mock_stock.guard_pass = True
+        mock_stock.boost_score = 2.5
+
+        mock_bt = MagicMock()
+        mock_bt.stock = mock_stock
+        mock_bt.rank = 1
+        mock_bt.reason = "상승률 상위"
+
+        mock_ss = MagicMock()
+        mock_ss.buy_targets = [mock_bt]
+        mock_ss.blocked_targets = []
+
+        with patch("backend.app.services.engine_state.state") as mock_state, \
+             patch("backend.app.services.engine_radar.get_news_boost_cache", new=MagicMock(return_value={"005930": 1.0})):
+            mock_state.sector_summary_cache = mock_ss
+            mock_state.master_stocks_cache = {"005930": {"cur_price": 70000}}
+            result = await get_buy_targets_sector_stocks()
+            assert len(result) == 1
+            assert result[0]["news_boost"] == 1.0
+
+    @pytest.mark.asyncio
+    async def test_news_boost_zero_when_not_in_cache(self):
+        """news_boost_cache에 없는 종목은 news_boost=0.0 (NWS-S7)."""
+        mock_stock = MagicMock()
+        mock_stock.code = "000660"
+        mock_stock.name = "SK하이닉스"
+        mock_stock.avg_amt_5d = 30000
+        mock_stock.market_type = "코스피"
+        mock_stock.nxt_enable = True
+        mock_stock.sector = "반도체"
+        mock_stock.guard_pass = True
+        mock_stock.boost_score = 0.0
+
+        mock_bt = MagicMock()
+        mock_bt.stock = mock_stock
+        mock_bt.rank = 2
+        mock_bt.reason = "상승률 상위"
+
+        mock_ss = MagicMock()
+        mock_ss.buy_targets = [mock_bt]
+        mock_ss.blocked_targets = []
+
+        with patch("backend.app.services.engine_state.state") as mock_state, \
+             patch("backend.app.services.engine_radar.get_news_boost_cache", new=MagicMock(return_value={})):
+            mock_state.sector_summary_cache = mock_ss
+            mock_state.master_stocks_cache = {"000660": {"cur_price": 120000}}
+            result = await get_buy_targets_sector_stocks()
+            assert len(result) == 1
+            assert result[0]["news_boost"] == 0.0
+
 
 # ── get_all_sector_stocks ───────────────────────────────────────────
 

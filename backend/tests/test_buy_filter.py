@@ -291,6 +291,78 @@ class TestCalculateBoostScore:
         )
         assert score == 3.0
 
+    def test_news_boost_when_in_cache_and_enabled(self):
+        stock = _stock(code="005930")
+        score = calculate_boost_score(
+            stock,
+            high_5d_cache={},
+            orderbook_cache={},
+            program_net_buy_cache={},
+            news_boost_cache={"005930": 1.0},
+            boost_news_on=True,
+            boost_news_score=2.0,
+        )
+        assert score == 2.0
+
+    def test_news_no_boost_when_disabled(self):
+        stock = _stock(code="005930")
+        score = calculate_boost_score(
+            stock,
+            high_5d_cache={},
+            orderbook_cache={},
+            program_net_buy_cache={},
+            news_boost_cache={"005930": 1.0},
+            boost_news_on=False,
+            boost_news_score=2.0,
+        )
+        assert score == 0.0
+
+    def test_news_no_boost_when_cache_empty(self):
+        stock = _stock(code="005930")
+        score = calculate_boost_score(
+            stock,
+            high_5d_cache={},
+            orderbook_cache={},
+            program_net_buy_cache={},
+            news_boost_cache={},
+            boost_news_on=True,
+            boost_news_score=2.0,
+        )
+        assert score == 0.0
+
+    def test_news_no_boost_when_stock_not_in_cache(self):
+        stock = _stock(code="005930")
+        score = calculate_boost_score(
+            stock,
+            high_5d_cache={},
+            orderbook_cache={},
+            program_net_buy_cache={},
+            news_boost_cache={"000660": 1.0},
+            boost_news_on=True,
+            boost_news_score=2.0,
+        )
+        assert score == 0.0
+
+    def test_news_accumulates_with_other_boosts(self):
+        stock = _stock(code="005930", cur_price=75000)
+        score = calculate_boost_score(
+            stock,
+            high_5d_cache={"005930": 70000},
+            orderbook_cache={"005930": (150, 100)},
+            program_net_buy_cache={"005930": 500_000_000},
+            news_boost_cache={"005930": 1.0},
+            boost_high_on=True,
+            boost_high_score=1.0,
+            boost_order_ratio_on=True,
+            boost_order_ratio_pct=20.0,
+            boost_order_ratio_score=1.0,
+            boost_program_net_buy_on=True,
+            boost_program_net_buy_score=1.0,
+            boost_news_on=True,
+            boost_news_score=1.5,
+        )
+        assert score == 4.5
+
     def test_score_never_negative(self):
         stock = _stock(code="005930")
         score = calculate_boost_score(
