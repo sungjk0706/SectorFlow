@@ -22,15 +22,19 @@ logger = logging.getLogger(__name__)
 async def _cache_and_bootstrap(settings: dict) -> None:
     """캐시 선행 로드 → engine-ready WS 전송 → 부트스트랩 순차 실행.
 
-    Cache_Preboot 실패 시 내부 try/except에서 경고 로그 후 계속 진행.
+    Cache_Preboot 실패 시 try/except에서 에러 로그 후 계속 진행 (P25 격리된 실패).
+    engine-ready 브로드캐스트는 캐시 로드 성공/실패 무관 항상 실행 (P21 사용자 투명성).
     Bootstrap은 Cache_Preboot 완료 이후에만 실행 (순차 의존 보존).
     적격종목 캐시 없으면 빈 상태로 초기화하고 상태 플래그 설정.
     """
     # ── 캐시 선행 로드 (WS 구간 안이면 내부에서 시세 0으로 적재) ──
     # _load_caches_preboot 내부에서 모든 기동 로직 완료 (단일 파이프라인)
-    await _load_caches_preboot(settings)
+    try:
+        await _load_caches_preboot(settings)
+    except Exception:
+        logger.error("[연산] 캐시 선행 로드 치명 오류 — 감소 모드로 기동", exc_info=True)
 
-    # 앱준비 완료 여부와 상관없이 engine-ready 전송
+    # 앱준비 완료 여부와 상관없이 engine-ready 전송 (P21 사용자 투명성)
     try:
         from backend.app.web.ws_manager import ws_manager
         await ws_manager.broadcast("engine-ready", {"_v": 1, "ready": True})
@@ -300,45 +304,51 @@ async def run_engine_loop() -> None:
         from backend.app.services.daily_time_scheduler import is_ws_subscribe_window
 
         while not engine_state.state.engine_stop_event.is_set():
-            _settings = engine_state.state.integrated_system_settings_cache
-            _should_connect_ws = await is_ws_subscribe_window(_settings) if engine_state.state.access_token else False
+            try:
+                _settings = engine_state.state.integrated_system_settings_cache
+                _should_connect_ws = await is_ws_subscribe_window(_settings) if engine_state.state.access_token else False
 
-            if _should_connect_ws:
-                if engine_state.state.connector_manager is None:
-                    try:
-                        from backend.app.core.connector_manager import ConnectorManager
-                        from backend.app.services.engine_ws import _broker_message_handler
-                        from backend.app.services.core_queues import get_tick_queue
-                        _mgr = ConnectorManager()
-                        _mgr.set_message_callback(_broker_message_handler)
-                        tick_queue = get_tick_queue()
-                        for connector in _mgr._connectors.values():
-                            if hasattr(connector, 'set_queue_callback'):
-                                connector.set_queue_callback(tick_queue)
-                        logger.info("[연결] 커넥터 큐 콜백 설정 완료 (틱 큐)")
-                        engine_state.state.connector_manager = _mgr
-                        engine_state.state.active_connector = _mgr.get_connector(broker_nm)
-                        await _mgr.connect_all()
-                        if _mgr.is_connected():
-                            logger.info("[연결] 실시간 연결 완료")
-                        else:
-                            logger.warning("[연결] 실시간 연결 실패 — 재연결 루프 기동 중")
-                        await _broadcast_engine_ws()
-                    except Exception as e:
-                        logger.error("[연결] 실시간 연결 초기화 실패: %s", e, exc_info=True)
-                        engine_state.state.connector_manager = None
-                        engine_state.state.active_connector = None
-            else:
-                if engine_state.state.connector_manager is not None:
-                    try:
-                        if hasattr(engine_state.state.connector_manager, 'disconnect_all'):
-                            await engine_state.state.connector_manager.disconnect_all()
-                        engine_state.state.connector_manager = None
-                        engine_state.state.active_connector = None
-                        logger.info("[연결] 실시간 연결 해제 완료")
-                        await _broadcast_engine_ws()
-                    except Exception as e:
-                        logger.error("[연결] 실시간 연결 해제 실패: %s", e, exc_info=True)
+                if _should_connect_ws:
+                    if engine_state.state.connector_manager is None:
+                        try:
+                            from backend.app.core.connector_manager import ConnectorManager
+                            from backend.app.services.engine_ws import _broker_message_handler
+                            from backend.app.services.core_queues import get_tick_queue
+                            _mgr = ConnectorManager()
+                            _mgr.set_message_callback(_broker_message_handler)
+                            tick_queue = get_tick_queue()
+                            for connector in _mgr._connectors.values():
+                                if hasattr(connector, 'set_queue_callback'):
+                                    connector.set_queue_callback(tick_queue)
+                            logger.info("[연결] 커넥터 큐 콜백 설정 완료 (틱 큐)")
+                            engine_state.state.connector_manager = _mgr
+                            engine_state.state.active_connector = _mgr.get_connector(broker_nm)
+                            await _mgr.connect_all()
+                            if _mgr.is_connected():
+                                logger.info("[연결] 실시간 연결 완료")
+                            else:
+                                logger.warning("[연결] 실시간 연결 실패 — 재연결 루프 기동 중")
+                            await _broadcast_engine_ws()
+                        except Exception as e:
+                            logger.error("[연결] 실시간 연결 초기화 실패: %s", e, exc_info=True)
+                            engine_state.state.connector_manager = None
+                            engine_state.state.active_connector = None
+                else:
+                    if engine_state.state.connector_manager is not None:
+                        try:
+                            if hasattr(engine_state.state.connector_manager, 'disconnect_all'):
+                                await engine_state.state.connector_manager.disconnect_all()
+                            engine_state.state.connector_manager = None
+                            engine_state.state.active_connector = None
+                            logger.info("[연결] 실시간 연결 해제 완료")
+                            await _broadcast_engine_ws()
+                        except Exception as e:
+                            logger.error("[연결] 실시간 연결 해제 실패: %s", e, exc_info=True)
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error("[연산] WS 구간 감지 루프 오류 (계속): %s", e, exc_info=True)
+                await asyncio.sleep(1)  # persistent 오류 시 hot-spin 방지
 
             stop_wait = asyncio.create_task(engine_state.state.engine_stop_event.wait())
             change_wait = asyncio.create_task(engine_state.state.ws_window_changed_event.wait())
