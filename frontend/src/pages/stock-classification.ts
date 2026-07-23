@@ -471,7 +471,7 @@ async function onTriggerConfirmedDownload(e: MouseEvent): Promise<void> {
   }
 
   // 당일 데이터 존재 여부 사전 확인 (P21 사용자 투명성)
-  let dataExists = false
+  let dataExists: boolean
   try {
     const check = await api.get<{ confirmed_exists: boolean; '5d_exists': boolean }>(
       '/api/stock-classification/download-data-exists',
@@ -519,7 +519,7 @@ async function onTrigger5dDownload(e: MouseEvent): Promise<void> {
   }
 
   // 당일 데이터 존재 여부 사전 확인 (P21 사용자 투명성)
-  let dataExists = false
+  let dataExists: boolean
   try {
     const check = await api.get<{ confirmed_exists: boolean; '5d_exists': boolean }>(
       '/api/stock-classification/download-data-exists',
