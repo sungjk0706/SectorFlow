@@ -7,7 +7,6 @@
 
 import { COLOR, FONT_SIZE, setDisabled } from './ui-styles'
 import { createSettingRow } from './setting-row'
-import { createInfoTooltip } from './info-tooltip'
 
 /* ── ON/OFF 토글 버튼 ──────────────────────────────────────── */
 export function createToggleBtn(options: {
@@ -141,7 +140,7 @@ export function createRadioGroup(options: {
 
 /* ── 토글 + 라벨 + 컨트롤 컴포지션 행 ─────────────────────── */
 // labelSubText(라벨 하단) → rangeText(입력란 좌측)로 통일 (INPUT-VAL-S2, P23 일관성)
-// infoText(라벨 우측 ⓘ 툴팁) 추가 — 전부 툴팁 통일 방식 (P23 일관성, P21 투명성)
+// infoText(입력란 좌측 ⓘ 툴팁) 추가 — 전부 툴팁 통일 방식 (P23 일관성, P21 투명성)
 export function createToggleLabelControlsRow(options: {
   labelText: string | string[]
   rangeText?: string
@@ -175,7 +174,7 @@ export function createToggleLabelControlsRow(options: {
   labelWrap.style.cssText = 'display:flex;align-items:center;gap:8px;'
   labelWrap.appendChild(toggle.el)
   const labelBox = document.createElement('span')
-  labelBox.style.cssText = 'display:flex;flex-direction:column;line-height:1.2;'
+  labelBox.style.cssText = 'display:flex;flex-direction:column;'
   const labelLines = Array.isArray(options.labelText) ? options.labelText : [options.labelText]
   for (const t of labelLines) {
     const label = document.createElement('span')
@@ -183,10 +182,6 @@ export function createToggleLabelControlsRow(options: {
     labelBox.appendChild(label)
   }
   labelWrap.appendChild(labelBox)
-  // infoText: 라벨 우측에 ⓘ 툴팁 배치 (전부 툴팁 통일 — P23 일관성)
-  if (options.infoText) {
-    labelWrap.appendChild(createInfoTooltip(options.infoText))
-  }
 
   if (options.rangeText) {
     const rangeSpan = document.createElement('span')
@@ -195,12 +190,17 @@ export function createToggleLabelControlsRow(options: {
     controls.appendChild(rangeSpan)
   }
   controls.appendChild(options.controlsChild)
+
   const initDisabled = options.initialDisabled ?? !options.toggleOn
   setDisabled(controls, initDisabled)
   if (options.extraDisableTargets) {
     for (const t of options.extraDisableTargets) setDisabled(t, initDisabled)
   }
 
-  const el = createSettingRow(labelWrap, controls, options.rowStyle ? { style: options.rowStyle } : undefined)
+  // infoText: createSettingRow에서 입력란 좌측에 ⓘ 툴팁 배치 — 우측 고정폭으로 정렬 통일
+  const el = createSettingRow(labelWrap, controls, {
+    infoText: options.infoText,
+    style: options.rowStyle,
+  })
   return { el, toggle, controls }
 }

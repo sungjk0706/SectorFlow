@@ -110,7 +110,7 @@ export function createSpinButtons(input: HTMLInputElement, onUp: () => void, onD
 
 
 /* ── 설정 행: 레이블 왼쪽 — 입력란 오른쪽 (한 줄) ──────────── */
-// rangeText(입력란 좌측 안내) + infoText(라벨 우측 ⓘ 툴팁) 옵션.
+// rangeText(입력란 좌측 안내) + infoText(입력란 좌측 ⓘ 툴팁) 옵션.
 // 전부 툴팁 통일 방식에서는 infoText 사용, rangeText는 점진적 마이그레이션 위해 유지.
 export function createSettingRow(label: string | HTMLElement, child: HTMLElement, opts?: { disabled?: boolean; style?: Partial<CSSStyleDeclaration>; rangeText?: string; infoText?: string }): HTMLElement {
   const div = document.createElement('div')
@@ -133,19 +133,29 @@ export function createSettingRow(label: string | HTMLElement, child: HTMLElement
   } else {
     labelSpan.appendChild(label)
   }
-  // infoText: 라벨 우측에 ⓘ 툴팁 배치 (전부 툴팁 통일 — P23 일관성)
-  if (opts?.infoText) {
-    const labelWrap = document.createElement('span')
-    Object.assign(labelWrap.style, { display: 'inline-flex', alignItems: 'center' })
-    labelWrap.appendChild(labelSpan)
-    labelWrap.appendChild(createInfoTooltip(opts.infoText))
-    div.appendChild(labelWrap)
-  } else {
-    div.appendChild(labelSpan)
-  }
+  div.appendChild(labelSpan)
 
-  if (opts?.rangeText) {
-    const rightWrap = document.createElement('span')
+  // infoText: 입력란 좌측에 ⓘ 툴팁 배치 — 모든 페이지 동일 위치·간격 통일 (P23 일관성)
+  // 우측 영역 고정폭으로 아이콘과 입력란 왼쪽을 세로 일직선으로 맞춤.
+  const rightWrap = document.createElement('span')
+  if (opts?.infoText) {
+    Object.assign(rightWrap.style, {
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: '6px',
+      flexShrink: '0',
+      width: '150px',
+    })
+    rightWrap.appendChild(createInfoTooltip(opts.infoText))
+    if (opts?.rangeText) {
+      const rangeSpan = document.createElement('span')
+      Object.assign(rangeSpan.style, { fontSize: FONT_SIZE.small, color: COLOR.tertiary, whiteSpace: 'nowrap' })
+      rangeSpan.textContent = opts.rangeText
+      rightWrap.appendChild(rangeSpan)
+    }
+    rightWrap.appendChild(child)
+    div.appendChild(rightWrap)
+  } else if (opts?.rangeText) {
     Object.assign(rightWrap.style, { display: 'flex', alignItems: 'center', gap: '6px' })
     const rangeSpan = document.createElement('span')
     Object.assign(rangeSpan.style, { fontSize: FONT_SIZE.small, color: COLOR.tertiary, whiteSpace: 'nowrap' })
