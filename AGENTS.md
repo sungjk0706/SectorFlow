@@ -153,6 +153,10 @@ SectorFlow is a local real-time stock auto-trading web app for one person.
    - **백엔드 런타임 기동**: `.venv/bin/python main.py` (규칙 5)
    - **커버리지**: `.venv/bin/python -m pytest backend/tests --cov=backend --cov-report=term-missing`
    - 의존성 재설치 시: `.venv/bin/python -m pip install -r backend/requirements.txt`
+4-3. **테스트 경고 등 비실패 이슈 미해결 문제 등록 (강제).** 테스트 실행 시 실패가 아니더라도, RuntimeWarning·coroutine 미-await·비동기 누수 등 원칙 19(런타임 검증 게이트)에 해당하는 경고가 발생하면 `HANDOVER.md` "미해결 문제" 섹션에 등록한다.
+   - **등록 필수 항목**: 발견일, 발견 경위, 증상, 영향, 수정 방향, 상태(조사 예정/수정 예정).
+   - **"한계/후속" 줄만으로 부족**: 작업 항목 내 "한계/후속" 줄에 적는 것만으로는 다음 세션에서 누락 가능. 반드시 "미해결 문제" 섹션에 별도 항목으로 등록.
+   - **근거**: 규칙 4-1은 "테스트 실패"에만 적용되므로, 비실패 경고 이슈는 본 규칙으로 추적 의무화. P19(런타임 검증 게이트)·P21(사용자 투명성) 부합.
 5. For backend changes, runtime startup check is mandatory: start `.venv/bin/python main.py`, check logs, wait 10–30s, then terminate. 잔존 프로세스 정리는 규칙 5-1 준수.
 5-1. **세션 종료 전 잔존 프로세스 완전 종료 (강제).** 모든 작업 완료 후 세션 종료 전 반드시 다음 절차 수행:
    1) **잔존 프로세스 확인**: `ps aux | grep -E "python|main.py|pytest" | grep -v grep`로 백엔드/테스트 프로세스 잔존 여부 확인.
