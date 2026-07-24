@@ -119,8 +119,16 @@ export function createMoneyInput(options: {
     input.value = currentValue !== 0 ? String(currentValue) : ''
   })
   input.addEventListener('input', () => {
-    currentValue = Number(input.value.replace(/,/g, '')) || 0
-    try { options.onChange(currentValue) } catch (e) { console.error('[MoneyInput] onChange error', e) }
+    const raw = input.value.replace(/,/g, '')
+    const parsed = Number(raw) || 0
+    // 실시간 clamp — 범위 밖 값 입력 즉시 보정 (createNumInput과 동일 패턴, P10/P23)
+    const clamped = Math.min(maxVal, Math.max(minVal, parsed))
+    currentValue = clamped
+    // 보정된 경우에만 DOM 갱신 — 범위 내 타이핑 시 커서 위치 보존
+    if (clamped !== parsed) {
+      input.value = String(clamped)
+    }
+    try { options.onChange(clamped) } catch (e) { console.error('[MoneyInput] onChange error', e) }
   })
   input.addEventListener('blur', () => {
     // 포커스 해제 시 콤마 포맷 복원

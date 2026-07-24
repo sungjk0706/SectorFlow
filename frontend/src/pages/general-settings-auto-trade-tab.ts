@@ -160,6 +160,7 @@ function buildDailyProfitRow(state: GeneralSettingsState): void {
       if (res.ok) state.vals.daily_profit_limit = v
     },
     name: 'daily_profit_limit',
+    min: 0, max: 1_000_000_000,
   })
   const r = createToggleLabelControlsRow({
     labelText: '일일 수익 한도 (원)',
@@ -185,7 +186,7 @@ function buildDailyProfitRateRow(state: GeneralSettingsState): void {
       toastResult(res)
       if (res.ok) state.vals.daily_profit_rate_limit = v
     },
-    step: 0.1, min: 0, max: 100, name: 'daily_profit_rate_limit',
+    step: 0.1, min: 0, max: 1000, name: 'daily_profit_rate_limit',
   })
   const r = createToggleLabelControlsRow({
     labelText: '일일 수익률 한도 (%)',

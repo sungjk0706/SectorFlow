@@ -84,7 +84,7 @@ function buildSellTypeSection(root: HTMLElement): void {
   root.appendChild(createSettingRow('매도 주문 유형', createFixedValue('시장가')))
 
   // 익절 (토글 + 입력)
-  tpValInput = createNumInput({ value: 0, onChange: v => { vals.tp_val = v; saveHelper!.autoSave('tp_val', v) }, step: 0.1, name: 'tp_val' })
+  tpValInput = createNumInput({ value: 0, onChange: v => { vals.tp_val = v; saveHelper!.autoSave('tp_val', v) }, step: 0.1, min: 0, max: 100, name: 'tp_val' })
   {
     const r = createToggleLabelControlsRow({
       labelText: '익절 (상승률 %)',
@@ -97,7 +97,7 @@ function buildSellTypeSection(root: HTMLElement): void {
   }
 
   // 손절 (토글 + 입력)
-  lossValInput = createNumInput({ value: 0, onChange: v => { vals.loss_val = v; saveHelper!.autoSave('loss_val', v) }, step: 0.1, name: 'loss_val' })
+  lossValInput = createNumInput({ value: 0, onChange: v => { vals.loss_val = v; saveHelper!.autoSave('loss_val', v) }, step: 0.1, min: 0, max: 100, name: 'loss_val' })
   {
     const r = createToggleLabelControlsRow({
       labelText: '손절 (하락률 %)',
@@ -110,8 +110,8 @@ function buildSellTypeSection(root: HTMLElement): void {
   }
 
   // 추적 매도 (토글 + 시작값 한 줄, 하락값 별도 행)
-  tsStartValInput = createNumInput({ value: 0, onChange: v => { vals.ts_start_val = v; saveHelper!.autoSave('ts_start_val', v) }, step: 0.1, name: 'ts_start_val' })
-  tsDropValInput = createNumInput({ value: 0, onChange: v => { vals.ts_drop_val = v; saveHelper!.autoSave('ts_drop_val', v) }, step: 0.1, name: 'ts_drop_val' })
+  tsStartValInput = createNumInput({ value: 0, onChange: v => { vals.ts_start_val = v; saveHelper!.autoSave('ts_start_val', v) }, step: 0.1, min: 0, max: 100, name: 'ts_start_val' })
+  tsDropValInput = createNumInput({ value: 0, onChange: v => { vals.ts_drop_val = v; saveHelper!.autoSave('ts_drop_val', v) }, step: 0.1, min: 0, max: 100, name: 'ts_drop_val' })
   tsDropRow = createSettingRow('추적 고점대비 하락률 (%)', tsDropValInput.el)
   {
     const r = createToggleLabelControlsRow({
