@@ -4,7 +4,7 @@
 
 import { uiStore } from '../stores/uiStore'
 import type { UIState } from '../stores/uiStore'
-import { clearCircuitBreakerOpen, clearOrderTimeBlocked, clearRiskBlockStatus } from '../stores/uiStore'
+import { clearCircuitBreakerOpen, clearOrderTimeBlocked, clearRiskBlockStatus, clearTestCashFailed } from '../stores/uiStore'
 import type { IndexData } from '../types'
 import { BROKER_LABELS } from '../components/common/broker-badge'
 import { COLOR } from '../components/common/ui-styles'
@@ -340,6 +340,15 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
   })
   header.appendChild(riskBlockChip)
 
+  // 테스트 잔고 부족 칩 (노란색 — 사후 1회성, 클릭 시 해제)
+  const testCashFailedChip = createChipEl()
+  testCashFailedChip.style.display = 'none'
+  testCashFailedChip.style.cursor = 'pointer'
+  testCashFailedChip.addEventListener('click', () => {
+    try { clearTestCashFailed() } catch (e) { console.error('[Header] testCashFailed clear error', e) }
+  })
+  header.appendChild(testCashFailedChip)
+
   // 앱준비 진행률 칩
   const bootstrapChip = createChipEl()
   bootstrapChip.style.display = 'none'
@@ -372,7 +381,7 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
   // ── Store 구독 ──
 
   function onStateChange(state: UIState): void {
-    const { marketPhase, bootstrapStage, engineReady, avgAmtProgress, status, settings, indexData, circuitBreakerOpen, orderTimeBlocked, riskBlockStatus } = state
+    const { marketPhase, bootstrapStage, engineReady, avgAmtProgress, status, settings, indexData, circuitBreakerOpen, orderTimeBlocked, riskBlockStatus, testCashFailed } = state
 
     // P25: 칩 단위 격리 — 각 칩 렌더링 throw 시 해당 칩만 미갱신 + 로깅, 다음 칩 계속
     // (F-02 잔존 위험 해결 — onStateChange 콜백 내부 칩 간 격리)
@@ -416,6 +425,20 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
         riskBlockChip.style.display = 'none'
       }
     } catch (e) { console.error('[header] riskBlock chip error', e) }
+
+    // 테스트 잔고 부족 칩 (노란색 — 사후 1회성, 클릭 시 해제)
+    try {
+      if (testCashFailed) {
+        testCashFailedChip.style.display = ''
+        testCashFailedChip.style.background = `${COLOR.warningBg}`
+        testCashFailedChip.style.color = `${COLOR.warning}`
+        testCashFailedChip.style.border = `1px solid ${COLOR.warning}40`
+        const reasonText = testCashFailed.reason || '테스트 잔고 부족 — 매수 거부'
+        testCashFailedChip.textContent = `⚠ ${reasonText}`
+      } else {
+        testCashFailedChip.style.display = 'none'
+      }
+    } catch (e) { console.error('[header] testCashFailed chip error', e) }
 
     // 장 상태 — 카운트다운(백엔드 SSOT 수신값)이 있으면 우선 표시, 없으면 시계 페이즈명
     try {

@@ -77,6 +77,9 @@ export interface UIState {
 
   /* ── 일일 매수 상태 로드 실패 (매수 전용 차단) ── */
   dailyBuyStateFailed: boolean
+
+  /* ── 테스트 예수금 검증 실패 (사후 1회성 — 헤더 칩 알림) ── */
+  testCashFailed: { stk_cd: string; reason: string } | null
 }
 
 const initialState: UIState = {
@@ -101,6 +104,7 @@ const initialState: UIState = {
   riskBlockStatus: null,
   realtimeLatencyExceeded: false,
   dailyBuyStateFailed: false,
+  testCashFailed: null,
 }
 
 export const uiStore = createStore<UIState>(initialState)
@@ -201,6 +205,20 @@ export function applyDailyBuyStateStatus(data: { failed?: boolean }): void {
   uiStore.setState({ dailyBuyStateFailed: !!data.failed })
 }
 
+/* ── test_cash_failed: 테스트 예수금 검증 실패 갱신 (사후 1회성 — 헤더 칩) ── */
+export function applyTestCashFailed(data: { failed?: boolean; stk_cd?: string; reason?: string }): void {
+  if (data.failed) {
+    uiStore.setState({ testCashFailed: { stk_cd: data.stk_cd ?? '', reason: data.reason ?? '테스트 잔고 부족 — 매수 거부' } })
+  } else {
+    uiStore.setState({ testCashFailed: null })
+  }
+}
+
+/* ── 테스트 잔고 부족 알림 수동 해제 (사용자 클릭) ── */
+export function clearTestCashFailed(): void {
+  uiStore.setState({ testCashFailed: null })
+}
+
 /* ── test-data-reset-completed: 통합 초기화 완료 ── */
 export function applyTestDataResetCompleted(): void {
   uiStore.setState({
@@ -261,6 +279,7 @@ export function applyInitialSnapshotUI(data: Record<string, unknown>): void {
     riskBlockStatus: null,
     realtimeLatencyExceeded: false,
     dailyBuyStateFailed: false,
+    testCashFailed: null,
     engineReady: !!(data.bootstrap_done),
     marketPhase: (data.market_phase as UIState['marketPhase']) ?? { krx: '장마감', nxt: '장마감', krx_alert: null },
     receiveRate: (() => {

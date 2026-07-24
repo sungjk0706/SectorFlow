@@ -128,6 +128,20 @@ async def _broadcast_daily_buy_state_status(*, failed: bool) -> None:
         logger.warning("[매매] daily_buy_state_status 브로드캐스트 실패", exc_info=True)
 
 
+async def _broadcast_test_cash_failed(*, stk_cd: str, reason: str) -> None:
+    """테스트모드 예수금 검증 실패를 화면에 전송 (P21 사용자 투명성).
+
+    사후 1회성 이벤트 — 매수상태 배지(지속 상태 전용)가 아닌 헤더 칩으로 알림.
+    P23(일관성): _broadcast_daily_buy_state_status 패턴과 동일 (_safe_broadcast 사용).
+    P18(테스트모드 동등성): 테스트모드 전용 사유이므로 실전모드에서는 호출되지 않음.
+    """
+    try:
+        from backend.app.services.engine_account_notify import _safe_broadcast
+        await _safe_broadcast("test_cash_failed", {"failed": True, "stk_cd": stk_cd, "reason": reason})
+    except Exception:
+        logger.warning("[매매] test_cash_failed 브로드캐스트 실패", exc_info=True)
+
+
 class AutoTradeManager:
     """자동매매 관리 - get_settings_fn으로 매번 최신 설정 로드."""
 
@@ -399,6 +413,8 @@ class AutoTradeManager:
             if not ok:
                 logger.info("[매매] 매수 거부: %s (%s)", stk_cd, reason)
                 self._buy_state[stk_cd]["has_open_buy"] = False
+                # P21(사용자 투명성): 테스트 예수금 검증 실패를 화면에 알림 — 헤더 칩 "⚠ 테스트 잔고 부족"
+                await _broadcast_test_cash_failed(stk_cd=stk_cd, reason=reason)
                 return False, BUY_REJECT_TEST_CASH
 
         # ── 테스트모드 가드: 테스트모드면 실전 서버에 절대 주문 안 보냄 ─────────

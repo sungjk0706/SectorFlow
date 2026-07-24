@@ -36,6 +36,7 @@ import {
   applyRiskBlockStatus,
   applyRealtimeLatencyStatus,
   applyDailyBuyStateStatus,
+  applyTestCashFailed,
   applyMarketPhase,
   applyIndexData,
   uiStore,
@@ -344,5 +345,10 @@ export function bindWSToStore(
   /* ── daily_buy_state_status: 일일 매수 상태 로드 실패 (매수 전용 차단) ── */
   pricesClient.onEvent('daily_buy_state_status', (data) => {
     applyDailyBuyStateStatus(data as { failed?: boolean })
+  })
+
+  /* ── test_cash_failed: 테스트 예수금 검증 실패 (사후 1회성 — 헤더 칩 알림) ── */
+  pricesClient.onEvent('test_cash_failed', (data) => {
+    applyTestCashFailed(data as { failed?: boolean; stk_cd?: string; reason?: string })
   })
 }
