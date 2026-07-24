@@ -12,6 +12,7 @@ import {
   type SummaryCardEls,
   createSummaryCards,
   updateSummaryCards,
+  getRecent5TradingDays,
 } from './profit-shared'
 import { loadProfitDetailView } from './profit-detail-view'
 import {
@@ -26,7 +27,7 @@ import {
 } from './profit-detail-display'
 import type { ProfitDetailState } from './profit-detail'
 
-/* ── mount 헬퍼: 요약 카드 행 (당일/전일/당월/누적 손익) ── */
+/* ── mount 헬퍼: 요약 카드 행 (당일/전일/5일/당월/누적 손익) ── */
 export function buildSummaryRow(state: ProfitDetailState, todayStr: string, monthStart: string, monthEnd: string): HTMLDivElement {
   const summaryRow = document.createElement('div')
   Object.assign(summaryRow.style, { display: 'flex', gap: '8px', padding: '8px 4px', flex: 'none', borderBottom: '1px solid ' + COLOR.borderDark })
@@ -52,6 +53,22 @@ export function buildSummaryRow(state: ProfitDetailState, todayStr: string, mont
       } catch (err) {
         console.error('[profit-detail] prev-trading-day fetch failed:', err)
       }
+    },
+    onFivedayClick: () => {
+      state.selectedView = 'fiveday'
+      updateCardSelection(state)
+      updateDrilldownBtnStyle(state, false)
+      // 최근 5거래일 날짜 범위로 드릴다운 필터링 (P10 SSOT — getRecent5TradingDays 공유)
+      const recent5 = getRecent5TradingDays(hotStore.getState().dailySummary)
+      if (recent5.length > 0) {
+        const from = recent5[recent5.length - 1]
+        const to = recent5[0]
+        filterByDateRange(state, from, to)
+      } else {
+        // 5거래일 데이터가 없으면 빈 범위로 테이블 표시
+        filterByDateRange(state, '', '')
+      }
+      persistViewState(state)
     },
     onMonthClick: () => {
       state.selectedView = 'month'

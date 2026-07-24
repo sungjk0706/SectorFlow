@@ -19,14 +19,14 @@ export function loadProfitDetailView(): ProfitDetailViewState | null {
     const raw = localStorage.getItem(PROFIT_DETAIL_VIEW_KEY)
     if (!raw) return null
     const parsed = JSON.parse(raw) as { selectedView?: string; drilldownActive?: boolean; from?: string; to?: string }
-    const validViews: string[] = ['today', 'prev', 'month', 'total', 'drilldown']
+    const validViews: string[] = ['today', 'prev', 'fiveday', 'month', 'total', 'drilldown']
     const sv = parsed.selectedView ?? null
     if (sv !== null && !validViews.includes(sv)) return null
     // total/drilldown은 from/to가 빈 문자열일 수 있음
     const from = parsed.from ?? ''
     const to = parsed.to ?? ''
-    // 수동 날짜 범위(sv === null) 또는 today/prev/month인 경우 from/to 유효성 검증
-    if (sv === null || sv === 'today' || sv === 'prev' || sv === 'month') {
+    // 수동 날짜 범위(sv === null) 또는 today/prev/fiveday/month인 경우 from/to 유효성 검증
+    if (sv === null || sv === 'today' || sv === 'prev' || sv === 'fiveday' || sv === 'month') {
       if (from && !/^\d{4}-\d{2}-\d{2}$/.test(from)) return null
       if (to && !/^\d{4}-\d{2}-\d{2}$/.test(to)) return null
       if (from && to && from > to) return null

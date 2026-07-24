@@ -33,6 +33,7 @@ export function updateStatCardSelection(state: ProfitDetailState): void {
   const colorMap: Record<string, { border: string; bg: string }> = {
     today: { border: COLOR.down, bg: COLOR.downBg },
     prev: { border: COLOR.periodPrev, bg: COLOR.periodPrevBg },
+    fiveday: { border: COLOR.period5day, bg: COLOR.period5dayBg },
     month: { border: COLOR.periodMonth, bg: COLOR.periodMonthBg },
     total: { border: COLOR.periodTotal, bg: COLOR.periodTotalBg },
   }
@@ -49,6 +50,7 @@ export function updateCardSelection(state: ProfitDetailState): void {
   if (!state.summaryCardEls) return
   applyCardStyle(state.summaryCardEls.todayCard, state.selectedView === 'today', COLOR.down, COLOR.downBg)
   applyCardStyle(state.summaryCardEls.prevCard, state.selectedView === 'prev', COLOR.periodPrev, COLOR.periodPrevBg)
+  applyCardStyle(state.summaryCardEls.fivedayCard, state.selectedView === 'fiveday', COLOR.period5day, COLOR.period5dayBg)
   applyCardStyle(state.summaryCardEls.monthCard, state.selectedView === 'month', COLOR.periodMonth, COLOR.periodMonthBg)
   applyCardStyle(state.summaryCardEls.totalCard, state.selectedView === 'total', COLOR.periodTotal, COLOR.periodTotalBg)
   updateStatCardSelection(state)

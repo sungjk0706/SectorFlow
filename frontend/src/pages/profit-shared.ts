@@ -46,12 +46,15 @@ export interface SummaryCardEls {
   todayRateEl: HTMLSpanElement
   prevPnlEl: HTMLSpanElement
   prevRateEl: HTMLSpanElement
+  fivedayPnlEl: HTMLSpanElement
+  fivedayRateEl: HTMLSpanElement
   monthPnlEl: HTMLSpanElement
   monthRateEl: HTMLSpanElement
   totalPnlEl: HTMLSpanElement
   totalRateEl: HTMLSpanElement
   todayCard: HTMLDivElement
   prevCard: HTMLDivElement
+  fivedayCard: HTMLDivElement
   monthCard: HTMLDivElement
   totalCard: HTMLDivElement
 }
@@ -59,21 +62,22 @@ export interface SummaryCardEls {
 export interface SummaryCardCallbacks {
   onTodayClick?: () => void
   onPrevClick?: () => void
+  onFivedayClick?: () => void
   onMonthClick?: () => void
   onTotalClick?: () => void
 }
 
-/** 요약 카드 4개(당일/전일/당월/누적 손익) DOM 생성, 클릭 콜백 주입, 요소 참조 반환 */
+/** 요약 카드 5개(당일/전일/5일/당월/누적 손익) DOM 생성, 클릭 콜백 주입, 요소 참조 반환 */
 export function createSummaryCards(container: HTMLElement, callbacks: SummaryCardCallbacks = {}): SummaryCardEls {
   const CARD_STYLE = `flex:1;background:${COLOR.surfaceLight};border:1px solid ${COLOR.borderLight};border-radius:6px;padding:6px 12px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;`
-  const CARD_TITLES = ['당일 손익', '전일 손익', '당월 손익', '누적 손익']
-  const clickHandlers = [callbacks.onTodayClick, callbacks.onPrevClick, callbacks.onMonthClick, callbacks.onTotalClick]
+  const CARD_TITLES = ['당일 손익', '전일 손익', '5일 손익', '당월 손익', '누적 손익']
+  const clickHandlers = [callbacks.onTodayClick, callbacks.onPrevClick, callbacks.onFivedayClick, callbacks.onMonthClick, callbacks.onTotalClick]
 
   const pnlEls: HTMLSpanElement[] = []
   const rateEls: HTMLSpanElement[] = []
   const cardEls: HTMLDivElement[] = []
 
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < 5; i++) {
     // P25: 카드 단위 격리 — 한 카드 생성 throw 시 다음 카드 계속 렌더링.
     // pnlEls/rateEls/cardEls push는 인덱스 기반이므로
     // 실패 시 더미 push로 인덱스 정합성 유지 (P22). buildStatRow 패턴과 일치 (P23).
@@ -123,15 +127,26 @@ export function createSummaryCards(container: HTMLElement, callbacks: SummaryCar
   return {
     todayPnlEl: pnlEls[0], todayRateEl: rateEls[0],
     prevPnlEl: pnlEls[1], prevRateEl: rateEls[1],
-    monthPnlEl: pnlEls[2], monthRateEl: rateEls[2],
-    totalPnlEl: pnlEls[3], totalRateEl: rateEls[3],
-    todayCard: cardEls[0], prevCard: cardEls[1], monthCard: cardEls[2], totalCard: cardEls[3],
+    fivedayPnlEl: pnlEls[2], fivedayRateEl: rateEls[2],
+    monthPnlEl: pnlEls[3], monthRateEl: rateEls[3],
+    totalPnlEl: pnlEls[4], totalRateEl: rateEls[4],
+    todayCard: cardEls[0], prevCard: cardEls[1], fivedayCard: cardEls[2], monthCard: cardEls[3], totalCard: cardEls[4],
   }
 }
 
-/** 당일/전일/당월/누적 손익 계산 및 요약 카드 DOM 갱신
+/** dailySummary에서 최근 5거래일 날짜를 내림차순 추출.
+ *  5일 카드 집계와 5일 카드 클릭 시 드릴다운 날짜 범위의 공통 소스 — P10 SSOT. */
+export function getRecent5TradingDays(dailySummary: Record<string, unknown>[]): string[] {
+  const dates = dailySummary
+    .map(r => String(r.date ?? ''))
+    .filter(d => d)
+    .sort((a, b) => (a < b ? 1 : a > b ? -1 : 0))
+  return dates.slice(0, 5)
+}
+
+/** 당일/전일/5일/당월/누적 손익 계산 및 요약 카드 DOM 갱신
  *  모든 카드를 dailySummary 기반으로 집계 (P10 SSOT — sellHistory 재집계 제거).
- *  당월/누적 수익률 = realized_pnl 합계 ÷ buy_total_amt 합계 × 100 (computeWeightedRate). */
+ *  5일/당월/누적 수익률 = realized_pnl 합계 ÷ buy_total_amt 합계 × 100 (computeWeightedRate). */
 export function updateSummaryCards(
   dailySummary: Record<string, unknown>[],
   els: SummaryCardEls,
@@ -154,7 +169,9 @@ export function updateSummaryCards(
   const prevPnl = prevEntry ? Number(prevEntry.realized_pnl ?? 0) : 0
   const prevRate = prevEntry ? Number(prevEntry.pnl_rate ?? 0) : 0
 
-  // 당월/누적 카드: dailySummary 기반 집계 (sellHistory 재집계 제거 — P10 SSOT)
+  // 5일/당월/누적 카드: dailySummary 기반 집계 (sellHistory 재집계 제거 — P10 SSOT)
+  const recent5 = new Set(getRecent5TradingDays(dailySummary))
+  let fivedayPnl = 0, fivedayBuyTotal = 0
   let monthPnl = 0, monthBuyTotal = 0
   let totalPnl = 0, totalBuyTotal = 0
   const monthPrefix = yearMonth + '-'
@@ -164,11 +181,16 @@ export function updateSummaryCards(
     const buyTotal = Number(r.buy_total_amt ?? 0)
     totalPnl += pnl
     totalBuyTotal += buyTotal
+    if (recent5.has(d)) {
+      fivedayPnl += pnl
+      fivedayBuyTotal += buyTotal
+    }
     if (d.startsWith(monthPrefix)) {
       monthPnl += pnl
       monthBuyTotal += buyTotal
     }
   }
+  const fiveS = { pnl: fivedayPnl, rate: computeWeightedRate(fivedayPnl, fivedayBuyTotal) }
   const monS = { pnl: monthPnl, rate: computeWeightedRate(monthPnl, monthBuyTotal) }
   const allS = { pnl: totalPnl, rate: computeWeightedRate(totalPnl, totalBuyTotal) }
 
@@ -180,6 +202,10 @@ export function updateSummaryCards(
   els.prevPnlEl.style.color = pnlColor(prevPnl)
   els.prevRateEl.textContent = `${prevRate.toFixed(2)}%`
   els.prevRateEl.style.color = pnlColor(prevPnl)
+  els.fivedayPnlEl.textContent = fmtWon(fiveS.pnl)
+  els.fivedayPnlEl.style.color = pnlColor(fiveS.pnl)
+  els.fivedayRateEl.textContent = `${fiveS.rate.toFixed(2)}%`
+  els.fivedayRateEl.style.color = pnlColor(fiveS.pnl)
   els.monthPnlEl.textContent = fmtWon(monS.pnl)
   els.monthPnlEl.style.color = pnlColor(monS.pnl)
   els.monthRateEl.textContent = `${monS.rate.toFixed(2)}%`

@@ -28,7 +28,7 @@ import {
 
 /* ── 모듈 변수 ── */
 export type LowerTab = 'buy' | 'sell'
-export type SelectedView = 'today' | 'prev' | 'month' | 'total' | 'drilldown' | null
+export type SelectedView = 'today' | 'prev' | 'fiveday' | 'month' | 'total' | 'drilldown' | null
 
 /* ── 상태 객체 (P10 SSOT — 모든 가변 상태를 단일 소스로 관리) ── */
 
