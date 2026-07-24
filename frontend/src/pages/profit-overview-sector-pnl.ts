@@ -187,16 +187,21 @@ export function updateExpandToggleBtn(state: ProfitOverviewState): void {
 /* ── mount 헬퍼: 업종별 종목 수익 섹션 (타이틀 + 전체보기 버튼 + 컨테이너) ── */
 
 export function buildStockListSection(state: ProfitOverviewState): HTMLDivElement {
-  const stockListHeaderWrap = document.createElement('div')
-  Object.assign(stockListHeaderWrap.style, {
+  // 형제 구조 — 타이틀 행(가로) 아래 컨테이너(세로)가 별도 블록.
+  // 다른 섹션(차트/도넛/계좌 현황)과 동일 패턴 — P23 일관성.
+  const wrapper = document.createElement('div')
+  Object.assign(wrapper.style, { display: 'flex', flexDirection: 'column', marginTop: '12px' })
+
+  const headerRow = document.createElement('div')
+  Object.assign(headerRow.style, {
     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
     fontWeight: FONT_WEIGHT.normal, fontSize: FONT_SIZE.section, color: COLOR.down,
     padding: '10px 0 6px', borderBottom: '2px solid ' + COLOR.borderLight,
-    marginBottom: '8px', marginTop: '12px',
+    marginBottom: '8px',
   })
   const stockListTitle = document.createElement('span')
   stockListTitle.textContent = '업종별 종목 수익'
-  stockListHeaderWrap.appendChild(stockListTitle)
+  headerRow.appendChild(stockListTitle)
 
   const toggleBtn = createActionButton({
     label: state.allExpanded ? '전체접기' : '전체보기',
@@ -218,12 +223,13 @@ export function buildStockListSection(state: ProfitOverviewState): HTMLDivElemen
     fontWeight: FONT_WEIGHT.normal,
   })
   state.expandToggleBtn = toggleBtn
-  stockListHeaderWrap.appendChild(toggleBtn)
+  headerRow.appendChild(toggleBtn)
+  wrapper.appendChild(headerRow)
 
   const container = document.createElement('div')
   Object.assign(container.style, { flex: '1', minHeight: '0' })
   state.sectorStockListContainer = container
-  stockListHeaderWrap.appendChild(container)
+  wrapper.appendChild(container)
 
-  return stockListHeaderWrap
+  return wrapper
 }
