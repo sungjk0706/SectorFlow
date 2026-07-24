@@ -80,6 +80,10 @@ export interface UIState {
 
   /* ── 테스트 예수금 검증 실패 (사후 1회성 — 헤더 칩 알림) ── */
   testCashFailed: { stk_cd: string; reason: string } | null
+
+  /* ── 엔진 기동 상태 경고 (P21 — 지속 상태, 엔진 재기동 시 해제) ── */
+  positionBuildFailed: boolean  // 테스트모드 포지션 구축 실패 (보유 종목 비어있음)
+  degradedMode: boolean         // 감소 모드 기동 (종목 데이터 불완전)
 }
 
 const initialState: UIState = {
@@ -105,6 +109,8 @@ const initialState: UIState = {
   realtimeLatencyExceeded: false,
   dailyBuyStateFailed: false,
   testCashFailed: null,
+  positionBuildFailed: false,
+  degradedMode: false,
 }
 
 export const uiStore = createStore<UIState>(initialState)
@@ -219,6 +225,15 @@ export function clearTestCashFailed(): void {
   uiStore.setState({ testCashFailed: null })
 }
 
+/* ── 엔진 기동 상태 경고 수동 해제 (사용자 클릭 — 다음 index-data까지 유지) ── */
+export function clearPositionBuildFailed(): void {
+  uiStore.setState({ positionBuildFailed: false })
+}
+
+export function clearDegradedMode(): void {
+  uiStore.setState({ degradedMode: false })
+}
+
 /* ── test-data-reset-completed: 통합 초기화 완료 ── */
 export function applyTestDataResetCompleted(): void {
   uiStore.setState({
@@ -280,6 +295,8 @@ export function applyInitialSnapshotUI(data: Record<string, unknown>): void {
     realtimeLatencyExceeded: false,
     dailyBuyStateFailed: false,
     testCashFailed: null,
+    positionBuildFailed: !!(data.position_build_failed),
+    degradedMode: !!(data.degraded_mode),
     engineReady: !!(data.bootstrap_done),
     marketPhase: (data.market_phase as UIState['marketPhase']) ?? { krx: '장마감', nxt: '장마감', krx_alert: null },
     receiveRate: (() => {

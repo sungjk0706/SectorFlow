@@ -4,7 +4,7 @@
 
 import { uiStore } from '../stores/uiStore'
 import type { UIState } from '../stores/uiStore'
-import { clearCircuitBreakerOpen, clearOrderTimeBlocked, clearRiskBlockStatus, clearTestCashFailed } from '../stores/uiStore'
+import { clearCircuitBreakerOpen, clearOrderTimeBlocked, clearRiskBlockStatus, clearTestCashFailed, clearPositionBuildFailed, clearDegradedMode } from '../stores/uiStore'
 import type { IndexData } from '../types'
 import { BROKER_LABELS } from '../components/common/broker-badge'
 import { COLOR } from '../components/common/ui-styles'
@@ -349,6 +349,24 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
   })
   header.appendChild(testCashFailedChip)
 
+  // 포지션 구축 실패 칩 (노란색 — 지속 상태, 클릭 시 다음 index-data까지 해제)
+  const positionBuildFailedChip = createChipEl()
+  positionBuildFailedChip.style.display = 'none'
+  positionBuildFailedChip.style.cursor = 'pointer'
+  positionBuildFailedChip.addEventListener('click', () => {
+    try { clearPositionBuildFailed() } catch (e) { console.error('[Header] positionBuildFailed clear error', e) }
+  })
+  header.appendChild(positionBuildFailedChip)
+
+  // 감소 모드 기동 칩 (빨간색 — 치명 상태, 클릭 시 다음 index-data까지 해제)
+  const degradedModeChip = createChipEl()
+  degradedModeChip.style.display = 'none'
+  degradedModeChip.style.cursor = 'pointer'
+  degradedModeChip.addEventListener('click', () => {
+    try { clearDegradedMode() } catch (e) { console.error('[Header] degradedMode clear error', e) }
+  })
+  header.appendChild(degradedModeChip)
+
   // 앱준비 진행률 칩
   const bootstrapChip = createChipEl()
   bootstrapChip.style.display = 'none'
@@ -381,7 +399,7 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
   // ── Store 구독 ──
 
   function onStateChange(state: UIState): void {
-    const { marketPhase, bootstrapStage, engineReady, avgAmtProgress, status, settings, indexData, circuitBreakerOpen, orderTimeBlocked, riskBlockStatus, testCashFailed } = state
+    const { marketPhase, bootstrapStage, engineReady, avgAmtProgress, status, settings, indexData, circuitBreakerOpen, orderTimeBlocked, riskBlockStatus, testCashFailed, positionBuildFailed, degradedMode } = state
 
     // P25: 칩 단위 격리 — 각 칩 렌더링 throw 시 해당 칩만 미갱신 + 로깅, 다음 칩 계속
     // (F-02 잔존 위험 해결 — onStateChange 콜백 내부 칩 간 격리)
@@ -439,6 +457,32 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
         testCashFailedChip.style.display = 'none'
       }
     } catch (e) { console.error('[header] testCashFailed chip error', e) }
+
+    // 포지션 구축 실패 칩 (노란색 — 보유 종목 불러오기 실패, 엔진은 계속 가동)
+    try {
+      if (positionBuildFailed) {
+        positionBuildFailedChip.style.display = ''
+        positionBuildFailedChip.style.background = `${COLOR.warningBg}`
+        positionBuildFailedChip.style.color = `${COLOR.warning}`
+        positionBuildFailedChip.style.border = `1px solid ${COLOR.warning}40`
+        positionBuildFailedChip.textContent = '⚠ 보유 종목 불러오기 실패 — 엔진은 계속 가동 중'
+      } else {
+        positionBuildFailedChip.style.display = 'none'
+      }
+    } catch (e) { console.error('[header] positionBuildFailed chip error', e) }
+
+    // 감소 모드 기동 칩 (빨간색 — 종목 데이터 불완전, 치명 상태)
+    try {
+      if (degradedMode) {
+        degradedModeChip.style.display = ''
+        degradedModeChip.style.background = `${COLOR.upBg}`
+        degradedModeChip.style.color = `${COLOR.up}`
+        degradedModeChip.style.border = `1px solid ${COLOR.up}40`
+        degradedModeChip.textContent = '⚠ 감소 모드 기동 — 종목 데이터 불완전'
+      } else {
+        degradedModeChip.style.display = 'none'
+      }
+    } catch (e) { console.error('[header] degradedMode chip error', e) }
 
     // 장 상태 — 카운트다운(백엔드 SSOT 수신값)이 있으면 우선 표시, 없으면 시계 페이즈명
     try {

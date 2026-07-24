@@ -25,6 +25,10 @@ async def start_engine(user_id: str = "") -> bool:
     if engine_state.state.engine_task and not engine_state.state.engine_task.done():
         return False
 
+    # 엔진 재기동 시 기동 상태 경고 플래그 초기화 (이전 세션 잔존 방지, P10 SSOT)
+    engine_state.state.position_build_failed = False
+    engine_state.state.degraded_mode = False
+
     engine_state.state.engine_user_id = user_id
     engine_state.state.running = True
     engine_state.state.engine_task = asyncio.create_task(_engine_loop())
@@ -33,12 +37,14 @@ async def start_engine(user_id: str = "") -> bool:
     # 테스트모드는 증권사 서버가 없으므로 trades 테이블(SSOT)에서 포지션 구축.
     # 실전투자 모드는 증권사 서버가 SSOT이므로 별도 대조 불필요.
     # P25 격리된 실패: 포지션 구축 실패 시에도 엔진 기동은 계속. 호출자(app.py/engine_service)와 다단계 방어.
+    # P21 사용자 투명성: 실패 시 position_build_failed 플래그 설정 → get_engine_status()로 프론트 전달.
     if is_test_mode(engine_state.state.integrated_system_settings_cache):
         logger.info("[연산] 테스트모드 - 거래내역 기반 포지션 구축")
         from backend.app.services import dry_run
         try:
             await dry_run._refresh_positions_if_dirty()
         except Exception as e:
+            engine_state.state.position_build_failed = True
             logger.warning("[연산] 테스트모드 포지션 구축 실패 — 엔진은 계속 가동: %s", e, exc_info=True)
 
     # ── Pending Settings Changes 적용 ───────────────────────────────────────
@@ -201,6 +207,8 @@ def get_engine_status() -> dict:
         "ws_reg_total_estimate": sub_count,
         "broker_statuses": broker_statuses,  # broker별 실제 연결 상태
         "market_phase": get_market_phase(),  # 장 상태 (P21 사용자 투명성)
+        "position_build_failed": engine_state.state.position_build_failed,  # P21 — 테스트모드 포지션 구축 실패
+        "degraded_mode": engine_state.state.degraded_mode,  # P21 — 감소 모드 기동
     }
 
 

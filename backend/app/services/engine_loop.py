@@ -32,6 +32,7 @@ async def _cache_and_bootstrap(settings: dict) -> None:
     try:
         await _load_caches_preboot(settings)
     except Exception:
+        engine_state.state.degraded_mode = True
         logger.error("[연산] 캐시 선행 로드 치명 오류 — 감소 모드로 기동", exc_info=True)
 
     # 앱준비 완료 여부와 상관없이 engine-ready 전송 (P21 사용자 투명성)
