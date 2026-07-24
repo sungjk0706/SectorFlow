@@ -638,7 +638,7 @@
 - 중복 테스트 로직 (fixture/파라미터화 가능) — 3건:
   - `test_daily_time_scheduler.py:511-820` `TestIsOrderBlockedByTime` vs `TestGetOrderTimeBlockStatus` 버퍼 테스트 중복 (약 17개 메서드)
   - `test_engine_loop.py:411-1054` 19개 테스트에서 동일한 16개 patch 블록 반복
-  - `test_market_close_pipeline.py:973-1228` 5일봉 파이프라인 테스트 6개에서 13-19개 patch 문 중복
+  - `test_market_close_pipeline.py:973-1228` 5거래일 일봉 파이프라인 테스트 6개에서 13-19개 patch 문 중복
   - 기타: `test_telegram_bot.py:596-787` TestHandleCommand 21개 테스트 명령어 라우팅 중복, `test_engine_sector_confirm.py` 9개 테스트 설정 캐시 중복, `test_ls_connector.py` 구독/해제 테스트 그룹 중복, `test_buy_order_executor.py` 40개+ 테스트 patch 설정 중복
 
 **P18 (테스트모드 동등성) — 부분**
@@ -664,7 +664,7 @@
 **수정 권장 순위** (별도 세션 승인 필요):
 1. (P16) `_calc_avg_buy_price` dead code 제거 + 테스트 제거 — `trade_history.py:295` + `test_trade_history.py:609-642`
 2. (P24) 함수 길이 초과 4건 — 헬퍼 추출 또는 단순화
-3. (P24) 중복 로직 — fixture 추출 (test_engine_loop 19개 patch, test_market_close_pipeline 5일봉 6개, test_daily_time_scheduler 버퍼 17개)
+3. (P24) 중복 로직 — fixture 추출 (test_engine_loop 19개 patch, test_market_close_pipeline 5거래일 일봉 6개, test_daily_time_scheduler 버퍼 17개)
 4. (P18/P22) 동등성/reconciliation 테스트 보완 — 신규 테스트 추가
 
 #### B-23-c 세부 점검 — 중형 파일 (400-1000줄, 20개)

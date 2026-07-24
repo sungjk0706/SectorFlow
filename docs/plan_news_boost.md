@@ -28,7 +28,7 @@
 | `backend/app/core/settings_store.py` | `_validate_numeric_fields()` NWS 필드 검증 | 321 |
 | `frontend/src/types/index.ts` | `AppSettings` 4개 키 / `SectorStock` `news_boost` 필드 | 196, 57 |
 | `frontend/src/pages/buy-settings.ts` | 모듈 상태 3개 / `syncBoost()` 뉴스 동기화 / `buildBoostSection()` 4번째 행 | 52, 106, 224 |
-| `frontend/src/pages/buy-target.ts` | COLUMNS 📰뉴스 컬럼 (5일고가 앞) | 100 앞 |
+| `frontend/src/pages/buy-target.ts` | COLUMNS 📰뉴스 컬럼 (5거래일 고가 앞) | 100 앞 |
 | `frontend/src/pages/general-settings.ts` | `renderAutoTradeTab()` "화면 표시" 이후 키워드 섹션 + TTL | 691 이후 |
 | `frontend/src/components/common/tag-chip.ts` | **신규** 태그 칩 입력 컴포넌트 | 신규 파일 |
 | `backend/tests/test_buy_filter.py` | news 가산점 케이스 | 기존 파일 |
@@ -187,7 +187,7 @@ P4 ✅ P7 ✅ P10 ✅ P11 ✅ P13 ✅ P15 ✅ P16 ✅ P20 ✅ P21 ✅ P22 ✅ P2
    - unmount()에 뉴스 참조 null 처리 추가
 
 3. `frontend/src/pages/buy-target.ts`
-   - 라인 100 앞 (5일고가 컬럼 앞): 📰뉴스 컬럼 추가
+   - 라인 100 앞 (5거래일 고가 컬럼 앞): 📰뉴스 컬럼 추가
      - `key: 'news_boost', label: '📰뉴스', align: 'center', type: 'news', maxWidth: 70`
      - render: `news_boost > 0` 시 📰 이모지 + `COLOR.up` + tooltip 점수 표시, 미부여 시 빈칸
 
