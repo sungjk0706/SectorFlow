@@ -301,7 +301,8 @@ function buildBuyAmountSection(root: HTMLElement): void {
   maxDailyInput = createMoneyInput({ value: 0, onChange: v => { vals.max_daily_total_buy_amt = v; saveHelper!.autoSave('max_daily_total_buy_amt', v) }, name: 'max_daily_total_buy_amt' })
   {
     const r = createToggleLabelControlsRow({
-      labelText: '전체 일일 최대 매수 금액 (수수료 포함)',
+      labelText: '전체 일일 최대 매수 금액',
+      labelSubText: '(수수료 포함)',
       toggleOn: false,
       onToggle: next => { vals.max_daily_total_buy_on = next; saveHelper!.saveImmediate({ max_daily_total_buy_on: next }) },
       controlsChild: maxDailyInput.el,
@@ -309,6 +310,7 @@ function buildBuyAmountSection(root: HTMLElement): void {
     maxDailyToggle = r.toggle; maxDailyControls = r.controls
     root.appendChild(r.el)
   }
+  root.appendChild(createDescText('OFF 시 하루 매수 총액 제한 없음. 종목당 한도가 우선 적용됩니다.'))
 
   // 최대 동시 보유 종목 수 (토글 + 입력)
   maxStockCntInput = createNumInput({ value: 0, onChange: v => { vals.max_stock_cnt = v; saveHelper!.autoSave('max_stock_cnt', v) }, name: 'max_stock_cnt' })
@@ -331,7 +333,8 @@ function buildRebuySection(root: HTMLElement): void {
   buyAmtInput = createMoneyInput({ value: 0, onChange: v => { vals.buy_amt = v; saveHelper!.autoSave('buy_amt', v) }, name: 'buy_amt' })
   {
     const r = createToggleLabelControlsRow({
-      labelText: '종목당 일일 최대 매수 금액 (수수료 포함)',
+      labelText: '종목당 일일 최대 매수 금액',
+      labelSubText: '(수수료 포함)',
       toggleOn: true,
       onToggle: next => { vals.buy_amt_on = next; saveHelper!.saveImmediate({ buy_amt_on: next }) },
       controlsChild: buyAmtInput.el,
@@ -339,6 +342,7 @@ function buildRebuySection(root: HTMLElement): void {
     buyAmtToggle = r.toggle; buyAmtControls = r.controls
     root.appendChild(r.el)
   }
+  root.appendChild(createDescText('OFF 시 종목당 한도 없음. 주문가능금액 전체로 매수 시도합니다.'))
 
   // 재매수 차단 ON/OFF + 차단 기간 select
   {
