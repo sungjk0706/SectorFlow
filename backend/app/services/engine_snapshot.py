@@ -129,11 +129,12 @@ async def _get_trade_history_for_snapshot(side: str) -> list:
 
 
 async def _get_daily_summary_for_snapshot() -> list:
-    """initial-snapshot용 20거래일 일별 요약 반환."""
+    """initial-snapshot용 N거래일(사용자 설정) 일별 요약 반환."""
     from backend.app.services import trade_history
     from backend.app.services.engine_account import get_trade_mode
-    
-    return await trade_history.get_daily_summary(days=20, trade_mode=get_trade_mode())
+
+    days = int(engine_state.state.integrated_system_settings_cache.get("daily_summary_days", 20))
+    return await trade_history.get_daily_summary(days=days, trade_mode=get_trade_mode())
 
 
 # ── 실시간 필드 초기화 ─────────────────────────────────────────────

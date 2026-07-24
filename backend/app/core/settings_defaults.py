@@ -140,6 +140,9 @@ DEFAULT_USER_SETTINGS: dict[str, Any] = {
      # 구독 한도 (종목 실시간 시세 0B 동시 구독 최대 개수, 기본 200)
      # 보유종목 우선 등록 후 필터 통과 종목은 남은 자리만큼만 등록
      "subscribe.max_0b_count": 200,
+
+     # 수익현황/수익상세 WS push 일별 요약 범위 (최근 N거래일, 0=전체)
+     "daily_summary_days": 20,
  }
  
  # 시스템 설정 기본값 (system_config)

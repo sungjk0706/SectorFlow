@@ -339,6 +339,16 @@ def _validate_numeric_fields(data: dict) -> None:
         if len(_kw) > 2000:
             raise ValueError("news_keywords는 2000자 이하여야 합니다")
 
+    # ── 수익현황/수익상세 일별 요약 범위 (P20/P22) ──
+    # 0=전체, 1~365=최근 N거래일
+    if "daily_summary_days" in data:
+        try:
+            _n = int(data["daily_summary_days"])
+        except (TypeError, ValueError):
+            raise ValueError("daily_summary_days는 정수여야 합니다")
+        if _n < 0 or _n > 365:
+            raise ValueError("daily_summary_days는 0~365 사이여야 합니다 (0=전체)")
+
 
 def _compute_changed_keys(data: dict, before: dict, after: dict) -> set[str]:
     """before와 after 비교하여 실제로 값이 달라진 키 집합 반환."""

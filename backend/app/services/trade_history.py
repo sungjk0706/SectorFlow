@@ -182,11 +182,13 @@ async def _trim_expired() -> None:
 # ── 날짜 유틸 ──────────────────────────────────────────────────────────────
 
 async def _broadcast_sell_append(rec: dict) -> None:
-    """매도 체결 후 단건 + 해당 일자 요약을 브로드캐스트."""
+    """매도 체결 후 단건 + 최근 N거래일 요약을 브로드캐스트."""
     try:
         from backend.app.web.ws_manager import ws_manager
+        from backend.app.services import engine_state
         trade_mode = rec.get("trade_mode", "test")
-        summary = await get_daily_summary(days=20, trade_mode=trade_mode)
+        days = int(engine_state.state.integrated_system_settings_cache.get("daily_summary_days", 20))
+        summary = await get_daily_summary(days=days, trade_mode=trade_mode)
         await ws_manager.broadcast("sell-history-append", {"trade": rec, "daily_summary": summary})
     except Exception as e:
         logger.warning("[정산] 매도 단건 실시간 화면 전송 실패: %s", e)
@@ -202,12 +204,14 @@ async def _broadcast_buy_append(rec: dict) -> None:
 
 
 async def _broadcast_full_sell_history(trade_mode: str) -> None:
-    """초기 스냅샷용: 해당 trade_mode의 전체 매도 내역 + 일별 요약을 브로드캐스트."""
+    """초기 스냅샷용: 해당 trade_mode의 전체 매도 내역 + 최근 N거래일 요약을 브로드캐스트."""
     try:
         from backend.app.web.ws_manager import ws_manager
+        from backend.app.services import engine_state
         rows = await get_sell_history(trade_mode=trade_mode)
         await ws_manager.broadcast("sell-history-update", {"sell_history": rows})
-        summary = await get_daily_summary(days=20, trade_mode=trade_mode)
+        days = int(engine_state.state.integrated_system_settings_cache.get("daily_summary_days", 20))
+        summary = await get_daily_summary(days=days, trade_mode=trade_mode)
         await ws_manager.broadcast("daily-summary-update", {"daily_summary": summary})
     except Exception as e:
         logger.warning("[정산] 매도 내역 실시간 화면 전송 실패: %s", e)
