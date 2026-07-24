@@ -117,7 +117,7 @@ function buildSellTypeSection(root: HTMLElement): void {
   tsDropRow = createSettingRow('추적 고점대비 하락률 (%)', tsDropValInput.el, { rangeText: '0~100%' })
   {
     const r = createToggleLabelControlsRow({
-      labelText: '고점 추적 매도 (시작 상승률 %)',
+      labelText: ['고점추적매도', '(시작상승률%)'],
       rangeText: '0~100%',
       toggleOn: false,
       onToggle: next => { vals.ts_apply = next; saveHelper!.saveImmediate({ ts_apply: next }) },
@@ -136,7 +136,6 @@ function buildSellIntervalSection(root: HTMLElement): void {
     sellIntervalInput = createNumInput({ value: 30, onChange: v => { const orig = Number(vals.sell_interval_sec); vals.sell_interval_sec = v; saveHelper!.autoSave('sell_interval_sec', v, () => { vals.sell_interval_sec = orig; sellIntervalInput!.setValue(orig) }) }, step: 5, min: 5, max: 300, name: 'sell_interval_sec' })
     const r = createToggleLabelControlsRow({
       labelText: '매도 주문 간격 활성화',
-      rangeText: '5~300초, 5초 단위, 손절 포함',
       toggleOn: false,
       onToggle: next => { vals.sell_interval_on = next; saveHelper!.saveImmediate({ sell_interval_on: next }) },
       controlsChild: sellIntervalInput.el,

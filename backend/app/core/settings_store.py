@@ -225,6 +225,7 @@ _RISK_INT_KEYS = {
 _RISK_FLOAT_KEYS = {
     "daily_loss_rate_limit": (-100.0, 0.0),         # 음수만 허용
     "daily_profit_rate_limit": (0.0, 1000.0),       # 양수만 허용 (200% 이상 수익 허용 — 사용자 결정)
+    "sector_min_trade_amt": (1.0, 100_000.0),       # 5일평균 최소 거래대금: 1억~10조 (억 단위, P22 데이터 정합성)
 }
 
 

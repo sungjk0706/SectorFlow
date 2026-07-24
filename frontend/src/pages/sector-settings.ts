@@ -6,7 +6,7 @@ import { hotStore } from '../stores/hotStore'
 import { type SettingsManager } from '../settings'
 import { initSettingsPage, startSettingsSubscription, destroySettingsPage } from '../utils/settings-page'
 import type { AutoSaveHelper } from '../utils/settings-save'
-import { createSettingRow, createNumInput, createMoneyInput } from '../components/common/setting-row'
+import { createSettingRow, createNumInput } from '../components/common/setting-row'
 import { createDualLabelSlider, type DualLabelSliderHandle } from '../components/common/create-slider'
 import { createProgressBar, type ProgressBarHandle } from '../components/common/progress-bar'
 import { createMarketCountRow, type MarketCountRowHandle } from '../components/common/market-count-row'
@@ -31,7 +31,7 @@ let saving = false
 
 // 입력 컴포넌트 참조
 let thresholdInput: ReturnType<typeof createNumInput> | null = null
-let minTradeAmtInput: ReturnType<typeof createMoneyInput> | null = null
+let minTradeAmtInput: ReturnType<typeof createNumInput> | null = null
 let minRiseRatioInput: ReturnType<typeof createNumInput> | null = null
 let maxTargetsInput: ReturnType<typeof createNumInput> | null = null
 let bonusRiseRatioSlider: DualLabelSliderHandle | null = null
@@ -218,8 +218,8 @@ function createBonusSliderBlock(key: string, label: string): {
 // ① 종목 필터 — 5일 평균 거래대금 이하 차단
 function buildFilterSection(root: HTMLElement): void {
   root.appendChild(createStepLabel('①', '5일 평균 거래대금 이하 차단'))
-  minTradeAmtInput = createMoneyInput({ value: 0, onChange: v => { const orig = currentVals.sector_min_trade_amt; onNumChange('sector_min_trade_amt', v, () => { currentVals.sector_min_trade_amt = orig; minTradeAmtInput!.setValue(orig) }) }, step: 1, min: 0, max: 1_000_000_000, name: 'sector_min_trade_amt' })
-  root.appendChild(createSettingRow('5일평균 최소 거래대금', minTradeAmtInput.el, { rangeText: '0~10억원' }))
+  minTradeAmtInput = createNumInput({ value: 0, onChange: v => { const orig = currentVals.sector_min_trade_amt; onNumChange('sector_min_trade_amt', v, () => { currentVals.sector_min_trade_amt = orig; minTradeAmtInput!.setValue(orig) }) }, step: 1, min: 1, max: 100_000, name: 'sector_min_trade_amt' })
+  root.appendChild(createSettingRow('5일평균 최소 거래대금', minTradeAmtInput.el, { rangeText: '1억~10조원' }))
 }
 
 // ② 업종순위 — 임계치 입력 + 상태 라벨 (KRX/NXT 진행 바는 별도 섹션)

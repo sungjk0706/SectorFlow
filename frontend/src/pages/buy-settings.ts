@@ -309,7 +309,7 @@ function buildBuyAmountSection(root: HTMLElement): void {
   {
     const r = createToggleLabelControlsRow({
       labelText: '전체 일일 최대 매수 금액',
-      rangeText: '0~10억원, 수수료 포함',
+      rangeText: '수수료 포함',
       toggleOn: false,
       onToggle: next => { vals.max_daily_total_buy_on = next; saveHelper!.saveImmediate({ max_daily_total_buy_on: next }) },
       controlsChild: maxDailyInput.el,
@@ -323,7 +323,7 @@ function buildBuyAmountSection(root: HTMLElement): void {
   maxStockCntInput = createNumInput({ value: 0, onChange: v => { const orig = Number(vals.max_stock_cnt); vals.max_stock_cnt = v; saveHelper!.autoSave('max_stock_cnt', v, () => { vals.max_stock_cnt = orig; maxStockCntInput!.setValue(orig) }) }, min: 0, max: 100, name: 'max_stock_cnt' })
   {
     const r = createToggleLabelControlsRow({
-      labelText: '최대 동시 보유 종목 수',
+      labelText: ['최대 동시', '보유종목수'],
       rangeText: '0~100개',
       toggleOn: true,
       onToggle: next => { vals.max_stock_cnt_on = next; saveHelper!.saveImmediate({ max_stock_cnt_on: next }) },
@@ -342,7 +342,7 @@ function buildRebuySection(root: HTMLElement): void {
   {
     const r = createToggleLabelControlsRow({
       labelText: '종목당 일일 최대 매수 금액',
-      rangeText: '0~10억원, 수수료 포함',
+      rangeText: '수수료 포함',
       toggleOn: true,
       onToggle: next => { vals.buy_amt_on = next; saveHelper!.saveImmediate({ buy_amt_on: next }) },
       controlsChild: buyAmtInput.el,
@@ -384,7 +384,6 @@ function buildBuyIntervalSection(root: HTMLElement): void {
     buyIntervalInput = createNumInput({ value: 30, onChange: v => { const orig = Number(vals.buy_interval_sec); vals.buy_interval_sec = v; saveHelper!.autoSave('buy_interval_sec', v, () => { vals.buy_interval_sec = orig; buyIntervalInput!.setValue(orig) }) }, step: 5, min: 5, max: 300, name: 'buy_interval_sec' })
     const r = createToggleLabelControlsRow({
       labelText: '매수 주문 간격 활성화',
-      rangeText: '5~300초, 5초 단위',
       toggleOn: false,
       onToggle: next => { vals.buy_interval_on = next; saveHelper!.saveImmediate({ buy_interval_on: next }) },
       controlsChild: buyIntervalInput.el,
