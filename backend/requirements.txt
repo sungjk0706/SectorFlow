@@ -42,5 +42,11 @@ python-jose[cryptography]>=3.3.0
 types-python-jose>=3.3.0
 
 # Test
+pytest>=8.0.0
+pytest-asyncio>=1.4.0
 pytest-cov>=7.0.0
 pytest-timeout>=2.0.0
+coverage>=7.0.0
+
+# Static Type Check
+mypy>=1.10.0

@@ -147,6 +147,12 @@ SectorFlow is a local real-time stock auto-trading web app for one person.
    3) **기존 실패로 판정된 경우**: 사용자 보고에 "기존 실패 N건 (수정 전 동일 실패 확인)"으로 명시하고, `HANDOVER.md` "미해결 문제" 섹션에 기록.
    4) **내 수정이 원인인 경우**: 즉시 원인 추적 및 수정. "기존 실패"로 치부하고 넘어가는 것은 절대 금지.
    - 테스트 실패는 무언가 잘못됐다는 신호. 무시하지 말고 반드시 추적하는 것이 원칙.
+4-2. **표준 검증 명령 (강제).** 모든 검증은 `.venv` 가상환경을 기준으로 실행. pyenv 글로벌 환경을 직접 사용하지 않음 (P10 SSOT · P22 정합성 — 실행 환경과 검증 환경 단일화).
+   - **백엔드 테스트**: `.venv/bin/python -m pytest backend/tests -q` (전체) 또는 `.venv/bin/python -m pytest backend/tests/<파일> -q` (개별)
+   - **백엔드 타입체크**: `.venv/bin/python -m mypy backend` (mypy.ini 설정 기준)
+   - **백엔드 런타임 기동**: `.venv/bin/python main.py` (규칙 5)
+   - **커버리지**: `.venv/bin/python -m pytest backend/tests --cov=backend --cov-report=term-missing`
+   - 의존성 재설치 시: `.venv/bin/python -m pip install -r backend/requirements.txt`
 5. For backend changes, runtime startup check is mandatory: start `.venv/bin/python main.py`, check logs, wait 10–30s, then terminate. 잔존 프로세스 정리는 규칙 5-1 준수.
 5-1. **세션 종료 전 잔존 프로세스 완전 종료 (강제).** 모든 작업 완료 후 세션 종료 전 반드시 다음 절차 수행:
    1) **잔존 프로세스 확인**: `ps aux | grep -E "python|main.py|pytest" | grep -v grep`로 백엔드/테스트 프로세스 잔존 여부 확인.
