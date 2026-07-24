@@ -151,7 +151,6 @@ class TestWSManagerInit:
         assert len(mgr._clients) == 0
         assert mgr._client_active_page == {}
         assert mgr._client_subscribed_fids == {}
-        assert mgr._shutdown_timer is None
 
     def test_client_count_zero(self):
         from backend.app.web.ws_manager import WSManager
@@ -172,26 +171,6 @@ class TestRegisterUnregister:
             await mgr.register(ws)
         assert ws in mgr._clients
         assert mgr.client_count == 1
-
-    async def test_register_cancels_shutdown_timer(self):
-        from backend.app.web.ws_manager import WSManager
-        mgr = WSManager()
-        mock_timer = MagicMock()
-        mock_timer.cancel = MagicMock()
-        mgr._shutdown_timer = mock_timer
-        ws = _make_ws()
-        with patch.object(mgr, "_send_initial_data_on_connect", AsyncMock()):
-            await mgr.register(ws)
-        mock_timer.cancel.assert_called_once()
-        assert mgr._shutdown_timer is None
-
-    async def test_register_no_timer_no_cancel(self):
-        from backend.app.web.ws_manager import WSManager
-        mgr = WSManager()
-        ws = _make_ws()
-        with patch.object(mgr, "_send_initial_data_on_connect", AsyncMock()):
-            await mgr.register(ws)
-        assert mgr._shutdown_timer is None
 
     async def test_register_calls_initial_data(self):
         from backend.app.web.ws_manager import WSManager
@@ -235,50 +214,6 @@ class TestRegisterUnregister:
         ws = _make_ws()
         mgr.unregister(ws)  # 없는 클라이언트 제거 — 에러 없음
         assert mgr.client_count == 0
-
-    def test_unregister_schedules_shutdown_when_empty(self):
-        from backend.app.web.ws_manager import WSManager
-        mgr = WSManager()
-        ws = _make_ws()
-        mgr._clients.add(ws)
-        mock_loop = MagicMock()
-        mock_timer = MagicMock()
-        mock_loop.call_later = MagicMock(return_value=mock_timer)
-        with patch("backend.app.web.ws_manager.asyncio.get_running_loop", return_value=mock_loop):
-            mgr.unregister(ws)
-        mock_loop.call_later.assert_called_once()
-        assert mgr._shutdown_timer is mock_timer
-
-    def test_unregister_no_shutdown_when_clients_remain(self):
-        from backend.app.web.ws_manager import WSManager
-        mgr = WSManager()
-        ws1, ws2 = _make_ws(), _make_ws()
-        mgr._clients.add(ws1)
-        mgr._clients.add(ws2)
-        mgr.unregister(ws1)
-        assert mgr._shutdown_timer is None
-
-    def test_unregister_runtime_error_no_loop(self):
-        from backend.app.web.ws_manager import WSManager
-        mgr = WSManager()
-        ws = _make_ws()
-        mgr._clients.add(ws)
-        with patch("backend.app.web.ws_manager.asyncio.get_running_loop", side_effect=RuntimeError("no loop")):
-            mgr.unregister(ws)
-        assert mgr._shutdown_timer is None
-
-    def test_unregister_no_double_timer(self):
-        from backend.app.web.ws_manager import WSManager
-        mgr = WSManager()
-        ws = _make_ws()
-        mgr._clients.add(ws)
-        existing_timer = MagicMock()
-        mgr._shutdown_timer = existing_timer
-        mock_loop = MagicMock()
-        with patch("backend.app.web.ws_manager.asyncio.get_running_loop", return_value=mock_loop):
-            mgr.unregister(ws)
-        # 이미 타이머가 있으면 새로 예약하지 않음
-        mock_loop.call_later.assert_not_called()
 
 
 # ── active page 관리 ──────────────────────────────────────────────────────────
@@ -562,58 +497,6 @@ class TestSendTo:
         assert ws not in mgr._clients
 
 
-# ── _send_sigterm ──────────────────────────────────────────────────────────────
-
-class TestSendSigterm:
-    """WSManager._send_sigterm — 전체 끊김 후 SIGTERM."""
-
-    def test_clients_present_no_sigterm(self):
-        from backend.app.web.ws_manager import WSManager
-        mgr = WSManager()
-        ws = _make_ws()
-        mgr._clients = {ws}
-        with patch("os.kill") as mock_kill:
-            mgr._send_sigterm()
-        mock_kill.assert_not_called()
-        assert mgr._shutdown_timer is None
-
-    def test_no_clients_sends_sigterm(self):
-        from backend.app.web.ws_manager import WSManager
-        mgr = WSManager()
-        mgr._clients = set()
-        with patch("os.kill") as mock_kill:
-            with patch("backend.app.services.engine_state.state") as mock_state:
-                mock_state.shutdown_requested = False
-                mock_state.connector_manager = None
-                mgr._send_sigterm()
-        mock_kill.assert_called_once()
-
-    def test_shutdown_requested_no_sigterm(self):
-        from backend.app.web.ws_manager import WSManager
-        mgr = WSManager()
-        mgr._clients = set()
-        with patch("os.kill") as mock_kill:
-            with patch("backend.app.services.engine_state.state") as mock_state:
-                mock_state.shutdown_requested = True
-                mock_state.connector_manager = None
-                mgr._send_sigterm()
-        mock_kill.assert_not_called()
-
-    def test_broker_reconnecting_no_sigterm(self):
-        from backend.app.web.ws_manager import WSManager
-        mgr = WSManager()
-        mgr._clients = set()
-        mock_cm = MagicMock()
-        mock_cm.is_connected = MagicMock(return_value=False)
-        with patch("os.kill") as mock_kill:
-            with patch("backend.app.services.engine_state.state") as mock_state:
-                mock_state.shutdown_requested = False
-                mock_state.connector_manager = mock_cm
-                mgr._send_sigterm()
-        mock_kill.assert_not_called()
-        assert mgr._shutdown_timer is None
-
-
 # ── close_all ──────────────────────────────────────────────────────────────────
 
 class TestCloseAll:
@@ -628,21 +511,6 @@ class TestCloseAll:
         ws1.close.assert_awaited_once()
         ws2.close.assert_awaited_once()
         assert len(mgr._clients) == 0
-
-    async def test_close_all_cancels_timer(self):
-        from backend.app.web.ws_manager import WSManager
-        mgr = WSManager()
-        mock_timer = MagicMock()
-        mgr._shutdown_timer = mock_timer
-        await mgr.close_all()
-        mock_timer.cancel.assert_called_once()
-        assert mgr._shutdown_timer is None
-
-    async def test_close_all_no_timer(self):
-        from backend.app.web.ws_manager import WSManager
-        mgr = WSManager()
-        await mgr.close_all()  # 타이머 없어도 에러 없음
-        assert mgr._shutdown_timer is None
 
     async def test_close_all_client_exception(self):
         from backend.app.web.ws_manager import WSManager
