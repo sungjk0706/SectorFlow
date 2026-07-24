@@ -102,10 +102,11 @@ function buildDailyLossRow(state: GeneralSettingsState): void {
   state.dailyLossInput = createMoneyInput({
     value: -500000,
     onChange: async v => {
+      const orig = Number(state.vals.daily_loss_limit)
       state.vals.daily_loss_limit = v
       const res = await state.settingsMgr!.saveSection({ daily_loss_limit: v })
       toastResult(res)
-      if (res.ok) state.vals.daily_loss_limit = v
+      if (!res.ok) { state.vals.daily_loss_limit = orig; state.dailyLossInput!.setValue(orig) }
     },
     step: 10000, min: -1000000000, max: 0, name: 'daily_loss_limit',
   })
@@ -129,10 +130,11 @@ function buildDailyLossRateRow(state: GeneralSettingsState): void {
   state.dailyLossRateInput = createNumInput({
     value: -5,
     onChange: async v => {
+      const orig = Number(state.vals.daily_loss_rate_limit)
       state.vals.daily_loss_rate_limit = v
       const res = await state.settingsMgr!.saveSection({ daily_loss_rate_limit: v })
       toastResult(res)
-      if (res.ok) state.vals.daily_loss_rate_limit = v
+      if (!res.ok) { state.vals.daily_loss_rate_limit = orig; state.dailyLossRateInput!.setValue(orig) }
     },
     step: 0.1, min: -100, max: 0, name: 'daily_loss_rate_limit',
   })
@@ -156,10 +158,11 @@ function buildDailyProfitRow(state: GeneralSettingsState): void {
   state.dailyProfitInput = createMoneyInput({
     value: 500000,
     onChange: async v => {
+      const orig = Number(state.vals.daily_profit_limit)
       state.vals.daily_profit_limit = v
       const res = await state.settingsMgr!.saveSection({ daily_profit_limit: v })
       toastResult(res)
-      if (res.ok) state.vals.daily_profit_limit = v
+      if (!res.ok) { state.vals.daily_profit_limit = orig; state.dailyProfitInput!.setValue(orig) }
     },
     name: 'daily_profit_limit',
     min: 0, max: 1_000_000_000,
@@ -184,10 +187,11 @@ function buildDailyProfitRateRow(state: GeneralSettingsState): void {
   state.dailyProfitRateInput = createNumInput({
     value: 5,
     onChange: async v => {
+      const orig = Number(state.vals.daily_profit_rate_limit)
       state.vals.daily_profit_rate_limit = v
       const res = await state.settingsMgr!.saveSection({ daily_profit_rate_limit: v })
       toastResult(res)
-      if (res.ok) state.vals.daily_profit_rate_limit = v
+      if (!res.ok) { state.vals.daily_profit_rate_limit = orig; state.dailyProfitRateInput!.setValue(orig) }
     },
     step: 0.1, min: 0, max: 1000, name: 'daily_profit_rate_limit',
   })
@@ -211,10 +215,11 @@ function buildConsecLossRow(state: GeneralSettingsState): void {
   state.consecLossInput = createNumInput({
     value: 3,
     onChange: async v => {
+      const orig = Number(state.vals.consecutive_loss_limit)
       state.vals.consecutive_loss_limit = v
       const res = await state.settingsMgr!.saveSection({ consecutive_loss_limit: v })
       toastResult(res)
-      if (res.ok) state.vals.consecutive_loss_limit = v
+      if (!res.ok) { state.vals.consecutive_loss_limit = orig; state.consecLossInput!.setValue(orig) }
     },
     step: 1, min: 1, max: 100, name: 'consecutive_loss_limit',
   })

@@ -57,12 +57,12 @@ let receiveStatusLabelEl: HTMLSpanElement | null = null
 // 현재 값 추적
 let currentVals: Record<string, number> = {}
 
-async function onNumChange(key: string, value: number): Promise<void> {
+async function onNumChange(key: string, value: number, onFail?: () => void): Promise<void> {
   // sector_max_targets: 0은 "매수 대상 0개" (백엔드 buy_filter와 일치) — P20 폴백 금지
   const v = value
   currentVals[key] = v
   if (autoSaveHelper) {
-    autoSaveHelper.autoSave(key, v)
+    autoSaveHelper.autoSave(key, v, onFail)
   }
 }
 
@@ -175,7 +175,7 @@ function createBonusSliderBlock(key: string, label: string): {
   let slider: DualLabelSliderHandle | null = null
   const input = createNumInput({
     value: 0, min: -100, max: 100, step: 1, name: key,
-    onChange: v => { slider?.setValue(v); onNumChange(key, v); _updateMaxScoreDisplay() },
+    onChange: v => { const orig = currentVals[key]; slider?.setValue(v); onNumChange(key, v, () => { currentVals[key] = orig; input.setValue(orig); slider?.setValue(orig); _updateMaxScoreDisplay() }); _updateMaxScoreDisplay() },
   })
   slider = createDualLabelSlider({
     min: -100, max: 100, value: 0, step: 1,
@@ -185,7 +185,7 @@ function createBonusSliderBlock(key: string, label: string): {
     leftColorLight: COLOR.downLight,
     rightColor: COLOR.up,
     rightColorLight: COLOR.upLight,
-    onChange: v => { input.setValue(v); onNumChange(key, v); _updateMaxScoreDisplay() },
+    onChange: v => { const orig = currentVals[key]; input.setValue(v); onNumChange(key, v, () => { currentVals[key] = orig; input.setValue(orig); slider?.setValue(orig); _updateMaxScoreDisplay() }); _updateMaxScoreDisplay() },
   })
   // Row 1: 라벨(좌) + [rangeText][숫자 입력란](우)
   const labelRow = document.createElement('div')
@@ -218,14 +218,14 @@ function createBonusSliderBlock(key: string, label: string): {
 // ① 종목 필터 — 5일 평균 거래대금 이하 차단
 function buildFilterSection(root: HTMLElement): void {
   root.appendChild(createStepLabel('①', '5일 평균 거래대금 이하 차단'))
-  minTradeAmtInput = createMoneyInput({ value: 0, onChange: v => onNumChange('sector_min_trade_amt', v), step: 1, min: 0, max: 1_000_000_000, name: 'sector_min_trade_amt' })
+  minTradeAmtInput = createMoneyInput({ value: 0, onChange: v => { const orig = currentVals.sector_min_trade_amt; onNumChange('sector_min_trade_amt', v, () => { currentVals.sector_min_trade_amt = orig; minTradeAmtInput!.setValue(orig) }) }, step: 1, min: 0, max: 1_000_000_000, name: 'sector_min_trade_amt' })
   root.appendChild(createSettingRow('5일평균 최소 거래대금', minTradeAmtInput.el, { rangeText: '0~10억원' }))
 }
 
 // ② 업종순위 — 임계치 입력 + 상태 라벨 (KRX/NXT 진행 바는 별도 섹션)
 function buildThresholdSection(root: HTMLElement): void {
   root.appendChild(createStepLabel('②', '업종순위: 수신율 기반 계산'))
-  thresholdInput = createNumInput({ value: 70, onChange: v => { onNumChange('sector_start_threshold_pct', v) }, step: 1, min: 0, max: 100, name: 'sector_start_threshold_pct' })
+  thresholdInput = createNumInput({ value: 70, onChange: v => { const orig = currentVals.sector_start_threshold_pct; onNumChange('sector_start_threshold_pct', v, () => { currentVals.sector_start_threshold_pct = orig; thresholdInput!.setValue(orig) }) }, step: 1, min: 0, max: 100, name: 'sector_start_threshold_pct' })
 
   const _initialRate = uiStore.getState().receiveRate
   const _initialThreshold = uiStore.getState().settings?.sector_start_threshold_pct ?? 70
@@ -291,7 +291,7 @@ function buildReceiveProgressSection(root: HTMLElement): void {
 // ③ 업종 컷오프 — 업종 내 상승비율 이하 차단
 function buildCutoffSection(root: HTMLElement): void {
   root.appendChild(createStepLabel('③', '업종 내 상승비율 이하 차단'))
-  minRiseRatioInput = createNumInput({ value: 0, onChange: v => onNumChange('sector_min_rise_ratio_pct', v), step: 1, min: 0, max: 100, name: 'sector_min_rise_ratio_pct' })
+  minRiseRatioInput = createNumInput({ value: 0, onChange: v => { const orig = currentVals.sector_min_rise_ratio_pct; onNumChange('sector_min_rise_ratio_pct', v, () => { currentVals.sector_min_rise_ratio_pct = orig; minRiseRatioInput!.setValue(orig) }) }, step: 1, min: 0, max: 100, name: 'sector_min_rise_ratio_pct' })
   root.appendChild(createSettingRow('업종내 종목 상승비율', minRiseRatioInput.el, { rangeText: '0~100%' }))
 }
 
@@ -341,7 +341,7 @@ function buildBonusSection(root: HTMLElement): void {
 // ⑤ 매수 대상 — 최대 매수 대상 업종수 설정 + 상위 N 업종 종목 합계 보조 줄 (P21 투명성)
 function buildMaxTargetsSection(root: HTMLElement): void {
   root.appendChild(createStepLabel('⑤', '최대 매수 대상 업종수 설정'))
-  maxTargetsInput = createNumInput({ value: 0, onChange: v => onNumChange('sector_max_targets', v), step: 1, min: 0, max: 100, name: 'sector_max_targets' })
+  maxTargetsInput = createNumInput({ value: 0, onChange: v => { const orig = currentVals.sector_max_targets; onNumChange('sector_max_targets', v, () => { currentVals.sector_max_targets = orig; maxTargetsInput!.setValue(orig) }) }, step: 1, min: 0, max: 100, name: 'sector_max_targets' })
 
   const maxTargetsRow = document.createElement('div')
   Object.assign(maxTargetsRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px solid ' + COLOR.borderLight })

@@ -5,7 +5,8 @@ import type { SettingsManager } from '../settings'
 import { toastResult } from '../components/common/toast'
 
 export interface AutoSaveHelper {
-  autoSave(key: string, value: unknown): void
+  // onFail: 저장 실패 시 호출 (호출처에서 vals·입력란을 원래 값으로 복원 — 토글 복원 패턴과 동일, P23)
+  autoSave(key: string, value: unknown, onFail?: () => void): void
   saveImmediate(patch: Record<string, unknown>): Promise<void>
   destroy(): void
 }
@@ -21,35 +22,34 @@ export function createAutoSaveHelper(
   onSync?: () => void
 ): AutoSaveHelper {
   let saving = false
-  let pendingSave: { key: string; value: unknown } | null = null
+  let pendingSave: { key: string; value: unknown; onFail: (() => void) | undefined } | null = null
   let debounceTimer: ReturnType<typeof setTimeout> | null = null
 
-  function autoSave(key: string, value: unknown): void {
+  function autoSave(key: string, value: unknown, onFail?: () => void): void {
     if (!settingsMgr) return
-    // 디바운스: 마지막 입력 후 400ms 대기 후 저장
+    // 디바운스: 마지막 입력 후 400ms 대기 후 저장. 디바운스 중 새 호출이 오면 이전 onFail은 무시되고 마지막 onFail이 사용됨.
     if (debounceTimer) clearTimeout(debounceTimer)
     debounceTimer = setTimeout(() => {
       debounceTimer = null
-      flushSave(key, value)
+      flushSave(key, value, onFail)
     }, 400)
   }
 
-  async function flushSave(key: string, value: unknown): Promise<void> {
+  async function flushSave(key: string, value: unknown, onFail?: () => void): Promise<void> {
     if (!settingsMgr) return
     if (saving) {
-      pendingSave = { key, value }
+      pendingSave = { key, value, onFail }
       return
     }
     saving = true
+    let cur = { key, value, onFail }
     try {
-      let currentKey = key
-      let currentValue = value
       while (true) {
-        const res = await settingsMgr.saveSection({ [currentKey]: currentValue })
+        const res = await settingsMgr.saveSection({ [cur.key]: cur.value })
         toastResult(res)
+        if (!res.ok && cur.onFail) cur.onFail()
         if (pendingSave) {
-          currentKey = pendingSave.key
-          currentValue = pendingSave.value
+          cur = pendingSave
           pendingSave = null
         } else {
           break
@@ -57,6 +57,7 @@ export function createAutoSaveHelper(
       }
     } catch (err) {
       console.error('[AutoSaveHelper] save failed:', err)
+      if (cur.onFail) cur.onFail()
     } finally {
       saving = false
       // 저장 완료 후 동기화 콜백 호출

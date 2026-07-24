@@ -45,12 +45,17 @@ function buildBuyTimeRow(state: GeneralSettingsState): HTMLElement {
   const { el: tpWrap, handle } = createTimePairInput(buyStart, buyEnd, (s, e) => {
     warnEl.textContent = '' // 유효 복귀 시 즉시 해제
     if (state.settingsMgr) {
+      const origS = String(state.vals.buy_time_start ?? '09:00')
+      const origE = String(state.vals.buy_time_end ?? '15:00')
       const dirty: Record<string, unknown> = {}
       if (s !== state.vals.buy_time_start) dirty.buy_time_start = s
       if (e !== state.vals.buy_time_end) dirty.buy_time_end = e
       if (Object.keys(dirty).length > 0) {
-        state.settingsMgr.saveSection(dirty).then(toastResult)
-        Object.assign(state.vals, dirty)
+        state.settingsMgr.saveSection(dirty).then(res => {
+          toastResult(res)
+          if (res.ok) Object.assign(state.vals, dirty)
+          else handle.setValue(origS, origE)
+        })
       }
     }
   }, (msg) => { warnEl.textContent = msg })
@@ -86,12 +91,17 @@ function buildSellTimeRow(state: GeneralSettingsState): HTMLElement {
   const { el: tpWrap, handle } = createTimePairInput(sellStart, sellEnd, (s, e) => {
     warnEl.textContent = '' // 유효 복귀 시 즉시 해제
     if (state.settingsMgr) {
+      const origS = String(state.vals.sell_time_start ?? '09:00')
+      const origE = String(state.vals.sell_time_end ?? '15:00')
       const dirty: Record<string, unknown> = {}
       if (s !== state.vals.sell_time_start) dirty.sell_time_start = s
       if (e !== state.vals.sell_time_end) dirty.sell_time_end = e
       if (Object.keys(dirty).length > 0) {
-        state.settingsMgr.saveSection(dirty).then(toastResult)
-        Object.assign(state.vals, dirty)
+        state.settingsMgr.saveSection(dirty).then(res => {
+          toastResult(res)
+          if (res.ok) Object.assign(state.vals, dirty)
+          else handle.setValue(origS, origE)
+        })
       }
     }
   }, (msg) => { warnEl.textContent = msg })
@@ -123,7 +133,8 @@ function buildTimetableRow(state: GeneralSettingsState, labelText: string, key: 
   const [h, m] = parseHM(String(state.vals[key] ?? defaultTime))
   const slot = createTimeSlot(h, m, (nh, nm) => {
     updateTimeSlotDisplay(slot, nh, nm)
-    scheduleTimetableSave(key, `${nh}:${nm}`)
+    const [origH, origM] = parseHM(String(state.vals[key] ?? defaultTime))
+    scheduleTimetableSave(key, `${nh}:${nm}`, () => updateTimeSlotDisplay(slot, origH, origM))
   })
   row.appendChild(slot)
   // 모듈 상태 업데이트 (키별)
@@ -148,7 +159,8 @@ function buildConfirmedDownloadRow(state: GeneralSettingsState): HTMLElement {
   state.confirmedDlH = cdh; state.confirmedDlM = cdm
   state.confirmedDlSlot = createTimeSlot(state.confirmedDlH, state.confirmedDlM, (h, m) => {
     state.confirmedDlH = h; state.confirmedDlM = m; updateTimeSlotDisplay(state.confirmedDlSlot!, h, m)
-    scheduleTimetableSave('timetable.confirmed_download', `${h}:${m}`)
+    const [origH, origM] = parseHM(String(state.vals['timetable.confirmed_download'] ?? '20:40'))
+    scheduleTimetableSave('timetable.confirmed_download', `${h}:${m}`, () => { state.confirmedDlH = origH; state.confirmedDlM = origM; updateTimeSlotDisplay(state.confirmedDlSlot!, origH, origM) })
   })
   right.appendChild(state.confirmedDlSlot)
 
@@ -222,10 +234,12 @@ function buildSubscribeMaxRow(state: GeneralSettingsState): HTMLElement {
     name: 'subscribe.max_0b_count',
     onChange: async (v) => {
       if (!state.settingsMgr) return
+      const orig = Number(state.vals['subscribe.max_0b_count'] ?? 200) || 200
       const dirty: Record<string, unknown> = { 'subscribe.max_0b_count': v }
       const res = await state.settingsMgr.saveSection(dirty)
       toastResult(res)
       if (res.ok) Object.assign(state.vals, dirty)
+      else { state.vals['subscribe.max_0b_count'] = orig; state.subscribeMaxInput?.setValue(orig) }
     },
   })
   row.appendChild(state.subscribeMaxInput.el)

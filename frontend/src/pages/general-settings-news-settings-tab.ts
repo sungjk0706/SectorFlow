@@ -27,11 +27,13 @@ function buildNewsKeywordsRow(state: GeneralSettingsState): HTMLElement {
     initialTags: initialKeywords,
     onChange: async (tags) => {
       if (!state.settingsMgr) return
+      const orig = String(state.vals.news_keywords ?? '')
       const joined = tags.join(',')
       const dirty: Record<string, unknown> = { news_keywords: joined }
       const res = await state.settingsMgr.saveSection(dirty)
       toastResult(res)
       if (res.ok) Object.assign(state.vals, dirty)
+      else { state.vals.news_keywords = orig; state.newsKeywordsTagChip?.setTags(orig.split(',').map(s => s.trim()).filter(s => s.length > 0)) }
     },
   })
   row.appendChild(state.newsKeywordsTagChip.el)
@@ -54,10 +56,12 @@ function buildNewsTtlRow(state: GeneralSettingsState): HTMLElement {
     name: 'news_boost_ttl_sec',
     onChange: async (v) => {
       if (!state.settingsMgr) return
+      const orig = Number(state.vals.news_boost_ttl_sec ?? 300) || 300
       const dirty: Record<string, unknown> = { news_boost_ttl_sec: v }
       const res = await state.settingsMgr.saveSection(dirty)
       toastResult(res)
       if (res.ok) Object.assign(state.vals, dirty)
+      else { state.vals.news_boost_ttl_sec = orig; state.newsTtlInput?.setValue(orig) }
     },
   })
   const rightWrap = document.createElement('span')

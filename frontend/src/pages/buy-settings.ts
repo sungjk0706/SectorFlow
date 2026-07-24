@@ -175,7 +175,7 @@ function buildBuyBlockSection(root: HTMLElement): void {
   root.appendChild(sectionTitle('매수 차단'))
 
   // 상승률 제한 (토글 + 입력)
-  riseInput = createNumInput({ value: 0, onChange: v => { vals.buy_block_rise_pct = v; saveHelper!.autoSave('buy_block_rise_pct', v) }, step: 1, min: 0, max: 100, name: 'buy_block_rise_pct' })
+  riseInput = createNumInput({ value: 0, onChange: v => { const orig = Number(vals.buy_block_rise_pct); vals.buy_block_rise_pct = v; saveHelper!.autoSave('buy_block_rise_pct', v, () => { vals.buy_block_rise_pct = orig; riseInput!.setValue(orig) }) }, step: 1, min: 0, max: 100, name: 'buy_block_rise_pct' })
   {
     const r = createToggleLabelControlsRow({
       labelText: '종목 상승률 매수차단',
@@ -189,7 +189,7 @@ function buildBuyBlockSection(root: HTMLElement): void {
   }
 
   // 하락률 제한 (토글 + 입력)
-  fallInput = createNumInput({ value: 0, onChange: v => { vals.buy_block_fall_pct = v; saveHelper!.autoSave('buy_block_fall_pct', v) }, step: 1, min: 0, max: 100, name: 'buy_block_fall_pct' })
+  fallInput = createNumInput({ value: 0, onChange: v => { const orig = Number(vals.buy_block_fall_pct); vals.buy_block_fall_pct = v; saveHelper!.autoSave('buy_block_fall_pct', v, () => { vals.buy_block_fall_pct = orig; fallInput!.setValue(orig) }) }, step: 1, min: 0, max: 100, name: 'buy_block_fall_pct' })
   {
     const r = createToggleLabelControlsRow({
       labelText: '종목 하락률 매수차단',
@@ -208,7 +208,7 @@ function buildBoostSection(root: HTMLElement): void {
 
   // --- 5일 고가 돌파 ---
   {
-    boostHighScoreInput = createNumInput({ value: 1.0, onChange: v => { vals.boost_high_breakout_score = v; saveHelper!.autoSave('boost_high_breakout_score', v) }, step: 1, min: 0, max: 100, name: 'boost_high_breakout_score' })
+    boostHighScoreInput = createNumInput({ value: 1.0, onChange: v => { const orig = Number(vals.boost_high_breakout_score); vals.boost_high_breakout_score = v; saveHelper!.autoSave('boost_high_breakout_score', v, () => { vals.boost_high_breakout_score = orig; boostHighScoreInput!.setValue(orig) }) }, step: 1, min: 0, max: 100, name: 'boost_high_breakout_score' })
     const r = createToggleLabelControlsRow({
       labelText: '5일 고가 돌파',
       rangeText: '0~100점',
@@ -222,7 +222,7 @@ function buildBoostSection(root: HTMLElement): void {
 
   // --- 뉴스 호재 ---
   {
-    boostNewsScoreInput = createNumInput({ value: 1.0, onChange: v => { vals.boost_news_score = v; saveHelper!.autoSave('boost_news_score', v) }, step: 1, min: 0, max: 100, name: 'boost_news_score' })
+    boostNewsScoreInput = createNumInput({ value: 1.0, onChange: v => { const orig = Number(vals.boost_news_score); vals.boost_news_score = v; saveHelper!.autoSave('boost_news_score', v, () => { vals.boost_news_score = orig; boostNewsScoreInput!.setValue(orig) }) }, step: 1, min: 0, max: 100, name: 'boost_news_score' })
     const r = createToggleLabelControlsRow({
       labelText: '📰 뉴스 호재',
       rangeText: '0~100점',
@@ -236,7 +236,7 @@ function buildBoostSection(root: HTMLElement): void {
 
   // --- 프로그램 순매수 ---
   {
-    boostProgramScoreInput = createNumInput({ value: 1.0, onChange: v => { vals.boost_program_net_buy_score = v; saveHelper!.autoSave('boost_program_net_buy_score', v) }, step: 1, min: 0, max: 100, name: 'boost_program_net_buy_score' })
+    boostProgramScoreInput = createNumInput({ value: 1.0, onChange: v => { const orig = Number(vals.boost_program_net_buy_score); vals.boost_program_net_buy_score = v; saveHelper!.autoSave('boost_program_net_buy_score', v, () => { vals.boost_program_net_buy_score = orig; boostProgramScoreInput!.setValue(orig) }) }, step: 1, min: 0, max: 100, name: 'boost_program_net_buy_score' })
     const r = createToggleLabelControlsRow({
       labelText: '프로그램 순매수',
       rangeText: '0~100점',
@@ -269,8 +269,9 @@ function buildBoostOrderBlock(root: HTMLElement): void {
       // live preview only
     },
     onCommit(v) {
+      const orig = Number(vals.boost_order_ratio_pct)
       vals.boost_order_ratio_pct = v - 100
-      saveHelper!.autoSave('boost_order_ratio_pct', v - 100)
+      saveHelper!.autoSave('boost_order_ratio_pct', v - 100, () => { vals.boost_order_ratio_pct = orig; boostOrderDualSlider?.setValue(orig + 100) })
     },
   })
 
@@ -280,7 +281,7 @@ function buildBoostOrderBlock(root: HTMLElement): void {
   boostOrderRow2 = row2
 
   // Row 1: toggle + label | 가산점 + input
-  boostOrderScoreInput = createNumInput({ value: 1.0, onChange: v => { vals.boost_order_ratio_score = v; saveHelper!.autoSave('boost_order_ratio_score', v) }, step: 1, min: 0, max: 100, name: 'boost_order_ratio_score' })
+  boostOrderScoreInput = createNumInput({ value: 1.0, onChange: v => { const orig = Number(vals.boost_order_ratio_score); vals.boost_order_ratio_score = v; saveHelper!.autoSave('boost_order_ratio_score', v, () => { vals.boost_order_ratio_score = orig; boostOrderScoreInput!.setValue(orig) }) }, step: 1, min: 0, max: 100, name: 'boost_order_ratio_score' })
   const r = createToggleLabelControlsRow({
     labelText: '매수/매도호가 잔량비율',
     rangeText: '0~100점',
@@ -304,7 +305,7 @@ function buildBuyAmountSection(root: HTMLElement): void {
   root.appendChild(createSettingRow('매수 주문 유형', createFixedValue('시장가')))
 
   // 일일 최대 매수 금액 (토글 + 금액 입력)
-  maxDailyInput = createMoneyInput({ value: 0, onChange: v => { vals.max_daily_total_buy_amt = v; saveHelper!.autoSave('max_daily_total_buy_amt', v) }, min: 0, max: 1_000_000_000, name: 'max_daily_total_buy_amt' })
+  maxDailyInput = createMoneyInput({ value: 0, onChange: v => { const orig = Number(vals.max_daily_total_buy_amt); vals.max_daily_total_buy_amt = v; saveHelper!.autoSave('max_daily_total_buy_amt', v, () => { vals.max_daily_total_buy_amt = orig; maxDailyInput!.setValue(orig) }) }, min: 0, max: 1_000_000_000, name: 'max_daily_total_buy_amt' })
   {
     const r = createToggleLabelControlsRow({
       labelText: '전체 일일 최대 매수 금액',
@@ -319,7 +320,7 @@ function buildBuyAmountSection(root: HTMLElement): void {
   root.appendChild(createDescText('OFF 시 하루 매수 총액 제한 없음. 종목당 한도가 우선 적용됩니다.'))
 
   // 최대 동시 보유 종목 수 (토글 + 입력)
-  maxStockCntInput = createNumInput({ value: 0, onChange: v => { vals.max_stock_cnt = v; saveHelper!.autoSave('max_stock_cnt', v) }, min: 0, max: 100, name: 'max_stock_cnt' })
+  maxStockCntInput = createNumInput({ value: 0, onChange: v => { const orig = Number(vals.max_stock_cnt); vals.max_stock_cnt = v; saveHelper!.autoSave('max_stock_cnt', v, () => { vals.max_stock_cnt = orig; maxStockCntInput!.setValue(orig) }) }, min: 0, max: 100, name: 'max_stock_cnt' })
   {
     const r = createToggleLabelControlsRow({
       labelText: '최대 동시 보유 종목 수',
@@ -337,7 +338,7 @@ function buildRebuySection(root: HTMLElement): void {
   root.appendChild(sectionTitle('동일 종목 재매수 제어'))
 
   // 종목당 일일 최대 매수 금액 (토글 + 입력)
-  buyAmtInput = createMoneyInput({ value: 0, onChange: v => { vals.buy_amt = v; saveHelper!.autoSave('buy_amt', v) }, min: 0, max: 1_000_000_000, name: 'buy_amt' })
+  buyAmtInput = createMoneyInput({ value: 0, onChange: v => { const orig = Number(vals.buy_amt); vals.buy_amt = v; saveHelper!.autoSave('buy_amt', v, () => { vals.buy_amt = orig; buyAmtInput!.setValue(orig) }) }, min: 0, max: 1_000_000_000, name: 'buy_amt' })
   {
     const r = createToggleLabelControlsRow({
       labelText: '종목당 일일 최대 매수 금액',
@@ -380,7 +381,7 @@ function buildRebuySection(root: HTMLElement): void {
 function buildBuyIntervalSection(root: HTMLElement): void {
   root.appendChild(sectionTitle('매수 주문 간격'))
   {
-    buyIntervalInput = createNumInput({ value: 30, onChange: v => { vals.buy_interval_sec = v; saveHelper!.autoSave('buy_interval_sec', v) }, step: 5, min: 5, max: 300, name: 'buy_interval_sec' })
+    buyIntervalInput = createNumInput({ value: 30, onChange: v => { const orig = Number(vals.buy_interval_sec); vals.buy_interval_sec = v; saveHelper!.autoSave('buy_interval_sec', v, () => { vals.buy_interval_sec = orig; buyIntervalInput!.setValue(orig) }) }, step: 5, min: 5, max: 300, name: 'buy_interval_sec' })
     const r = createToggleLabelControlsRow({
       labelText: '매수 주문 간격 활성화',
       rangeText: '5~300초, 5초 단위',

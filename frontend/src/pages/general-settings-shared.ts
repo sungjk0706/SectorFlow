@@ -226,7 +226,12 @@ export function updateHolidayBadges(): void {
 // 타임테이블 4개 키 저장 — 변경된 키만 전송 (P10 SSOT, P24 단순성)
 // 백엔드 _validate_timetable_order()가 나머지 키를 DB에서 보충해 순서 검증
 // 422 응답 시 api/client.ts가 detail 필드 추출 → toastResult가 검증 에러 메시지 토스트 (P21)
-export function scheduleTimetableSave(key: 'timetable.realtime_reset' | 'timetable.ws_prestart' | 'timetable.krx_pre_subscribe' | 'timetable.confirmed_download', newVal: string): void {
+// onFail: 저장 실패 시 호출 (호출처에서 시간 슬롯 표시를 원래 값으로 복원 — P22/P23)
+export function scheduleTimetableSave(
+  key: 'timetable.realtime_reset' | 'timetable.ws_prestart' | 'timetable.krx_pre_subscribe' | 'timetable.confirmed_download',
+  newVal: string,
+  onFail?: () => void,
+): void {
   if (!state.settingsMgr) return
   if (state.savingTimetable) return
   state.savingTimetable = true
@@ -237,6 +242,7 @@ export function scheduleTimetableSave(key: 'timetable.realtime_reset' | 'timetab
       const res = await state.settingsMgr!.saveSection(dirty)
       toastResult(res)
       if (res.ok) Object.assign(state.vals, dirty)
+      else if (onFail) onFail()
     }
     state.savingTimetable = false
   }
