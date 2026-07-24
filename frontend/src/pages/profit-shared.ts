@@ -63,10 +63,10 @@ export interface SummaryCardCallbacks {
   onTotalClick?: () => void
 }
 
-/** 요약 카드 4개(당일/직전/당월/누적 손익) DOM 생성, 클릭 콜백 주입, 요소 참조 반환 */
+/** 요약 카드 4개(당일/전일/당월/누적 손익) DOM 생성, 클릭 콜백 주입, 요소 참조 반환 */
 export function createSummaryCards(container: HTMLElement, callbacks: SummaryCardCallbacks = {}): SummaryCardEls {
   const CARD_STYLE = `flex:1;background:${COLOR.surfaceLight};border:1px solid ${COLOR.borderLight};border-radius:6px;padding:6px 12px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;`
-  const CARD_TITLES = ['당일 손익', '직전 손익', '당월 손익', '누적 손익']
+  const CARD_TITLES = ['당일 손익', '전일 손익', '당월 손익', '누적 손익']
   const clickHandlers = [callbacks.onTodayClick, callbacks.onPrevClick, callbacks.onMonthClick, callbacks.onTotalClick]
 
   const pnlEls: HTMLSpanElement[] = []
@@ -129,7 +129,7 @@ export function createSummaryCards(container: HTMLElement, callbacks: SummaryCar
   }
 }
 
-/** 당일/직전/당월/누적 손익 계산 및 요약 카드 DOM 갱신
+/** 당일/전일/당월/누적 손익 계산 및 요약 카드 DOM 갱신
  *  모든 카드를 dailySummary 기반으로 집계 (P10 SSOT — sellHistory 재집계 제거).
  *  당월/누적 수익률 = realized_pnl 합계 ÷ buy_total_amt 합계 × 100 (computeWeightedRate). */
 export function updateSummaryCards(
@@ -143,7 +143,7 @@ export function updateSummaryCards(
   const dayPnl = todayEntry ? Number(todayEntry.realized_pnl ?? 0) : 0
   const dayRate = todayEntry ? Number(todayEntry.pnl_rate ?? 0) : 0
 
-  // 직전 거래일: dailySummary에서 오늘보다 이전 날짜 중 가장 최근
+  // 전일 거래일: dailySummary에서 오늘보다 이전 날짜 중 가장 최근
   let prevEntry: Record<string, unknown> | undefined
   for (const r of dailySummary) {
     const d = String(r.date ?? '')

@@ -26,7 +26,7 @@ import {
 } from './profit-detail-display'
 import type { ProfitDetailState } from './profit-detail'
 
-/* ── mount 헬퍼: 요약 카드 행 (당일/직전/당월/누적 손익) ── */
+/* ── mount 헬퍼: 요약 카드 행 (당일/전일/당월/누적 손익) ── */
 export function buildSummaryRow(state: ProfitDetailState, todayStr: string, monthStart: string, monthEnd: string): HTMLDivElement {
   const summaryRow = document.createElement('div')
   Object.assign(summaryRow.style, { display: 'flex', gap: '8px', padding: '8px 4px', flex: 'none', borderBottom: '1px solid ' + COLOR.borderDark })

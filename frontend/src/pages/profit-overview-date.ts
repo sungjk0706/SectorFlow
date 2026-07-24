@@ -11,14 +11,25 @@ export interface ProfitDateRange {
   quickLabel?: string
 }
 
+// 레거시 quickLabel 마이그레이션 매핑 (P23 일관성 — 라벨 통일에 따른 기존 사용자 데이터 호환)
+const LEGACY_QUICK_LABEL_MAP: Record<string, string> = {
+  '전체': '누적',
+  '직전': '전일',
+}
+
 export function loadProfitDateRange(): ProfitDateRange | null {
   try {
     const raw = localStorage.getItem(PROFIT_DATE_KEY)
     if (!raw) return null
     const parsed = JSON.parse(raw) as { from?: string; to?: string; quickLabel?: string }
-    // quickLabel이 있는 경우(5일/전체 등) from/to가 빈 문자열일 수 있음
+    // quickLabel이 있는 경우(5일/누적 등) from/to가 빈 문자열일 수 있음
     if (parsed.quickLabel) {
-      return { from: parsed.from ?? '', to: parsed.to ?? '', quickLabel: parsed.quickLabel }
+      // 레거시 라벨 마이그레이션 (전체→누적, 직전→전일) — 한 번 치환 후 영구 저장
+      const migrated = LEGACY_QUICK_LABEL_MAP[parsed.quickLabel] ?? parsed.quickLabel
+      if (migrated !== parsed.quickLabel) {
+        saveProfitDateRange(parsed.from ?? '', parsed.to ?? '', migrated)
+      }
+      return { from: parsed.from ?? '', to: parsed.to ?? '', quickLabel: migrated }
     }
     // 수동 날짜 범위 — from/to 유효성 검증
     if (parsed.from && parsed.to && /^\d{4}-\d{2}-\d{2}$/.test(parsed.from) && /^\d{4}-\d{2}-\d{2}$/.test(parsed.to) && parsed.from <= parsed.to) {

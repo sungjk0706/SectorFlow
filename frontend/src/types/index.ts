@@ -232,7 +232,7 @@ export interface AppSettings {
   // UI 설정
   ui_price_flash_on: boolean;
 
-  // 수익현황/수익상세 WS push 일별 요약 범위 (최근 N거래일, 0=전체, 기본 20)
+  // 수익현황/수익상세 WS push 일별 요약 범위 (최근 N거래일, 0=누적, 기본 20)
   daily_summary_days: number;
 
   // 기타
