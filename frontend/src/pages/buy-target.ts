@@ -155,7 +155,7 @@ const COLUMNS: ColumnDef<SectorStock>[] = [
 
 /* ── 모듈 변수 ── */
 let dataTable: DataTableApi<SectorStock> | null = null
-let badgeEls: { orderable: BadgeHandle; daily: BadgeHandle; holding: BadgeHandle; status: BadgeHandle } | null = null
+let badgeEls: { combined: BadgeHandle; daily: BadgeHandle; holding: BadgeHandle } | null = null
 let emptyEl: HTMLElement | null = null
 let searchInput: ReturnType<typeof createSearchInput> | null = null
 let searchTerm = ''
@@ -205,23 +205,62 @@ function updateBadges(): void {
   }
   const topName = topTarget?.name ?? ''
 
-  // 주문가능금액 배지 — 값 + 1위 종목 정보
+  // 통합 매수상태 배지 — 하드 게이트 > 소프트 차단(예산 부족) > 정상 (P21 모순 표시 제거)
+  // 하드 게이트 판정은 computeOrderBlockStatus()에 위임 (P10 SSOT — sell-position.ts와 공유)
+  // 소프트 차단(예산 부족)은 매수 후보 1위 종목 가격이 필요해 updateBadges() 내부에서 판정
+  //   → computeOrderBlockStatus 시그니처 확장 불가 (sell-position은 매수 후보 없음)
+  //   → 매수 전용 override를 이곳에 배치 (P23 일관성 예외 — 매수 후보 데이터 의존성)
   const insufficient = orderable <= 0
   const cannotBuy = !insufficient && topName !== '' && qty <= 0
-  const orderableStatus: BadgeStatus = (insufficient || cannotBuy) ? 'warn' : 'normal'
-  let orderableStatusText = ''
-  if (topName !== '') {
-    orderableStatusText = cannotBuy
-      ? ` (1위 ${topName} ${qty}주 ⚠️ 매수 불가)`
-      : ` (1위 ${topName} ${qty}주)`
-  } else if (insufficient) {
-    orderableStatusText = ' (매수 불가)'
+  let combinedValue: string
+  let combinedUnit = '원'
+  let combinedStatusText = ''
+  let combinedStatus: BadgeStatus = 'normal'
+  let combinedStatusColor: string = COLOR.down
+  try {
+    const { text: hardStatusText, blocked: hardBlocked } = computeOrderBlockStatus('buy', uiState, settings)
+    if (hardBlocked) {
+      // 하드 게이트 차단 — 주문가능금액 숨기고 차단 사유 우선 표시
+      combinedValue = '차단'
+      combinedUnit = ''
+      combinedStatusText = ` · ${hardStatusText.replace(/^차단: /, '')}`
+      combinedStatus = 'warn'
+      combinedStatusColor = COLOR.up
+    } else if (insufficient) {
+      // 소프트 차단 — 잔액 0
+      combinedValue = orderable.toLocaleString()
+      combinedStatusText = ' · 매수 불가 (잔액 없음)'
+      combinedStatus = 'warn'
+      combinedStatusColor = COLOR.up
+    } else if (cannotBuy) {
+      // 소프트 차단 — 잔여 예산으로 1주도 매수 불가 (백엔드 BUY_REJECT_QTY_ZERO와 동일 기준)
+      combinedValue = orderable.toLocaleString()
+      combinedStatusText = ` · 매수 불가 (1위 ${topName} ${qty}주)`
+      combinedStatus = 'warn'
+      combinedStatusColor = COLOR.up
+    } else if (topName !== '') {
+      // 정상 — 1위 종목 매수 가능 수량 표시
+      combinedValue = orderable.toLocaleString()
+      combinedStatusText = ` · 매수 가능 (1위 ${topName} ${qty}주)`
+    } else {
+      // 매수 후보 없음 — 하드 게이트 통과 + 예산 있음 + 후보 없음
+      combinedValue = orderable.toLocaleString()
+      combinedStatusText = ' · 매수 가능 (후보 없음)'
+    }
+  } catch (err) {
+    console.error('[buy-target] combined badge status error', err)
+    combinedValue = orderable.toLocaleString()
+    combinedStatusText = ' · 상태 판정 오류'
+    combinedStatus = 'warn'
+    combinedStatusColor = COLOR.up
   }
-  updateBadge(badgeEls.orderable, orderable.toLocaleString(), {
-    status: orderableStatus,
-    statusText: orderableStatusText,
-    statusColor: (insufficient || cannotBuy) ? COLOR.up : COLOR.code,
+  updateBadge(badgeEls.combined, combinedValue, {
+    status: combinedStatus,
+    statusText: combinedStatusText,
+    statusColor: combinedStatusColor,
   })
+  // unit 슬롯은 하드 차단 시 빈 값으로 설정 (createBadge 시 '원' 고정이므로 갱신 필요)
+  badgeEls.combined.unitEl.textContent = combinedUnit
 
   // 일일 매수 금액 배지 — cur / max
   const dailyHit = maxDaily > 0 && dailySpent >= maxDaily
@@ -247,19 +286,6 @@ function updateBadges(): void {
     statusText: holdingStatusText,
     statusColor: holdingHit ? COLOR.up : holdingNear ? COLOR.warning : COLOR.code,
   })
-
-  // 매수상태 배지 — 전체 차단 게이트 집계 (P21 사용자 투명성)
-  // 판정 로직은 computeOrderBlockStatus()로 추출 (P10 SSOT, P23 일관성 — sell-position.ts와 동일 패턴)
-  // 미노출 4개 사유(daily_state, realtime_latency, test_cash, order_fail)는 백엔드 WS 미브로드캐스트 — 별도 후속 작업
-  try {
-    const { text: statusText, blocked: statusBlocked } = computeOrderBlockStatus('buy', uiState, settings)
-    updateBadge(badgeEls.status, statusText, {
-      status: statusBlocked ? 'warn' : 'normal',
-      statusColor: statusBlocked ? COLOR.up : COLOR.down,
-    })
-  } catch (err) {
-    console.error('[buy-target] status badge update error', err)
-  }
 }
 
 /* ── mount ── */
@@ -274,17 +300,17 @@ function mount(container: HTMLElement): void {
   const headerRow = createCardHeaderWithMargin('매수후보', undefined, '4px')
   root.appendChild(headerRow)
 
-  // 한도 배지 행 — 공통 컴포넌트 (flex 4등분 고정)
+  // 한도 배지 행 — 공통 컴포넌트 (flex 3등분 고정)
+  // 매수상태 배지 통합: 주문가능금액 + 매수상태 → 1개 (P21 모순 표시 제거, P24 중복 제거)
+  // 매도 페이지(sell-position.ts)는 본질 다른 관심사(보유 종목 기반)라 통합 제외 — P23 일관성 위반 아님
   const badgeRow = createBadgeRow()
-  const orderableBadge = createBadge('💳 주문가능금액', '원')
+  const combinedBadge = createBadge('🚦 매수상태', '원')
   const dailyBadge = createBadge('💰 일일 매수', '원')
   const holdingBadge = createBadge('📦 보유 종목', '종목')
-  const statusBadge = createBadge('🚦 매수상태', '')
-  badgeRow.appendChild(orderableBadge.el)
+  badgeRow.appendChild(combinedBadge.el)
   badgeRow.appendChild(dailyBadge.el)
   badgeRow.appendChild(holdingBadge.el)
-  badgeRow.appendChild(statusBadge.el)
-  badgeEls = { orderable: orderableBadge, daily: dailyBadge, holding: holdingBadge, status: statusBadge }
+  badgeEls = { combined: combinedBadge, daily: dailyBadge, holding: holdingBadge }
   root.appendChild(badgeRow)
 
   // 검색 입력란 — 테이블 좌측 상단, 주문가능금액 배지 하단 (업종별 종목 시세와 동일한 패턴)
