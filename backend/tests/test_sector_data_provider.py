@@ -277,7 +277,7 @@ class TestGetSectorStocks:
 
     @pytest.mark.asyncio
     async def test_filters_by_min_trade_amt(self):
-        """5일평균거래대금 필터링."""
+        """5거래일 평균 거래대금 필터링."""
         with patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.core.sector_mapping.get_merged_sectors_batch", new=AsyncMock(return_value={})), \
              patch("backend.app.services.engine_symbol_utils.get_stock_market", return_value="코스피"), \

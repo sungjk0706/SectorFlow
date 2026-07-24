@@ -406,12 +406,12 @@ class TestLoadCachesPrebootTradeMode:
         mock_load_state.assert_not_called()
 
 
-# ── _load_caches_preboot — 5일평균/시장구분 ─────────────────────────────────────
+# ── _load_caches_preboot — 5거래일 평균/시장구분 ─────────────────────────────────────
 
 class TestLoadCachesPrebootMetrics:
     @pytest.mark.asyncio
     async def test_avg_5d_below_100_warns(self):
-        """5일평균 > 0 종목이 100개 미만 → warning 로그."""
+        """5거래일 평균 > 0 종목이 100개 미만 → warning 로그."""
         from backend.app.services import engine_cache
 
         snap = _make_snapshot(50)  # 50종목 — 100 미만

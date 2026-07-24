@@ -522,7 +522,7 @@ class TestCreateBuyTargets:
         assert len(result.blocked_targets) == 1
 
     def test_blocked_stock_receives_high_breakout_boost(self):
-        # 차단 종목이지만 5일고가 돌파(75000 > 70000) → 가산점 부여
+        # 차단 종목이지만 5거래일 고가 돌파(75000 > 70000) → 가산점 부여
         s1 = _stock(code="A001", change_rate=10.0, cur_price=75000)
         sc = _sector(rank=1, stocks=[s1])
         result = create_buy_targets(
@@ -532,7 +532,7 @@ class TestCreateBuyTargets:
             boost_high_on=True,
             boost_high_score=5.0,
         )
-        # 차단 종목이지만 5일고가 돌파(75000 > 70000) → 가산점 부여
+        # 차단 종목이지만 5거래일 고가 돌파(75000 > 70000) → 가산점 부여
         assert result.blocked_targets[0].stock.boost_score == 5.0
 
     def test_returns_sector_summary(self):

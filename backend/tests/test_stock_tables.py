@@ -301,7 +301,7 @@ class TestLoadMasterStocksTable:
 
         P10/P20: '데이터 없음'의 단일 기준은 None. 0 폴백 금지.
         4개 실시간 필드(cur_price/change/change_rate/trade_amount)가 모두 None으로 로드되어야 함.
-        avg_5d_trade_amount/high_5d_price는 5일평균 데이터(0이 유효값)이므로 0 유지.
+        avg_5d_trade_amount/high_5d_price는 5거래일 평균 데이터(0이 유효값)이므로 0 유지.
         """
         mock_cursor = AsyncMock()
         mock_cursor.fetchall = AsyncMock(return_value=[

@@ -63,7 +63,7 @@ class EngineState:
         self.sector_summary_cache: "SectorSummary | None" = None  # type: ignore[name-defined]
         self.confirmed_refresh_running: bool = False
         self.confirmed_refresh_running_confirmed: bool = False  # 확정시세 다운로드 전용
-        self.confirmed_refresh_running_5d: bool = False         # 5일봉 다운로드 전용
+        self.confirmed_refresh_running_5d: bool = False         # 5거래일 일봉 다운로드 전용
         self.latest_filter_summary_meta: str = ""
         self.master_stocks_cache: dict[str, dict] = {}
         # ── 업종지수 실시간 캐시 (P10 SSOT — 종목 현재가/업종점수와 동일 패턴) ──

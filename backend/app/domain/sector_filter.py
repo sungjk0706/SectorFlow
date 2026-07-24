@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-업종 필터 - 5일평균거래대금 필터링 및 업종별 종목 그룹핑 로직.
+업종 필터 - 5거래일 평균 거래대금 필터링 및 업종별 종목 그룹핑 로직.
 """
 from __future__ import annotations
 from backend.app.core import sector_mapping
@@ -14,7 +14,7 @@ async def filter_by_avg_amt(
     min_avg_amt_eok: float = 0.0,
 ) -> list[str]:
     """
-    5일평균거래대금 필터링.
+    5거래일 평균 거래대금 필터링.
 
     - avg_amt_5d는 백만원 단위
     - min_avg_amt_eok는 억 단위

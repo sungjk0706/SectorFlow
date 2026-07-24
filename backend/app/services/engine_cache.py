@@ -61,7 +61,7 @@ async def _load_caches_preboot(settings: dict) -> None:
             len(sector_groups),
         )
 
-        # ── 5일평균/고가 로드 및 메모리 반영 (단일 루프 통합) ──
+        # ── 5거래일 평균/고가 로드 및 메모리 반영 (단일 루프 통합) ──
         _cached_avg = {}
         _cached_high_5d = {}
 
@@ -80,11 +80,11 @@ async def _load_caches_preboot(settings: dict) -> None:
         # 로그인 이후 배치 파이프라인에서 일괄 등록되므로 기동 단계에서는 스킵합니다.
         logger.info("[데이터] 선행 캐시 로드 완료 (메모리 반영 및 인덱싱 완료)")
 
-        # ── 5일 평균 + 5일 전고점 적재 ──
+        # ── 5거래일 평균 + 5거래일 고가 적재 ──
         if sum(1 for v in _cached_avg.values() if int(v or 0) > 0) < 100:
-            logger.warning("[데이터] 주식 DB 5일평균 비정상 — 백그라운드 갱신 예정")
+            logger.warning("[데이터] 주식 DB 5거래일 평균 비정상 — 백그라운드 갱신 예정")
 
-        logger.debug("[데이터] 5일거래대금평균/고가 저장데이터 로드 — %d종목", len(_cached_avg))
+        logger.debug("[데이터] 5거래일 거래대금평균/고가 저장데이터 로드 — %d종목", len(_cached_avg))
 
         # ── 시장구분 적재 제거 (master_stocks_cache 사용으로 대체) ──
         _total_nxt = sum(1 for v in engine_state.state.master_stocks_cache.values() if v.get("nxt_enable"))

@@ -449,7 +449,7 @@ class TestExecuteUnifiedRollingAndSave:
 
         시나리오: current_trading_day=20250106(장 전/중), API가 20250106 미확정 일봉
         (거래대금=0)을 latest로 반환 → 안전망이 bar_dt==current_td 감지 → 저장 생략.
-        과거 버그: 미확정 당일 행이 DB에 저장되어 5일봉 테이블에 거래대금=0 행이 섞임.
+        과거 버그: 미확정 당일 행이 DB에 저장되어 5거래일 일봉 테이블에 거래대금=0 행이 섞임.
         """
         mock_conn = _mock_conn()
         cursor = MagicMock()
@@ -480,7 +480,7 @@ class TestExecuteUnifiedRollingAndSave:
 
     @pytest.mark.asyncio
     async def test_deletes_future_bars_before_insert(self):
-        """1일봉 파이프라인이 qry_dt보다 큰 dt 행(미확정 당일/미래)을 DELETE 검증 (P22).
+        """일봉 파이프라인이 qry_dt보다 큰 dt 행(미확정 당일/미래)을 DELETE 검증 (P22).
 
         시나리오: qry_dt=20250106(직전 거래일), DB에 기존 20250107(미확정 당일) 행 잔존.
         수정 전: INSERT OR REPLACE만 수행 → 20250107 행 잔존 → 프론트엔드에 미확정 행 표시.
@@ -1024,10 +1024,10 @@ class TestFetch5dDataOnly:
 
     @pytest.mark.asyncio
     async def test_5d_safety_net_blocks_current_trading_day_bar(self):
-        """5일봉 안전망: API가 소속 거래일(미확정 당일) 행을 반환하면 저장 차단 (P22).
+        """5거래일 일봉 안전망: API가 소속 거래일(미확정 당일) 행을 반환하면 저장 차단 (P22).
 
         시나리오: current_trading_day=20250106(장 전/중), qry_dt=20250105(직전 거래일).
-        API가 5일치 일봉 중 첫 번째(최신)로 20250106 미확정 행을 반환.
+        API가 5거래일치 일봉 중 첫 번째(최신)로 20250106 미확정 행을 반환.
         안전망이 str(dt)==current_td 감지 → 20250106 행만 저장에서 제외,
         나머지 4행(20250105~20250102)은 정상 저장.
         """
@@ -1080,7 +1080,7 @@ class TestFetch5dDataOnly:
 
     @pytest.mark.asyncio
     async def test_5d_deletes_future_bars(self):
-        """5일봉 파이프라인이 qry_dt보다 큰 dt 행(미확정 당일/미래)을 DELETE 검증 (P22).
+        """5거래일 일봉 파이프라인이 qry_dt보다 큰 dt 행(미확정 당일/미래)을 DELETE 검증 (P22).
 
         시나리오: qry_dt=20250105(직전 거래일), DB에 기존 20250106(미확정 당일) 행 잔존.
         수정 전: DELETE WHERE dt < oldest만 수행 → 20250106 행 잔존.
@@ -1231,7 +1231,7 @@ class TestFetch5dDataOnly:
 # ── _step5_download_daily_confirmed — B3-05-02 빈 폴백 제거 ────────────────────
 
 class TestStep5DownloadDailyConfirmedEmptyFallback:
-    """B3-05-02: 전종목 1일봉 시세 다운로드 실패 시 빈 폴백(confirmed={}) 제거 검증.
+    """B3-05-02: 전종목 일봉 시세 다운로드 실패 시 빈 폴백(confirmed={}) 제거 검증.
 
     빈 폴백으로 후속 파이프라인 진행 금지 → early return (0, total, False).
     _run_post_confirmed_pipeline 미호출, execute_unified_rolling_and_save 미호출.

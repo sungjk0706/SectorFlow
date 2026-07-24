@@ -17,7 +17,7 @@ async def compute_sector_scores(
     trade_prices: dict[str, int],
     trade_amounts: dict[str, int],
     avg_amt_5d: dict[str, int],
-    min_avg_amt_eok: float = 0.0,                  # 1차 필터: 5일평균 최소 거래대금 (억 단위, 0=미적용)
+    min_avg_amt_eok: float = 0.0,                  # 1차 필터: 5거래일 평균 최소 거래대금 (억 단위, 0=미적용)
 ) -> list:  # list[SectorScore]
     """
     업종별 강도 스코어 계산.
@@ -40,7 +40,7 @@ async def compute_sector_scores(
     # dataclass import
     from backend.app.domain.models import StockScore, SectorScore
 
-    # ── 1차 필터: 5일평균거래대금 (업종 그룹핑 전 적용 - 단일 소스 진리) ──
+    # ── 1차 필터: 5거래일 평균 거래대금 (업종 그룹핑 전 적용 - 단일 소스 진리) ──
     filtered_codes = await filter_by_avg_amt(all_codes, avg_amt_5d, min_avg_amt_eok)
 
     # 업종별 종목 그룹핑 — Custom_Data > Auto_Mapping 우선순위 적용
@@ -85,7 +85,7 @@ async def compute_sector_scores(
             if change_rate is None or ta is None:
                 continue
 
-            # 5일 평균 거래대금: avg_amt_5d dict는 master_stocks_cache["avg_5d_trade_amount"] = 백만원 단위
+            # 5거래일 평균 거래대금: avg_amt_5d dict는 master_stocks_cache["avg_5d_trade_amount"] = 백만원 단위
             avg5d_million = int(avg_amt_5d.get(code, 0) or 0)
             avg5d_eok = avg5d_million // 100  # 백만원 → 억 단위 변환
 
@@ -119,7 +119,7 @@ async def compute_sector_scores(
         if not stocks:
             continue
 
-        # ── 5일평균거래대금 필터: 업종강도 계산 + 매수 후보 모두 적용 ─────────
+        # ── 5거래일 평균 거래대금 필터: 업종강도 계산 + 매수 후보 모두 적용 ─────────
         if min_avg_amt_eok > 0:
             filtered_stocks = [s for s in stocks if s.avg_amt_5d >= min_avg_amt_eok]
         else:

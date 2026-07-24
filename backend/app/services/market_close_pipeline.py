@@ -241,7 +241,7 @@ async def execute_unified_rolling_and_save(
         conn = await get_db_connection()
 
         try:
-            # 1. 당일 5일봉 행 INSERT OR REPLACE 파라미터 빌드 (rolling 제거 — 세로 행 구조 P24)
+            # 1. 당일 5거래일 일봉 행 INSERT OR REPLACE 파라미터 빌드 (rolling 제거 — 세로 행 구조 P24)
             master_bulk_params = []
             bars_bulk_params = []
             codes_to_recalc = []
@@ -308,7 +308,7 @@ async def execute_unified_rolling_and_save(
             # 기존 07-15 미확정 행이 잔존하면 avg_5d/high_5d 재계산이 왜곡되므로
             # INSERT OR REPLACE 전에 먼저 삭제.
             await conn.execute("DELETE FROM stock_5d_bars WHERE dt > ?", (qry_dt,))
-            # 5일봉 세로 행 적재 (당일 1행씩 INSERT OR REPLACE)
+            # 5거래일 일봉 세로 행 적재 (당일 1행씩 INSERT OR REPLACE)
             if bars_bulk_params:
                 await conn.executemany("""
                     INSERT OR REPLACE INTO stock_5d_bars
@@ -379,7 +379,7 @@ async def execute_unified_rolling_and_save(
                 """, updated_params)
 
             await conn.commit()
-            logger.info("[데이터] 저장 완료 — 5일봉 세로 행: %d종목, 전종목 마스터 테이블: %d종목", len(bars_bulk_params), len(master_bulk_params))
+            logger.info("[데이터] 저장 완료 — 5거래일 일봉 세로 행: %d종목, 전종목 마스터 테이블: %d종목", len(bars_bulk_params), len(master_bulk_params))
             return True
 
         except Exception as e:
@@ -509,7 +509,7 @@ async def _apply_confirmed_to_memory(
 
 async def _run_post_confirmed_pipeline(eligible_codes: set[str] | None = None) -> None:
     """
-    전종목 1일봉챠트 시세 조회(ka10081) 도입으로 5일 거래대금 및 최고가를 즉시 추출하므로,
+    전종목 일봉 차트 시세 조회(ka10081) 도입으로 5거래일 거래대금 및 최고가를 즉시 추출하므로,
     기존의 복잡한 v2 캐시 롤링 갱신 로직은 제거되었습니다.
     단순히 최종 스냅샷 및 캐시를 저장합니다.
     """
@@ -566,7 +566,7 @@ async def _save_confirmed_cache(
     try:
         # DB 저장 전 avg_5d 유효성 체크
         if sum(1 for stock in pending.values() if int(stock.get("avg_5d_trade_amount", 0) or 0) > 0) < 100:
-            logger.warning("[스케줄] DB 저장 전 5일 평균 거래대금 비정상 — 백그라운드 갱신 예정")
+            logger.warning("[스케줄] DB 저장 전 5거래일 평균 거래대금 비정상 — 백그라운드 갱신 예정")
 
         # ── 전종목 마스터 테이블 저장 (Phase 1.2) ──
         try:
@@ -655,7 +655,7 @@ async def _save_confirmed_cache(
 
 
 # ---------------------------------------------------------------------------
-# 공통 1일봉챠트 시세 다운로드 파이프라인 (타이머/수동 공용)
+# 공통 일봉 차트 시세 다운로드 파이프라인 (타이머/수동 공용)
 # ---------------------------------------------------------------------------
 
 async def _step1_fetch_all_stocks(
@@ -862,7 +862,7 @@ async def _step5_download_daily_confirmed(
     tag: str, _sector: object, all_codes: list[str],
     name_map: dict[str, str], confirmed_codes: set[str],
 ) -> tuple[int, int, bool]:
-    """5단계: 전종목 1일봉챠트 시세 조회(ka10081) 다운로드. Returns (fetched, failed, cached).
+    """5단계: 전종목 일봉 차트 시세 조회(ka10081) 다운로드. Returns (fetched, failed, cached).
 
     qry_dt는 가장 최근 확정된 거래일을 사용 (P10/P22).
     달력 오늘을 사용하면 장 전/중 실행 시 API가 오늘 미확정 일봉(거래대금=0)을
@@ -876,7 +876,7 @@ async def _step5_download_daily_confirmed(
     total = len(all_codes)
     _main_loop = asyncio.get_running_loop()
 
-    _broadcast_confirmed_progress(0, total, message=f"1일봉챠트 시세 다운로드 중 (0/{total:,}, 0%)", step=5)
+    _broadcast_confirmed_progress(0, total, message=f"일봉 차트 시세 다운로드 중 (0/{total:,}, 0%)", step=5)
     _dl_start = time.monotonic()
 
     def _on_progress(cur: int, tot: int) -> None:
@@ -885,7 +885,7 @@ async def _step5_download_daily_confirmed(
         if cur > 0:
             _elapsed = time.monotonic() - _dl_start
             _eta = _elapsed / cur * (total - cur)
-        _broadcast_confirmed_progress(cur, total, message=f"1일봉챠트 시세 다운로드 중 ({cur:,}/{total:,}, {_pct}%)", eta_sec=_eta, step=5, _loop=_main_loop)
+        _broadcast_confirmed_progress(cur, total, message=f"일봉 차트 시세 다운로드 중 ({cur:,}/{total:,}, {_pct}%)", eta_sec=_eta, step=5, _loop=_main_loop)
 
     try:
         confirmed = await _sector.fetch_all_stocks_daily_confirmed(all_codes, qry_dt, interval_sec=0.3, on_progress=_on_progress)
@@ -896,7 +896,7 @@ async def _step5_download_daily_confirmed(
         logger.error("[다운로드] 전종목 조회 실패 — 파이프라인 중단: %s", exc, exc_info=True)
         _broadcast_confirmed_progress(
             total, total,
-            message=f"❌ 1일봉챠트 시세 다운로드 실패 — 파이프라인 중단 ({total:,}종목)",
+            message=f"❌ 일봉 차트 시세 다운로드 실패 — 파이프라인 중단 ({total:,}종목)",
             step=5, failed_count=total,
         )
         return 0, total, False
@@ -938,11 +938,11 @@ async def _step5_download_daily_confirmed(
         logger.warning("%s 종목분류 페이지 갱신 전송 실패(무시): %s", tag, _bc_err, exc_info=True)
 
     if failed > 0:
-        _broadcast_confirmed_progress(total, total, message=f"⚠️ 1일봉챠트 시세 다운로드 부분 완료 ({fetched:,}/{total:,}) — {failed}종목 실패", step=5, failed_count=failed)
+        _broadcast_confirmed_progress(total, total, message=f"⚠️ 일봉 차트 시세 다운로드 부분 완료 ({fetched:,}/{total:,}) — {failed}종목 실패", step=5, failed_count=failed)
     else:
-        _broadcast_confirmed_progress(total, total, message=f"1일봉챠트 시세 다운로드 완료 ({fetched:,}/{total:,})", step=5)
+        _broadcast_confirmed_progress(total, total, message=f"일봉 차트 시세 다운로드 완료 ({fetched:,}/{total:,})", step=5)
 
-    _broadcast_confirmed_progress(total, total, message="5일 거래대금 계산 중...", step=5)
+    _broadcast_confirmed_progress(total, total, message="5거래일 거래대금 계산 중...", step=5)
     await _run_post_confirmed_pipeline(eligible_codes=confirmed_codes)
 
     if cached:
@@ -982,10 +982,10 @@ async def _run_confirmed_pipeline(
     check_scheduler: bool = False,
     check_time_guard: bool = False,
 ) -> dict:
-    """공통 1일봉챠트 시세 다운로드 파이프라인 (타이머/수동 공용).
+    """공통 일봉 차트 시세 다운로드 파이프라인 (타이머/수동 공용).
 
     1~7단계: 전종목 통합 조회(ka10099) 전종목 다운로드 → 필터링 → 해석 → DB저장 →
-    전종목 1일봉챠트 시세 조회(ka10081) 1일봉챠트 시세 다운로드 → 정규화 → 메모리/DB 저장 → 메모리 교체 → 전송.
+    전종목 일봉 차트 시세 조회(ka10081) 일봉 차트 시세 다운로드 → 정규화 → 메모리/DB 저장 → 메모리 교체 → 전송.
     """
     if engine_state.state.confirmed_refresh_running_confirmed:
         logger.info("%s 확정 조회 이미 진행 중 — 생략", tag)
@@ -1048,14 +1048,14 @@ async def _run_confirmed_pipeline(
                 logger.info("%s 안전 구역 외 시간대 — 5단계 생략", tag)
                 return {"fetched": 0, "failed": 0, "cached": False}
 
-        # ── 5단계: 전종목 1일봉챠트 시세 조회(ka10081) 다운로드 ──
+        # ── 5단계: 전종목 일봉 차트 시세 조회(ka10081) 다운로드 ──
         fetched, failed, cached = await _step5_download_daily_confirmed(tag, _sector, all_codes, name_map, confirmed_codes)
 
         # ── 7단계: 업종순위 재계산 + 실시간 통신 전송 ──
         await _step7_recompute_and_broadcast(tag)
 
         if cached:
-            logger.info("[다운로드] 전체 완료 — 전종목 통합 조회(ka10099): %d종목 | 적격: %d종목 | 1일봉: %d/%d종목", len(all_codes), len(confirmed_codes), fetched, len(all_codes))
+            logger.info("[다운로드] 전체 완료 — 전종목 통합 조회(ka10099): %d종목 | 적격: %d종목 | 일봉: %d/%d종목", len(all_codes), len(confirmed_codes), fetched, len(all_codes))
         return {"fetched": fetched, "failed": failed, "cached": cached}
     finally:
         if _broker_token_registered:
@@ -1148,21 +1148,21 @@ async def _update_layout_cache(
 
 
 # ---------------------------------------------------------------------------
-# 수동 1일봉챠트 시세 및 5일봉챠트 다운로드
+# 수동 일봉 차트 시세 및 5거래일 일봉 차트 다운로드
 # ---------------------------------------------------------------------------
 
 async def fetch_confirmed_data_only() -> dict:
-    """수동 매매적격종목 1일봉챠트 시세 다운로드 파이프라인 — _run_confirmed_pipeline 위임."""
+    """수동 매매적격종목 일봉 차트 시세 다운로드 파이프라인 — _run_confirmed_pipeline 위임."""
     return await _run_confirmed_pipeline("[수동 확정시세]")
 
 
 
 
 async def fetch_5d_data_only() -> dict:
-    """수동 5일봉 거래대금,고가 다운로드 파이프라인.
+    """수동 5거래일 일봉 거래대금,고가 다운로드 파이프라인.
 
     DB의 master_stocks_table에 등록된 매매적격종목을 대상으로
-    개별 종목의 5일 고가 및 거래대금 데이터를 다운로드하여 DB 및 메모리에 저장합니다.
+    개별 종목의 5거래일 고가 및 거래대금 데이터를 다운로드하여 DB 및 메모리에 저장합니다.
     stock_5d_bars 테이블에 각 일봉을 (code, dt) 복합키 세로 행으로 INSERT OR REPLACE (P10/P22/P24).
     전체 DELETE 없이 덮어쓰기 방식 — 부분 실패 시 기존 데이터 보존 (P22).
     저장 후 최근 5개 거래일 외 행 삭제로 테이블 크기 유지 (P24).
@@ -1210,9 +1210,9 @@ async def fetch_5d_data_only() -> dict:
         from backend.app.db.database import get_db_connection, get_db_lock
         conn = await get_db_connection()
 
-        # ── 개별 5일봉 데이터 다운로드 ───────────────────────────────────────
+        # ── 개별 5거래일 일봉 데이터 다운로드 ───────────────────────────────────────
         logger.info("[다운로드] 다운로드 시작 (%d종목)", total)
-        _broadcast_confirmed_progress(0, total, message=f"5일봉챠트 거래대금,고가 다운로드 중 (0/{total:,}, 0%)", step=5)
+        _broadcast_confirmed_progress(0, total, message=f"5거래일 일봉 차트 거래대금,고가 다운로드 중 (0/{total:,}, 0%)", step=5)
         _dl_start = time.monotonic()
 
         fetched = 0
@@ -1262,7 +1262,7 @@ async def fetch_5d_data_only() -> dict:
                 _eta = _elapsed / (idx + 1) * (total - (idx + 1))
             _broadcast_confirmed_progress(
                 idx + 1, total,
-                message=f"5일봉챠트 거래대금,고가 다운로드 중 ({idx + 1:,}/{total:,}, {pct}%)",
+                message=f"5거래일 일봉 차트 거래대금,고가 다운로드 중 ({idx + 1:,}/{total:,}, {pct}%)",
                 eta_sec=_eta,
                 step=5
             )
@@ -1272,9 +1272,9 @@ async def fetch_5d_data_only() -> dict:
             await asyncio.sleep(0.3)
 
         log_progress_end()
-        # ── 5일봉 세로 행 테이블 직접 삽입 (5일치 전체 저장) ───────────────────
+        # ── 5거래일 일봉 세로 행 테이블 직접 삽입 (5거래일치 전체 저장) ───────────────────
         if confirmed_5d:
-            logger.info("[다운로드] 5일봉 세로 행 테이블 직접 삽입 — %d종목", len(confirmed_5d))
+            logger.info("[다운로드] 5거래일 일봉 세로 행 테이블 직접 삽입 — %d종목", len(confirmed_5d))
 
             bars_params = []
             master_update_params = []
@@ -1284,7 +1284,7 @@ async def fetch_5d_data_only() -> dict:
                 highs_5d = data.get("highs_5d_array") or []
                 dts_5d = data.get("dts_5d_array") or []
 
-                # 5일평균, 5일최고가 계산 (빈 값 제외)
+                # 5거래일 평균, 5거래일 최고가 계산 (빈 값 제외)
                 valid_amts = [a for a in amts_5d if a is not None and a > 0]
                 avg_5d = sum(valid_amts) // len(valid_amts) if valid_amts else 0
 
@@ -1367,9 +1367,9 @@ async def fetch_5d_data_only() -> dict:
         logger.info("[다운로드] 다운로드 완료 — 성공 %d종목, 실패 %d종목 (%.1f%%)", fetched, failed, success_rate)
 
         if failed > 0:
-            _broadcast_confirmed_progress(total, total, message=f"⚠️ 5일봉챠트 거래대금,고가 다운로드 부분 완료 ({fetched:,}/{total:,}) — {failed}종목 실패", step=5, failed_count=failed)
+            _broadcast_confirmed_progress(total, total, message=f"⚠️ 5거래일 일봉 차트 거래대금,고가 다운로드 부분 완료 ({fetched:,}/{total:,}) — {failed}종목 실패", step=5, failed_count=failed)
         else:
-            _broadcast_confirmed_progress(total, total, message=f"5일봉챠트 거래대금,고가 다운로드 완료 ({fetched:,}/{total:,})", step=5)
+            _broadcast_confirmed_progress(total, total, message=f"5거래일 일봉 차트 거래대금,고가 다운로드 완료 ({fetched:,}/{total:,})", step=5)
 
         # 종목분류 전송 (프론트엔드 자동갱신)
         from backend.app.web.routes.stock_classification import broadcast_stock_classification_changed

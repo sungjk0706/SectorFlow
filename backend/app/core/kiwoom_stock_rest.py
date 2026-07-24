@@ -76,7 +76,7 @@ async def fetch_ka10081_daily_price(
 ) -> Optional[dict]:
     """
     ka10081(주식일봉차트조회요청) 단건 조회.
-    장외 시간 확정 종가·등락률·거래대금만 반환 (1일봉).
+    장외 시간 확정 종가·등락률·거래대금만 반환 (일봉).
     """
     url, body, log_cd, api_cd = _build_ka10081_request(api, stk_cd, qry_dt, _raw_cd)
 
@@ -145,7 +145,7 @@ async def fetch_ka10081_daily_5d_data(
 ) -> Optional[dict]:
     """
     ka10081(주식일봉차트조회요청) 단건 조회.
-    최근 5개 일봉에서 5일 평균 거래대금, 최고가, 각 일봉의 거래일(dt)을 반환.
+    최근 5개 일봉에서 5거래일 평균 거래대금, 최고가, 각 일봉의 거래일(dt)을 반환.
     """
     url, body, log_cd, api_cd = _build_ka10081_request(api, stk_cd, qry_dt, _raw_cd)
 
@@ -203,7 +203,7 @@ async def fetch_ka10081_daily_5d_data(
             while len(recent_5) < 5:
                 recent_5.append(None)
 
-        # 5일 고가/거래대금/거래일 추출 (데이터 없으면 None)
+        # 5거래일 고가/거래대금/거래일 추출 (데이터 없으면 None)
         highs_5d = [_si(r.get("high_pric")) if r is not None else None for r in recent_5]
         amts_5d = [_si(r.get("trde_prica")) if r is not None else None for r in recent_5]  # 백만원 단위
         dts_5d = [str(r.get("dt")) if r is not None else None for r in recent_5]  # YYYYMMDD
@@ -227,7 +227,7 @@ async def _fetch_all_stocks_ka10081(
     interval_sec: float = 0.3,
     on_progress: "Callable[[int, int], None] | None" = None,
 ) -> dict[str, dict]:
-    """전체 종목 ka10081 순차 조회 공통 루프 (확정시세/5일봉 공통)."""
+    """전체 종목 ka10081 순차 조회 공통 루프 (확정시세/5거래일 일봉 공통)."""
     result: dict[str, dict] = {}
     failed_codes: list[str] = []
     total = len(krx_codes)
@@ -287,7 +287,7 @@ async def fetch_ka10081_all_stocks_5day(
     interval_sec: float = 0.3,
     on_progress: "Callable[[int, int], None] | None" = None,
 ) -> dict[str, dict]:
-    """전체 종목 ka10081 순차 조회 — 5일봉 전용."""
+    """전체 종목 ka10081 순차 조회 — 5거래일 일봉 전용."""
     return await _fetch_all_stocks_ka10081(
         api, krx_codes, qry_dt, fetch_ka10081_daily_5d_data,
         interval_sec=interval_sec, on_progress=on_progress,

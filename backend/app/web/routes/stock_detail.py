@@ -15,7 +15,7 @@ router = APIRouter(prefix="/api/stock-detail", tags=["stock-detail"])
 
 @router.get("/5d-array")
 async def get_stock_detail_5d_array(_: str = Depends(get_current_user)):
-    """5일봉 거래대금/고가 배열 조회.
+    """5거래일 일봉 거래대금/고가 배열 조회.
 
     stock_5d_bars 테이블에서 각 종목의 최근 5행을 날짜 내림차순으로 조회하고
     master_stocks_table에서 종목명/시장구분/NXT여부를 LEFT JOIN.

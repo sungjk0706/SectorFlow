@@ -30,7 +30,7 @@ async def get_sector_summary_inputs() -> dict:
     from backend.app.services.daily_time_scheduler import is_nxt_only_window
 
     # 우측테이블의 종목들을 그대로 사용 (단일 소스 진리)
-    # get_sector_stocks는 이미 5일평균거래대금 필터링된 종목들만 반환
+    # get_sector_stocks는 이미 5거래일 평균 거래대금 필터링된 종목들만 반환
     sector_stocks_list = await get_sector_stocks()
 
     # all_filter_codes: NXT 필터링 전 전체 종목 — 구독 대상 식별용 (P10 SSOT)
@@ -70,14 +70,14 @@ async def get_sector_stocks() -> list:
     from backend.app.services.engine_symbol_utils import get_stock_market as _get_mkt, is_nxt_enabled as _is_nxt
     from backend.app.core.sector_mapping import get_merged_sectors_batch
 
-    # 5일평균거래대금 필터링 (백엔드에서 필터링 수행 - 단일 소스 진리)
+    # 5거래일 평균 거래대금 필터링 (백엔드에서 필터링 수행 - 단일 소스 진리)
     min_avg_amt_eok = float(engine_state.state.integrated_system_settings_cache["sector_min_trade_amt"])
 
     merged: dict[str, dict] = {}
 
     # 단일 소스 진리: state.master_stocks_cache가 종목 데이터의 단일 소스
 
-    # 1차 필터링: 시세/이름 없는 엔트리 제거 + 5일평균거래대금 필터링
+    # 1차 필터링: 시세/이름 없는 엔트리 제거 + 5거래일 평균 거래대금 필터링
     valid_codes: list[str] = []
     for cd in engine_state.state.master_stocks_cache:
         e = engine_state.state.master_stocks_cache.get(cd, {}).copy()
@@ -264,7 +264,7 @@ async def recompute_sector_summary_now() -> None:
         engine_state.state.sector_summary_cache = _ss
         cancel_sector_recompute()
 
-        # ── 5일평균최소거래대금(N억원) 이상 종목 마킹 ──
+        # ── 5거래일 평균 최소 거래대금(N억원) 이상 종목 마킹 ──
         # all_filter_codes(NXT 필터링 전 전체) 사용 — NXT-only 구간에도 KRX 종목 _filtered 플래그 유지
         _filtered_codes = set(_inputs["all_filter_codes"])
         for cd, entry in engine_state.state.master_stocks_cache.items():

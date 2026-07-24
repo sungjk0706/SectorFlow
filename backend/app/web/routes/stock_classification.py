@@ -284,22 +284,22 @@ async def move_stocks(body: MoveStocksRequest, _: str = Depends(get_current_user
 
 @router.post("/trigger-confirmed-download")
 async def trigger_confirmed_download(_: str = Depends(get_current_user)):
-    """수동 1일봉 차트 시세 다운로드 실행"""
+    """수동 일봉 차트 시세 다운로드 실행"""
     try:
         from backend.app.services.engine_state import state
         if state.confirmed_refresh_running:
-            return {"ok": False, "error": "1일봉 차트 시세 다운로드가 이미 진행 중입니다."}
+            return {"ok": False, "error": "일봉 차트 시세 다운로드가 이미 진행 중입니다."}
 
         state.integrated_system_settings_cache["sector_stock_layout"] = []
         from backend.app.services.engine_account_notify import _rebuild_layout_cache
         _rebuild_layout_cache([])
         from backend.app.services.market_close_pipeline import fetch_confirmed_data_only
         _task = asyncio.create_task(fetch_confirmed_data_only())
-        _task.add_done_callback(lambda t: logger.warning("[업종] 1일봉 차트 다운로드 작업 실패: %s", t.exception()) if t.exception() else None)
-        logger.info("[업종] 수동 1일봉 차트 시세 다운로드 시작")
+        _task.add_done_callback(lambda t: logger.warning("[업종] 일봉 차트 다운로드 작업 실패: %s", t.exception()) if t.exception() else None)
+        logger.info("[업종] 수동 일봉 차트 시세 다운로드 시작")
         return {"ok": True}
     except Exception as e:
-        logger.error("[업종] 수동 1일봉 차트 시세 다운로드 실패: %s", e)
+        logger.error("[업종] 수동 일봉 차트 시세 다운로드 실패: %s", e)
         return {"ok": False, "error": str(e)}
 
 
@@ -307,19 +307,19 @@ async def trigger_confirmed_download(_: str = Depends(get_current_user)):
 
 @router.post("/trigger-5d-download")
 async def trigger_5d_download(_: str = Depends(get_current_user)):
-    """수동 5일봉 거래대금,고가 다운로드 실행"""
+    """수동 5거래일 일봉 거래대금,고가 다운로드 실행"""
     try:
         from backend.app.services.engine_state import state
         if state.confirmed_refresh_running_5d:
-            return {"ok": False, "error": "5일봉 다운로드가 이미 진행 중입니다."}
+            return {"ok": False, "error": "5거래일 일봉 다운로드가 이미 진행 중입니다."}
 
         from backend.app.services.market_close_pipeline import fetch_5d_data_only
         _task = asyncio.create_task(fetch_5d_data_only())
-        _task.add_done_callback(lambda t: logger.warning("[업종] 5일봉 다운로드 작업 실패: %s", t.exception()) if t.exception() else None)
-        logger.info("[업종] 수동 5일봉 거래대금,고가 다운로드 시작")
+        _task.add_done_callback(lambda t: logger.warning("[업종] 5거래일 일봉 다운로드 작업 실패: %s", t.exception()) if t.exception() else None)
+        logger.info("[업종] 수동 5거래일 일봉 거래대금,고가 다운로드 시작")
         return {"ok": True}
     except Exception as e:
-        logger.error("[업종] 수동 5일봉 거래대금,고가 다운로드 실패: %s", e)
+        logger.error("[업종] 수동 5거래일 일봉 거래대금,고가 다운로드 실패: %s", e)
         return {"ok": False, "error": str(e)}
 
 
@@ -330,7 +330,7 @@ async def check_download_data_exists(_: str = Depends(get_current_user)):
     """수동 다운로드 대상 거래일의 데이터 저장 여부 확인.
 
     가장 최근 확정된 거래일(소속 거래일의 직전 거래일) 기준으로
-    1일봉 시세(master_stocks_table.date)와 5일봉(stock_5d_bars.dt) 데이터
+    일봉 시세(master_stocks_table.date)와 5거래일 일봉(stock_5d_bars.dt) 데이터
     존재 여부를 반환. 프론트엔드에서 수동 다운로드 버튼 클릭 시 사전 확인용 (P21).
 
     다운로드 파이프라인이 qry_dt=직전 거래일을 사용하므로, 이 API도 동일 기준으로

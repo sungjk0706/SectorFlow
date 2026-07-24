@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 # ── 종목 조회 ─────────────────────────────────────────────────
 
 def get_high_price_5d_cache() -> dict[str, int]:
-    """5일 전고점 캐시 반환."""
+    """5거래일 고가 캐시 반환."""
     return {cd: int(stock.get("high_5d_price", 0) or 0) for cd, stock in engine_state.state.master_stocks_cache.items()}
 
 

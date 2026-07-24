@@ -72,7 +72,7 @@
 **내용**: 두 파이프라인은 명확히 분리  
 **구현 가이드**:
 - 실시간: `tick_queue`, `Compute Loop`, `Gateway Loop`
-- 배치: `market_close_pipeline.py` (20:40 확정 시세, 5일봉)
+- 배치: `market_close_pipeline.py` (20:40 확정 시세, 5거래일 일봉)
 - 물리적 루프와 데이터 배관 완전 분리
 
 ### 원칙 9: 각 파이프라인 독립, 상호 간섭 금지
@@ -571,7 +571,7 @@ while _compute_running:
 ### 5.1 실시간 시세 흐름
 
 **WS 구독 대상 (1차 필터 게이트):**
-- 1차 필터(5일평균거래대금 `sector_min_trade_amt`억원 이상) 통과 종목 + 보유종목만 WS 구독
+- 1차 필터(5거래일 평균 거래대금 `sector_min_trade_amt`억원 이상) 통과 종목 + 보유종목만 WS 구독
 - `subscribe_sector_stocks_0b()`가 `_filtered` 플래그 기반으로 구독 대상 선정 (설정 가능 한도 `subscribe.max_0b_count` 기본 200, 보유종목 우선)
 - 필터 미통과 종목: WS 구독 안됨 → 01 틱 수신 없음 → 업종 순위 계산 대상 아님 → 아무 처리도 하지 않음
 
@@ -761,7 +761,7 @@ SectorSummary (전체 결과)
 
 ### 6.3 필터링
 
-- **1차 필터**: 5일평균거래대금 (`min_avg_amt_eok`) — 업종 그룹핑 전 적용
+- **1차 필터**: 5거래일 평균 거래대금 (`min_avg_amt_eok`) — 업종 그룹핑 전 적용
   - `get_sector_stocks()`에서 필터 통과 종목만 `all_codes`에 포함 → 업종 순위 계산 대상
   - 필터 통과 종목에 `_filtered` 플래그 설정 → `subscribe_sector_stocks_0b()`에서 WS 구독 대상 선정 (보유종목 포함, 설정 가능 한도 `subscribe.max_0b_count` 기본 200)
   - **필터 미통과 종목**: WS 구독 안됨 → 실시간 시세 수신 없음 → 업종 순위 계산 대상 아님 → 아무 처리도 하지 않음
@@ -779,7 +779,7 @@ SectorSummary (전체 결과)
 
 | 가산점 | 조건 | 설정 키 |
 |--------|------|---------|
-| 고가 돌파 | 5일 고가 돌파 시 | `boost_high_breakout_on/score` |
+| 고가 돌파 | 5거래일 고가 돌파 시 | `boost_high_breakout_on/score` |
 | 호가 잔량비 | 매수호가/매도호가 비율 | `boost_order_ratio_on/pct/score` |
 | 프로그램 매수 | 프로그램 순매수 | `boost_program_net_buy_on/score` |
 
@@ -953,7 +953,7 @@ PRAGMA mmap_size = 268435456  (256MB)
 | 테이블 | 용도 |
 |--------|------|
 | `master_stocks_table` | 전체 종목 마스터 (코드, 이름, 업종, 시장, NXT) |
-| `stock_5d_array` | 5일봉 데이터 (거래대금, 고가 등) |
+| `stock_5d_array` | 5거래일 일봉 데이터 (거래대금, 고가 등) |
 | `settlement_state` | 정산 엔진 상태 (단일 행) |
 | `test_positions` | 테스트 모드 가상 포지션 |
 | `trades` | 체결 이력 (매수/매도) |
@@ -1021,7 +1021,7 @@ asyncio.call_later() 기반 — 매일 재스케줄링
 09:00  KRX 정규장 진입              — 업종 재계산 (구독은 08:59 사전 구독에서 담당)
 15:20  _on_krx_closing_auction_start() — KRX 단독 종목 구독 해지 (종가 동시호가 진입)
 20:00  _on_ws_subscribe_end()       — WS 구독 종료 + GC 정상화 (NXT 장마감 진입 시 자동 트리거)
-20:40  _fire_unified_confirmed_fetch() — 확정 시세 + 5일봉 다운로드 (timetable.confirmed_download 설정, 기본값)
+20:40  _fire_unified_confirmed_fetch() — 확정 시세 + 5거래일 일봉 다운로드 (timetable.confirmed_download 설정, 기본값)
 00:00  _on_midnight()               — 일일 리셋 (거래일 판단, 타이머 재예약)
 ```
 
@@ -1173,10 +1173,10 @@ ConnectorManager
   ├── 확정 시세 다운로드 (당일 종가)
   │   ├── 전체 종목 확정 가격/거래대금 DB 저장
   │   └── master_stocks_cache 확정 데이터 갱신
-  ├── 5일봉 다운로드
+  ├── 5거래일 일봉 다운로드
   │   ├── 최근 5거래일 일봉 데이터
-  │   ├── 5일평균거래대금 계산
-  │   ├── high_price (5일 고가) 갱신
+  │   ├── 5거래일 평균 거래대금 계산
+  │   ├── high_price (5거래일 고가) 갱신
   │   └── stock_5d_array 테이블 저장
   └── 업종 요약 전체 재계산 (확정 데이터 기반)
 
@@ -1833,8 +1833,14 @@ npm run lint  # 린팅
 | 매수 후보 | 바이 리스트, 매수 타겟 | 화면/로그/문서 | UI 표시명 통일 |
 | 보유 종목 | 홀딩, 포지션 | 화면/로그 | UI 표시명 통일. 단, 코드 식별자의 `position`/`holdings`는 허용 |
 | 증권사 표시명 | 코드 식별자 (화면/로그 한정) | 화면/로그 | "LS증권", "키움증권" 등 사전 정한 표시명 사용. 단, 코드 내부 식별자(`ls_`, `kiwoom_`)는 원칙 4에 따라 유지 |
+| 일봉 | 1일봉, 1일봉차트, 1일봉챠트 | 화면/로그/문서 | "일봉" 자체가 하루 단위 봉을 뜻하므로 "1" 중복. "챠트"는 외래어 표기법 위반(국립국어원: chart → 차트). 단, 코드 식별자(`daily_confirmed`, `fetch_all_stocks_daily_confirmed`)는 허용 |
+| 5거래일 일봉 | 5일봉, 5일봉차트, 5일봉챠트 | 화면/로그/문서 | "5일봉"은 "5일선"(이동평균선)과 혼동 위험. "최근 5거래일치 일봉 데이터"가 정확한 의미. 단, 코드 식별자(`fetch_stock_5day_data`, `stock_5d_bars`)는 허용 |
+| 5거래일 평균 거래대금 | 5일 평균 거래대금, 5일평균거래대금, 5일평균 | 화면/로그/문서 | 주말·공휴일 제외 5영업일 명시. 단, 코드 식별자(`avg_amt_5d`, `avg_5d_trade_amount`)는 허용 |
+| 5거래일 고가 | 5일 고가, 5일고가, 5일 전고가, 5일 전고점 | 화면/로그/문서 | "5일선의 고가" 오해 방지. 단, 코드 식별자(`high_5d`, `high_5d_price`, `get_high_price_5d_cache`)는 허용 |
+| 5거래일 손익 | 5일 손익 | 화면/로그/문서 | 수익 상세 요약 카드 표시명 통일. 단, 코드 식별자(`fivedayPnlEl`, `fivedayCard`)는 허용 |
+| 차트 | 챠트 | 화면/로그/문서 | 국립국어원 외래어 표기법: chart → 차트 (ㅊ 다음 이중모음 ㅑ 금지) |
 
-> **코드 식별자 예외**: 파일명, 클래스명, 함수명, 변수명에 포함된 영어 식별자(`sector`, `stock`, `buy`, `sell`, `position`)는 코드 가독성과 관행상 허용. 원칙 23의 용어 통일은 **사용자에게 보이는 화면 텍스트, 로그 메시지, 문서 설명**에 적용.
+> **코드 식별자 예외**: 파일명, 클래스명, 함수명, 변수명에 포함된 영어 식별자(`sector`, `stock`, `buy`, `sell`, `position`, `5d`, `fiveday`)는 코드 가독성과 관행상 허용. 원칙 23의 용어 통일은 **사용자에게 보이는 화면 텍스트, 로그 메시지, 문서 설명**에 적용.
 > **확장**: 신규 용어 혼용 발견 시 이 사전에 추가하여 합의 후 적용.
 
 ---

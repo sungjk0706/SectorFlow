@@ -280,7 +280,7 @@ async def migrate_add_buy_date_to_trades():
 # load_stock_name_cache 함수 삭제: 메모리 캐시(_master_stocks_cache)로 단일화
 
 async def create_stock_5d_bars_table():
-    """stock_5d_bars 테이블 생성 (5일봉 세로 행 데이터 저장용).
+    """stock_5d_bars 테이블 생성 (5거래일 일봉 세로 행 데이터 저장용).
 
     가로 배열(day1~day5) 구조를 세로 행으로 변경 — 각 일봉이 (종목코드, 거래일) 복합키로 1행 저장.
     기존 stock_5d_array 테이블은 각 day의 실제 날짜를 알 수 없어 마이그레이션 불가 → DROP 후 신규 시작 (P10/P22/P24).
@@ -298,7 +298,7 @@ async def create_stock_5d_bars_table():
         )
     ''')
     await conn.commit()
-    logger.info("5일봉 세로 행 테이블 초기화 완료.")
+    logger.info("5거래일 일봉 세로 행 테이블 초기화 완료.")
 
 
 # ── 거래일 캐시 ─────────────────────────────────────────────────────────────

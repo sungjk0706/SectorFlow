@@ -3,7 +3,7 @@
 time_scheduler_on + KST 시각에 따른 자동매매 허용 여부 변화 감지.
 
 장마감 후 확정 데이터 갱신:
-- 5일 평균 거래대금 캐시 롤링 갱신
+- 5거래일 평균 거래대금 캐시 롤링 갱신
 """
 from __future__ import annotations
 import asyncio

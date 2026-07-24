@@ -122,7 +122,7 @@ class KiwoomStockProvider:
     async def fetch_stock_5day_data(
         self, stk_cd: str, qry_dt: str
     ) -> dict | None:
-        """ka10081 단건 조회 -- 최근 5개 일봉에서 5일 평균 거래대금 및 최고가 계산 반환."""
+        """ka10081 단건 조회 -- 최근 5개 일봉에서 5거래일 평균 거래대금 및 최고가 계산 반환."""
         if self._rest_api is None:
             return None
         from backend.app.core.kiwoom_stock_rest import fetch_ka10081_daily_5d_data
@@ -135,7 +135,7 @@ class KiwoomStockProvider:
         interval_sec: float = 0.3,
         on_progress: "Callable[[int, int], None] | None" = None,
     ) -> dict[str, dict]:
-        """전체 종목 ka10081 순차 조회 -- 확정 시세(1일봉) 데이터 채우기용."""
+        """전체 종목 ka10081 순차 조회 -- 확정 시세(일봉) 데이터 채우기용."""
         if self._rest_api is None:
             return {}
         from backend.app.core.kiwoom_stock_rest import fetch_ka10081_all_stocks_daily_confirmed

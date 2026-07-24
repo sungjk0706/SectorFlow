@@ -146,15 +146,15 @@ async def _apply_virtual_balance_change(changed_keys: set[str]) -> None:
 
 
 async def _apply_5d_download_toggle(changed_keys: set[str]) -> None:
-    """5일봉 다운로드 토글 ON 시 즉시 다운로드 트리거."""
+    """5거래일 일봉 다운로드 토글 ON 시 즉시 다운로드 트리거."""
     if "scheduler_5d_download_on" not in changed_keys:
         return
     _5d_on = bool(get_settings_snapshot().get("scheduler_5d_download_on", True))
     if _5d_on:
         try:
-            logger.info("[설정] 5일봉 다운로드 설정=ON → 5일봉 다운로드 트리거")
+            logger.info("[설정] 5거래일 일봉 다운로드 설정=ON → 5거래일 일봉 다운로드 트리거")
         except Exception:
-            logger.warning("[설정] 5일봉 다운로드 트리거 실패", exc_info=True)
+            logger.warning("[설정] 5거래일 일봉 다운로드 트리거 실패", exc_info=True)
 
 
 async def _apply_time_schedule_change(changed_keys: set[str]) -> None:

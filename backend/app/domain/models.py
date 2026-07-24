@@ -14,7 +14,7 @@ class StockScore:
     sector: str
     change_rate: float          # 등락률 (%)
     trade_amount: int           # 당일 거래대금 (원)
-    avg_amt_5d: int             # 5일 평균 거래대금 (억 단위)
+    avg_amt_5d: int             # 5거래일 평균 거래대금 (억 단위)
     strength: float             # 체결강도 (%, -1 = 미수신)
     cur_price: int              # 현재가
     change: int = 0             # 전일 대비 (원)

@@ -124,7 +124,7 @@ DEFAULT_USER_SETTINGS: dict[str, Any] = {
      # 장마감 후 스케줄러 토글 (기본값 True = 활성화)
      # ws_subscribe_end 도달 시 확정 데이터 다운로드 실행 여부
      "scheduler_market_close_on": True,
-     # 5일 거래대금/최고가 롤링 다운로드 실행 여부
+     # 5거래일 거래대금/최고가 롤링 다운로드 실행 여부
      "scheduler_5d_download_on": True,
 
      # UI 설정 — 실시간 현재가 플래시 효과 (기본값 True = 활성화)

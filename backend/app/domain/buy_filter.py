@@ -27,7 +27,7 @@ def calculate_boost_score(
     """
     score = 0.0
 
-    # 1. 5일 전고가 돌파
+    # 1. 5거래일 고가 돌파
     if boost_high_on:
         high_val = high_5d_cache.get(stock.code, 0)
         if high_val > 0 and stock.cur_price > high_val:
@@ -82,7 +82,7 @@ def check_stock_guards(
     block_rise_pct: 이 값 이상 상승 시 차단
     block_fall_on: 하락률 차단 활성화 여부 (토글)
     block_fall_pct: 이 값 이상 하락 시 차단
-    (5일평균거래대금 필터는 업종분석 단계에서 1차 처리됨 — 여기서 중복 체크하지 않음)
+    (5거래일 평균 거래대금 필터는 업종분석 단계에서 1차 처리됨 — 여기서 중복 체크하지 않음)
     """
     if block_rise_on and block_rise_pct > 0 and stock.change_rate >= block_rise_pct:
         stock.guard_pass = False
@@ -204,7 +204,7 @@ def create_buy_targets(
                 s.guard_reason = "금일매수"
 
     for s, _ in all_stocks:
-        # 차단 종목도 가산점 계산 (5일고가; 잔량비/프순매는 구독 세션 제한으로 통과 종목만)
+        # 차단 종목도 가산점 계산 (5거래일 고가; 잔량비/프순매는 구독 세션 제한으로 통과 종목만)
         _is_blocked = not s.guard_pass
         s.boost_score = calculate_boost_score(
             s,

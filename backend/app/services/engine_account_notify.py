@@ -299,7 +299,7 @@ async def notify_desktop_sector_stocks_refresh(*, force: bool = False) -> None:
     """종목 목록 또는 데이터가 변경되었을 때 delta 또는 전체 리스트를 WS로 전송.
 
     Args:
-        force: True 시 delta 계산 없이 전체 스냅샷 전송 (확정시세/5일봉 다운로드 등 전 종목 데이터 변경 시).
+        force: True 시 delta 계산 없이 전체 스냅샷 전송 (확정시세/5거래일 일봉 다운로드 등 전 종목 데이터 변경 시).
     """
     from backend.app.services.sector_data_provider import get_sector_stocks
     stocks = await get_sector_stocks()
