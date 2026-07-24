@@ -168,7 +168,7 @@ function syncFromSettings(s: AppSettings): void {
 
 /* ── 가산점 슬라이더 블록 (슬라이더+입력란 양방향 연동 + 2행 레이아웃, 매수설정과 동일 패턴 — P23 일관성/P24 중복 제거) ── */
 // 3개 가산점(1차/2차/3차) 슬라이더 설정이 완전 동일하므로 단일 헬퍼로 통합.
-function createBonusSliderBlock(key: string, label: string): {
+function createBonusSliderBlock(key: string, label: string, infoText: string): {
   input: ReturnType<typeof createNumInput>
   slider: DualLabelSliderHandle
   row: HTMLElement
@@ -188,19 +188,18 @@ function createBonusSliderBlock(key: string, label: string): {
     rightColorLight: COLOR.upLight,
     onChange: v => { const orig = currentVals[key]; input.setValue(v); onNumChange(key, v, () => { currentVals[key] = orig; input.setValue(orig); slider?.setValue(orig); _updateMaxScoreDisplay() }); _updateMaxScoreDisplay() },
   })
-  // Row 1: 라벨(좌) + [rangeText][숫자 입력란](우)
+  // Row 1: 라벨+ⓘ(좌) + 숫자 입력란(우)
   const labelRow = document.createElement('div')
   Object.assign(labelRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0' })
+  const labelWrap = document.createElement('span')
+  Object.assign(labelWrap.style, { display: 'flex', alignItems: 'center', gap: '4px', color: COLOR.neutral })
   const labelSpan = document.createElement('span')
   labelSpan.textContent = label
-  labelSpan.style.color = COLOR.neutral
-  labelRow.appendChild(labelSpan)
+  labelWrap.appendChild(labelSpan)
+  labelWrap.appendChild(createInfoTooltip(infoText))
+  labelRow.appendChild(labelWrap)
   const rightWrap = document.createElement('span')
   Object.assign(rightWrap.style, { display: 'flex', alignItems: 'center', gap: '6px' })
-  const rangeSpan = document.createElement('span')
-  Object.assign(rangeSpan.style, { fontSize: FONT_SIZE.small, color: COLOR.tertiary, whiteSpace: 'nowrap' })
-  rangeSpan.textContent = '-100%~+100%'
-  rightWrap.appendChild(rangeSpan)
   rightWrap.appendChild(input.el)
   labelRow.appendChild(rightWrap)
   // Row 2: 슬라이더 (전체 너비)
@@ -322,13 +321,13 @@ function buildMaxScoreDisplay(root: HTMLElement): void {
 // ④ 가산점 슬라이더 3개 (createBonusSliderBlock 헬퍼 사용) + 설명
 function buildBonusSection(root: HTMLElement): void {
   // 1차 가산점 — 업종 내 상승 종목 비율 (슬라이더-입력란 양방향 연동)
-  const b1 = createBonusSliderBlock('sector_bonus_rise_ratio_slider', '1차 가산점 — 업종 내 상승 종목 비율')
+  const b1 = createBonusSliderBlock('sector_bonus_rise_ratio_slider', '1차 가산점 — 업종 내 상승 종목 비율', '업종 내 상승 종목 비율에 대한 가산점 가중치. 0이면 가산점 없음, +100%면 만점 2배, -100%면 가산점 0점. 범위: -100%~+100%.')
   bonusRiseRatioInput = b1.input; bonusRiseRatioSlider = b1.slider; root.appendChild(b1.row)
   // 2차 가산점 — 종목 상승률 상위 집중도 (슬라이더-입력란 양방향 연동)
-  const b2 = createBonusSliderBlock('sector_bonus_relative_strength_slider', '2차 가산점 — 종목 상승률 상위 집중도')
+  const b2 = createBonusSliderBlock('sector_bonus_relative_strength_slider', '2차 가산점 — 종목 상승률 상위 집중도', '종목 상승률이 상위에 집중된 정도에 대한 가산점 가중치. 0이면 가산점 없음, +100%면 만점 2배, -100%면 가산점 0점. 범위: -100%~+100%.')
   bonusRelativeStrengthInput = b2.input; bonusRelativeStrengthSlider = b2.slider; root.appendChild(b2.row)
   // 3차 가산점 — 업종 평균 거래대금 (슬라이더-입력란 양방향 연동)
-  const b3 = createBonusSliderBlock('sector_bonus_trade_amount_slider', '3차 가산점 — 업종 평균 거래대금')
+  const b3 = createBonusSliderBlock('sector_bonus_trade_amount_slider', '3차 가산점 — 업종 평균 거래대금', '업종 평균 거래대금에 대한 가산점 가중치. 0이면 가산점 없음, +100%면 만점 2배, -100%면 가산점 0점. 범위: -100%~+100%.')
   bonusTradeAmountInput = b3.input; bonusTradeAmountSlider = b3.slider; root.appendChild(b3.row)
 
   const bonusDescWrap = document.createElement('div')
