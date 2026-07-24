@@ -164,7 +164,7 @@ function mount(container: HTMLElement): void {
   Object.assign(root.style, { display: 'flex', flexDirection: 'column', height: '100%' })
 
   // 헤더: 제목
-  const headerRow = createCardHeaderWithMargin('보유종목', undefined, '4px')
+  const headerRow = createCardHeaderWithMargin('보유종목', undefined, '8px')
   root.appendChild(headerRow)
 
   // 보유 종목 요약 배지 행 — 공통 컴포넌트 (flex 자동 균등 분할)

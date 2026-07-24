@@ -67,12 +67,7 @@ export function buildLeftColumn(): { leftColumn: HTMLDivElement; chartContainer:
   // 좌측 상단: 거래일별 수익률 차트
   const chartPanel = document.createElement('div')
   Object.assign(chartPanel.style, { flex: '1', minWidth: '0', overflow: 'hidden', padding: '0 4px' })
-  const chartTitle = document.createElement('div')
-  Object.assign(chartTitle.style, { display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: FONT_SIZE.section, fontWeight: FONT_WEIGHT.normal, color: COLOR.down, padding: '10px 0 6px', borderBottom: '2px solid ' + COLOR.borderLight, marginBottom: '8px' })
-  const chartTitleText = document.createElement('span')
-  chartTitleText.textContent = '거래일별 수익률'
-  chartTitle.appendChild(chartTitleText)
-  chartPanel.appendChild(chartTitle)
+  chartPanel.appendChild(sectionTitle('거래일별 수익률'))
   const chartContainer = document.createElement('div')
   Object.assign(chartContainer.style, { height: '100%' })
   chartPanel.appendChild(chartContainer)
@@ -80,12 +75,7 @@ export function buildLeftColumn(): { leftColumn: HTMLDivElement; chartContainer:
   // 좌측 하단: 업종별 수익 도넛 차트
   const donutPanel = document.createElement('div')
   Object.assign(donutPanel.style, { flex: '1', minWidth: '0', overflow: 'hidden', padding: '0 4px', display: 'flex', flexDirection: 'column' })
-  const donutTitle = document.createElement('div')
-  Object.assign(donutTitle.style, { display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: FONT_SIZE.section, fontWeight: FONT_WEIGHT.normal, color: COLOR.down, padding: '10px 0 6px', borderBottom: '2px solid ' + COLOR.borderLight, marginBottom: '8px' })
-  const donutTitleText = document.createElement('span')
-  donutTitleText.textContent = '업종별 수익 분포'
-  donutTitle.appendChild(donutTitleText)
-  donutPanel.appendChild(donutTitle)
+  donutPanel.appendChild(sectionTitle('업종별 수익 분포'))
   const donutChartContainer = document.createElement('div')
   Object.assign(donutChartContainer.style, { flex: '1', minHeight: '0' })
   donutPanel.appendChild(donutChartContainer)
@@ -148,7 +138,6 @@ export function buildAccountPanel(state: ProfitOverviewState, isTestMode: boolea
   Object.assign(accountPanel.style, { flex: '5', minWidth: '0', overflow: 'auto', padding: '0 4px', display: 'flex', flexDirection: 'column' })
 
   const accountHeader = sectionTitle('계좌 현황')
-  accountHeader.style.color = COLOR.down
   accountPanel.appendChild(accountHeader)
 
   // 실전모드 컨테이너

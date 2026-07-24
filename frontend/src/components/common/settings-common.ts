@@ -17,16 +17,22 @@ export function parseHM(v: string): [string, string] {
 }
 
 /* ── sectionTitle ── */
-export function sectionTitle(text: string): HTMLElement {
+// 색상 COLOR.down 통일 + rightSlot 옵션(우측 요소 배치용 flex 래퍼) — P23/P24 일관성·중복 제거.
+export function sectionTitle(text: string, rightSlot?: HTMLElement): HTMLElement {
   const div = document.createElement('div')
   Object.assign(div.style, {
+    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
     fontWeight: FONT_WEIGHT.normal,
     fontSize: FONT_SIZE.section,
+    color: COLOR.down,
     padding: '10px 0 6px',
     borderBottom: '2px solid ' + COLOR.borderLight,
     marginBottom: '8px',
   })
-  div.textContent = text
+  const textSpan = document.createElement('span')
+  textSpan.textContent = text
+  div.appendChild(textSpan)
+  if (rightSlot) div.appendChild(rightSlot)
   return div
 }
 

@@ -1034,7 +1034,7 @@ function buildDetailTitleRow(): HTMLElement {
 
   detailTitleRef = document.createElement('div')
   Object.assign(detailTitleRef.style, {
-    fontSize: FONT_SIZE.title, fontWeight: 'normal', color: COLOR.neutral,
+    fontSize: FONT_SIZE.section, fontWeight: 'normal', color: COLOR.neutral,
   })
   titleRow.appendChild(detailTitleRef)
 
@@ -1282,7 +1282,7 @@ function buildTripleRight(): void {
   // 제목
   const title = document.createElement('div')
   Object.assign(title.style, {
-    fontSize: FONT_SIZE.title, fontWeight: 'normal', color: COLOR.neutral, marginBottom: '8px',
+    fontSize: FONT_SIZE.section, fontWeight: 'normal', color: COLOR.neutral, marginBottom: '8px',
   })
   title.textContent = '대상 업종'
   rightContentRef.appendChild(title)

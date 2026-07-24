@@ -4,6 +4,7 @@
 
 import { FONT_SIZE, FONT_WEIGHT, COLOR, pnlColor } from '../components/common/ui-styles'
 import { createActionButton } from '../components/common/button'
+import { sectionTitle } from '../components/common/settings-common'
 import { buildSectorStockPnl, type SectorPnlGroup, type SectorStockPnl } from './profit-shared'
 import type { ProfitOverviewState } from './profit-overview'
 
@@ -192,17 +193,6 @@ export function buildStockListSection(state: ProfitOverviewState): HTMLDivElemen
   const wrapper = document.createElement('div')
   Object.assign(wrapper.style, { display: 'flex', flexDirection: 'column', marginTop: '12px' })
 
-  const headerRow = document.createElement('div')
-  Object.assign(headerRow.style, {
-    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-    fontWeight: FONT_WEIGHT.normal, fontSize: FONT_SIZE.section, color: COLOR.down,
-    padding: '10px 0 6px', borderBottom: '2px solid ' + COLOR.borderLight,
-    marginBottom: '8px',
-  })
-  const stockListTitle = document.createElement('span')
-  stockListTitle.textContent = '업종별 종목 수익'
-  headerRow.appendChild(stockListTitle)
-
   const toggleBtn = createActionButton({
     label: state.allExpanded ? '전체접기' : '전체보기',
     variant: 'secondary',
@@ -223,8 +213,7 @@ export function buildStockListSection(state: ProfitOverviewState): HTMLDivElemen
     fontWeight: FONT_WEIGHT.normal,
   })
   state.expandToggleBtn = toggleBtn
-  headerRow.appendChild(toggleBtn)
-  wrapper.appendChild(headerRow)
+  wrapper.appendChild(sectionTitle('업종별 종목 수익', toggleBtn))
 
   const container = document.createElement('div')
   Object.assign(container.style, { flex: '1', minHeight: '0' })
