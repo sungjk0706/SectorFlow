@@ -179,6 +179,7 @@ function buildBuyBlockSection(root: HTMLElement): void {
   {
     const r = createToggleLabelControlsRow({
       labelText: '종목 상승률 매수차단',
+      rangeText: '0~100%',
       toggleOn: true,
       onToggle: next => { vals.buy_block_rise_on = next; saveHelper!.saveImmediate({ buy_block_rise_on: next }) },
       controlsChild: riseInput.el,
@@ -192,6 +193,7 @@ function buildBuyBlockSection(root: HTMLElement): void {
   {
     const r = createToggleLabelControlsRow({
       labelText: '종목 하락률 매수차단',
+      rangeText: '0~100%',
       toggleOn: true,
       onToggle: next => { vals.buy_block_fall_on = next; saveHelper!.saveImmediate({ buy_block_fall_on: next }) },
       controlsChild: fallInput.el,
@@ -209,6 +211,7 @@ function buildBoostSection(root: HTMLElement): void {
     boostHighScoreInput = createNumInput({ value: 1.0, onChange: v => { vals.boost_high_breakout_score = v; saveHelper!.autoSave('boost_high_breakout_score', v) }, step: 1, min: 0, max: 100, name: 'boost_high_breakout_score' })
     const r = createToggleLabelControlsRow({
       labelText: '5일 고가 돌파',
+      rangeText: '0~100점',
       toggleOn: false,
       onToggle: next => { vals.boost_high_breakout_on = next; saveHelper!.saveImmediate({ boost_high_breakout_on: next }) },
       controlsChild: boostHighScoreInput.el,
@@ -222,6 +225,7 @@ function buildBoostSection(root: HTMLElement): void {
     boostNewsScoreInput = createNumInput({ value: 1.0, onChange: v => { vals.boost_news_score = v; saveHelper!.autoSave('boost_news_score', v) }, step: 1, min: 0, max: 100, name: 'boost_news_score' })
     const r = createToggleLabelControlsRow({
       labelText: '📰 뉴스 호재',
+      rangeText: '0~100점',
       toggleOn: false,
       onToggle: next => { vals.boost_news_on = next; saveHelper!.saveImmediate({ boost_news_on: next }) },
       controlsChild: boostNewsScoreInput.el,
@@ -235,6 +239,7 @@ function buildBoostSection(root: HTMLElement): void {
     boostProgramScoreInput = createNumInput({ value: 1.0, onChange: v => { vals.boost_program_net_buy_score = v; saveHelper!.autoSave('boost_program_net_buy_score', v) }, step: 1, min: 0, max: 100, name: 'boost_program_net_buy_score' })
     const r = createToggleLabelControlsRow({
       labelText: '프로그램 순매수',
+      rangeText: '0~100점',
       toggleOn: false,
       onToggle: next => { vals.boost_program_net_buy_on = next; saveHelper!.saveImmediate({ boost_program_net_buy_on: next }) },
       controlsChild: boostProgramScoreInput.el,
@@ -278,6 +283,7 @@ function buildBoostOrderBlock(root: HTMLElement): void {
   boostOrderScoreInput = createNumInput({ value: 1.0, onChange: v => { vals.boost_order_ratio_score = v; saveHelper!.autoSave('boost_order_ratio_score', v) }, step: 1, min: 0, max: 100, name: 'boost_order_ratio_score' })
   const r = createToggleLabelControlsRow({
     labelText: '매수/매도호가 잔량비율',
+    rangeText: '0~100점',
     toggleOn: false,
     onToggle: next => { vals.boost_order_ratio_on = next; saveHelper!.saveImmediate({ boost_order_ratio_on: next }) },
     controlsChild: boostOrderScoreInput.el,
@@ -302,7 +308,7 @@ function buildBuyAmountSection(root: HTMLElement): void {
   {
     const r = createToggleLabelControlsRow({
       labelText: '전체 일일 최대 매수 금액',
-      labelSubText: '(수수료 포함)',
+      rangeText: '0~10억원, 수수료 포함',
       toggleOn: false,
       onToggle: next => { vals.max_daily_total_buy_on = next; saveHelper!.saveImmediate({ max_daily_total_buy_on: next }) },
       controlsChild: maxDailyInput.el,
@@ -317,6 +323,7 @@ function buildBuyAmountSection(root: HTMLElement): void {
   {
     const r = createToggleLabelControlsRow({
       labelText: '최대 동시 보유 종목 수',
+      rangeText: '0~100개',
       toggleOn: true,
       onToggle: next => { vals.max_stock_cnt_on = next; saveHelper!.saveImmediate({ max_stock_cnt_on: next }) },
       controlsChild: maxStockCntInput.el,
@@ -334,7 +341,7 @@ function buildRebuySection(root: HTMLElement): void {
   {
     const r = createToggleLabelControlsRow({
       labelText: '종목당 일일 최대 매수 금액',
-      labelSubText: '(수수료 포함)',
+      rangeText: '0~10억원, 수수료 포함',
       toggleOn: true,
       onToggle: next => { vals.buy_amt_on = next; saveHelper!.saveImmediate({ buy_amt_on: next }) },
       controlsChild: buyAmtInput.el,
@@ -376,7 +383,7 @@ function buildBuyIntervalSection(root: HTMLElement): void {
     buyIntervalInput = createNumInput({ value: 30, onChange: v => { vals.buy_interval_sec = v; saveHelper!.autoSave('buy_interval_sec', v) }, step: 5, min: 5, max: 300, name: 'buy_interval_sec' })
     const r = createToggleLabelControlsRow({
       labelText: '매수 주문 간격 활성화',
-      labelSubText: '(초, 5초 단위)',
+      rangeText: '5~300초, 5초 단위',
       toggleOn: false,
       onToggle: next => { vals.buy_interval_on = next; saveHelper!.saveImmediate({ buy_interval_on: next }) },
       controlsChild: buyIntervalInput.el,

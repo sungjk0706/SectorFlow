@@ -111,6 +111,7 @@ function buildDailyLossRow(state: GeneralSettingsState): void {
   })
   const r = createToggleLabelControlsRow({
     labelText: '일일 손실 한도 (원)',
+    rangeText: '-10억~0원',
     toggleOn: true,
     onToggle: async next => {
       state.vals.daily_loss_limit_on = next
@@ -137,6 +138,7 @@ function buildDailyLossRateRow(state: GeneralSettingsState): void {
   })
   const r = createToggleLabelControlsRow({
     labelText: '일일 손실률 한도 (%)',
+    rangeText: '-100%~0%',
     toggleOn: false,
     onToggle: async next => {
       state.vals.daily_loss_rate_limit_on = next
@@ -164,6 +166,7 @@ function buildDailyProfitRow(state: GeneralSettingsState): void {
   })
   const r = createToggleLabelControlsRow({
     labelText: '일일 수익 한도 (원)',
+    rangeText: '0~10억원',
     toggleOn: false,
     onToggle: async next => {
       state.vals.daily_profit_limit_on = next
@@ -190,6 +193,7 @@ function buildDailyProfitRateRow(state: GeneralSettingsState): void {
   })
   const r = createToggleLabelControlsRow({
     labelText: '일일 수익률 한도 (%)',
+    rangeText: '0~1000%',
     toggleOn: false,
     onToggle: async next => {
       state.vals.daily_profit_rate_limit_on = next
@@ -216,6 +220,7 @@ function buildConsecLossRow(state: GeneralSettingsState): void {
   })
   const r = createToggleLabelControlsRow({
     labelText: '연속 손실 횟수 한도 (회)',
+    rangeText: '1~100회',
     toggleOn: false,
     onToggle: async next => {
       state.vals.consecutive_loss_limit_on = next

@@ -5,7 +5,7 @@
 import { createNumInput } from '../components/common/setting-row'
 import { sectionTitle, createDescText } from '../components/common/settings-common'
 import { createTagChip } from '../components/common/tag-chip'
-import { FONT_WEIGHT } from '../components/common/ui-styles'
+import { FONT_WEIGHT, FONT_SIZE, COLOR } from '../components/common/ui-styles'
 import { toastResult } from '../components/common/toast'
 import { type GeneralSettingsState, GS, state } from './general-settings-shared'
 
@@ -60,7 +60,14 @@ function buildNewsTtlRow(state: GeneralSettingsState): HTMLElement {
       if (res.ok) Object.assign(state.vals, dirty)
     },
   })
-  row.appendChild(state.newsTtlInput.el)
+  const rightWrap = document.createElement('span')
+  Object.assign(rightWrap.style, { display: 'flex', alignItems: 'center', gap: '6px' })
+  const rangeSpan = document.createElement('span')
+  Object.assign(rangeSpan.style, { fontSize: FONT_SIZE.small, color: COLOR.tertiary, whiteSpace: 'nowrap' })
+  rangeSpan.textContent = '0~3600초'
+  rightWrap.appendChild(rangeSpan)
+  rightWrap.appendChild(state.newsTtlInput.el)
+  row.appendChild(rightWrap)
   return row
 }
 

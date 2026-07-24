@@ -9,7 +9,7 @@
  * - 컨트롤: setting-row-controls.ts (createToggleBtn, createRadioGroup, createToggleLabelControlsRow)
  */
 
-import { COLOR } from './ui-styles'
+import { COLOR, FONT_SIZE } from './ui-styles'
 
 // 분할된 모듈 re-export — 외부 import 경로 유지 (4개 설정 페이지)
 export * from './setting-row-inputs'
@@ -109,7 +109,8 @@ export function createSpinButtons(input: HTMLInputElement, onUp: () => void, onD
 
 
 /* ── 설정 행: 레이블 왼쪽 — 입력란 오른쪽 (한 줄) ──────────── */
-export function createSettingRow(label: string | HTMLElement, child: HTMLElement, opts?: { disabled?: boolean; style?: Partial<CSSStyleDeclaration> }): HTMLElement {
+// rangeText 옵션 추가 (INPUT-VAL-S2, P23 일관성 — 입력란 좌측 안내)
+export function createSettingRow(label: string | HTMLElement, child: HTMLElement, opts?: { disabled?: boolean; style?: Partial<CSSStyleDeclaration>; rangeText?: string }): HTMLElement {
   const div = document.createElement('div')
   Object.assign(div.style, {
     display: 'flex',
@@ -131,7 +132,19 @@ export function createSettingRow(label: string | HTMLElement, child: HTMLElement
     labelSpan.appendChild(label)
   }
   div.appendChild(labelSpan)
-  div.appendChild(child)
+
+  if (opts?.rangeText) {
+    const rightWrap = document.createElement('span')
+    Object.assign(rightWrap.style, { display: 'flex', alignItems: 'center', gap: '6px' })
+    const rangeSpan = document.createElement('span')
+    Object.assign(rangeSpan.style, { fontSize: FONT_SIZE.small, color: COLOR.tertiary, whiteSpace: 'nowrap' })
+    rangeSpan.textContent = opts.rangeText
+    rightWrap.appendChild(rangeSpan)
+    rightWrap.appendChild(child)
+    div.appendChild(rightWrap)
+  } else {
+    div.appendChild(child)
+  }
   return div
 }
 

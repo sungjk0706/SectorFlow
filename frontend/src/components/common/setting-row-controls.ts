@@ -139,9 +139,10 @@ export function createRadioGroup(options: {
 }
 
 /* ── 토글 + 라벨 + 컨트롤 컴포지션 행 ─────────────────────── */
+// labelSubText(라벨 하단) → rangeText(입력란 좌측)로 통일 (INPUT-VAL-S2, P23 일관성)
 export function createToggleLabelControlsRow(options: {
   labelText: string
-  labelSubText?: string
+  rangeText?: string
   toggleOn: boolean
   onToggle: (next: boolean) => void
   controlsChild: HTMLElement
@@ -175,14 +176,14 @@ export function createToggleLabelControlsRow(options: {
   const label = document.createElement('span')
   label.textContent = options.labelText
   labelBox.appendChild(label)
-  if (options.labelSubText) {
-    const sub = document.createElement('span')
-    sub.style.cssText = `font-size:${FONT_SIZE.small};color:${COLOR.tertiary};`
-    sub.textContent = options.labelSubText
-    labelBox.appendChild(sub)
-  }
   labelWrap.appendChild(labelBox)
 
+  if (options.rangeText) {
+    const rangeSpan = document.createElement('span')
+    Object.assign(rangeSpan.style, { fontSize: FONT_SIZE.small, color: COLOR.tertiary, whiteSpace: 'nowrap' })
+    rangeSpan.textContent = options.rangeText
+    controls.appendChild(rangeSpan)
+  }
   controls.appendChild(options.controlsChild)
   const initDisabled = options.initialDisabled ?? !options.toggleOn
   setDisabled(controls, initDisabled)

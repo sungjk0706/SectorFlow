@@ -88,6 +88,7 @@ function buildSellTypeSection(root: HTMLElement): void {
   {
     const r = createToggleLabelControlsRow({
       labelText: '익절 (상승률 %)',
+      rangeText: '0~100%',
       toggleOn: false,
       onToggle: next => { vals.tp_apply = next; saveHelper!.saveImmediate({ tp_apply: next }) },
       controlsChild: tpValInput.el,
@@ -101,6 +102,7 @@ function buildSellTypeSection(root: HTMLElement): void {
   {
     const r = createToggleLabelControlsRow({
       labelText: '손절 (하락률 %)',
+      rangeText: '0~100%',
       toggleOn: false,
       onToggle: next => { vals.loss_apply = next; saveHelper!.saveImmediate({ loss_apply: next }) },
       controlsChild: lossValInput.el,
@@ -112,10 +114,11 @@ function buildSellTypeSection(root: HTMLElement): void {
   // 추적 매도 (토글 + 시작값 한 줄, 하락값 별도 행)
   tsStartValInput = createNumInput({ value: 0, onChange: v => { vals.ts_start_val = v; saveHelper!.autoSave('ts_start_val', v) }, step: 0.1, min: 0, max: 100, name: 'ts_start_val' })
   tsDropValInput = createNumInput({ value: 0, onChange: v => { vals.ts_drop_val = v; saveHelper!.autoSave('ts_drop_val', v) }, step: 0.1, min: 0, max: 100, name: 'ts_drop_val' })
-  tsDropRow = createSettingRow('추적 고점대비 하락률 (%)', tsDropValInput.el)
+  tsDropRow = createSettingRow('추적 고점대비 하락률 (%)', tsDropValInput.el, { rangeText: '0~100%' })
   {
     const r = createToggleLabelControlsRow({
       labelText: '고점 추적 매도 (시작 상승률 %)',
+      rangeText: '0~100%',
       toggleOn: false,
       onToggle: next => { vals.ts_apply = next; saveHelper!.saveImmediate({ ts_apply: next }) },
       controlsChild: tsStartValInput.el,
@@ -133,7 +136,7 @@ function buildSellIntervalSection(root: HTMLElement): void {
     sellIntervalInput = createNumInput({ value: 30, onChange: v => { vals.sell_interval_sec = v; saveHelper!.autoSave('sell_interval_sec', v) }, step: 5, min: 5, max: 300, name: 'sell_interval_sec' })
     const r = createToggleLabelControlsRow({
       labelText: '매도 주문 간격 활성화',
-      labelSubText: '(초, 5초 단위, 손절 포함)',
+      rangeText: '5~300초, 5초 단위, 손절 포함',
       toggleOn: false,
       onToggle: next => { vals.sell_interval_on = next; saveHelper!.saveImmediate({ sell_interval_on: next }) },
       controlsChild: sellIntervalInput.el,

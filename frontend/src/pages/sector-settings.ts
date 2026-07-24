@@ -187,14 +187,21 @@ function createBonusSliderBlock(key: string, label: string): {
     rightColorLight: COLOR.upLight,
     onChange: v => { input.setValue(v); onNumChange(key, v); _updateMaxScoreDisplay() },
   })
-  // Row 1: 라벨(좌) + 숫자 입력란(우)
+  // Row 1: 라벨(좌) + [rangeText][숫자 입력란](우)
   const labelRow = document.createElement('div')
   Object.assign(labelRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0' })
   const labelSpan = document.createElement('span')
   labelSpan.textContent = label
   labelSpan.style.color = COLOR.neutral
   labelRow.appendChild(labelSpan)
-  labelRow.appendChild(input.el)
+  const rightWrap = document.createElement('span')
+  Object.assign(rightWrap.style, { display: 'flex', alignItems: 'center', gap: '6px' })
+  const rangeSpan = document.createElement('span')
+  Object.assign(rangeSpan.style, { fontSize: FONT_SIZE.small, color: COLOR.tertiary, whiteSpace: 'nowrap' })
+  rangeSpan.textContent = '-100%~+100%'
+  rightWrap.appendChild(rangeSpan)
+  rightWrap.appendChild(input.el)
+  labelRow.appendChild(rightWrap)
   // Row 2: 슬라이더 (전체 너비)
   const sliderRow = document.createElement('div')
   Object.assign(sliderRow.style, { padding: '0 0 6px' })
@@ -212,7 +219,7 @@ function createBonusSliderBlock(key: string, label: string): {
 function buildFilterSection(root: HTMLElement): void {
   root.appendChild(createStepLabel('①', '5일 평균 거래대금 이하 차단'))
   minTradeAmtInput = createMoneyInput({ value: 0, onChange: v => onNumChange('sector_min_trade_amt', v), step: 1, min: 0, max: 1_000_000_000, name: 'sector_min_trade_amt' })
-  root.appendChild(createSettingRow('5일평균 최소 거래대금', minTradeAmtInput.el))
+  root.appendChild(createSettingRow('5일평균 최소 거래대금', minTradeAmtInput.el, { rangeText: '0~10억원' }))
 }
 
 // ② 업종순위 — 임계치 입력 + 상태 라벨 (KRX/NXT 진행 바는 별도 섹션)
@@ -225,7 +232,7 @@ function buildThresholdSection(root: HTMLElement): void {
   const _initialPhase = uiStore.getState().marketPhase
 
   // 1행: 임계치 설정 입력란 (라벨 명확화 — "수신율" → "임계치")
-  const thresholdRow = createSettingRow('업종순위 계산 임계치', thresholdInput.el)
+  const thresholdRow = createSettingRow('업종순위 계산 임계치', thresholdInput.el, { rangeText: '0~100%' })
   thresholdRow.style.margin = '0'
   thresholdRow.style.borderBottom = 'none'
   root.appendChild(thresholdRow)
@@ -285,7 +292,7 @@ function buildReceiveProgressSection(root: HTMLElement): void {
 function buildCutoffSection(root: HTMLElement): void {
   root.appendChild(createStepLabel('③', '업종 내 상승비율 이하 차단'))
   minRiseRatioInput = createNumInput({ value: 0, onChange: v => onNumChange('sector_min_rise_ratio_pct', v), step: 1, min: 0, max: 100, name: 'sector_min_rise_ratio_pct' })
-  root.appendChild(createSettingRow('업종내 종목 상승비율', minRiseRatioInput.el))
+  root.appendChild(createSettingRow('업종내 종목 상승비율', minRiseRatioInput.el, { rangeText: '0~100%' }))
 }
 
 // ④ 만점 자동 표시 — 1차/2차/3차 각각(작게) + 합계(크고 진하게) (P21 투명성, P10 SSOT — 백엔드 sector_score.py 계산식과 동일)
@@ -344,7 +351,11 @@ function buildMaxTargetsSection(root: HTMLElement): void {
   maxTargetsStatusEl = document.createElement('span')
   Object.assign(maxTargetsStatusEl.style, { flex: '1', fontSize: FONT_SIZE.label, color: COLOR.tertiary, display: 'flex', alignItems: 'center', justifyContent: 'center', whiteSpace: 'nowrap' })
   const rightWrap = document.createElement('div')
-  Object.assign(rightWrap.style, { flex: '0 0 auto', display: 'flex', alignItems: 'center', justifyContent: 'flex-end' })
+  Object.assign(rightWrap.style, { flex: '0 0 auto', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '6px' })
+  const rangeSpan = document.createElement('span')
+  Object.assign(rangeSpan.style, { fontSize: FONT_SIZE.small, color: COLOR.tertiary, whiteSpace: 'nowrap' })
+  rangeSpan.textContent = '0~100개'
+  rightWrap.appendChild(rangeSpan)
   rightWrap.appendChild(maxTargetsInput.el)
   maxTargetsRow.appendChild(maxTargetsLabel)
   maxTargetsRow.appendChild(maxTargetsStatusEl)
