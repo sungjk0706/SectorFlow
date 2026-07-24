@@ -2,7 +2,7 @@
  * 주문 차단 상태 판정 — 매수/매도 공통 게이트 집계 (P21 사용자 투명성).
  *
  * buy-target.ts / sell-position.ts 상단 상태 배지의 판정 로직을 단일 함수로 추출 (P10 SSOT).
- * 우선순위: 서킷브레이커 > 리스크(side) > 시간대 차단 > 자동매매 OFF > 자동매수/매도 OFF > 시간대 외
+ * 우선순위: 서킷브레이커 > 실시간 지연(공통) > 리스크(side) > 시간대 차단 > 일일 매수 상태 오류(매수) > 자동매매 OFF > 자동매수/매도 OFF > 시간대 외
  * 데이터 소스: 기존 uiStore 상태 + globalSettingsManager (P10 SSOT — 신규 데이터 없음)
  *
  * DOM 렌더링은 호출부 updateBadge() 담당 → 본 함수는 판정 결과만 반환 (관심사 분리, P24 단순성).
@@ -64,11 +64,17 @@ export function computeOrderBlockStatus(
   if (uiState.circuitBreakerOpen) {
     return { text: '차단: 서킷브레이커', blocked: true }
   }
+  if (uiState.realtimeLatencyExceeded) {
+    return { text: '차단: 실시간 지연', blocked: true }
+  }
   if (uiState.riskBlockStatus && uiState.riskBlockStatus.side === side) {
     return { text: `차단: 리스크(${uiState.riskBlockStatus.reason})`, blocked: true }
   }
   if (uiState.orderTimeBlocked) {
     return { text: `차단: ${uiState.orderTimeBlocked.reason}`, blocked: true }
+  }
+  if (side === 'buy' && uiState.dailyBuyStateFailed) {
+    return { text: '차단: 일일 상태 오류', blocked: true }
   }
   if (!settings || !settings.time_scheduler_on) {
     return { text: '차단: 자동매매 OFF', blocked: true }

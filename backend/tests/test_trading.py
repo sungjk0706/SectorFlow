@@ -39,6 +39,7 @@ from backend.app.services.trading import (  # noqa: E402
     BUY_REJECT_RISK_SINGLE,
     BUY_REJECT_SIGNAL_INTERVAL,
     _map_risk_reason_to_code,
+    _broadcast_daily_buy_state_status,
 )
 
 
@@ -429,6 +430,24 @@ class TestExecuteBuyReasonCodes:
             result, reason = await mgr.execute_buy("005930", 70000, "token")
         assert result is False
         assert reason == BUY_REJECT_RISK_CIRCUIT
+
+
+# ── _broadcast_daily_buy_state_status 헬퍼 단위 테스트 (P21 사용자 투명성) ──────
+
+class TestBroadcastDailyBuyStateStatus:
+    """일일 매수 상태 로드 성공/실패 브로드캐스트 검증."""
+
+    @pytest.mark.asyncio
+    async def test_failed_broadcasts(self):
+        with patch("backend.app.services.engine_account_notify._safe_broadcast", new=AsyncMock()) as mock_bc:
+            await _broadcast_daily_buy_state_status(failed=True)
+            mock_bc.assert_awaited_once_with("daily_buy_state_status", {"failed": True})
+
+    @pytest.mark.asyncio
+    async def test_success_broadcasts(self):
+        with patch("backend.app.services.engine_account_notify._safe_broadcast", new=AsyncMock()) as mock_bc:
+            await _broadcast_daily_buy_state_status(failed=False)
+            mock_bc.assert_awaited_once_with("daily_buy_state_status", {"failed": False})
 
 
 # ── _map_risk_reason_to_code 헬퍼 단위 테스트 (P23 일관성) ─────────────────────

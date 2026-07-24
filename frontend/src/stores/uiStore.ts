@@ -71,6 +71,12 @@ export interface UIState {
 
   /* ── 리스크 매니저 차단 상태 (손실/수익 한도 도달 등) ── */
   riskBlockStatus: { side: string; reason: string } | null
+
+  /* ── 실시간 통신 지연 200ms 초과 상태 (매수/매도 공통 차단) ── */
+  realtimeLatencyExceeded: boolean
+
+  /* ── 일일 매수 상태 로드 실패 (매수 전용 차단) ── */
+  dailyBuyStateFailed: boolean
 }
 
 const initialState: UIState = {
@@ -93,6 +99,8 @@ const initialState: UIState = {
   circuitBreakerOpen: null,
   orderTimeBlocked: null,
   riskBlockStatus: null,
+  realtimeLatencyExceeded: false,
+  dailyBuyStateFailed: false,
 }
 
 export const uiStore = createStore<UIState>(initialState)
@@ -183,6 +191,16 @@ export function applyBuyLimitStatus(data: { daily_buy_spent: number }): void {
   uiStore.setState({ buyLimitStatus: { daily_buy_spent: data.daily_buy_spent ?? 0 } })
 }
 
+/* ── realtime_latency_status: 실시간 통신 지연 200ms 초과 상태 갱신 (매수/매도 공통) ── */
+export function applyRealtimeLatencyStatus(data: { blocked?: boolean }): void {
+  uiStore.setState({ realtimeLatencyExceeded: !!data.blocked })
+}
+
+/* ── daily_buy_state_status: 일일 매수 상태 로드 실패 갱신 (매수 전용) ── */
+export function applyDailyBuyStateStatus(data: { failed?: boolean }): void {
+  uiStore.setState({ dailyBuyStateFailed: !!data.failed })
+}
+
 /* ── test-data-reset-completed: 통합 초기화 완료 ── */
 export function applyTestDataResetCompleted(): void {
   uiStore.setState({
@@ -241,6 +259,8 @@ export function applyInitialSnapshotUI(data: Record<string, unknown>): void {
     circuitBreakerOpen: null,
     orderTimeBlocked: null,
     riskBlockStatus: null,
+    realtimeLatencyExceeded: false,
+    dailyBuyStateFailed: false,
     engineReady: !!(data.bootstrap_done),
     marketPhase: (data.market_phase as UIState['marketPhase']) ?? { krx: '장마감', nxt: '장마감', krx_alert: null },
     receiveRate: (() => {

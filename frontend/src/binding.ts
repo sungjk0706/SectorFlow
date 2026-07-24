@@ -34,6 +34,8 @@ import {
   applyCircuitBreakerOpen,
   applyOrderTimeBlocked,
   applyRiskBlockStatus,
+  applyRealtimeLatencyStatus,
+  applyDailyBuyStateStatus,
   applyMarketPhase,
   applyIndexData,
   uiStore,
@@ -332,5 +334,15 @@ export function bindWSToStore(
   /* ── buy-limit-status: 매수 한도 상태 실시간 갱신 ── */
   pricesClient.onEvent('buy-limit-status', (data) => {
     applyBuyLimitStatus(data as { daily_buy_spent: number })
+  })
+
+  /* ── realtime_latency_status: 실시간 통신 지연 200ms 초과 상태 (매수/매도 공통 차단) ── */
+  pricesClient.onEvent('realtime_latency_status', (data) => {
+    applyRealtimeLatencyStatus(data as { blocked?: boolean })
+  })
+
+  /* ── daily_buy_state_status: 일일 매수 상태 로드 실패 (매수 전용 차단) ── */
+  pricesClient.onEvent('daily_buy_state_status', (data) => {
+    applyDailyBuyStateStatus(data as { failed?: boolean })
   })
 }

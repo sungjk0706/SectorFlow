@@ -86,18 +86,42 @@ def _handle_reg(data: dict) -> None:
 
 
 def _check_realtime_latency(_ts: int) -> None:
-    """실시간 체결 처리 지연 측정 — 50ms 경고, 200ms 초과 시 자동매매 중단 플래그."""
+    """실시간 체결 처리 지연 측정 — 50ms 경고, 200ms 초과 시 자동매매 중단 플래그.
+
+    P21(사용자 투명성): 플래그 토글 시 화면에 브로드캐스트 — 매수/매도 배지에 "차단: 실시간 지연" 반영.
+    P17(플래그 단일 소스): 플래그 단일 소유자(이 함수)가 브로드캐스트까지 수행.
+    """
     elapsed = int(time.time() * 1000) - _ts
     if elapsed >= 200:
-        logger.error("[체결지연] 처리 시간 %sms → 자동매매 중단 플래그 설정", elapsed)
-        engine_state.state.realtime_latency_exceeded = True
+        if not engine_state.state.realtime_latency_exceeded:
+            logger.error("[체결지연] 처리 시간 %sms → 자동매매 중단 플래그 설정", elapsed)
+            engine_state.state.realtime_latency_exceeded = True
+            _broadcast_realtime_latency_status(blocked=True)
     else:
         # 지연 회복: 플래그 단일 소유자(이 함수)가 직접 해제 — 원칙 17(플래그 단일 소스)
         if engine_state.state.realtime_latency_exceeded:
             logger.info("[체결지연] 처리 시간 %sms → 지연 회복, 자동매매 재개", elapsed)
             engine_state.state.realtime_latency_exceeded = False
+            _broadcast_realtime_latency_status(blocked=False)
         if elapsed >= 50:
             logger.warning("[체결지연] 처리 시간 %sms → 50ms 초과", elapsed)
+
+
+def _broadcast_realtime_latency_status(*, blocked: bool) -> None:
+    """실시간 지연 상태 변화를 화면에 전송 (P21 사용자 투명성).
+
+    schedule_engine_task로 비동기 브로드캐스트 예약 — 동기 컨텍스트(_check_realtime_latency)에서 호출.
+    P23(일관성): order_time_blocked 브로드캐스트 패턴과 동일 (daily_time_scheduler.py 참조).
+    """
+    try:
+        from backend.app.services.engine_lifecycle import schedule_engine_task
+        from backend.app.services.engine_account_notify import _broadcast
+        schedule_engine_task(
+            _broadcast("realtime_latency_status", {"blocked": blocked}),
+            context="realtime_latency_status 브로드캐스트",
+        )
+    except Exception:
+        logger.warning("[체결지연] realtime_latency_status 브로드캐스트 예약 실패", exc_info=True)
 
 
 async def _handle_real_00(item: dict, vals: dict) -> None:

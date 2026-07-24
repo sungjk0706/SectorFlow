@@ -156,6 +156,35 @@ class TestCheckRealtimeLatency:
             _check_realtime_latency(ts)
             assert mock_state.realtime_latency_exceeded is False
 
+    def test_latency_exceeded_broadcasts_blocked(self):
+        """200ms 초과 진입 시 realtime_latency_status {blocked: True} 브로드캐스트 (P21)."""
+        with patch("backend.app.services.engine_state.state") as mock_state, \
+             patch("backend.app.services.engine_ws_dispatch._broadcast_realtime_latency_status") as mock_bc:
+            mock_state.realtime_latency_exceeded = False
+            import time
+            ts = int(time.time() * 1000) - 250
+            _check_realtime_latency(ts)
+            mock_bc.assert_called_once_with(blocked=True)
+
+    def test_latency_recovery_broadcasts_unblocked(self):
+        """지연 회복 시 realtime_latency_status {blocked: False} 브로드캐스트 (P21)."""
+        with patch("backend.app.services.engine_state.state") as mock_state, \
+             patch("backend.app.services.engine_ws_dispatch._broadcast_realtime_latency_status") as mock_bc:
+            mock_state.realtime_latency_exceeded = True
+            ts = int(__import__("time").time() * 1000)
+            _check_realtime_latency(ts)
+            mock_bc.assert_called_once_with(blocked=False)
+
+    def test_no_broadcast_when_state_unchanged(self):
+        """이미 차단 상태에서 추가 200ms 초과 시 중복 브로드캐스트 안 함 (P24 단순성)."""
+        with patch("backend.app.services.engine_state.state") as mock_state, \
+             patch("backend.app.services.engine_ws_dispatch._broadcast_realtime_latency_status") as mock_bc:
+            mock_state.realtime_latency_exceeded = True
+            import time
+            ts = int(time.time() * 1000) - 250
+            _check_realtime_latency(ts)
+            mock_bc.assert_not_called()
+
 
 # ── handle_ws_data ──────────────────────────────────────────────────────────────────
 

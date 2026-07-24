@@ -364,6 +364,8 @@ function mount(container: HTMLElement): void {
   let lastRenderedCircuitBreaker = initUiState.circuitBreakerOpen
   let lastRenderedOrderTimeBlocked = initUiState.orderTimeBlocked
   let lastRenderedRiskBlockStatus = initUiState.riskBlockStatus
+  let lastRenderedRealtimeLatency = initUiState.realtimeLatencyExceeded
+  let lastRenderedDailyBuyStateFailed = initUiState.dailyBuyStateFailed
 
   function scheduleRender(): void {
     const hotState = hotStore.getState()
@@ -377,6 +379,8 @@ function mount(container: HTMLElement): void {
       uiState.circuitBreakerOpen !== lastRenderedCircuitBreaker ||
       uiState.orderTimeBlocked !== lastRenderedOrderTimeBlocked ||
       uiState.riskBlockStatus !== lastRenderedRiskBlockStatus ||
+      uiState.realtimeLatencyExceeded !== lastRenderedRealtimeLatency ||
+      uiState.dailyBuyStateFailed !== lastRenderedDailyBuyStateFailed ||
       searchTerm !== lastRenderedSearchTerm
 
     if (!anyChanged) return
@@ -421,7 +425,9 @@ function mount(container: HTMLElement): void {
         latestUi.buyLimitStatus !== lastRenderedBuyLimitStatus ||
         latestUi.circuitBreakerOpen !== lastRenderedCircuitBreaker ||
         latestUi.orderTimeBlocked !== lastRenderedOrderTimeBlocked ||
-        latestUi.riskBlockStatus !== lastRenderedRiskBlockStatus
+        latestUi.riskBlockStatus !== lastRenderedRiskBlockStatus ||
+        latestUi.realtimeLatencyExceeded !== lastRenderedRealtimeLatency ||
+        latestUi.dailyBuyStateFailed !== lastRenderedDailyBuyStateFailed
       ) {
         lastRenderedPositions = latest.positions
         lastRenderedAccount = latest.account
@@ -430,6 +436,8 @@ function mount(container: HTMLElement): void {
         lastRenderedCircuitBreaker = latestUi.circuitBreakerOpen
         lastRenderedOrderTimeBlocked = latestUi.orderTimeBlocked
         lastRenderedRiskBlockStatus = latestUi.riskBlockStatus
+        lastRenderedRealtimeLatency = latestUi.realtimeLatencyExceeded
+        lastRenderedDailyBuyStateFailed = latestUi.dailyBuyStateFailed
         updateBadges()
       }
     })

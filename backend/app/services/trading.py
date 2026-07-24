@@ -115,6 +115,19 @@ def _fire_and_forget_telegram(message: str, settings: dict | None) -> None:
         logger.warning("[알림] 알림 큐 등록 실패: %s", e, exc_info=True)
 
 
+async def _broadcast_daily_buy_state_status(*, failed: bool) -> None:
+    """일일 매수 상태 로드 성공/실패를 화면에 전송 (P21 사용자 투명성).
+
+    매수 배지에 "차단: 일일 상태 오류" 반영 — 매수 전용 (매도는 해당 없음).
+    P23(일관성): risk_block_status 브로드캐스트 패턴과 동일 (_safe_broadcast 사용).
+    """
+    try:
+        from backend.app.services.engine_account_notify import _safe_broadcast
+        await _safe_broadcast("daily_buy_state_status", {"failed": failed})
+    except Exception:
+        logger.warning("[매매] daily_buy_state_status 브로드캐스트 실패", exc_info=True)
+
+
 class AutoTradeManager:
     """자동매매 관리 - get_settings_fn으로 매번 최신 설정 로드."""
 
@@ -168,11 +181,15 @@ class AutoTradeManager:
                     "[매매] 일일 매수 상태 로드 실패 — 날짜=%s 매수 차단 모드 (trade_history 조회 실패)",
                     today,
                 )
+                # P21(사용자 투명성): 일일 매수 상태 로드 실패를 화면에 알림 — 매수 배지 "차단: 일일 상태 오류"
+                await _broadcast_daily_buy_state_status(failed=True)
             else:
                 logger.info(
                     "[매매] 일일 매수 상태 로드 — 날짜=%s 누적매수=%s원 종목수=%d",
                     today, f"{self._daily_buy_spent:,}", len(self._bought_today),
                 )
+                # P21: 로드 성공 시 차단 해제 알림 (이전 실패 상태가 화면에 남아있지 않도록)
+                await _broadcast_daily_buy_state_status(failed=False)
 
     async def execute_buy(self, stk_cd: str, current_price: float,
                     access_token: str, reason: str = "") -> tuple[bool, str]:
