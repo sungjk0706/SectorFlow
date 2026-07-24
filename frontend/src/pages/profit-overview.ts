@@ -1,6 +1,6 @@
 // frontend/src/pages/profit-overview.ts
 // 수익현황 페이지 — Vanilla TS PageModule
-// 요약 대시보드: 일별 수익률 차트(좌상) + 업종별 수익 도넛 차트(좌하) + 계좌 현황(우) + 상세 분석 보기 버튼
+// 요약 대시보드: 거래일별 수익률 차트(좌상) + 업종별 수익 도넛 차트(좌하) + 계좌 현황(우) + 상세 분석 보기 버튼
 //
 // 파일 분할 (F-05, P24 단순성):
 // - profit-overview.ts (메인): 상태 객체 + mount/unmount + export default
@@ -146,7 +146,7 @@ function mount(container: HTMLElement): void {
   state.localDateFrom = initFrom
   state.localDateTo = initTo
 
-  // 일별 수익률 차트 생성 + 초기 데이터 조회
+  // 거래일별 수익률 차트 생성 + 초기 데이터 조회
   // localDailySummary는 WS push 데이터로 초기화 (P10 SSOT — 공유 store = 최근 N거래일)
   const initState = hotStore.getState()
   state.localDailySummary = initState.dailySummary

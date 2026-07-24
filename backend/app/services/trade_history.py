@@ -473,7 +473,7 @@ async def get_daily_summary(
     trade_mode: Optional[str] = None,
 ) -> list[dict]:
     """
-    일별 요약 -- [{date, buy_count, sell_count, realized_pnl, pnl_rate}].
+    거래일별 요약 -- [{date, buy_count, sell_count, realized_pnl, buy_total_amt, pnl_rate, buy_fee, sell_fee, tax}].
     """
     await _ensure_loaded()
     use_date_range = bool(date_from or date_to)
@@ -535,6 +535,7 @@ async def get_daily_summary(
                 "buy_count": buy_count,
                 "sell_count": sell_count,
                 "realized_pnl": realized_pnl,
+                "buy_total_amt": buy_total,
                 "pnl_rate": round(realized_pnl / buy_total * 100, 2) if buy_total > 0 else 0.0,
                 "buy_fee": buy_fee,
                 "sell_fee": sell_fee,
@@ -548,6 +549,7 @@ async def get_daily_summary(
             "buy_count": 0,
             "sell_count": 0,
             "realized_pnl": 0,
+            "buy_total_amt": 0,
             "pnl_rate": 0.0,
             "buy_fee": 0,
             "sell_fee": 0,

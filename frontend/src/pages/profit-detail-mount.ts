@@ -8,7 +8,6 @@ import { createTabBar, createToggleSelectBtn } from '../components/common/button
 import { createDateRangeInput, type DateRangeInputApi } from '../components/common/date-range-input'
 import { api } from '../api/client'
 import { hotStore } from '../stores/hotStore'
-import { globalSettingsManager } from '../settings'
 import {
   type SummaryCardEls,
   createSummaryCards,
@@ -116,7 +115,7 @@ export function buildFilterRow(state: ProfitDetailState, monthStart: string, tod
   filterRow.appendChild(state.dateRangeInput.el)
 
   state.drilldownBtnHandle = createToggleSelectBtn({
-    label: '당월 일별 요약',
+    label: '당월 거래일별 요약',
     active: false,
     onClick: () => onDrilldownToggle(state),
   })
@@ -260,24 +259,7 @@ export function restoreInitialView(state: ProfitDetailState, todayStr: string, i
     filterByDate(state, todayStr)
   }
   if (state.summaryCardEls) {
-    updateSummaryCards(state.sellHistory, initState.dailySummary, state.summaryCardEls)
-  }
-}
-
-/* ── mount 헬퍼: 당월 dailySummary 조회 (드릴다운 당월 전체 날짜 보장 — P21 사용자 투명성)
- *  수익현황 페이지의 날짜 범위 선택(당일/5일 등)이 hotStore.dailySummary에 반영되어 있을 수 있으므로,
- *  수익상세 진입 시 당월 전체 범위로 재조회하여 드릴다운이 항상 당월 전체를 표시하도록 보장.
- *  applyDateRange(profit-overview-mount.ts)와 동일한 api.getDailySummary + hotStore.setState 패턴 (P23 일관성). */
-export async function ensureMonthlyDailySummary(state: ProfitDetailState, todayStr: string): Promise<void> {
-  if (!state.mounted) return
-  const monthStart = todayStr.slice(0, 8) + '01'
-  const tradeMode = globalSettingsManager.getSettings()?.trade_mode || 'test'
-  try {
-    const data = await api.getDailySummary(monthStart, todayStr, tradeMode)
-    if (!state.mounted) return
-    hotStore.setState({ dailySummary: data })
-  } catch (err) {
-    console.error('[profit-detail] 당월 daily-summary 조회 실패:', err)
+    updateSummaryCards(initState.dailySummary, state.summaryCardEls)
   }
 }
 
@@ -295,14 +277,14 @@ export function flushDirtyRender(state: ProfitDetailState): void {
     }
     updateTabLabels(state)
     if (state.summaryCardEls) {
-      updateSummaryCards(state.sellHistory, hotStore.getState().dailySummary, state.summaryCardEls)
+      updateSummaryCards(hotStore.getState().dailySummary, state.summaryCardEls)
     }
   }
 
   if (state.dirtySummary) {
     state.dirtySummary = false
     if (state.summaryCardEls) {
-      updateSummaryCards(state.sellHistory, hotStore.getState().dailySummary, state.summaryCardEls)
+      updateSummaryCards(hotStore.getState().dailySummary, state.summaryCardEls)
     }
     // 드릴다운이 dailySummary 기반이므로 summary 변경 시 드릴다운도 갱신 (P10 SSOT)
     if (state.drilldownActive) {

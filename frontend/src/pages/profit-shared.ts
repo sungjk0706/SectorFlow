@@ -129,9 +129,10 @@ export function createSummaryCards(container: HTMLElement, callbacks: SummaryCar
   }
 }
 
-/** 당일/직전/당월/누적 손익 계산 및 요약 카드 DOM 갱신 */
+/** 당일/직전/당월/누적 손익 계산 및 요약 카드 DOM 갱신
+ *  모든 카드를 dailySummary 기반으로 집계 (P10 SSOT — sellHistory 재집계 제거).
+ *  당월/누적 수익률 = realized_pnl 합계 ÷ buy_total_amt 합계 × 100 (computeWeightedRate). */
 export function updateSummaryCards(
-  sellHistory: Record<string, unknown>[],
   dailySummary: Record<string, unknown>[],
   els: SummaryCardEls,
 ): void {
@@ -153,8 +154,23 @@ export function updateSummaryCards(
   const prevPnl = prevEntry ? Number(prevEntry.realized_pnl ?? 0) : 0
   const prevRate = prevEntry ? Number(prevEntry.pnl_rate ?? 0) : 0
 
-  const monS = aggregatePnl(sellHistory, yearMonth + '-01', yearMonth + '-31')
-  const allS = aggregatePnl(sellHistory)
+  // 당월/누적 카드: dailySummary 기반 집계 (sellHistory 재집계 제거 — P10 SSOT)
+  let monthPnl = 0, monthBuyTotal = 0
+  let totalPnl = 0, totalBuyTotal = 0
+  const monthPrefix = yearMonth + '-'
+  for (const r of dailySummary) {
+    const d = String(r.date ?? '')
+    const pnl = Number(r.realized_pnl ?? 0)
+    const buyTotal = Number(r.buy_total_amt ?? 0)
+    totalPnl += pnl
+    totalBuyTotal += buyTotal
+    if (d.startsWith(monthPrefix)) {
+      monthPnl += pnl
+      monthBuyTotal += buyTotal
+    }
+  }
+  const monS = { pnl: monthPnl, rate: computeWeightedRate(monthPnl, monthBuyTotal) }
+  const allS = { pnl: totalPnl, rate: computeWeightedRate(totalPnl, totalBuyTotal) }
 
   els.todayPnlEl.textContent = fmtWon(dayPnl)
   els.todayPnlEl.style.color = pnlColor(dayPnl)
@@ -312,7 +328,7 @@ export function aggregatePnl(
   return { pnl, buyTotal, rate: computeWeightedRate(pnl, buyTotal) }
 }
 
-/** 백엔드 dailySummary에서 당월 일별 요약 집계 — P10 SSOT (per-day rate 재계산 금지, 백엔드 값 직접 사용).
+/** 백엔드 dailySummary에서 당월 거래일별 요약 집계 — P10 SSOT (per-day rate 재계산 금지, 백엔드 값 직접 사용).
  *  buildChartFromDailySummary와 동일한 dailySummary 직접 사용 패턴 (P23 일관성). */
 export function buildMonthlyDrilldown(
   dailySummary: Record<string, unknown>[],
@@ -332,7 +348,7 @@ export function buildMonthlyDrilldown(
   return rows
 }
 
-/** 일별 요약 → 차트 데이터 변환. 매도 없는 날(sell_count=0)은 pnl=null로 표시 → 막대 안 그림 */
+/** 거래일별 요약 → 차트 데이터 변환. 매도 없는 날(sell_count=0)은 pnl=null로 표시 → 막대 안 그림 */
 export function buildChartFromDailySummary(summary: Record<string, unknown>[]): { date: string; pnl: number | null; rate: number; buyFee: number; sellFee: number; tax: number }[] {
   const rows = summary.map(r => {
     const raw = String(r.date ?? '')

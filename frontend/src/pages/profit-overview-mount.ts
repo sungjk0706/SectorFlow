@@ -58,19 +58,19 @@ export function refreshFilteredViews(state: ProfitOverviewState): void {
   renderSectorStockPnl(state)
 }
 
-/* ── mount 헬퍼: 좌측 컬럼 (일별 수익률 차트 + 업종별 수익 도넛) ── */
+/* ── mount 헬퍼: 좌측 컬럼 (거래일별 수익률 차트 + 업종별 수익 도넛) ── */
 
 export function buildLeftColumn(): { leftColumn: HTMLDivElement; chartContainer: HTMLDivElement; donutChartContainer: HTMLDivElement } {
   const leftColumn = document.createElement('div')
   Object.assign(leftColumn.style, { flex: '5', minWidth: '0', display: 'flex', flexDirection: 'column', gap: '4px' })
 
-  // 좌측 상단: 일별 수익률 차트
+  // 좌측 상단: 거래일별 수익률 차트
   const chartPanel = document.createElement('div')
   Object.assign(chartPanel.style, { flex: '1', minWidth: '0', overflow: 'hidden', padding: '0 4px' })
   const chartTitle = document.createElement('div')
   Object.assign(chartTitle.style, { display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: FONT_SIZE.section, fontWeight: FONT_WEIGHT.normal, color: COLOR.down, padding: '10px 0 6px', borderBottom: '2px solid ' + COLOR.borderLight, marginBottom: '8px' })
   const chartTitleText = document.createElement('span')
-  chartTitleText.textContent = '일별 수익률'
+  chartTitleText.textContent = '거래일별 수익률'
   chartTitle.appendChild(chartTitleText)
   chartPanel.appendChild(chartTitle)
   const chartContainer = document.createElement('div')
@@ -241,7 +241,7 @@ export async function applyDateRange(state: ProfitOverviewState, from: string, t
   }
 }
 
-/* ── mount 헬퍼: 일별 수익률 차트 생성 + 초기 데이터 조회 ── */
+/* ── mount 헬퍼: 거래일별 수익률 차트 생성 + 초기 데이터 조회 ── */
 
 export function buildProfitChart(
   state: ProfitOverviewState,
