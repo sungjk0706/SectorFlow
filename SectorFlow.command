@@ -8,33 +8,68 @@ echo "============================================"
 # 가상환경 활성화
 source .venv/bin/activate
 
+# 사용하는 포트
+BACKEND_PORT=8000
+FRONTEND_PORT=5173
+
+BACKEND_PID=""
+FRONTEND_PID=""
+
 # ---------------------------------------------------------
-# [개선 1] 이전 프로세스 안전 종료 (Graceful Shutdown)
+# 터미널 종료 시 자식 프로세스 동반 안전 종료
+# ---------------------------------------------------------
+cleanup() {
+    local code="${1:-0}"
+    trap - SIGINT SIGTERM EXIT
+    echo ""
+    echo "SectorFlow 안전 종료 중... (Graceful Shutdown)"
+    if [ -n "$BACKEND_PID" ]; then
+        kill -15 $BACKEND_PID 2>/dev/null
+    fi
+    if [ -n "$FRONTEND_PID" ]; then
+        kill -15 $FRONTEND_PID 2>/dev/null
+    fi
+    wait $BACKEND_PID $FRONTEND_PID 2>/dev/null
+    echo "모든 프로세스가 안전하게 종료되었습니다."
+    exit "$code"
+}
+
+# ---------------------------------------------------------
+# 이전 프로세스 안전 종료 (Graceful Shutdown)
 # ---------------------------------------------------------
 echo "이전 프로세스 정리 중..."
-# 1. 부드러운 종료 요청 (SIGTERM)
-_prev_pids=$(lsof -ti:8000 -ti:5173 2>/dev/null)
-if [ -n "$_prev_pids" ]; then
-    echo "$_prev_pids" | xargs kill -15 2>/dev/null
-    # 프로세스가 실제로 종료될 때까지 대기 (최대 1초)
-    _wait=0
-    while [ $_wait -lt 10 ]; do
-        _alive=$(lsof -ti:8000 -ti:5173 2>/dev/null)
-        if [ -z "$_alive" ]; then
-            break
+
+kill_port() {
+    local port=$1
+    local pids
+    pids=$(lsof -ti tcp:"$port" 2>/dev/null)
+    if [ -n "$pids" ]; then
+        echo "$pids" | xargs kill -15 2>/dev/null
+        local wait=0
+        while [ $wait -lt 10 ]; do
+            pids=$(lsof -ti tcp:"$port" 2>/dev/null)
+            if [ -z "$pids" ]; then
+                return 0
+            fi
+            sleep 0.1
+            wait=$((wait+1))
+        done
+        pids=$(lsof -ti tcp:"$port" 2>/dev/null)
+        if [ -n "$pids" ]; then
+            echo "$pids" | xargs kill -9 2>/dev/null
         fi
-        sleep 0.1
-        _wait=$((_wait+1))
-    done
-    # 2. 그래도 살아있으면 강제 종료 (SIGKILL)
-    lsof -ti:8000 | xargs kill -9 2>/dev/null
-    lsof -ti:5173 | xargs kill -9 2>/dev/null
-fi
+    fi
+}
+
+kill_port "$BACKEND_PORT"
+kill_port "$FRONTEND_PORT"
 
 rm -f backend/data/server.lock
 rm -f /tmp/sectorflow.lock
 
-# 백엔드 + 프론트엔드 병렬 실행 (양쪽 ready 후 브라우저 오픈)
+# ---------------------------------------------------------
+# 백엔드 + 프론트엔드 병렬 실행
+# ---------------------------------------------------------
 echo "백엔드 및 프론트엔드 동시 준비 중..."
 .venv/bin/python main.py &
 BACKEND_PID=$!
@@ -42,20 +77,20 @@ BACKEND_PID=$!
 (cd frontend && npm run dev) &
 FRONTEND_PID=$!
 
-# 양쪽 준비 대기 (병렬, 0.2초 간격 — 백엔드+프론트엔드 모두 ready 후 브라우저 오픈)
-# 백엔드가 먼저 준비되어야 프론트엔드 healthCheck()가 Vite 프록시를 통해
-# ECONNREFUSED 없이 첫 시도에 성공 → http proxy error 로그 미발생
+trap cleanup SIGINT SIGTERM EXIT
+
+# 양쪽 준비 대기 (0.2초 간격, 최대 30초)
 MAX_RETRIES=150
 RETRY=0
 BACKEND_READY=false
 FRONTEND_READY=false
 while [ $RETRY -lt $MAX_RETRIES ]; do
-    if [ "$BACKEND_READY" = false ] && curl -s --connect-timeout 1 --max-time 2 http://localhost:8000/api/health > /dev/null 2>&1; then
-        echo "✅ 백엔드 준비 완료"
+    if [ "$BACKEND_READY" = false ] && curl -s --connect-timeout 1 --max-time 2 "http://localhost:$BACKEND_PORT/api/health" > /dev/null 2>&1; then
+        echo "백엔드 준비 완료"
         BACKEND_READY=true
     fi
-    if [ "$FRONTEND_READY" = false ] && curl -s --connect-timeout 1 --max-time 2 http://localhost:5173 > /dev/null 2>&1; then
-        echo "✅ 프론트엔드 준비 완료"
+    if [ "$FRONTEND_READY" = false ] && curl -s --connect-timeout 1 --max-time 2 "http://localhost:$FRONTEND_PORT" > /dev/null 2>&1; then
+        echo "프론트엔드 준비 완료"
         FRONTEND_READY=true
     fi
     if [ "$BACKEND_READY" = true ] && [ "$FRONTEND_READY" = true ]; then
@@ -65,58 +100,38 @@ while [ $RETRY -lt $MAX_RETRIES ]; do
     RETRY=$((RETRY+1))
 done
 
-if [ "$FRONTEND_READY" = false ]; then
-    echo "⚠️ 프론트엔드 타임아웃, 그래도 계속 진행..."
-fi
-
+# 백엔드가 시작되지 않으면 매매 로직이 동작할 수 없으므로 중단
 if [ "$BACKEND_READY" = false ]; then
-    echo "⚠️ 백엔드 타임아웃 — 프론트엔드 healthCheck에서 자동 재시도 중..."
-fi
-
-# 브라우저 열기 (Safari) — 백엔드 준비 확인 후
-# 백엔드가 ready 상태이므로 프론트엔드 healthCheck()가 첫 시도에 성공 → proxy error 없음
-# 기존 localhost:5173 탭을 닫고 새로 열어 Safari 캐시/bfcache로 인한 이전 코드 잔존 방지
-# 주의: Safari가 꺼져 있을 때 osascript "tell application Safari"가 Safari를 강제 기동하여
-#       시작 페이지 탭이 추가로 열리므로, 이미 실행 중인 경우에만 기존 탭 닫기 수행
-if pgrep -x "Safari" > /dev/null 2>&1; then
-    osascript -e 'tell application "Safari" to close every tab in every window where URL starts with "http://localhost:5173"' 2>/dev/null
-fi
-open -a "Safari" http://localhost:5173
-
-echo ""
-echo "============================================"
-echo "  ✅ SectorFlow 실행 완료!"
-echo "============================================"
-echo ""
-echo "  🌐 브라우저에서 접속하세요:"
-echo "     http://localhost:5173"
-echo ""
-echo "  🛑 종료하려면 터미널 창을 닫거나 Ctrl+C를 누르세요."
-echo "============================================"
-
-# ---------------------------------------------------------
-# [개선 2] 터미널 종료 시 자식 프로세스 동반 안전 종료 (Trap)
-# ---------------------------------------------------------
-cleanup() {
-    trap - SIGINT SIGTERM EXIT
     echo ""
-    echo "🛑 SectorFlow 안전 종료 중... (Graceful Shutdown)"
-    kill -15 $BACKEND_PID 2>/dev/null
-    kill -15 $FRONTEND_PID 2>/dev/null
-    # 완전히 꺼질 때까지 대기
-    wait $BACKEND_PID $FRONTEND_PID 2>/dev/null
-    echo "✅ 모든 프로세스가 안전하게 종료되었습니다."
-    exit 0
-}
+    echo "백엔드가 정상적으로 시작되지 않았습니다."
+    echo "로그를 확인한 후 다시 시도해 주세요."
+    cleanup 1
+fi
 
-# SIGINT(Ctrl+C), SIGTERM, EXIT 신호가 오면 cleanup 함수 실행
-trap cleanup SIGINT SIGTERM EXIT
+if [ "$FRONTEND_READY" = false ]; then
+    echo "프론트엔드 준비가 지연되고 있습니다. 화면 확인 시 접속이 지연될 수 있습니다."
+fi
 
-# 백엔드 종료 대기 — 브라우저 닫기 → 백엔드 graceful shutdown → 여기서 반환
+echo ""
+echo "============================================"
+echo "  SectorFlow 실행 완료"
+echo "============================================"
+echo ""
+echo "  브라우저에서 접속하세요:"
+echo "     http://localhost:$FRONTEND_PORT"
+echo ""
+echo "  종료하려면 터미널 창을 닫거나 Ctrl+C를 누르세요."
+echo "============================================"
+
+# 백엔드 종료 대기 — 백엔드 graceful shutdown 시 cleanup이 먼저 실행되거나,
+# 정상 종료 경로로 아래로 내려옴
 wait $BACKEND_PID
 
 # 정상 종료 경로 — trap 해제 후 프론트엔드 종료
 trap - SIGINT SIGTERM EXIT
-kill -15 $FRONTEND_PID 2>/dev/null
-wait $FRONTEND_PID 2>/dev/null
+if [ -n "$FRONTEND_PID" ]; then
+    kill -15 $FRONTEND_PID 2>/dev/null
+    wait $FRONTEND_PID 2>/dev/null
+fi
 exit 0
+
