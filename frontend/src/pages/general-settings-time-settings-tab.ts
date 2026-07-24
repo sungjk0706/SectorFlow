@@ -6,7 +6,7 @@
 // Step 2(탭 재분류): 자동매수/매도 토글을 자동매매 탭에서 이관 — 시간+토글 통합 행 (설계서 3.2).
 // 토글 OFF 시에도 시간 입력 활성화 유지 (설계서 2-1, P24 탭 간 의존성 최소화, P21 안내 문구로 보완).
 
-import { createToggleBtn, createNumInput } from '../components/common/setting-row'
+import { createToggleBtn, createNumInput, createSettingRow } from '../components/common/setting-row'
 import { sectionTitle, createDescText, parseHM, createTimeSlot, updateTimeSlotDisplay } from '../components/common/settings-common'
 import { createTimePairInput } from '../components/common/time-pair-input'
 import { FONT_SIZE, FONT_WEIGHT, COLOR, setDisabled } from '../components/common/ui-styles'
@@ -219,13 +219,6 @@ function buildFixedTimesBox(): HTMLElement {
 }
 
 function buildSubscribeMaxRow(state: GeneralSettingsState): HTMLElement {
-  const row = document.createElement('div')
-  Object.assign(row.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, borderBottom: GS.rowBorder })
-  const label = document.createElement('span')
-  Object.assign(label.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
-  label.textContent = '종목 동시 구독 최대 개수'
-  row.appendChild(label)
-
   // 백엔드 settings_store.py가 1~1000 외 값 저장 차단 (422) — UI clamp와 이중 방어
   const initMax = Number(state.vals['subscribe.max_0b_count'] ?? 200) || 200
   state.subscribeMaxInput = createNumInput({
@@ -242,8 +235,9 @@ function buildSubscribeMaxRow(state: GeneralSettingsState): HTMLElement {
       else { state.vals['subscribe.max_0b_count'] = orig; state.subscribeMaxInput?.setValue(orig) }
     },
   })
-  row.appendChild(state.subscribeMaxInput.el)
-  return row
+  return createSettingRow('종목 동시 구독 최대 개수', state.subscribeMaxInput.el, {
+    infoText: '종목 실시간 시세를 동시에 구독할 최대 개수. 보유 종목을 우선 등록한 뒤 남은 자리만큼 필터 통과 종목이 추가 등록됩니다. 1~1000, 기본 200.',
+  })
 }
 
 export function renderTimeSettingsTab(state: GeneralSettingsState, container: HTMLElement): void {
@@ -270,7 +264,6 @@ export function renderTimeSettingsTab(state: GeneralSettingsState, container: HT
 
   // 구독 한도 — P10 SSOT 단일 설정 키, P21 사용자 조정 가능
   container.appendChild(sectionTitle('구독 한도'))
-  container.appendChild(createDescText('종목 실시간 시세를 동시에 구독할 최대 개수입니다. 보유 종목을 우선 등록한 뒤, 남은 자리만큼 필터 통과 종목이 추가로 등록됩니다. (기본값 200, 범위 1~1000)'))
   container.appendChild(buildSubscribeMaxRow(state))
 }
 

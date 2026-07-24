@@ -2,10 +2,10 @@
 // 일반설정 — 뉴스 설정 탭 (Step 2 신설, P21/P24)
 // 자동매매 탭에서 이관: 호재 키워드 칩 + 뉴스 가산점 유지 시간 (NWS-S6)
 
-import { createNumInput } from '../components/common/setting-row'
+import { createNumInput, createSettingRow } from '../components/common/setting-row'
 import { sectionTitle, createDescText } from '../components/common/settings-common'
 import { createTagChip } from '../components/common/tag-chip'
-import { FONT_WEIGHT, FONT_SIZE, COLOR } from '../components/common/ui-styles'
+import { FONT_WEIGHT } from '../components/common/ui-styles'
 import { toastResult } from '../components/common/toast'
 import { type GeneralSettingsState, GS, state } from './general-settings-shared'
 
@@ -42,13 +42,6 @@ function buildNewsKeywordsRow(state: GeneralSettingsState): HTMLElement {
 
 // 뉴스 가산점 유지 시간(초) 행 — createNumInput 패턴 (subscribeMaxInput과 동일)
 function buildNewsTtlRow(state: GeneralSettingsState): HTMLElement {
-  const row = document.createElement('div')
-  Object.assign(row.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, borderBottom: GS.rowBorder })
-  const label = document.createElement('span')
-  Object.assign(label.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
-  label.textContent = '뉴스 가산점 유지 시간(초)'
-  row.appendChild(label)
-
   const initTtl = Number(state.vals.news_boost_ttl_sec ?? 300) || 300
   state.newsTtlInput = createNumInput({
     value: initTtl,
@@ -64,15 +57,9 @@ function buildNewsTtlRow(state: GeneralSettingsState): HTMLElement {
       else { state.vals.news_boost_ttl_sec = orig; state.newsTtlInput?.setValue(orig) }
     },
   })
-  const rightWrap = document.createElement('span')
-  Object.assign(rightWrap.style, { display: 'flex', alignItems: 'center', gap: '6px' })
-  const rangeSpan = document.createElement('span')
-  Object.assign(rangeSpan.style, { fontSize: FONT_SIZE.small, color: COLOR.tertiary, whiteSpace: 'nowrap' })
-  rangeSpan.textContent = '0~3600초'
-  rightWrap.appendChild(rangeSpan)
-  rightWrap.appendChild(state.newsTtlInput.el)
-  row.appendChild(rightWrap)
-  return row
+  return createSettingRow('뉴스 가산점 유지 시간(초)', state.newsTtlInput.el, {
+    infoText: '뉴스 호재 감지 시 부여된 매수 가산점이 유지되는 시간. 0~3600초, 기본 300초(5분).',
+  })
 }
 
 export function renderNewsSettingsTab(state: GeneralSettingsState, container: HTMLElement): void {
