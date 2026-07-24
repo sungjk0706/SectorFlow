@@ -51,6 +51,10 @@ export interface ProfitOverviewState {
   buyHistory: Record<string, unknown>[]
   sellHistory: Record<string, unknown>[]
   filteredSellHistory: Record<string, unknown>[]
+  // 페이지 로컬 날짜 범위 (P10 SSOT — 공유 store 오염 방지)
+  localDailySummary: Record<string, unknown>[]
+  localDateFrom: string
+  localDateTo: string
   // rAF 배칭
   rafId: number | null
   mounted: boolean
@@ -88,6 +92,9 @@ function createState(): ProfitOverviewState {
     buyHistory: [],
     sellHistory: [],
     filteredSellHistory: [],
+    localDailySummary: [],
+    localDateFrom: '',
+    localDateTo: '',
     rafId: null,
     mounted: false,
     dirtyAccount: false,
@@ -134,18 +141,21 @@ function mount(container: HTMLElement): void {
   root.appendChild(buildLowerSection())
   container.appendChild(root)
 
-  // 날짜 범위 초기화 — localStorage 로드 후 hotStore에 보장 (차트 생성 전 실행)
-  const saved = initDateRange()
+  // 날짜 범위 초기화 — localStorage 로드 → 페이지 로컬 상태에 저장 (차트 생성 전 실행)
+  const { saved, from: initFrom, to: initTo } = initDateRange()
+  state.localDateFrom = initFrom
+  state.localDateTo = initTo
 
   // 일별 수익률 차트 생성 + 초기 데이터 조회
-  const { profitDateFrom: storedFrom, profitDateTo: storedTo } = hotStore.getState()
-  buildProfitChart(state, chartContainer, storedFrom, storedTo, saved)
+  // localDailySummary는 WS push 데이터로 초기화 (P10 SSOT — 공유 store = 최근 N거래일)
+  const initState = hotStore.getState()
+  state.localDailySummary = initState.dailySummary
+  buildProfitChart(state, chartContainer, initFrom, initTo, saved)
 
   // 초기 데이터 반영 — 도넛 차트 생성 전 filteredSellHistory 선할당
-  const initState = hotStore.getState()
   state.sellHistory = initState.sellHistory
   state.buyHistory = initState.buyHistory
-  state.filteredSellHistory = filterTradeRows(state.sellHistory, initState.profitDateFrom, initState.profitDateTo)
+  state.filteredSellHistory = filterTradeRows(state.sellHistory, state.localDateFrom, state.localDateTo)
 
   // 업종별 수익 도넛 차트 생성
   buildDonutChart(state, donutChartContainer)

@@ -1,8 +1,6 @@
 // frontend/src/pages/profit-overview-date.ts
 // 수익현황 페이지 — 날짜 범위 localStorage 영속화 (F-05 분할, P24 단순성)
-// profit-overview.ts에서 이관. 순수 이동, 동작 변경 없음.
-
-import { hotStore } from '../stores/hotStore'
+// 날짜 범위는 페이지 로컬 상태로 관리 (P10 SSOT — 공유 store 오염 방지)
 
 /* ── 날짜 범위 localStorage 영속화 ── */
 export const PROFIT_DATE_KEY = 'sf_profit_date_range'
@@ -48,15 +46,13 @@ export function defaultDateRange(): { from: string; to: string } {
   return { from, to }
 }
 
-/* ── mount 헬퍼: 날짜 범위 초기화 (localStorage 로드 후 hotStore에 보장) ── */
-export function initDateRange(): ProfitDateRange | null {
+/* ── mount 헬퍼: 날짜 범위 초기화 (localStorage 로드 → 페이지 로컬 상태용 from/to 반환) ── */
+export function initDateRange(): { saved: ProfitDateRange | null; from: string; to: string } {
   const saved = loadProfitDateRange()
   if (saved) {
-    hotStore.setState({ profitDateFrom: saved.from, profitDateTo: saved.to })
-  } else if (!hotStore.getState().profitDateFrom || !hotStore.getState().profitDateTo) {
-    const { from, to } = defaultDateRange()
-    hotStore.setState({ profitDateFrom: from, profitDateTo: to })
-    saveProfitDateRange(from, to)
+    return { saved, from: saved.from, to: saved.to }
   }
-  return saved
+  const { from, to } = defaultDateRange()
+  saveProfitDateRange(from, to)
+  return { saved: null, from, to }
 }

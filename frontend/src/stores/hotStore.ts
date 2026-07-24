@@ -41,10 +41,8 @@ export interface HotState {
   buyTargets: SectorStock[]
   sellHistory: Record<string, unknown>[]
   buyHistory: Record<string, unknown>[]
+  /** WS push 전용 (최근 N거래일) — HTTP 덮어쓰기 금지 (P10 SSOT) */
   dailySummary: Record<string, unknown>[]
-  /** 수익현황 페이지 날짜 범위 (SSOT — 페이지 전환 후에도 유지) */
-  profitDateFrom: string
-  profitDateTo: string
 }
 
 const initialState: HotState = {
@@ -57,8 +55,6 @@ const initialState: HotState = {
   sellHistory: [],
   buyHistory: [],
   dailySummary: [],
-  profitDateFrom: '',
-  profitDateTo: '',
 }
 
 export const hotStore = createStore<HotState>(initialState)

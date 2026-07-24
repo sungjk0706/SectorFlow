@@ -53,8 +53,7 @@ export function renderAccountVals(state: ProfitOverviewState): void {
 /* ── 필터된 뷰 데이터 갱신: 도넛 차트 + 업종별 종목 수익 동시 업데이트 ── */
 
 export function refreshFilteredViews(state: ProfitOverviewState): void {
-  const { profitDateFrom, profitDateTo } = hotStore.getState()
-  state.filteredSellHistory = filterTradeRows(state.sellHistory, profitDateFrom, profitDateTo)
+  state.filteredSellHistory = filterTradeRows(state.sellHistory, state.localDateFrom, state.localDateTo)
   state.donutChart?.updateData(buildSectorDonutRows(state.filteredSellHistory))
   renderSectorStockPnl(state)
 }
@@ -223,8 +222,19 @@ export async function applyDateRange(state: ProfitOverviewState, from: string, t
       state.chart?.setDateRange(actualFrom, actualTo, label)
     }
     state.chart?.updateData(buildChartFromDailySummary(data))
-    hotStore.setState({ profitDateFrom: actualFrom, profitDateTo: actualTo, dailySummary: data })
+    // 페이지 로컬 상태에 저장 (공유 store 덮어쓰기 금지 — P10 SSOT)
+    state.localDailySummary = data
+    state.localDateFrom = actualFrom
+    state.localDateTo = actualTo
     saveProfitDateRange(actualFrom, actualTo, label)
+    // days 기반 버튼(당일/5일/전체) 시 N값을 백엔드에 전파 → WS push 범위 연동 (결정 B)
+    if (days !== undefined) {
+      try {
+        await globalSettingsManager.saveSection({ daily_summary_days: days })
+      } catch (e) {
+        console.warn('[profit-overview] daily_summary_days 저장 실패:', e)
+      }
+    }
     refreshFilteredViews(state)
   } catch (err) {
     console.error('[profit-overview] daily-summary fetch failed:', err)
@@ -252,7 +262,7 @@ export function buildProfitChart(
 
   state.chart = createProfitChart({
     container: chartContainer,
-    data: buildChartFromDailySummary(hotStore.getState().dailySummary),
+    data: buildChartFromDailySummary(state.localDailySummary),
     dateFrom: storedFrom,
     dateTo: storedTo,
     quickDateRanges: quickDateRangesConfig,
@@ -318,8 +328,11 @@ export function flushRender(state: ProfitOverviewState): void {
       const latest = hotStore.getState()
       const settings = globalSettingsManager.getSettings()
       const tradeModeChanged = settings?.trade_mode !== state.prevTradeMode
+      // WS push dailySummary → 페이지 로컬 동기화 (P10 SSOT — 공유 store = 최근 N거래일)
+      // 단, 사용자가 선택한 localDateFrom/To는 유지하여 차트 날짜 범위는 변경하지 않음
+      state.localDailySummary = latest.dailySummary
       if (tradeModeChanged) {
-        state.chart?.updateData(buildChartFromDailySummary(latest.dailySummary))
+        state.chart?.updateData(buildChartFromDailySummary(state.localDailySummary))
       }
       refreshFilteredViews(state)
       if (tradeModeChanged) {
