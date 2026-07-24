@@ -114,6 +114,31 @@ class TestGetDailySummaryForSnapshot:
             assert len(result) == 1
             assert result[0]["date"] == "2024-01-01"
 
+    @pytest.mark.asyncio
+    async def test_uses_cache_days(self):
+        """캐시의 daily_summary_days 값을 get_daily_summary(days=N)에 전달 (FIX-WS-04 6세션, P13/P16/P22)."""
+        from backend.app.services import engine_state
+        engine_state.state.integrated_system_settings_cache["daily_summary_days"] = 5
+        try:
+            with patch("backend.app.services.engine_account.get_trade_mode", return_value="test"), \
+                 patch("backend.app.services.trade_history.get_daily_summary", new=AsyncMock(return_value=[])) as mock_gds:
+                await _get_daily_summary_for_snapshot()
+            mock_gds.assert_called_once()
+            assert mock_gds.call_args.kwargs["days"] == 5
+        finally:
+            engine_state.state.integrated_system_settings_cache.pop("daily_summary_days", None)
+
+    @pytest.mark.asyncio
+    async def test_defaults_to_20_when_cache_missing(self):
+        """캐시에 키 없으면 기본값 20 (DEFAULT_USER_SETTINGS)."""
+        from backend.app.services import engine_state
+        engine_state.state.integrated_system_settings_cache.pop("daily_summary_days", None)
+        with patch("backend.app.services.engine_account.get_trade_mode", return_value="test"), \
+             patch("backend.app.services.trade_history.get_daily_summary", new=AsyncMock(return_value=[])) as mock_gds:
+            await _get_daily_summary_for_snapshot()
+        mock_gds.assert_called_once()
+        assert mock_gds.call_args.kwargs["days"] == 20
+
 
 # ── build_initial_snapshot ─────────────────────────────────────────
 

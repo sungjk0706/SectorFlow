@@ -15,6 +15,7 @@ from backend.app.core.settings_store import (
     build_masked_settings_dict,
     load_integrated_system_settings_for_editing,
     _validate_timetable_order,
+    _validate_numeric_fields,
 )
 
 
@@ -805,3 +806,39 @@ class TestLoadIntegratedSystemSettingsForEditing:
             assert result["kiwoom_app_key"] == ""
             mock_logger.warning.assert_called_once()
             assert "복호화 실패" in mock_logger.warning.call_args[0][0]
+
+
+# ── _validate_numeric_fields: daily_summary_days 범위 검증 (FIX-WS-04 6세션) ──
+
+class TestValidateDailySummaryDays:
+    """daily_summary_days 범위 검증 (0=전체, 1~365=최근 N거래일). P20/P22."""
+
+    def test_zero_allowed(self):
+        """0 = 전체 허용."""
+        _validate_numeric_fields({"daily_summary_days": 0})  # 예외 없음
+
+    def test_max_365_allowed(self):
+        _validate_numeric_fields({"daily_summary_days": 365})  # 예외 없음
+
+    def test_typical_20_allowed(self):
+        _validate_numeric_fields({"daily_summary_days": 20})  # 예외 없음
+
+    def test_negative_rejected(self):
+        with pytest.raises(ValueError, match="0~365"):
+            _validate_numeric_fields({"daily_summary_days": -1})
+
+    def test_over_365_rejected(self):
+        with pytest.raises(ValueError, match="0~365"):
+            _validate_numeric_fields({"daily_summary_days": 366})
+
+    def test_non_integer_rejected(self):
+        with pytest.raises(ValueError, match="정수"):
+            _validate_numeric_fields({"daily_summary_days": "abc"})
+
+    def test_none_rejected(self):
+        with pytest.raises(ValueError, match="정수"):
+            _validate_numeric_fields({"daily_summary_days": None})
+
+    def test_key_absent_skips_validation(self):
+        """키가 없으면 검증 스킵 (다른 필드만 있어도 OK)."""
+        _validate_numeric_fields({"other_field": 100})  # 예외 없음

@@ -1019,6 +1019,60 @@ class TestBroadcastFunctions:
             await trade_history._broadcast_buy_append(_make_buy_rec())  # 예외 전파 안 됨
 
 
+# ── daily_summary_days 캐시 N값 전파 (FIX-WS-04 6세션) ────────────────────────
+
+class TestDailySummaryDaysCache:
+    """WS push 3곳이 integrated_system_settings_cache의 daily_summary_days 값을
+    get_daily_summary(days=N) 호출에 전달하는지 검증 (P13/P16/P22)."""
+
+    async def test_broadcast_sell_append_uses_cache_days(self):
+        from backend.app.services import trade_history
+        from backend.app.services import engine_state
+        mock_ws = MagicMock()
+        mock_ws.broadcast = AsyncMock()
+        rec = _make_sell_rec()
+        # 캐시에 N=5 설정
+        engine_state.state.integrated_system_settings_cache["daily_summary_days"] = 5
+        try:
+            with patch("backend.app.web.ws_manager.ws_manager", mock_ws):
+                with patch("backend.app.services.trade_history.get_daily_summary", new_callable=AsyncMock, return_value=[]) as mock_gds:
+                    await trade_history._broadcast_sell_append(rec)
+            mock_gds.assert_called_once()
+            assert mock_gds.call_args.kwargs["days"] == 5
+        finally:
+            engine_state.state.integrated_system_settings_cache.pop("daily_summary_days", None)
+
+    async def test_broadcast_sell_append_defaults_to_20_when_cache_missing(self):
+        from backend.app.services import trade_history
+        from backend.app.services import engine_state
+        mock_ws = MagicMock()
+        mock_ws.broadcast = AsyncMock()
+        rec = _make_sell_rec()
+        # 캐시에 키 없음 → 기본값 20
+        engine_state.state.integrated_system_settings_cache.pop("daily_summary_days", None)
+        with patch("backend.app.web.ws_manager.ws_manager", mock_ws):
+            with patch("backend.app.services.trade_history.get_daily_summary", new_callable=AsyncMock, return_value=[]) as mock_gds:
+                await trade_history._broadcast_sell_append(rec)
+        mock_gds.assert_called_once()
+        assert mock_gds.call_args.kwargs["days"] == 20
+
+    async def test_broadcast_full_sell_history_uses_cache_days(self):
+        from backend.app.services import trade_history
+        from backend.app.services import engine_state
+        mock_ws = MagicMock()
+        mock_ws.broadcast = AsyncMock()
+        engine_state.state.integrated_system_settings_cache["daily_summary_days"] = 5
+        try:
+            with patch("backend.app.web.ws_manager.ws_manager", mock_ws):
+                with patch("backend.app.services.trade_history.get_sell_history", new_callable=AsyncMock, return_value=[]):
+                    with patch("backend.app.services.trade_history.get_daily_summary", new_callable=AsyncMock, return_value=[]) as mock_gds:
+                        await trade_history._broadcast_full_sell_history("test")
+            mock_gds.assert_called_once()
+            assert mock_gds.call_args.kwargs["days"] == 5
+        finally:
+            engine_state.state.integrated_system_settings_cache.pop("daily_summary_days", None)
+
+
 # ── broadcast_history ─────────────────────────────────────────────────────────
 
 class TestBroadcastHistory:
