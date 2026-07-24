@@ -135,7 +135,7 @@ function buildSellIntervalSection(root: HTMLElement): void {
   {
     sellIntervalInput = createNumInput({ value: 30, onChange: v => { const orig = Number(vals.sell_interval_sec); vals.sell_interval_sec = v; saveHelper!.autoSave('sell_interval_sec', v, () => { vals.sell_interval_sec = orig; sellIntervalInput!.setValue(orig) }) }, step: 5, min: 5, max: 300, name: 'sell_interval_sec' })
     const r = createToggleLabelControlsRow({
-      labelText: '매도 주문 간격',
+      labelText: '주문 간격',
       infoText: '매도 주문 사이 대기 시간. 5초 단위, 5~300초, 기본 30초. 손절 포함 모든 매도에 적용.',
       toggleOn: false,
       onToggle: next => { vals.sell_interval_on = next; saveHelper!.saveImmediate({ sell_interval_on: next }) },

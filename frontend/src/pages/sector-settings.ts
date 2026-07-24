@@ -217,7 +217,7 @@ function createBonusSliderBlock(key: string, label: string, infoText: string): {
 function buildFilterSection(root: HTMLElement): void {
   root.appendChild(createStepLabel('①', '5거래일 평균 거래대금 이하 차단'))
   minTradeAmtInput = createNumInput({ value: 0, onChange: v => { const orig = currentVals.sector_min_trade_amt; onNumChange('sector_min_trade_amt', v, () => { currentVals.sector_min_trade_amt = orig; minTradeAmtInput!.setValue(orig) }) }, step: 1, min: 1, max: 100_000, name: 'sector_min_trade_amt' })
-  root.appendChild(createSettingRow('5거래일 평균 최소 거래대금', minTradeAmtInput.el, { infoText: '5거래일 평균 거래대금이 이 값(억 원 단위) 미만인 종목은 업종 순위 계산에서 제외됩니다. 범위: 1~100,000 (1억~10조원).' }))
+  root.appendChild(createSettingRow('최소 거래대금', minTradeAmtInput.el, { infoText: '5거래일 평균 거래대금이 이 값(억 원 단위) 미만인 종목은 업종 순위 계산에서 제외됩니다. 범위: 1~100,000 (1억~10조원).' }))
 }
 
 // ② 업종순위 — 임계치 입력 + 상태 라벨 (KRX/NXT 진행 바는 별도 섹션)

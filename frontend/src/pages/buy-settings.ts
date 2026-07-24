@@ -308,7 +308,7 @@ function buildBuyAmountSection(root: HTMLElement): void {
   maxDailyInput = createMoneyInput({ value: 0, onChange: v => { const orig = Number(vals.max_daily_total_buy_amt); vals.max_daily_total_buy_amt = v; saveHelper!.autoSave('max_daily_total_buy_amt', v, () => { vals.max_daily_total_buy_amt = orig; maxDailyInput!.setValue(orig) }) }, min: 0, max: 1_000_000_000, name: 'max_daily_total_buy_amt' })
   {
     const r = createToggleLabelControlsRow({
-      labelText: '전체 일일 최대 매수 금액',
+      labelText: '전체 일일 한도',
       infoText: '하루 매수 총액 제한. 수수료 포함. OFF 시 제한 없음, 종목당 한도가 우선 적용.',
       toggleOn: false,
       onToggle: next => { vals.max_daily_total_buy_on = next; saveHelper!.saveImmediate({ max_daily_total_buy_on: next }) },
@@ -340,7 +340,7 @@ function buildRebuySection(root: HTMLElement): void {
   buyAmtInput = createMoneyInput({ value: 0, onChange: v => { const orig = Number(vals.buy_amt); vals.buy_amt = v; saveHelper!.autoSave('buy_amt', v, () => { vals.buy_amt = orig; buyAmtInput!.setValue(orig) }) }, min: 0, max: 1_000_000_000, name: 'buy_amt' })
   {
     const r = createToggleLabelControlsRow({
-      labelText: '종목당 일일 최대 매수 금액',
+      labelText: '종목당 일일 한도',
       infoText: '종목당 하루 매수 금액 제한. 수수료 포함. OFF 시 한도 없음, 주문가능금액 전체로 매수 시도.',
       toggleOn: true,
       onToggle: next => { vals.buy_amt_on = next; saveHelper!.saveImmediate({ buy_amt_on: next }) },
@@ -382,7 +382,7 @@ function buildBuyIntervalSection(root: HTMLElement): void {
   {
     buyIntervalInput = createNumInput({ value: 30, onChange: v => { const orig = Number(vals.buy_interval_sec); vals.buy_interval_sec = v; saveHelper!.autoSave('buy_interval_sec', v, () => { vals.buy_interval_sec = orig; buyIntervalInput!.setValue(orig) }) }, step: 5, min: 5, max: 300, name: 'buy_interval_sec' })
     const r = createToggleLabelControlsRow({
-      labelText: '매수 주문 간격',
+      labelText: '주문 간격',
       infoText: '매수 주문 사이 대기 시간. 5초 단위, 5~300초, 기본 30초',
       toggleOn: false,
       onToggle: next => { vals.buy_interval_on = next; saveHelper!.saveImmediate({ buy_interval_on: next }) },
