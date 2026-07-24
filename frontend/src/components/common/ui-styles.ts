@@ -78,7 +78,7 @@ export const COLOR = {
   inactiveBg:   '#e0e0e0',  // 비활성 배경
   toggleOff:    '#6c757d',  // 토글 OFF
   // ── 기간 구분 카드 전용 (수익상세 상단 5카드 + 하단 통계 연동) ──
-  // 당일은 down/downBg 재사용. 전일/5일/당월/누적은 기존 의미 색(success/warning/up/kosdaq)과 충돌 회피한 신규 색.
+  // 당일은 down/downBg 재사용. 전일/5거래일/당월/누적은 기존 의미 색(success/warning/up/kosdaq)과 충돌 회피한 신규 색.
   periodPrev:     '#0097a7', // 청록 (전일 거래일)
   periodPrevBg:   '#e0f7fa',
   period5day:     '#c2185b', // 마젠타 (최근 5거래일)

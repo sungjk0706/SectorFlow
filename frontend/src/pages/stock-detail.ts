@@ -1,5 +1,5 @@
 // frontend/src/pages/stock-detail.ts
-// 종목상세 페이지 — 5일봉 거래대금/고가 배열 테이블
+// 종목상세 페이지 — 5거래일 일봉 거래대금/고가 배열 테이블
 
 import type { PageModule } from '../router'
 import { api } from '../api/client'

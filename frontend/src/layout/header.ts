@@ -139,25 +139,25 @@ function resolveAvgAmtMsg(p: AvgAmtProgress, status: string): { msg: string; bg:
   const pct = () => p.total > 0 ? (p.current / p.total) * 100 : 0
   switch (status) {
     case 'downloading':
-      return { msg: `전종목 5일거래대금/고가 데이터 다운로드 중 (${p.current.toLocaleString()}/${p.total.toLocaleString()}, ${Math.round(pct())}%)`, bg: `${COLOR.warningBg}`, color: `${COLOR.warning}`, progressPct: pct() }
+      return { msg: `전종목 5거래일 거래대금/고가 데이터 다운로드 중 (${p.current.toLocaleString()}/${p.total.toLocaleString()}, ${Math.round(pct())}%)`, bg: `${COLOR.warningBg}`, color: `${COLOR.warning}`, progressPct: pct() }
     case 'completed':
-      return { msg: '전종목 5일 거래대금,고가 데이터 다운로드 완료', bg: `${COLOR.successBg}`, color: `${COLOR.success}`, progressPct: 100 }
+      return { msg: '전종목 5거래일 거래대금,고가 데이터 다운로드 완료', bg: `${COLOR.successBg}`, color: `${COLOR.success}`, progressPct: 100 }
     case 'failed':
-      return { msg: '전종목 5일 고가 실패', bg: `${COLOR.upBg}`, color: `${COLOR.up}`, progressPct: 0 }
+      return { msg: '전종목 5거래일 고가 실패', bg: `${COLOR.upBg}`, color: `${COLOR.up}`, progressPct: 0 }
     case 'partial': {
       const failedCount = (p as Record<string, unknown>).failed_count as number || 0
       return { msg: p.message || `⚠️ 다운로드 부분 완료 (${p.current.toLocaleString()}/${p.total.toLocaleString()}) — ${failedCount}종목 실패`, bg: `${COLOR.warningBg}`, color: `${COLOR.warning}`, progressPct: pct() }
     }
     case 'cache_deleted':
-      return { msg: '전종목 5일 고가 재계산 중', bg: `${COLOR.warningBg}`, color: `${COLOR.warning}`, progressPct: 100 }
+      return { msg: '전종목 5거래일 고가 재계산 중', bg: `${COLOR.warningBg}`, color: `${COLOR.warning}`, progressPct: 100 }
     case 'token_pending':
       return { msg: '인증 대기중', bg: `${COLOR.neutralBg}`, color: COLOR.tertiary, progressPct: 0 }
     case 'requested':
-      return { msg: '전종목 5일 데이터 준비 시작', bg: `${COLOR.downBg}`, color: `${COLOR.down}`, progressPct: 0 }
+      return { msg: '전종목 5거래일 데이터 준비 시작', bg: `${COLOR.downBg}`, color: `${COLOR.down}`, progressPct: 0 }
     case 'confirmed':
       return { msg: (p.total > 0 ? `전종목 확정시세 데이터 다운로드 중 (${p.current.toLocaleString()}/${p.total.toLocaleString()}, ${Math.round(pct())}%)` : '확정 데이터 갱신 중'), bg: `${COLOR.downBg}`, color: `${COLOR.down}`, progressPct: pct() }
     default:
-      return { msg: (p.total > 0 ? `전종목 5일거래대금/고가 데이터 다운로드 중 (${p.current.toLocaleString()}/${p.total.toLocaleString()}, ${Math.round(pct())}%)` : '전종목 5일 데이터 준비 중'), bg: `${COLOR.warningBg}`, color: `${COLOR.warning}`, progressPct: pct() }
+      return { msg: (p.total > 0 ? `전종목 5거래일 거래대금/고가 데이터 다운로드 중 (${p.current.toLocaleString()}/${p.total.toLocaleString()}, ${Math.round(pct())}%)` : '전종목 5거래일 데이터 준비 중'), bg: `${COLOR.warningBg}`, color: `${COLOR.warning}`, progressPct: pct() }
   }
 }
 

@@ -206,12 +206,12 @@ function buildBuyBlockSection(root: HTMLElement): void {
 function buildBoostSection(root: HTMLElement): void {
   root.appendChild(sectionTitle('매수 가산점 (+N)'))
 
-  // --- 5일 고가 돌파 ---
+  // --- 5거래일 고가 돌파 ---
   {
     boostHighScoreInput = createNumInput({ value: 1.0, onChange: v => { const orig = Number(vals.boost_high_breakout_score); vals.boost_high_breakout_score = v; saveHelper!.autoSave('boost_high_breakout_score', v, () => { vals.boost_high_breakout_score = orig; boostHighScoreInput!.setValue(orig) }) }, step: 1, min: 0, max: 100, name: 'boost_high_breakout_score' })
     const r = createToggleLabelControlsRow({
-      labelText: '5일 고가 돌파',
-      infoText: '5일 고가 돌파 시 매수 점수 가산. 0~100점',
+      labelText: '5거래일 고가 돌파',
+      infoText: '5거래일 고가 돌파 시 매수 점수 가산. 0~100점',
       toggleOn: false,
       onToggle: next => { vals.boost_high_breakout_on = next; saveHelper!.saveImmediate({ boost_high_breakout_on: next }) },
       controlsChild: boostHighScoreInput.el,

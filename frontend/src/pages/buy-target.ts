@@ -112,7 +112,7 @@ const COLUMNS: ColumnDef<SectorStock>[] = [
     },
   },
   {
-    key: 'high_5d', label: '5일고가', align: 'right', type: 'high', maxWidth: 96,
+    key: 'high_5d', label: '5거래일 고가', align: 'right', type: 'high', maxWidth: 96,
     render: (t) => {
       const cell = createNumberCell(Number(t.high_5d) || 0)
       if (t.high_5d && t.high_5d > 0 && t.cur_price != null && Number(t.cur_price) > t.high_5d) {

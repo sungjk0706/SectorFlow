@@ -115,11 +115,11 @@ export function makeAmountColumn<T>(get: (t: T) => number | null | undefined): C
   }
 }
 
-/** 5일평균거래대금 컬럼 (억 단위 표시) */
+/** 5거래일 평균 거래대금 컬럼 (억 단위 표시) */
 export function makeAvgAmountColumn<T>(get: (t: T) => number): ColumnDef<T> {
   return {
     key: 'avg_amt_5d',
-    label: '5일평균(억)',
+    label: '5거래일 평균(억)',
     align: 'right',
     type: 'avg_amount',
     ...COLUMN_WIDTH.avg_amount,

@@ -22,7 +22,7 @@ export function loadProfitDateRange(): ProfitDateRange | null {
     const raw = localStorage.getItem(PROFIT_DATE_KEY)
     if (!raw) return null
     const parsed = JSON.parse(raw) as { from?: string; to?: string; quickLabel?: string }
-    // quickLabel이 있는 경우(5일/누적 등) from/to가 빈 문자열일 수 있음
+    // quickLabel이 있는 경우(5거래일/누적 등) from/to가 빈 문자열일 수 있음
     if (parsed.quickLabel) {
       // 레거시 라벨 마이그레이션 (전체→누적, 직전→전일) — 한 번 치환 후 영구 저장
       const migrated = LEGACY_QUICK_LABEL_MAP[parsed.quickLabel] ?? parsed.quickLabel

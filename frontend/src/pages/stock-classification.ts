@@ -371,20 +371,20 @@ function buildHeaderLeft(): HTMLElement {
     flex: '1', display: 'flex', flexDirection: 'column', justifyContent: 'flex-start', gap: '6px', alignItems: 'flex-start'
   })
 
-  const descLabel = createStepLabel('', '장마감 후 매매적격종목 확정시세 및 5일봉 거래대금,고가 데이터 저장', { whiteSpace: 'nowrap' })
+  const descLabel = createStepLabel('', '장마감 후 매매적격종목 확정시세 및 5거래일 일봉 거래대금,고가 데이터 저장', { whiteSpace: 'nowrap' })
   left.appendChild(descLabel)
 
   const buttonContainer = document.createElement('div')
   Object.assign(buttonContainer.style, { display: 'flex', gap: '6px' })
 
   const btn1 = createSolidBtn({
-    label: '⬇️ 1일봉챠트 시세 다운로드',
+    label: '⬇️ 일봉차트 시세 다운로드',
     color: COLOR.success,
     hoverColor: '#157347',
     onClick: (e) => onTriggerConfirmedDownload(e),
   })
   const btn2 = createSolidBtn({
-    label: '⬇️ 5일봉챠트 거래대금,고가 다운로드',
+    label: '⬇️ 5거래일 일봉차트 거래대금,고가 다운로드',
     color: COLOR.success,
     hoverColor: '#157347',
     onClick: (e) => onTrigger5dDownload(e),
@@ -460,7 +460,7 @@ function updateIndicatorBar(): void {
 }
 
 async function onTriggerConfirmedDownload(e: MouseEvent): Promise<void> {
-  const label = '1일봉챠트 시세 다운로드'
+  const label = '일봉차트 시세 다운로드'
   const endpoint = '/api/stock-classification/trigger-confirmed-download'
 
   // 설정 재로드 완료 확인
@@ -508,7 +508,7 @@ async function onTriggerConfirmedDownload(e: MouseEvent): Promise<void> {
 }
 
 async function onTrigger5dDownload(e: MouseEvent): Promise<void> {
-  const label = '5일봉챠트 거래대금,고가 다운로드'
+  const label = '5거래일 일봉차트 거래대금,고가 다운로드'
   const endpoint = '/api/stock-classification/trigger-5d-download'
 
   // 설정 재로드 완료 확인
@@ -531,7 +531,7 @@ async function onTrigger5dDownload(e: MouseEvent): Promise<void> {
   }
 
   const message = dataExists
-    ? `이미 당일 5일봉 데이터가 저장되어 있습니다.\n${label}를 다시 실행하시겠습니까?\n이 작업은 백그라운드에서 진행됩니다.`
+    ? `이미 당일 5거래일 일봉 데이터가 저장되어 있습니다.\n${label}를 다시 실행하시겠습니까?\n이 작업은 백그라운드에서 진행됩니다.`
     : `${label}를 지금 수동으로 즉시 실행하시겠습니까?\n이 작업은 백그라운드에서 진행됩니다.`
 
   const result = await showContextPopup({

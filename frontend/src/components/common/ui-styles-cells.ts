@@ -182,7 +182,7 @@ export function createStrengthCell(strength: number | null | undefined): HTMLEle
   return cell
 }
 
-/** 5일평균 셀 (우측정렬, 기본색) */
+/** 5거래일 평균 셀 (우측정렬, 기본색) */
 export function createAvgAmountCell(amount: number): HTMLElement {
   const cell = document.createElement('div')
   applyCell(cell, 'right')

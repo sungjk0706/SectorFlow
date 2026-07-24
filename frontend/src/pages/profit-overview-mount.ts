@@ -212,7 +212,7 @@ export async function applyDateRange(state: ProfitOverviewState, from: string, t
     }
     const data = await api.getDailySummary(actualFrom, actualTo, tradeMode, days)
     if (seq !== state.applyDateRangeSeq) return
-    // days 기반(5일/누적) — 응답 데이터에서 실제 from/to 추출
+    // days 기반(5거래일/누적) — 응답 데이터에서 실제 from/to 추출
     if (needsRangeFill && days !== undefined && data.length > 0) {
       actualFrom = String(data[0].date)
       actualTo = String(data[data.length - 1].date)
@@ -227,7 +227,7 @@ export async function applyDateRange(state: ProfitOverviewState, from: string, t
     state.localDateFrom = actualFrom
     state.localDateTo = actualTo
     saveProfitDateRange(actualFrom, actualTo, label)
-    // days 기반 버튼(당일/5일/누적) 시 N값을 백엔드에 전파 → WS push 범위 연동 (결정 B)
+    // days 기반 버튼(당일/5거래일/누적) 시 N값을 백엔드에 전파 → WS push 범위 연동 (결정 B)
     if (days !== undefined) {
       try {
         await globalSettingsManager.saveSection({ daily_summary_days: days })
@@ -255,7 +255,7 @@ export function buildProfitChart(
   const quickDateRangesConfig = [
     { label: '당일', from: todayStr, to: todayStr },
     { label: '전일' }, // from/to는 백엔드 조회 후 채움 (주말/공휴일 건너뜀)
-    { label: '5일', days: 5 },
+    { label: '5거래일', days: 5 },
     { label: '당월', from: monthStart, to: todayStr },
     { label: '누적', days: 0 },
   ]

@@ -137,7 +137,7 @@ function computeRows(
     if (matchedSectors && !matchedSectors.has(sector)) continue
     if (matchedCodes && !matchedCodes.has(s.code)) continue
 
-    // 5일평균거래대금 필터링은 백엔드에서 수행 (단일 소스 진리)
+    // 5거래일 평균 거래대금 필터링은 백엔드에서 수행 (단일 소스 진리)
 
     let arr = grouped.get(sector)
     if (!arr) { arr = []; grouped.set(sector, arr) }
@@ -279,7 +279,7 @@ class SectorStockTable extends HTMLElement {
     this.currentMatchedSectors = filterSectorsByName(state.sectorStocks, this.sectorSearchTerm)
     const rawTargets = uiState.settings?.sector_max_targets
     const maxTargets = typeof rawTargets === 'number' ? rawTargets : DEFAULT_SECTOR_MAX_TARGETS
-    // 5일평균거래대금 필터링은 백엔드에서 수행 (단일 소스 진리)
+    // 5거래일 평균 거래대금 필터링은 백엔드에서 수행 (단일 소스 진리)
 
     return computeRows(
       state.sectorStocks,
@@ -367,7 +367,7 @@ class SectorStockTable extends HTMLElement {
     this.titleH3 = createCardTitle('업종별 종목 실시간 시세')
     this.rootEl.appendChild(this.titleH3)
 
-    // 1-1. 합계 정보 바 — 1행: 좌측 5일평균거래대금, 우측 종목수 요약
+    // 1-1. 합계 정보 바 — 1행: 좌측 5거래일 평균 거래대금, 우측 종목수 요약
     const summaryBar = document.createElement('div')
     Object.assign(summaryBar.style, {
       display: 'flex',
@@ -379,12 +379,12 @@ class SectorStockTable extends HTMLElement {
       fontWeight: FONT_WEIGHT.normal,
     })
 
-    // 좌측: 5일평균거래대금 (N)억
+    // 좌측: 5거래일 평균 거래대금 (N)억
     const filterGroup = document.createElement('div')
     Object.assign(filterGroup.style, { display: 'flex', alignItems: 'center', gap: '2px', fontSize: FONT_SIZE.section })
     const filterLabel = document.createElement('span')
     Object.assign(filterLabel.style, { color: COLOR.neutral, marginRight: '8px' })
-    filterLabel.textContent = '5일평균거래대금'
+    filterLabel.textContent = '5거래일 평균 거래대금'
     filterGroup.appendChild(filterLabel)
     const filterOpenParen = document.createElement('span')
     Object.assign(filterOpenParen.style, { color: COLOR.neutral })

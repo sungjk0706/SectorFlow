@@ -2,7 +2,7 @@
 // 일반설정 — 시간 설정 탭 (F-04 분할, P24 단순성)
 // general-settings.ts에서 이관. 순수 이동, 동작 변경 없음.
 //
-// Step 1 골조 + Step 2 자동매수/매도 시간쌍 이동 + Step 3 사전 준비 시간·거래소 고정 시간 이동 + Step 4 1일봉 다운로드 이동.
+// Step 1 골조 + Step 2 자동매수/매도 시간쌍 이동 + Step 3 사전 준비 시간·거래소 고정 시간 이동 + Step 4 일봉 다운로드 이동.
 // Step 2(탭 재분류): 자동매수/매도 토글을 자동매매 탭에서 이관 — 시간+토글 통합 행 (설계서 3.2).
 // 토글 OFF 시에도 시간 입력 활성화 유지 (설계서 2-1, P24 탭 간 의존성 최소화, P21 안내 문구로 보완).
 
@@ -149,7 +149,7 @@ function buildConfirmedDownloadRow(state: GeneralSettingsState): HTMLElement {
   Object.assign(row.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, borderBottom: GS.rowBorder })
   const label = document.createElement('span')
   Object.assign(label.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal, whiteSpace: 'nowrap' })
-  label.textContent = '1일봉차트 자동다운로드'
+  label.textContent = '일봉차트 자동다운로드'
   row.appendChild(label)
 
   const right = document.createElement('span')
@@ -255,7 +255,7 @@ export function renderTimeSettingsTab(state: GeneralSettingsState, container: HT
   container.appendChild(buildTimetableRow(state, 'KRX 종목 추가 구독', 'timetable.krx_pre_subscribe', '08:59'))
   container.appendChild(createDescText('KRX 정규장 시작 전 KRX 단독 종목 구독을 추가합니다'))
 
-  // 1일봉차트 자동다운로드 (토글 + 시간 슬롯) — 단일 항목이라 섹션 제목 생략 (P24)
+  // 일봉차트 자동다운로드 (토글 + 시간 슬롯) — 단일 항목이라 섹션 제목 생략 (P24)
   container.appendChild(buildConfirmedDownloadRow(state))
   container.appendChild(createDescText('장마감 후 자동 다운로드 시간 (기본값 20:40) — OFF 시 수동 다운로드만 가능'))
 
