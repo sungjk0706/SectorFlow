@@ -11,6 +11,7 @@ import { createDualLabelSlider, type DualLabelSliderHandle } from '../components
 import { createProgressBar, type ProgressBarHandle } from '../components/common/progress-bar'
 import { createMarketCountRow, type MarketCountRowHandle } from '../components/common/market-count-row'
 import { createDescText, createStepLabel } from '../components/common/settings-common'
+import { createInfoTooltip } from '../components/common/info-tooltip'
 import { FONT_SIZE, COLOR } from '../components/common/ui-styles'
 import { createCardTitle } from '../components/common/card-title'
 import type { ReceiveRateEntry } from '../stores/uiStore'
@@ -219,7 +220,7 @@ function createBonusSliderBlock(key: string, label: string): {
 function buildFilterSection(root: HTMLElement): void {
   root.appendChild(createStepLabel('①', '5일 평균 거래대금 이하 차단'))
   minTradeAmtInput = createNumInput({ value: 0, onChange: v => { const orig = currentVals.sector_min_trade_amt; onNumChange('sector_min_trade_amt', v, () => { currentVals.sector_min_trade_amt = orig; minTradeAmtInput!.setValue(orig) }) }, step: 1, min: 1, max: 100_000, name: 'sector_min_trade_amt' })
-  root.appendChild(createSettingRow('5일평균 최소 거래대금', minTradeAmtInput.el, { rangeText: '1억~10조원' }))
+  root.appendChild(createSettingRow('5일평균 최소 거래대금', minTradeAmtInput.el, { infoText: '5일 평균 거래대금이 이 값(억 원 단위) 미만인 종목은 업종 순위 계산에서 제외됩니다. 범위: 1~100,000 (1억~10조원).' }))
 }
 
 // ② 업종순위 — 임계치 입력 + 상태 라벨 (KRX/NXT 진행 바는 별도 섹션)
@@ -232,7 +233,7 @@ function buildThresholdSection(root: HTMLElement): void {
   const _initialPhase = uiStore.getState().marketPhase
 
   // 1행: 임계치 설정 입력란 (라벨 명확화 — "수신율" → "임계치")
-  const thresholdRow = createSettingRow('업종순위 계산 임계치', thresholdInput.el, { rangeText: '0~100%' })
+  const thresholdRow = createSettingRow('업종순위 계산 임계치', thresholdInput.el, { infoText: 'KRX/NXT 수신율이 이 임계치에 도달하면 업종 순위 계산을 시작합니다. 정규장은 KRX/NXT 모두 도달해야 하고, NXT 전용 시간대는 NXT만 기준입니다. 범위: 0~100%.' })
   thresholdRow.style.margin = '0'
   thresholdRow.style.borderBottom = 'none'
   root.appendChild(thresholdRow)
@@ -292,7 +293,7 @@ function buildReceiveProgressSection(root: HTMLElement): void {
 function buildCutoffSection(root: HTMLElement): void {
   root.appendChild(createStepLabel('③', '업종 내 상승비율 이하 차단'))
   minRiseRatioInput = createNumInput({ value: 0, onChange: v => { const orig = currentVals.sector_min_rise_ratio_pct; onNumChange('sector_min_rise_ratio_pct', v, () => { currentVals.sector_min_rise_ratio_pct = orig; minRiseRatioInput!.setValue(orig) }) }, step: 1, min: 0, max: 100, name: 'sector_min_rise_ratio_pct' })
-  root.appendChild(createSettingRow('업종내 종목 상승비율', minRiseRatioInput.el, { rangeText: '0~100%' }))
+  root.appendChild(createSettingRow('업종내 종목 상승비율', minRiseRatioInput.el, { infoText: '업종 내 상승 종목 비율이 이 값 미만인 업종은 순위에서 제외됩니다(컷오프). 범위: 0~100%.' }))
 }
 
 // ④ 만점 자동 표시 — 1차/2차/3차 각각(작게) + 합계(크고 진하게) (P21 투명성, P10 SSOT — 백엔드 sector_score.py 계산식과 동일)
@@ -347,15 +348,12 @@ function buildMaxTargetsSection(root: HTMLElement): void {
   Object.assign(maxTargetsRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px solid ' + COLOR.borderLight })
   const maxTargetsLabel = document.createElement('span')
   maxTargetsLabel.textContent = '매수대상 업종수'
-  Object.assign(maxTargetsLabel.style, { flex: '1.5', color: COLOR.neutral, display: 'flex', alignItems: 'center', whiteSpace: 'nowrap' })
+  Object.assign(maxTargetsLabel.style, { flex: '1.5', color: COLOR.neutral, display: 'flex', alignItems: 'center', gap: '4px', whiteSpace: 'nowrap' })
+  maxTargetsLabel.appendChild(createInfoTooltip('업종 순위 상위 N개 업종을 매수 대상으로 선정합니다. 0 = 매수 대상 0개(매수 안 함). 범위: 0~100개.'))
   maxTargetsStatusEl = document.createElement('span')
   Object.assign(maxTargetsStatusEl.style, { flex: '1', fontSize: FONT_SIZE.label, color: COLOR.tertiary, display: 'flex', alignItems: 'center', justifyContent: 'center', whiteSpace: 'nowrap' })
   const rightWrap = document.createElement('div')
   Object.assign(rightWrap.style, { flex: '0 0 auto', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '6px' })
-  const rangeSpan = document.createElement('span')
-  Object.assign(rangeSpan.style, { fontSize: FONT_SIZE.small, color: COLOR.tertiary, whiteSpace: 'nowrap' })
-  rangeSpan.textContent = '0~100개'
-  rightWrap.appendChild(rangeSpan)
   rightWrap.appendChild(maxTargetsInput.el)
   maxTargetsRow.appendChild(maxTargetsLabel)
   maxTargetsRow.appendChild(maxTargetsStatusEl)
