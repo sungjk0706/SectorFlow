@@ -2,7 +2,7 @@
 cd "$(dirname "$0")"
 
 echo "============================================"
-echo "  SectorFlow 실행 중..."
+echo "  🌊 SectorFlow 실행 중..."
 echo "============================================"
 
 # 가상환경 활성화
@@ -22,7 +22,7 @@ cleanup() {
     local code="${1:-0}"
     trap - SIGINT SIGTERM EXIT
     echo ""
-    echo "SectorFlow 안전 종료 중... (Graceful Shutdown)"
+    echo "🌊 SectorFlow 안전 종료 중... (Graceful Shutdown)"
     if [ -n "$BACKEND_PID" ]; then
         kill -15 $BACKEND_PID 2>/dev/null
     fi
@@ -114,7 +114,7 @@ fi
 
 echo ""
 echo "============================================"
-echo "  SectorFlow 실행 완료"
+echo "  🌊 SectorFlow 실행 완료"
 echo "============================================"
 echo ""
 echo "  브라우저에서 접속하세요:"
