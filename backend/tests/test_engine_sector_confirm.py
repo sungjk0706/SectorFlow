@@ -4,6 +4,7 @@ from __future__ import annotations
 import pytest
 from unittest.mock import patch, AsyncMock, MagicMock
 
+from backend.tests._mock_helpers import swallow_coro_side_effect
 from backend.app.domain.models import SectorScore
 from backend.app.services.engine_sector_confirm import (
     request_sector_recompute,
@@ -293,7 +294,7 @@ class TestFlushUnregBatch:
         mock_queue.put_nowait.side_effect = put_side_effect
         with patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.services.core_queues.get_control_queue", return_value=mock_queue), \
-             patch("backend.app.services.engine_lifecycle.schedule_engine_task") as mock_schedule, \
+             patch("backend.app.services.engine_lifecycle.schedule_engine_task", side_effect=swallow_coro_side_effect) as mock_schedule, \
              patch("backend.app.services.engine_account_notify.notify_buy_targets_update"):
             mock_state.master_stocks_cache = mock_cache
             _flush_unreg_batch()
@@ -325,7 +326,7 @@ class TestFlushUnregBatch:
         }
         with patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.services.core_queues.get_control_queue", return_value=mock_queue), \
-             patch("backend.app.services.engine_lifecycle.schedule_engine_task"), \
+             patch("backend.app.services.engine_lifecycle.schedule_engine_task", side_effect=swallow_coro_side_effect), \
              patch("backend.app.services.engine_account_notify.notify_buy_targets_update"):
             mock_state.master_stocks_cache = mock_cache
             # 예외 없이 종료 (except 핸들러가 로깅만 수행)

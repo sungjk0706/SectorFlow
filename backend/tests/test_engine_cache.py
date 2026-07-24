@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.app.services import engine_state
+from backend.tests._mock_helpers import swallow_coro_side_effect, swallow_coro_returning
 
 
 # ── Settlement Engine 정합성 대조 패치 (autouse) ──────────────────────────────
@@ -130,7 +131,7 @@ class TestLoadCachesPrebootNormal:
         ):
             mock_task = MagicMock()
             mock_task.add_done_callback = MagicMock()
-            mock_create_task.return_value = mock_task
+            mock_create_task.side_effect = swallow_coro_returning(mock_task)
 
             await engine_cache._load_caches_preboot(_make_settings())
 
@@ -151,7 +152,7 @@ class TestLoadCachesPrebootNormal:
             patch("backend.app.services.engine_account_notify.notify_cache"),
             patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock, return_value=False),
             patch("backend.app.services.daily_time_scheduler.retry_pipeline_catchup_after_bootstrap", new_callable=AsyncMock),
-            patch.object(engine_cache.asyncio, "create_task", return_value=MagicMock(add_done_callback=MagicMock())),
+            patch.object(engine_cache.asyncio, "create_task", side_effect=swallow_coro_side_effect),
         ):
             await engine_cache._load_caches_preboot(_make_settings())
 
@@ -172,7 +173,7 @@ class TestLoadCachesPrebootNormal:
             patch("backend.app.services.engine_account_notify.notify_cache"),
             patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock, return_value=False),
             patch("backend.app.services.daily_time_scheduler.retry_pipeline_catchup_after_bootstrap", new_callable=AsyncMock),
-            patch.object(engine_cache.asyncio, "create_task", return_value=MagicMock(add_done_callback=MagicMock())),
+            patch.object(engine_cache.asyncio, "create_task", side_effect=swallow_coro_side_effect),
         ):
             await engine_cache._load_caches_preboot(_make_settings())
 
@@ -194,7 +195,7 @@ class TestLoadCachesPrebootNormal:
             patch("backend.app.services.engine_account_notify.notify_cache"),
             patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock, return_value=False),
             patch("backend.app.services.daily_time_scheduler.retry_pipeline_catchup_after_bootstrap", new_callable=AsyncMock),
-            patch.object(engine_cache.asyncio, "create_task", return_value=MagicMock(add_done_callback=MagicMock())),
+            patch.object(engine_cache.asyncio, "create_task", side_effect=swallow_coro_side_effect),
         ):
             await engine_cache._load_caches_preboot(_make_settings())
 
@@ -217,7 +218,7 @@ class TestLoadCachesPrebootNormal:
             patch("backend.app.services.engine_account_notify.notify_cache", mock_notify),
             patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock, return_value=False),
             patch("backend.app.services.daily_time_scheduler.retry_pipeline_catchup_after_bootstrap", new_callable=AsyncMock),
-            patch.object(engine_cache.asyncio, "create_task", return_value=MagicMock(add_done_callback=MagicMock())),
+            patch.object(engine_cache.asyncio, "create_task", side_effect=swallow_coro_side_effect),
         ):
             await engine_cache._load_caches_preboot(_make_settings())
 
@@ -238,7 +239,7 @@ class TestLoadCachesPrebootNormal:
             patch("backend.app.services.engine_account_notify.notify_cache"),
             patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock, return_value=False),
             patch("backend.app.services.daily_time_scheduler.retry_pipeline_catchup_after_bootstrap", new_callable=AsyncMock),
-            patch.object(engine_cache.asyncio, "create_task", return_value=MagicMock(add_done_callback=MagicMock())),
+            patch.object(engine_cache.asyncio, "create_task", side_effect=swallow_coro_side_effect),
         ):
             await engine_cache._load_caches_preboot(_make_settings())
 
@@ -263,7 +264,7 @@ class TestLoadCachesPrebootNormal:
             patch("backend.app.services.engine_account_notify.notify_cache"),
             patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock, return_value=False),
             patch("backend.app.services.daily_time_scheduler.retry_pipeline_catchup_after_bootstrap", new_callable=AsyncMock),
-            patch.object(engine_cache.asyncio, "create_task", return_value=MagicMock(add_done_callback=MagicMock())),
+            patch.object(engine_cache.asyncio, "create_task", side_effect=swallow_coro_side_effect),
         ):
             await engine_cache._load_caches_preboot(settings)
 
@@ -295,7 +296,7 @@ class TestLoadCachesPrebootWsWindow:
             patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock, return_value=True),
             patch("backend.app.services.engine_snapshot._reset_realtime_fields", new_callable=AsyncMock) as mock_reset,
             patch("backend.app.services.daily_time_scheduler.retry_pipeline_catchup_after_bootstrap", new_callable=AsyncMock),
-            patch.object(engine_cache.asyncio, "create_task", return_value=MagicMock(add_done_callback=MagicMock())),
+            patch.object(engine_cache.asyncio, "create_task", side_effect=swallow_coro_side_effect),
         ):
             await engine_cache._load_caches_preboot(_make_settings())
 
@@ -322,7 +323,7 @@ class TestLoadCachesPrebootWsWindow:
         ):
             mock_task = MagicMock()
             mock_task.add_done_callback = MagicMock()
-            mock_create_task.return_value = mock_task
+            mock_create_task.side_effect = swallow_coro_returning(mock_task)
 
             await engine_cache._load_caches_preboot(_make_settings())
 
@@ -348,7 +349,7 @@ class TestLoadCachesPrebootWsWindow:
             patch("backend.app.services.engine_snapshot._reset_realtime_fields", new_callable=AsyncMock),
             patch("backend.app.services.sector_data_provider.recompute_sector_summary_now", new_callable=AsyncMock) as mock_recompute,
             patch("backend.app.services.daily_time_scheduler.retry_pipeline_catchup_after_bootstrap", new_callable=AsyncMock),
-            patch.object(engine_cache.asyncio, "create_task", return_value=MagicMock(add_done_callback=MagicMock())),
+            patch.object(engine_cache.asyncio, "create_task", side_effect=swallow_coro_side_effect),
         ):
             await engine_cache._load_caches_preboot(_make_settings())
 
@@ -375,7 +376,7 @@ class TestLoadCachesPrebootTradeMode:
             patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock, return_value=False),
             patch("backend.app.services.settlement_engine.load_state", new_callable=AsyncMock) as mock_load_state,
             patch("backend.app.services.daily_time_scheduler.retry_pipeline_catchup_after_bootstrap", new_callable=AsyncMock),
-            patch.object(engine_cache.asyncio, "create_task", return_value=MagicMock(add_done_callback=MagicMock())),
+            patch.object(engine_cache.asyncio, "create_task", side_effect=swallow_coro_side_effect),
         ):
             await engine_cache._load_caches_preboot(settings)
 
@@ -398,7 +399,7 @@ class TestLoadCachesPrebootTradeMode:
             patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock, return_value=False),
             patch("backend.app.services.settlement_engine.load_state", new_callable=AsyncMock) as mock_load_state,
             patch("backend.app.services.daily_time_scheduler.retry_pipeline_catchup_after_bootstrap", new_callable=AsyncMock),
-            patch.object(engine_cache.asyncio, "create_task", return_value=MagicMock(add_done_callback=MagicMock())),
+            patch.object(engine_cache.asyncio, "create_task", side_effect=swallow_coro_side_effect),
         ):
             await engine_cache._load_caches_preboot(settings)
 
@@ -423,7 +424,7 @@ class TestLoadCachesPrebootMetrics:
             patch("backend.app.services.engine_account_notify.notify_cache"),
             patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock, return_value=False),
             patch("backend.app.services.daily_time_scheduler.retry_pipeline_catchup_after_bootstrap", new_callable=AsyncMock),
-            patch.object(engine_cache.asyncio, "create_task", return_value=MagicMock(add_done_callback=MagicMock())),
+            patch.object(engine_cache.asyncio, "create_task", side_effect=swallow_coro_side_effect),
             patch.object(engine_cache, "logger") as mock_logger,
         ):
             await engine_cache._load_caches_preboot(_make_settings())
@@ -446,7 +447,7 @@ class TestLoadCachesPrebootMetrics:
             patch("backend.app.services.engine_account_notify.notify_cache"),
             patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock, return_value=False),
             patch("backend.app.services.daily_time_scheduler.retry_pipeline_catchup_after_bootstrap", new_callable=AsyncMock),
-            patch.object(engine_cache.asyncio, "create_task", return_value=MagicMock(add_done_callback=MagicMock())),
+            patch.object(engine_cache.asyncio, "create_task", side_effect=swallow_coro_side_effect),
             patch.object(engine_cache, "logger") as mock_logger,
         ):
             await engine_cache._load_caches_preboot(_make_settings())
@@ -469,7 +470,7 @@ class TestLoadCachesPrebootMetrics:
             patch("backend.app.services.engine_account_notify.notify_cache"),
             patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock, return_value=False),
             patch("backend.app.services.daily_time_scheduler.retry_pipeline_catchup_after_bootstrap", new_callable=AsyncMock),
-            patch.object(engine_cache.asyncio, "create_task", return_value=MagicMock(add_done_callback=MagicMock())),
+            patch.object(engine_cache.asyncio, "create_task", side_effect=swallow_coro_side_effect),
         ):
             await engine_cache._load_caches_preboot(_make_settings())
 
@@ -497,7 +498,7 @@ class TestLoadCachesPrebootCatchup:
             patch("backend.app.services.engine_account_notify.notify_cache"),
             patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock, return_value=False),
             patch("backend.app.services.daily_time_scheduler.retry_pipeline_catchup_after_bootstrap", new_callable=AsyncMock) as mock_catchup,
-            patch.object(engine_cache.asyncio, "create_task", return_value=MagicMock(add_done_callback=MagicMock())),
+            patch.object(engine_cache.asyncio, "create_task", side_effect=swallow_coro_side_effect),
         ):
             await engine_cache._load_caches_preboot(_make_settings())
 
@@ -524,7 +525,7 @@ class TestLoadCachesPrebootCatchup:
             patch("backend.app.services.engine_account_notify.notify_cache"),
             patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock, return_value=False),
             patch("backend.app.services.daily_time_scheduler.retry_pipeline_catchup_after_bootstrap", _raise_import_error),
-            patch.object(engine_cache.asyncio, "create_task", return_value=MagicMock(add_done_callback=MagicMock())),
+            patch.object(engine_cache.asyncio, "create_task", side_effect=swallow_coro_side_effect),
             patch.object(engine_cache, "logger") as mock_logger,
         ):
             await engine_cache._load_caches_preboot(_make_settings())

@@ -9,6 +9,8 @@ from __future__ import annotations
 import pytest
 from unittest.mock import AsyncMock, patch
 
+from backend.tests._mock_helpers import swallow_coro_side_effect
+
 
 class TestApplySettingsChangeSectorBroadcast:
     """Step 1: _SECTOR_UI_KEYS 변경 시 notify_desktop_sector_scores 예외 분리 검증."""
@@ -99,6 +101,7 @@ class TestApplySettingsChangeSectorBroadcast:
             ),
             patch(
                 "backend.app.services.engine_service.schedule_engine_task",
+                side_effect=swallow_coro_side_effect,
             ) as mock_schedule,
             patch(
                 "backend.app.services.engine_account_notify.notify_desktop_header_refresh",
@@ -139,6 +142,7 @@ class TestApplySettingsChangeSectorBroadcast:
             ),
             patch(
                 "backend.app.services.engine_service.schedule_engine_task",
+                side_effect=swallow_coro_side_effect,
             ) as mock_schedule,
             patch(
                 "backend.app.services.engine_account_notify.notify_desktop_header_refresh",

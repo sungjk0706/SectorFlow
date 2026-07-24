@@ -19,6 +19,7 @@ from backend.app.services.telegram_bot import (
     _mask_telegram_url,
     _normalize_chat_id,
 )
+from backend.tests._mock_helpers import swallow_coro_returning
 
 
 # ── _mask_telegram_url ──────────────────────────────────────────────────────────
@@ -110,7 +111,7 @@ class TestStart:
         bot = TelegramBot()
         mock_task = MagicMock()
         mock_task.done.return_value = False
-        with patch("backend.app.services.telegram_bot.asyncio.create_task", return_value=mock_task):
+        with patch("backend.app.services.telegram_bot.asyncio.create_task", side_effect=swallow_coro_returning(mock_task)):
             bot.start()
         assert bot._running is True
         assert bot._task is mock_task
@@ -133,7 +134,7 @@ class TestStart:
         bot._task = old_task
         new_task = MagicMock()
         new_task.done.return_value = False
-        with patch("backend.app.services.telegram_bot.asyncio.create_task", return_value=new_task):
+        with patch("backend.app.services.telegram_bot.asyncio.create_task", side_effect=swallow_coro_returning(new_task)):
             bot.start()
         assert bot._task is new_task
         assert bot._running is True
