@@ -13,6 +13,24 @@ import { FONT_SIZE, FONT_WEIGHT, COLOR, setDisabled } from '../components/common
 import { toastResult } from '../components/common/toast'
 import { type GeneralSettingsState, GS, scheduleTimetableSave, createHolidayBadge, state } from './general-settings-shared'
 
+// 시간쌍 순서 위반 경고 메시지 영역 (P21 투명성 — 행 하단 지속 표시, P23 createDescText 위치·폰트 일치, 경고색 적용)
+function createTimeOrderWarnEl(): HTMLElement {
+  const el = document.createElement('div')
+  Object.assign(el.style, {
+    fontSize: FONT_SIZE.desc, color: COLOR.warning,
+    padding: '0 0 4px', marginTop: '-4px',
+  })
+  return el
+}
+
+// 시간 행 + 경고 메시지를 묶어 반환 (row 단독 반환 시 메시지 배치 불가 → 컨테이너로 래핑)
+function wrapTimeRowWithWarn(row: HTMLElement, warnEl: HTMLElement): HTMLElement {
+  const wrap = document.createElement('div')
+  wrap.appendChild(row)
+  wrap.appendChild(warnEl)
+  return wrap
+}
+
 function buildBuyTimeRow(state: GeneralSettingsState): HTMLElement {
   const row = document.createElement('div')
   Object.assign(row.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, borderBottom: GS.rowBorder })
@@ -22,7 +40,10 @@ function buildBuyTimeRow(state: GeneralSettingsState): HTMLElement {
   row.appendChild(label)
   const buyStart = String(state.vals.buy_time_start ?? '09:00')
   const buyEnd = String(state.vals.buy_time_end ?? '15:00')
+  // 행 하단 경고 메시지 영역 (P21 투명성 — 순서 위반 시 지속 표시, P23 createDescText 위치와 일치)
+  const warnEl = createTimeOrderWarnEl()
   const { el: tpWrap, handle } = createTimePairInput(buyStart, buyEnd, (s, e) => {
+    warnEl.textContent = '' // 유효 복귀 시 즉시 해제
     if (state.settingsMgr) {
       const dirty: Record<string, unknown> = {}
       if (s !== state.vals.buy_time_start) dirty.buy_time_start = s
@@ -32,7 +53,7 @@ function buildBuyTimeRow(state: GeneralSettingsState): HTMLElement {
         Object.assign(state.vals, dirty)
       }
     }
-  })
+  }, (msg) => { warnEl.textContent = msg })
   state.buyTimeHandle = handle
   // 토글 통합 행 — 자동매매 탭에서 이관 (설계서 3.2): [시간쌍 입력] [토글]
   const right = document.createElement('span')
@@ -48,7 +69,7 @@ function buildBuyTimeRow(state: GeneralSettingsState): HTMLElement {
   right.appendChild(createHolidayBadge())
   right.appendChild(state.autoBuyToggle.el)
   row.appendChild(right)
-  return row
+  return wrapTimeRowWithWarn(row, warnEl)
 }
 
 function buildSellTimeRow(state: GeneralSettingsState): HTMLElement {
@@ -60,7 +81,10 @@ function buildSellTimeRow(state: GeneralSettingsState): HTMLElement {
   row.appendChild(label)
   const sellStart = String(state.vals.sell_time_start ?? '09:00')
   const sellEnd = String(state.vals.sell_time_end ?? '15:00')
+  // 행 하단 경고 메시지 영역 (P21 투명성 — 순서 위반 시 지속 표시, P23 createDescText 위치와 일치)
+  const warnEl = createTimeOrderWarnEl()
   const { el: tpWrap, handle } = createTimePairInput(sellStart, sellEnd, (s, e) => {
+    warnEl.textContent = '' // 유효 복귀 시 즉시 해제
     if (state.settingsMgr) {
       const dirty: Record<string, unknown> = {}
       if (s !== state.vals.sell_time_start) dirty.sell_time_start = s
@@ -70,7 +94,7 @@ function buildSellTimeRow(state: GeneralSettingsState): HTMLElement {
         Object.assign(state.vals, dirty)
       }
     }
-  })
+  }, (msg) => { warnEl.textContent = msg })
   state.sellTimeHandle = handle
   // 토글 통합 행 — 자동매매 탭에서 이관 (설계서 3.2): [시간쌍 입력] [토글]
   const right = document.createElement('span')
@@ -86,7 +110,7 @@ function buildSellTimeRow(state: GeneralSettingsState): HTMLElement {
   right.appendChild(createHolidayBadge())
   right.appendChild(state.autoSellToggle.el)
   row.appendChild(right)
-  return row
+  return wrapTimeRowWithWarn(row, warnEl)
 }
 
 function buildTimetableRow(state: GeneralSettingsState, labelText: string, key: 'timetable.realtime_reset' | 'timetable.ws_prestart' | 'timetable.krx_pre_subscribe', defaultTime: string): HTMLElement {

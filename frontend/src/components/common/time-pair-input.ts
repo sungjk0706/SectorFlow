@@ -8,16 +8,32 @@ export interface TimePairInputHandle {
   setEnabled: (enabled: boolean) => void
 }
 
+// 시간쌍 순서 위반 안내 메시지 (P21 투명성, P10 SSOT — 컴포넌트 단일 상수)
+const TIME_ORDER_INVALID_MSG = '시작 시간이 종료 시간보다 빨라야 합니다'
+
 export function createTimePairInput(
   initialStart: string,
   initialEnd: string,
-  onTimeChange: (start: string, end: string) => void
+  onTimeChange: (start: string, end: string) => void,
+  onInvalid?: (msg: string) => void
 ): { el: HTMLElement; handle: TimePairInputHandle } {
   let [sH, sM] = parseHM(initialStart)
   let [eH, eM] = parseHM(initialEnd)
   let startSlot: HTMLElement | null = null
   let endSlot: HTMLElement | null = null
   let wrap: HTMLElement | null = null
+
+  // onTimeChange 호출 전 순서 검증 (P20 폴백 금지 — 자동 교정/스왑 안 함, 저장만 차단)
+  // 시작 ≥ 종료 → onInvalid 호출, onTimeChange 건너뜀. 유효 → onTimeChange 호출.
+  const tryTimeChange = () => {
+    const startMin = Number(sH) * 60 + Number(sM)
+    const endMin = Number(eH) * 60 + Number(eM)
+    if (startMin >= endMin) {
+      onInvalid?.(TIME_ORDER_INVALID_MSG)
+      return
+    }
+    onTimeChange(`${sH}:${sM}`, `${eH}:${eM}`)
+  }
 
   const createElement = () => {
     wrap = document.createElement('div')
@@ -26,12 +42,12 @@ export function createTimePairInput(
     startSlot = createTimeSlot(sH, sM, (h, m) => {
       sH = h; sM = m
       updateTimeSlotDisplay(startSlot!, h, m)
-      onTimeChange(`${sH}:${sM}`, `${eH}:${eM}`)
+      tryTimeChange()
     })
     endSlot = createTimeSlot(eH, eM, (h, m) => {
       eH = h; eM = m
       updateTimeSlotDisplay(endSlot!, h, m)
-      onTimeChange(`${sH}:${sM}`, `${eH}:${eM}`)
+      tryTimeChange()
     })
 
     const tilde = document.createElement('span')
