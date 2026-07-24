@@ -1,15 +1,15 @@
 // frontend/src/layout/sidebar.ts
-// 사이드바 네비게이션 — 6개 메뉴 항목, 활성 경로 시각적 강조, 숫자 배지
+// 사이드바 네비게이션 — 8개 메뉴 항목, 활성 경로 시각적 강조(책갈피 스타일), 숫자 배지
 
 import { FONT_SIZE, COLOR } from '../components/common/ui-styles'
 
 const MENU = [
   { path: '#/sector-ranking', label: '업종순위', icon: '📊' },
-  { path: '#/buy-settings', label: '매수설정', icon: '💰' },
-  { path: '#/sell-settings', label: '매도설정', icon: '📉' },
+  { path: '#/buy-settings', label: '매수후보', icon: '💰' },
+  { path: '#/sell-settings', label: '보유종목', icon: '📉' },
   { path: '#/profit-overview', label: '수익현황', icon: '📈' },
   { path: '#/profit-detail', label: '수익상세', icon: '📋' },
-  { path: '#/stock-classification', label: '종목분류', icon: '🏷️', separator: true },
+  { path: '#/stock-classification', label: '업종관리', icon: '🏷️', separator: true },
   { path: '#/stock-detail', label: '종목상세', icon: '🔍', separator: true },
   { path: '#/general-settings', label: '일반설정', icon: '⚙️' },
 ] as const
@@ -60,6 +60,10 @@ export function createSidebar(onNavigate: (path: string) => void): {
       a.style.borderLeft = isActive
         ? `3px solid ${ACTIVE_COLOR}`
         : '3px solid transparent'
+      // 책갈피 스타일 — 선택 메뉴만 우측 모서리 둥글게 + 은은한 그림자 (비선택은 평평)
+      a.style.borderTopRightRadius = isActive ? '12px' : '0'
+      a.style.borderBottomRightRadius = isActive ? '12px' : '0'
+      a.style.boxShadow = isActive ? '2px 2px 6px rgba(0,0,0,0.08)' : 'none'
     }
   }
 

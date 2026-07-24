@@ -1199,10 +1199,10 @@ ConnectorManager
 | 매수후보 | `buy-target.ts` | 매수 타겟 + 차단 종목 |
 | 보유종목 | `sell-position.ts` | 보유 종목 + 손익 |
 | 수익현황 | `profit-overview.ts` | 일별 수익 그래프 + 요약 |
-| 매수설정 | `buy-settings.ts` | 매수 관련 설정 |
-| 매도설정 | `sell-settings.ts` | 매도 관련 설정 |
+| 매수후보(설정 카드) | `buy-settings.ts` | 매수 관련 설정 |
+| 보유종목(설정 카드) | `sell-settings.ts` | 매도 관련 설정 |
 | 일반설정 | `general-settings.ts` | 증권사/계좌/시간 설정 |
-| 종목분류 | `stock-classification.ts` | 업종 매핑 관리 |
+| 업종관리 | `stock-classification.ts` | 업종 매핑 관리 |
 
 ### 17.2 상태 관리
 

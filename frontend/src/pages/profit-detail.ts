@@ -126,7 +126,7 @@ function mount(container: HTMLElement): void {
 
   const root = document.createElement('div')
   Object.assign(root.style, { display: 'flex', flexDirection: 'column', height: '100%' })
-  root.appendChild(createCardTitle('수익 상세'))
+  root.appendChild(createCardTitle('수익상세'))
 
   const todayStr = getLocalToday()
   const monthStart = todayStr.slice(0, 8) + '01'
