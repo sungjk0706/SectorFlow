@@ -7,6 +7,7 @@
 
 import { COLOR, FONT_SIZE, setDisabled } from './ui-styles'
 import { createSettingRow } from './setting-row'
+import { createInfoTooltip } from './info-tooltip'
 
 /* ── ON/OFF 토글 버튼 ──────────────────────────────────────── */
 export function createToggleBtn(options: {
@@ -140,9 +141,11 @@ export function createRadioGroup(options: {
 
 /* ── 토글 + 라벨 + 컨트롤 컴포지션 행 ─────────────────────── */
 // labelSubText(라벨 하단) → rangeText(입력란 좌측)로 통일 (INPUT-VAL-S2, P23 일관성)
+// infoText(라벨 우측 ⓘ 툴팁) 추가 — 전부 툴팁 통일 방식 (P23 일관성, P21 투명성)
 export function createToggleLabelControlsRow(options: {
   labelText: string | string[]
   rangeText?: string
+  infoText?: string
   toggleOn: boolean
   onToggle: (next: boolean) => void
   controlsChild: HTMLElement
@@ -180,6 +183,10 @@ export function createToggleLabelControlsRow(options: {
     labelBox.appendChild(label)
   }
   labelWrap.appendChild(labelBox)
+  // infoText: 라벨 우측에 ⓘ 툴팁 배치 (전부 툴팁 통일 — P23 일관성)
+  if (options.infoText) {
+    labelWrap.appendChild(createInfoTooltip(options.infoText))
+  }
 
   if (options.rangeText) {
     const rangeSpan = document.createElement('span')

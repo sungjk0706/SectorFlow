@@ -10,6 +10,7 @@
  */
 
 import { COLOR, FONT_SIZE } from './ui-styles'
+import { createInfoTooltip } from './info-tooltip'
 
 // 분할된 모듈 re-export — 외부 import 경로 유지 (4개 설정 페이지)
 export * from './setting-row-inputs'
@@ -109,8 +110,9 @@ export function createSpinButtons(input: HTMLInputElement, onUp: () => void, onD
 
 
 /* ── 설정 행: 레이블 왼쪽 — 입력란 오른쪽 (한 줄) ──────────── */
-// rangeText 옵션 추가 (INPUT-VAL-S2, P23 일관성 — 입력란 좌측 안내)
-export function createSettingRow(label: string | HTMLElement, child: HTMLElement, opts?: { disabled?: boolean; style?: Partial<CSSStyleDeclaration>; rangeText?: string }): HTMLElement {
+// rangeText(입력란 좌측 안내) + infoText(라벨 우측 ⓘ 툴팁) 옵션.
+// 전부 툴팁 통일 방식에서는 infoText 사용, rangeText는 점진적 마이그레이션 위해 유지.
+export function createSettingRow(label: string | HTMLElement, child: HTMLElement, opts?: { disabled?: boolean; style?: Partial<CSSStyleDeclaration>; rangeText?: string; infoText?: string }): HTMLElement {
   const div = document.createElement('div')
   Object.assign(div.style, {
     display: 'flex',
@@ -131,7 +133,16 @@ export function createSettingRow(label: string | HTMLElement, child: HTMLElement
   } else {
     labelSpan.appendChild(label)
   }
-  div.appendChild(labelSpan)
+  // infoText: 라벨 우측에 ⓘ 툴팁 배치 (전부 툴팁 통일 — P23 일관성)
+  if (opts?.infoText) {
+    const labelWrap = document.createElement('span')
+    Object.assign(labelWrap.style, { display: 'inline-flex', alignItems: 'center' })
+    labelWrap.appendChild(labelSpan)
+    labelWrap.appendChild(createInfoTooltip(opts.infoText))
+    div.appendChild(labelWrap)
+  } else {
+    div.appendChild(labelSpan)
+  }
 
   if (opts?.rangeText) {
     const rightWrap = document.createElement('span')
