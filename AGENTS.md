@@ -138,6 +138,7 @@ SectorFlow is a local real-time stock auto-trading web app for one person.
    - **승인 없이 진행 금지**: 사유/영향/대안 보고 후 사용자 명시적 승인(규칙 0 승인 트리거)이 있어야만 수정. "dead code로 판단되어 제거" 등의 단독 사유로 사용자 설계 로직을 승인 없이 제거하는 것은 절대 금지.
 1. No guessing. Base all conclusions on actual code, search results, logs, and browser reproducible behavior.
 2. Solve the root cause, not the symptom. No temporary fixes, fallbacks, `!important`, `as any`, or "let's do this for now" workarounds.
+2-1. **아키텍처 원칙 위반 발견/발생 시 즉시 중단 + 사용자 보고 (강제).** 작성 중이거나 기존 코드에서 P10~P25 위반을 발견한 경우, 즉시 작업을 중단하고 사용자에게 보고(위반 원칙 번호 + 사유 + 영향 범위) 후 승인 대기. "임시로/우선/나중에" 금지는 규칙 2 본문에 이미 포함되므로 본 항목은 '발견 시 행동'만 명시 (P24 중복 회피). 단, 사용자가 위반 영향을 이해하고도 명시적으로 감수를 결정한 경우 그 결정을 존중 (P21 사용자 투명성 + 사용자 최종 결정권).
 3. One small step at a time. Modify one file or block at a time, then verify.
 4. After any change, run at least one of: type check, lint, build, test, or runtime start.
 4-1. **테스트 실패 추적 의무 (강제).** 테스트 실행 시 실패가 발생하면 "내 수정과 무관한 기존 실패"라고 단정하지 말고, 반드시 아래 절차를 수행:
