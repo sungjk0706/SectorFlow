@@ -19,6 +19,7 @@ from backend.app.services.engine_account_notify import (
     _rebuild_layout_cache,
     broadcast_engine_status_ws,
     notify_program_update,
+    notify_index_data,
 )
 from backend.app.services.engine_account_broadcast import (
     _build_lightweight_payload_for_profit_overview,
@@ -263,6 +264,47 @@ class TestBroadcastEngineStatusWs:
             await broadcast_engine_status_ws({"_v": 2, "connected": False})
             payload = mock_bc.call_args.args[1]
             assert payload["_v"] == 2
+
+
+# ── notify_index_data ────────────────────────────────────────────────────────────
+
+class TestNotifyIndexData:
+    """notify_index_data — 캐시 갱신 + WS 브로드캐스트 검증 (P10 SSOT)."""
+
+    @pytest.mark.asyncio
+    async def test_updates_cache_and_broadcasts(self):
+        """정상 틱: 캐시 갱신 + index-data 브로드캐스트."""
+        from backend.app.services import engine_state
+        engine_state.state.index_data_cache.clear()
+        with patch("backend.app.services.engine_account_notify._safe_broadcast", new_callable=AsyncMock) as mock_bc, \
+             patch("backend.app.services.engine_lifecycle.get_engine_status", return_value={"broker_statuses": {"ls": {"token_valid": True}}}):
+            await notify_index_data("001", "2500.5", "10.5", "0.5", "2")
+            # 캐시 갱신 검증
+            assert engine_state.state.index_data_cache["001"] == {
+                "jisu": "2500.5", "sign": "2", "change": "10.5", "drate": "0.5",
+            }
+            # 브로드캐스트 검증
+            mock_bc.assert_awaited_once()
+            payload = mock_bc.call_args.args[1]
+            assert payload["upcode"] == "001"
+            assert payload["jisu"] == "2500.5"
+            assert payload["broker_statuses"] == {"ls": {"token_valid": True}}
+        engine_state.state.index_data_cache.clear()
+
+    @pytest.mark.asyncio
+    async def test_overwrites_cache_on_new_tick(self):
+        """새 틱 수신 시 기존 캐시 덮어쓰기 (종목 현재가와 동일 패턴)."""
+        from backend.app.services import engine_state
+        engine_state.state.index_data_cache.clear()
+        engine_state.state.index_data_cache["001"] = {
+            "jisu": "2400", "sign": "4", "change": "-10", "drate": "-0.4",
+        }
+        with patch("backend.app.services.engine_account_notify._safe_broadcast", new_callable=AsyncMock), \
+             patch("backend.app.services.engine_lifecycle.get_engine_status", return_value={"broker_statuses": {}}):
+            await notify_index_data("001", "2500.5", "10.5", "0.5", "2")
+            assert engine_state.state.index_data_cache["001"]["jisu"] == "2500.5"
+            assert engine_state.state.index_data_cache["001"]["sign"] == "2"
+        engine_state.state.index_data_cache.clear()
 
 
 # ── notify_program_update ──────────────────────────────────────────────────────────

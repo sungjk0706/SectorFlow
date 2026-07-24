@@ -157,11 +157,21 @@ async def notify_desktop_header_refresh() -> None:
 
 
 async def notify_index_data(upcode: str, jisu: str, change: str, drate: str, sign: str) -> None:
-    """업종지수 실시간 데이터 → WS index-data 브로드캐스트 (저장 없이 pass-through).
+    """업종지수 실시간 데이터 → 캐시 갱신 + WS index-data 브로드캐스트.
 
+    P10 SSOT: state.index_data_cache에 마지막 수신값 보관 (종목 현재가/업종점수와 동일 패턴).
+    WS 재연결 시 _send_initial_snapshot_delayed()가 이 캐시에서 재전송.
     broker_statuses를 항상 포함하여 프론트엔드 헤더 칩 상태를 갱신한다.
     """
+    from backend.app.services import engine_state
     from backend.app.services.engine_lifecycle import get_engine_status
+    # 캐시 갱신 (P25 격리된 실패 — 캐시 실패해도 브로드캐스트는 진행)
+    try:
+        engine_state.state.index_data_cache[upcode] = {
+            "jisu": jisu, "sign": sign, "change": change, "drate": drate,
+        }
+    except Exception:
+        logger.warning("[알림] 업종지수 캐시 갱신 실패: upcode=%s", upcode, exc_info=True)
     broker_statuses = get_engine_status().get("broker_statuses", {})
     await _safe_broadcast("index-data", {
         "upcode": upcode,

@@ -144,6 +144,25 @@ async def _send_initial_snapshot_delayed(websocket: WebSocket, ws_manager) -> No
         engine_status = get_engine_status()
         engine_status["_v"] = 1
         await ws_manager.send_to(websocket, "index-data", engine_status)
+
+        # 업종지수 캐시 재전송 — WS 재연결/새로고침 시 마지막 수신값 복원 (P10 SSOT, P23 일관성).
+        # state.index_data_cache의 각 upcode에 대해 index-data 이벤트 순차 전송.
+        # 프론트엔드 applyIndexData가 단건 단위로 처리하므로 기존 로직과 호환.
+        # 빈 캐시(엔진 재시작 직후, 아직 틱 미수신)면 전송 생략 — placeholder("--") 표시는 프론트엔드가 담당 (P20 폴백 금지).
+        from backend.app.services import engine_state
+        for upcode, idx in engine_state.state.index_data_cache.items():
+            try:
+                await ws_manager.send_to(websocket, "index-data", {
+                    "_v": 1,
+                    "upcode": upcode,
+                    "jisu": idx.get("jisu", ""),
+                    "change": idx.get("change", ""),
+                    "drate": idx.get("drate", ""),
+                    "sign": idx.get("sign", ""),
+                    "broker_statuses": engine_status.get("broker_statuses", {}),
+                })
+            except Exception:
+                logger.warning("[연결] 업종지수 캐시 재전송 실패: upcode=%s", upcode, exc_info=True)
     except Exception as e:
         logger.error("[연결] 초기 스냅샷 전송 실패: %s", e, exc_info=True)
 

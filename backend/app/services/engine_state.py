@@ -60,6 +60,10 @@ class EngineState:
         self.confirmed_refresh_running_5d: bool = False         # 5일봉 다운로드 전용
         self.latest_filter_summary_meta: str = ""
         self.master_stocks_cache: dict[str, dict] = {}
+        # ── 업종지수 실시간 캐시 (P10 SSOT — 종목 현재가/업종점수와 동일 패턴) ──
+        # {upcode: {jisu, sign, change, drate}} — LS 지수IJ.txt 스펙 기준, 헤더 배지 표시 필드만 보관.
+        # notify_index_data()가 틱 수신 시 갱신, WS 재연결 시 _send_initial_snapshot_delayed()가 재전송.
+        self.index_data_cache: dict[str, dict[str, str]] = {}
         self.market_phase: dict = {
             "krx": "장개시전", "nxt": "장개시전",
         }
