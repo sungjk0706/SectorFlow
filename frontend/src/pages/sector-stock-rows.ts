@@ -5,6 +5,7 @@
 import { type ColumnDef, type GroupRow as DataTableGroupRow, type TableRow } from '../components/common/data-table'
 import { createStockNameColumn, makeSeqColumn, makeCodeColumn, makePriceColumn, makeChangeColumn, makeRateColumn, makeStrengthColumn, makeAmountColumn, makeAvgAmountColumn, COLOR } from '../components/common/ui-styles'
 import { type SectorStock, type SectorScoreRow } from '../types'
+// filterStocksBySearch는 범용 유틸 → utils/stock-search.ts로 이동 (F03-10, P23)
 
 /* ── ColumnDef 배열 (10개 컬럼) ── */
 
@@ -58,23 +59,6 @@ export interface DataRowItem {
 }
 
 export type RowItem = GroupRowItem | DataRowItem
-
-/* ── 검색 필터링 (export for PBT) ── */
-
-export function filterStocksBySearch(
-  stocks: Iterable<SectorStock>,
-  query: string,
-): Set<string> | null {
-  const q = query.trim().toLowerCase()
-  if (!q) return null
-  const codes = new Set<string>()
-  for (const s of stocks) {
-    if (s.code.toLowerCase().includes(q) || (s.name || '').toLowerCase().includes(q)) {
-      codes.add(s.code)
-    }
-  }
-  return codes
-}
 
 /* ── 업종명 검색 필터링 ── */
 

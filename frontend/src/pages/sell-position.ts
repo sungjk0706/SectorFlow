@@ -12,6 +12,7 @@ import { globalSettingsManager } from '../settings'
 import { rateColor, pnlColor, fmtComma, fmtRate, createCodeCell, createStockNameColumn, createNumberCell, createPriceCell, COLOR } from '../components/common/ui-styles'
 import { createBadgeRow, createBadge, updateBadge, type BadgeHandle } from '../components/common/badge'
 import { computeOrderBlockStatus } from '../utils/order-block-status'
+import { getLocalToday } from '../utils/date'
 import { computeHoldingsSummary } from './profit-shared'
 import type { Position } from '../types'
 
@@ -99,8 +100,7 @@ const COLUMNS: ColumnDef<Position>[] = [
     render: (p) => {
       const span = document.createElement('span')
       span.textContent = p.buy_date
-      const today = new Date()
-      const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+      const todayStr = getLocalToday()
       span.style.color = p.buy_date === todayStr ? COLOR.neutral : COLOR.disabled
       return span
     },

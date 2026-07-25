@@ -15,7 +15,8 @@ import { hotStore } from '../stores/hotStore'
 import { notifyPageActive, notifyPageInactive } from '../api/ws'
 import type { DataTableApi } from '../components/common/data-table'
 import type { DateRangeInputApi } from '../components/common/date-range-input'
-import { type DailyDrilldownRow, type SummaryCardEls, getLocalToday } from './profit-shared'
+import { type DailyDrilldownRow, type SummaryCardEls } from './profit-shared'
+import { getLocalToday } from '../utils/date'
 import {
   buildSummaryRow,
   buildFilterRow,

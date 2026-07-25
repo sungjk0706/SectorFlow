@@ -12,10 +12,10 @@ import {
 import {
   type DailyDrilldownRow,
   type SummaryCardEls,
-  getLocalToday,
   buildMonthlyDrilldown,
   filterTradeRows,
 } from './profit-shared'
+import { getLocalToday } from '../utils/date'
 import { saveProfitDetailView } from './profit-detail-view'
 import { hotStore } from '../stores/hotStore'
 import type { ProfitDetailState } from './profit-detail'

@@ -11,7 +11,7 @@ import { globalSettingsManager } from '../settings'
 import { FONT_SIZE, COLOR } from '../components/common/ui-styles'
 import { createBadgeRow, createBadge, updateBadge, type BadgeHandle, type BadgeStatus } from '../components/common/badge'
 import { computeOrderBlockStatus } from '../utils/order-block-status'
-import { filterStocksBySearch } from './sector-stock-rows'
+import { filterStocksBySearch } from '../utils/stock-search'
 import { COLUMNS } from './buy-target-columns'
 import type { SectorStock, AppSettings } from '../types'
 import type { UIState } from '../stores/uiStore'
@@ -47,6 +47,13 @@ let _rsDailyBuyStateFailed: UIState['dailyBuyStateFailed'] = false
 
 /* ── 배지 컨텍스트 — updateBadges 공통 조회 (P24 단순성 — 분할) ── */
 
+/** 매수후보 정렬 comparator — guard_pass 통과 우선, 동일 그룹 내 rank 오름차순.
+ *  computeBadgeContext(1위 종목 찾기)와 renderTableRows(전체 정렬) 공통 (P24 중복 제거). */
+function compareBuyTargets(a: SectorStock, b: SectorStock): number {
+  if (a.guard_pass !== b.guard_pass) return a.guard_pass ? -1 : 1
+  return (a.rank ?? 999999) - (b.rank ?? 999999)
+}
+
 interface BadgeContext {
   uiState: UIState
   settings: AppSettings | null
@@ -76,10 +83,7 @@ function computeBadgeContext(): BadgeContext {
   const orderable = state.account?.orderable ?? 0
 
   // 1순위 통과 종목 — 주문가능금액 배지의 1위 종목 매수 가능 수량 계산용
-  const topTarget = [...state.buyTargets].sort((a, b) => {
-    if (a.guard_pass !== b.guard_pass) return a.guard_pass ? -1 : 1
-    return (a.rank ?? 999999) - (b.rank ?? 999999)
-  }).find(t => t.guard_pass && t.reason === '')
+  const topTarget = [...state.buyTargets].sort(compareBuyTargets).find(t => t.guard_pass && t.reason === '')
 
   // 백엔드 trading.py와 동일 — buy_amt_on=False 시 종목당 한도 없음 (주문가능 금액이 상한)
   const dailyRemain = maxDaily > 0 ? Math.max(0, maxDaily - dailySpent) : Infinity
@@ -325,10 +329,7 @@ function renderTableRows(buyTargets: SectorStock[]): void {
   const matchedCodes = filterStocksBySearch(buyTargets, searchTerm)
   const targets = [...buyTargets]
     .filter(t => !matchedCodes || matchedCodes.has(t.code))
-    .sort((a, b) => {
-      if (a.guard_pass !== b.guard_pass) return a.guard_pass ? -1 : 1
-      return (a.rank ?? 999999) - (b.rank ?? 999999)
-    })
+    .sort(compareBuyTargets)
   dataTable?.updateRows(targets)
   if (emptyEl) {
     emptyEl.style.display = targets.length === 0 ? '' : 'none'

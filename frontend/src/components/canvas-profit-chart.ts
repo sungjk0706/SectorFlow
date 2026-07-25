@@ -8,6 +8,7 @@
 import { pnlColor, FONT_FAMILY, COLOR, fmtWon, positionTooltip } from './common/ui-styles'
 import { createToggleSelectBtn } from './common/button'
 import { createDateRangeInput } from './common/date-range-input'
+import { getLocalToday, getLocalMonthStart } from '../utils/date'
 
 // ── 타입 ────────────────────────────────────────────────────
 
@@ -150,9 +151,8 @@ export function createProfitChart(options: ProfitChartOptions): ProfitChartApi {
   const dateHeader = document.createElement('div')
   dateHeader.style.cssText = 'display:flex;align-items:center;gap:6px;padding:4px 0;margin-bottom:4px;'
 
-  const now = new Date()
-  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
-  const monthFirstStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
+  const todayStr = getLocalToday()
+  const monthFirstStr = getLocalMonthStart()
 
   const dateRangeInput = createDateRangeInput({
     from: options.dateFrom || monthFirstStr,

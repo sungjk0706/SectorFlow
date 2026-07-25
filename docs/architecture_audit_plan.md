@@ -830,17 +830,22 @@ SectorFlow 전체 코드베이스를 `ARCHITECTURE.md`에 정의된 P1~P25, 총 
 
 ### 세션 F-03: P2 — 핵심 매매 페이지 (업종순위/매수후보/보유종목) ◐ 부분완료
 > **우선순위**: P2 (핵심 매매 UI)
-> **상태**: 6건 해결 종결 (P16/P19/P23/P24). 잔여 보류 4건만 아래 명시.
+> **상태**: 6건 해결 종결 (P16/P19/P23/P24). 잔여 보류 1건만 아래 명시 (F03-07-C: 사용자 결정 대기).
 > **대상 원칙**: P5, P10, P16, P19, P21, P22, P23, P24
 
-**보류 항목 (4건)** — 각 항목별 조사·수정은 별도 세션에서 진행:
+**보류 항목 (1건)** — 각 항목별 조사·수정은 별도 세션에서 진행:
 
 | ID | 원칙 | 파일 | 상세 | 비고 |
 |----|------|------|------|------|
 | F03-07-C | P20/P22 | `pages/sell-position.ts` | `sectorStock?.cur_price ?? p.cur_price` (62/76줄) — sectorStock null 처리 | 사용자 설계 로직 — C-1/C-2/유지 중 사용자 결정 대기 |
-| F03-08 | P24 | `pages/sector-stock.ts` (655줄), `pages/buy-target.ts` (539줄) | 파일 500줄 초과 — 분할 검토 | — |
-| F03-09 | P24 | `pages/sector-stock.ts`, `pages/buy-target.ts`, `pages/sell-position.ts`, `pages/profit-shared.ts` | 50줄 초과 함수 점검 — 함수 분할 검토 | 완료 (1~3차 총 6개 함수 분할: sector-stock connectedCallback, buy-target updateBadges/mount, sell-position mount, profit-shared createSummaryCards/renderAccountVals). |
-| F03-10 | P23 | (유틸 위치 점검 대상) | 유틸 함수 위치 점검 — 공통 자산 이동 검토 | 상세 재조사 필요 |
+
+**완료된 보류 항목 (3건)**:
+
+| ID | 원칙 | 상세 | 완료 내역 |
+|----|------|------|-----------|
+| F03-08 | P24 | 파일 500줄 초과 — 분할 검토 | 완료 (sector-stock.ts 655→441줄 + sector-stock-rows.ts 신규 231줄, buy-target.ts 539→401줄 + buy-target-columns.ts 신규 157줄) |
+| F03-09 | P24 | 50줄 초과 함수 점검 — 함수 분할 검토 | 완료 (1~3차 총 6개 함수 분할) |
+| F03-10 | P23 | 유틸 함수 위치 점검 — 공통 자산 이동 검토 | 완료 (A: filterStocksBySearch → utils/stock-search.ts. B: getLocalToday → utils/date.ts + getLocalMonthStart + 중복 3건 제거. C: buy-target compareBuyTargets comparator 헬퍼 추출) |
 
 ---
 
@@ -1192,11 +1197,11 @@ SectorFlow 전체 코드베이스를 `ARCHITECTURE.md`에 정의된 P1~P25, 총 
 |------|--------|
 | 전체 세션 | 30 |
 | 완료 | 26 (B-01~B-12, B-14~B-23, F-01, F-02, F-05, F-06) |
-| 진행 중 | 1 (F-03 부분완료 — 6건 해결 종결 + F03-07-A/B + F03-08 + F03-09 해결, 잔여 보류 2건) |
+| 진행 중 | 1 (F-03 부분완료 — 6건 해결 종결 + F03-07-A/B + F03-08 + F03-09 + F03-10 해결, 잔여 보류 1건) |
 | 미시작 | 3 (B-13 부분완료, F-04 부분완료, F-07) |
 | 발견된 문제 | 101 (79 + F05-01~12 + F03-07~10 보류 4 + F-03 해결 6) |
-| 해결된 문제 | 91 (70 + F05-01~06, F05-11, F05-10, F05-12, F05-09, F05-07 + F-03 6건 + F03-07-A/B 2건 + F03-08 + F03-09) |
-| 보류된 문제 | 3 (B21-01, F03-07-C, F03-10) |
+| 해결된 문제 | 92 (70 + F05-01~06, F05-11, F05-10, F05-12, F05-09, F05-07 + F-03 6건 + F03-07-A/B 2건 + F03-08 + F03-09 + F03-10) |
+| 보류된 문제 | 2 (B21-01, F03-07-C) |
 
 ---
 

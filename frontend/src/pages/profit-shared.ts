@@ -3,6 +3,7 @@
 
 import { FONT_SIZE, FONT_WEIGHT, pnlColor, fmtWon, COLOR, computeWeightedRate } from '../components/common/ui-styles'
 import { normalizeStockCode } from '../stores/hotStore'
+import { getLocalToday } from '../utils/date'
 import type { AccountSnapshot, Position, SectorStock } from '../types'
 import type { SectorDonutRow } from '../components/canvas-sector-donut'
 import { assignSectorColors } from '../components/canvas-sector-donut'
@@ -321,12 +322,6 @@ export function buildSectorStockPnl(
 }
 
 /* ── 순수 함수 ── */
-
-/** 로컬 시간 기준 오늘 날짜 (YYYY-MM-DD). UTC 시차 문제 방지. */
-export function getLocalToday(): string {
-  const now = new Date()
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
-}
 
 /** 거래내역 날짜 + 종목 필터 (profit-overview/profit-detail 공통 — P23 SSOT) */
 export function filterTradeRows(

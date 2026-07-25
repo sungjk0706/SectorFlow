@@ -12,11 +12,11 @@ import { createSearchInput } from '../components/common/search-input'
 import { createMarketCountRow, type MarketCountRowHandle } from '../components/common/market-count-row'
 import { FONT_SIZE, FONT_WEIGHT, COLOR } from '../components/common/ui-styles'
 import { type SectorStock, DEFAULT_SECTOR_MAX_TARGETS } from '../types'
+import { filterStocksBySearch } from '../utils/stock-search'
 import {
   COLUMNS,
   type DataRowItem,
   type RowItem,
-  filterStocksBySearch,
   filterSectorsByName,
   mapRowsToTableRows,
   computeRows,

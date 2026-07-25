@@ -16,9 +16,9 @@ import {
   renderAccountVals as renderAccountValsShared,
   buildSectorDonutRows,
   filterTradeRows,
-  getLocalToday,
   type AccountValsParams,
 } from './profit-shared'
+import { getLocalToday } from '../utils/date'
 import { saveProfitDateRange, type ProfitDateRange } from './profit-overview-date'
 import { renderSectorStockPnl, updateExpandToggleBtn, buildStockListSection } from './profit-overview-sector-pnl'
 import type { ProfitOverviewState } from './profit-overview'
