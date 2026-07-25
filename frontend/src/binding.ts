@@ -10,13 +10,13 @@ import {
   applyProgramUpdate,
   applyBuyTargetsUpdate,
   applySectorStocksRefresh,
+  applySectorStocksDelta,
   applyOrderFilled,
   applyRealtimeReset,
   applySellHistoryUpdate,
   applyBuyHistoryUpdate,
   applyDailySummaryUpdate,
   applySectorScores,
-  stocksToMap,
   rebuildBuyTargetIndex,
   hotStore,
   applyInitialSnapshotHot,
@@ -95,22 +95,7 @@ export function bindWSToStore(
 
   /* ── prices 채널 델타 이벤트 핸들러 (Phase 2 — 증분 갱신) ── */
   pricesClient.onEvent('sector-stocks-delta', (data) => {
-    const { added, removed } = data as { added: SectorStock[]; removed: string[] }
-    hotStore.setState((state) => {
-      let sectorStocks = state.sectorStocks
-      if (removed && removed.length > 0) {
-        sectorStocks = { ...sectorStocks }
-        for (const code of removed) {
-          delete sectorStocks[normalizeStockCode(code)]
-        }
-      }
-      if (added && added.length > 0) {
-        const addedMap = stocksToMap(added)
-        sectorStocks = { ...sectorStocks, ...addedMap }
-      }
-      if (sectorStocks === state.sectorStocks) return state
-      return { sectorStocks }
-    })
+    applySectorStocksDelta(data as { added: SectorStock[]; removed: string[] })
   })
 
   pricesClient.onEvent('buy-targets-delta', (data) => {

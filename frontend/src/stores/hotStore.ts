@@ -475,11 +475,27 @@ export function applyRealtimeReset(): void {
 }
 
 /* ── buy-targets-update: 매수후보만 갱신 (내용 비교) ── */
+// P10(SSOT) + P22(데이터 정합성): 백엔드 초기 buy-targets-update에 포함된 실시간 필드는
+// sectorStocks와 불일치 가능 (조회 시점 차이). incoming 실시간 필드를 sectorStocks 기준으로
+// 재결합하여 단일 소스 일관성 유지. buy-targets-delta의 added/changed 결합 패턴과 동일 (P23).
 export function applyBuyTargetsUpdate(data: { buy_targets: SectorStock[] }): void {
-  const incoming = (data.buy_targets ?? []).map(t => ({
-    ...t,
-    code: normalizeStockCode(t.code)
-  }))
+  const sectorStocks = hotStore.getState().sectorStocks
+  const incoming = (data.buy_targets ?? []).map(t => {
+    const code = normalizeStockCode(t.code)
+    const ss = sectorStocks[code]
+    if (ss) {
+      return {
+        ...t,
+        code,
+        cur_price: ss.cur_price,
+        change: ss.change,
+        change_rate: ss.change_rate,
+        strength: ss.strength,
+        trade_amount: ss.trade_amount,
+      }
+    }
+    return { ...t, code }
+  })
   const prev = hotStore.getState().buyTargets
   const same = prev.length === incoming.length && prev.every((p, i) => {
     const n = incoming[i]
@@ -568,6 +584,34 @@ export function applySectorStocksRefresh(data: { stocks: SectorStock[] }): void 
     // (in-place mutation — DataTable currentRows 객체 참조 유지, O(1) 갱신 경로 보존)
     rebindBuyTargetsRealtime(state.buyTargets, newRecord)
     return { sectorStocks: newRecord }
+  })
+}
+
+/* ── sector-stocks-delta: 종목 목록 증분 갱신 (added/removed) ── */
+// P10(SSOT) + P22(데이터 정합성): sectorStocks 증분 교체 후 buyTargets 실시간 필드도
+// 새 기준으로 재결합. removed 종목이 buyTargets에 있으면 sectorStocks에서 사라져
+// 다음 틱에서도 갱신 불가 → stale 잔류 방지. applySectorStocksRefresh와 동일 계약.
+export function applySectorStocksDelta(data: { added: SectorStock[]; removed: string[] }): void {
+  const added = data.added ?? []
+  const removed = data.removed ?? []
+  if (added.length === 0 && removed.length === 0) return
+  hotStore.setState((state) => {
+    let sectorStocks = state.sectorStocks
+    if (removed.length > 0) {
+      sectorStocks = { ...sectorStocks }
+      for (const code of removed) {
+        delete sectorStocks[normalizeStockCode(code)]
+      }
+    }
+    if (added.length > 0) {
+      sectorStocks = { ...sectorStocks, ...stocksToMap(added) }
+    }
+    if (sectorStocks === state.sectorStocks) return state
+    // buyTargets 실시간 필드를 갱신된 sectorStocks 기준으로 재결합
+    // (removed 종목은 sectorStocks에 없으므로 rebindBuyTargetsRealtime이 스킵 —
+    //  buyTargets에서의 제거는 buy-targets-delta 이벤트가 담당하므로 여기서 보존)
+    rebindBuyTargetsRealtime(state.buyTargets, sectorStocks)
+    return { sectorStocks }
   })
 }
 
