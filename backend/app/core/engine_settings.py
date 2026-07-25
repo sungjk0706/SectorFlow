@@ -141,10 +141,30 @@ def _build_buy_settings(merged: dict, flat: dict) -> dict:
     }
 
 
-def _build_sector_and_order_settings(merged: dict, flat: dict) -> dict:
-    """업종 매수가드, 구독 한도, 슬라이더, 주문 간격, 재매수 차단, 매수 차단 토글.
+def _migrate_order_intervals(merged: dict, flat: dict) -> dict:
+    """주문 간격 — 매수: 분→초 마이그레이션 (flat의 레거시 buy_interval_min 처리).
 
-    flat 참조는 _on 키 마이그레이션 + 레거시 buy_interval_min 변환 전용.
+    flat 참조는 레거시 buy_interval_min → buy_interval_sec 변환 분기 전용.
+    나머지 값은 merged[key] 직접 접근 (P10 SSOT)."""
+    out = {
+        "buy_interval_on": bool(merged["buy_interval_on"]),
+        "sell_interval_on": bool(merged["sell_interval_on"]),
+        "sell_interval_sec": int(merged["sell_interval_sec"]),
+    }
+    if "buy_interval_sec" in flat:
+        out["buy_interval_sec"] = int(merged["buy_interval_sec"])
+    elif "buy_interval_min" in flat:
+        _legacy = merged.get("buy_interval_min")
+        out["buy_interval_sec"] = int(_legacy) * 60 if _legacy is not None and str(_legacy).strip() != "" else 30
+    else:
+        out["buy_interval_sec"] = int(merged["buy_interval_sec"])
+    return out
+
+
+def _build_sector_and_order_settings(merged: dict, flat: dict) -> dict:
+    """업종 매수가드, 구독 한도, 슬라이더, 재매수 차단, 매수 차단 토글.
+
+    flat 참조는 _on 키 마이그레이션 + 주문 간격 레거시 변환 전용.
     나머지 값은 merged[key] 직접 접근 (P10 SSOT)."""
     sector_sort_keys = [k for k in merged["sector_sort_keys"] if k not in ("foreign_net", "institution_net")]
 
@@ -152,7 +172,7 @@ def _build_sector_and_order_settings(merged: dict, flat: dict) -> dict:
     _rise_pct = float(merged["buy_block_rise_pct"])
     _fall_pct = float(merged["buy_block_fall_pct"])
 
-    result = {
+    return {
         "sector_sort_keys": sector_sort_keys,
         "sector_max_targets": int(merged["sector_max_targets"]),
         "sector_min_rise_ratio_pct": float(merged["sector_min_rise_ratio_pct"]),
@@ -168,22 +188,8 @@ def _build_sector_and_order_settings(merged: dict, flat: dict) -> dict:
         "sector_bonus_trade_amount_slider": int(merged["sector_bonus_trade_amount_slider"]),
         "rebuy_block_on": bool(merged["rebuy_block_on"]),
         "rebuy_block_period": str(merged["rebuy_block_period"]),
+        **_migrate_order_intervals(merged, flat),
     }
-
-    # 주문 간격 — 매수: 분→초 마이그레이션 (flat의 레거시 buy_interval_min 처리)
-    result["buy_interval_on"] = bool(merged["buy_interval_on"])
-    if "buy_interval_sec" in flat:
-        result["buy_interval_sec"] = int(merged["buy_interval_sec"])
-    elif "buy_interval_min" in flat:
-        _legacy = merged.get("buy_interval_min")
-        result["buy_interval_sec"] = int(_legacy) * 60 if _legacy is not None and str(_legacy).strip() != "" else 30
-    else:
-        result["buy_interval_sec"] = int(merged["buy_interval_sec"])
-
-    result["sell_interval_on"] = bool(merged["sell_interval_on"])
-    result["sell_interval_sec"] = int(merged["sell_interval_sec"])
-
-    return result
 
 
 def _build_boost_settings(merged: dict) -> dict:

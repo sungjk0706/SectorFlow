@@ -136,8 +136,70 @@ _TIMETABLE_POST_CLOSE_KEYS = (
 _TIMETABLE_ORDER_KEYS = _TIMETABLE_PRE_OPEN_KEYS + _TIMETABLE_POST_CLOSE_KEYS
 
 
+def _to_minutes(v: str) -> int:
+    """HH:MM → 분 변환."""
+    h, m = v.split(":")
+    return int(h) * 60 + int(m)
+
+
+def _collect_timetable_values(keys: tuple, data: dict, before: dict) -> dict[str, str]:
+    """타임테이블 키 값 수집 — data > before > DEFAULT_USER_SETTINGS.
+
+    빈 값은 폴백이 아니라 P20 위반 → 호출자가 missing 체크로 ValueError."""
+    values: dict[str, str] = {}
+    for k in keys:
+        if k in data and data[k]:
+            values[k] = str(data[k]).strip()
+        elif k in before and before[k]:
+            values[k] = str(before[k]).strip()
+        else:
+            values[k] = str(DEFAULT_USER_SETTINGS.get(k, "")).strip()
+    return values
+
+
+def _check_no_missing(keys: tuple, values: dict[str, str]) -> None:
+    """모든 키에 값이 있는지 검증 (P20: 빈 값 폴백 금지)."""
+    missing = [k for k in keys if not values.get(k)]
+    if missing:
+        raise ValueError(f"타임테이블 시각 누락: {missing} — 기본값 폴백 금지 (P20)")
+
+
+def _validate_pre_open_order(data: dict, before: dict) -> None:
+    """그룹1: 장 전 사전 준비 3개 키 순서 검증 (rt <= ws <= krx < 09:00)."""
+    values = _collect_timetable_values(_TIMETABLE_PRE_OPEN_KEYS, data, before)
+    _check_no_missing(_TIMETABLE_PRE_OPEN_KEYS, values)
+
+    rt = _to_minutes(values["timetable.realtime_reset"])
+    ws = _to_minutes(values["timetable.ws_prestart"])
+    krx = _to_minutes(values["timetable.krx_pre_subscribe"])
+    open_min = 9 * 60  # 09:00
+
+    if not (rt <= ws <= krx < open_min):
+        raise ValueError(
+            f"타임테이블 시간 순서 오류: "
+            f"실시간 초기화({values['timetable.realtime_reset']}) <= "
+            f"구독 시작({values['timetable.ws_prestart']}) <= "
+            f"정규장 사전 구독({values['timetable.krx_pre_subscribe']}) < 09:00 이어야 합니다"
+        )
+
+
+def _validate_post_close_order(data: dict, before: dict) -> None:
+    """그룹2: 장 후 확정 다운로드 1개 키 하한선 검증 (cd > 20:00, NXT 종료 이후만 허용)."""
+    cd_values = _collect_timetable_values(_TIMETABLE_POST_CLOSE_KEYS, data, before)
+    _check_no_missing(_TIMETABLE_POST_CLOSE_KEYS, cd_values)
+
+    cd = _to_minutes(cd_values["timetable.confirmed_download"])
+    nxt_close_min = 20 * 60  # 20:00 (NXT 마켓 종료)
+
+    if not (cd > nxt_close_min):
+        raise ValueError(
+            f"타임테이블 시간 오류: 확정 데이터 다운로드({cd_values['timetable.confirmed_download']})는 "
+            f"20:00 이후여야 합니다 (NXT 마켓 종료 후 확정 데이터 준비)"
+        )
+
+
 async def _validate_timetable_order(data: dict, before: dict) -> None:
-    """타임테이블 시간 순서 검증 (P20/P22) — 2그룹 분리.
+    """타임테이블 시간 순서 검증 (P20/P22) — 2그룹 분리 디스패처.
 
     그룹1 (장 전 사전 준비): realtime_reset <= ws_prestart <= krx_pre_subscribe < "09:00"
     그룹2 (장 후 확정 다운로드): confirmed_download > "20:00" (NXT 종료 이후만 허용)
@@ -146,64 +208,12 @@ async def _validate_timetable_order(data: dict, before: dict) -> None:
 
     실패 시 ValueError 발생 → apply_settings_updates 호출자가 HTTP 422로 변환 (기존 패턴).
     형식 오류(_TIME_RE 위반)는 이미 apply_settings_updates 상단에서 무시+경고 처리되므로
-    본 함수에서는 형식 통과한 값만 순서 검증.
+    본 함수는 형식 통과한 값만 순서 검증.
     """
-    def _to_min(v: str) -> int:
-        h, m = v.split(":")
-        return int(h) * 60 + int(m)
-
-    # ── 그룹1: 장 전 사전 준비 3개 키 순서 검증 ──
     if set(data.keys()) & set(_TIMETABLE_PRE_OPEN_KEYS):
-        values: dict[str, str] = {}
-        for k in _TIMETABLE_PRE_OPEN_KEYS:
-            if k in data and data[k]:
-                values[k] = str(data[k]).strip()
-            elif k in before and before[k]:
-                values[k] = str(before[k]).strip()
-            else:
-                values[k] = str(DEFAULT_USER_SETTINGS.get(k, "")).strip()
-
-        # 3개 모두 값이 있어야 검증 (빈 값이면 기본값 폴백이 아니라 P20 위반 → ValueError)
-        missing = [k for k in _TIMETABLE_PRE_OPEN_KEYS if not values.get(k)]
-        if missing:
-            raise ValueError(f"타임테이블 시각 누락: {missing} — 기본값 폴백 금지 (P20)")
-
-        rt = _to_min(values["timetable.realtime_reset"])
-        ws = _to_min(values["timetable.ws_prestart"])
-        krx = _to_min(values["timetable.krx_pre_subscribe"])
-        open_min = 9 * 60  # 09:00
-
-        if not (rt <= ws <= krx < open_min):
-            raise ValueError(
-                f"타임테이블 시간 순서 오류: "
-                f"실시간 초기화({values['timetable.realtime_reset']}) <= "
-                f"구독 시작({values['timetable.ws_prestart']}) <= "
-                f"정규장 사전 구독({values['timetable.krx_pre_subscribe']}) < 09:00 이어야 합니다"
-            )
-
-    # ── 그룹2: 장 후 확정 다운로드 1개 키 하한선 검증 ──
+        _validate_pre_open_order(data, before)
     if set(data.keys()) & set(_TIMETABLE_POST_CLOSE_KEYS):
-        cd_values: dict[str, str] = {}
-        for k in _TIMETABLE_POST_CLOSE_KEYS:
-            if k in data and data[k]:
-                cd_values[k] = str(data[k]).strip()
-            elif k in before and before[k]:
-                cd_values[k] = str(before[k]).strip()
-            else:
-                cd_values[k] = str(DEFAULT_USER_SETTINGS.get(k, "")).strip()
-
-        missing_cd = [k for k in _TIMETABLE_POST_CLOSE_KEYS if not cd_values.get(k)]
-        if missing_cd:
-            raise ValueError(f"타임테이블 시각 누락: {missing_cd} — 기본값 폴백 금지 (P20)")
-
-        cd = _to_min(cd_values["timetable.confirmed_download"])
-        nxt_close_min = 20 * 60  # 20:00 (NXT 마켓 종료)
-
-        if not (cd > nxt_close_min):
-            raise ValueError(
-                f"타임테이블 시간 오류: 확정 데이터 다운로드({cd_values['timetable.confirmed_download']})는 "
-                f"20:00 이후여야 합니다 (NXT 마켓 종료 후 확정 데이터 준비)"
-            )
+        _validate_post_close_order(data, before)
 
 
 _TIME_RE = _re.compile(r"^\d{2}:\d{2}$")

@@ -1142,7 +1142,7 @@ SectorFlow 전체 코드베이스를 `ARCHITECTURE.md`에 정의된 P1~P25, 총 
 | B13-04 | B-13 | `engine_settings.py:53, 272` | P4/P10 | LOW | `"kiwoom"` 기본값 공통 로직 침투 2곳 — `merged.get("broker", "kiwoom")`. SSOT는 `settings_defaults.py:31`. B13-03 해결 시 함께 처리 가능 | 해결 (B13-04 세션: 하드코딩 `"kiwoom"` 2곳 → `DEFAULT_USER_SETTINGS["broker"]` SSOT 참조로 변경. 기존 import 재사용, 프로덕션 동작 변화 없음, 2771 tests passed, 런타임 기동 정상) |
 | B13-05 | B-13 | `engine_settings.py:32-47` | P4 | LOW | `_pick_broker_credentials` 키움 특수 분기 — kiwoom 명시处理后 `if b_name == "kiwoom": continue` skip. 공통 로직에 증권사 특수 케이스 | 해결 (동적 loop 통일 — 현재 선택 증권사 + `_app_key` 접미 키 기반 균일 처리) |
 | B13-06 | B-13 | `settings_file.py:261-279` | P3 | LOW | `asyncio.to_thread`로 `Path.exists`/`glob` 실행 — `run_in_executor` 우회. 단, `aiofiles` 미지원 메서드, 1회 실행, 핫 경로 아님 | 보류 (async 대체재 없음, 보류 권장) |
-| B13-07 | B-13 | `engine_settings.py:179-237`, `settings_store.py:154-221` | P24 | LOW | 함수 길이 50줄 초과 2곳 — `_build_sector_and_order_settings` 59줄, `_validate_timetable_order` 68줄 | 보류 (별도 세션 — 그룹별 헬퍼 분리) |
+| B13-07 | B-13 | `engine_settings.py:179-237`, `settings_store.py:154-221` | P24 | LOW | 함수 길이 50줄 초과 2곳 — `_build_sector_and_order_settings` 59줄, `_validate_timetable_order` 68줄 | 해결 (주문 간격 마이그레이션 헬퍼 추출 + 타임테이블 2그룹 분리 + 공통 헬퍼 3개 추출, 2770 tests passed) |
 | B13-08 | B-13 | `settings_file.py:76`, `settings_store.py:73`, `trade_mode.py:24` | P10/P23 | INFO | "mock" → "test" 매핑 3곳 분산 — 각각 다른 계층(마이그레이션/UI/런타임)에서 다른 목적 | 보류 (강제 통합 시 복잡도 증가, 현재 구조 유지 권장) |
 | F05-01 | F-05 | `profit-shared.ts:547` | P20 | MEDIUM | `a?.accumulated_investment ?? a?.initial_deposit ?? 0` 3단 폴백 — 백엔드 `build_account_snapshot_meta`가 `accumulated_investment` 누락(별도 백엔드 버그). 테스트모드에서는 `initial_deposit == accumulated_investment`이므로 `initial_deposit`만 사용 | 해결 (F-05-a: `initial_deposit`만 사용 + 백엔드 #3 세션: `build_account_snapshot_meta` 반환 dict에 `accumulated_investment` 키 추가로 P22 정합성 회복) |
 | F05-02 | F-05 | `profit-shared.ts:574` | P20 | MEDIUM | `a?.orderable ?? Math.max(0, deposit - todayBuyAmt)` 폴백 — 백엔드가 항상 `orderable` 전송하므로 폴백 dead code. 수수료/세금 미반영 추정치 표시 위험 | 해결 (F-05-a: `a?.orderable ?? 0`) |
@@ -1177,7 +1177,7 @@ SectorFlow 전체 코드베이스를 `ARCHITECTURE.md`에 정의된 P1~P25, 총 
 | B-10 | P1 | 엔진 계좌/서비스 | ☑ 완료 (B-10-a 11건 + B-10-b 7건 = 18건, B10-02는 B-14 이월) |
 | B-11 | P1 | 파이프라인 (Compute/Gateway) | ☑ 완료 (B-11-a 8건 + B-11-b 4건 = 12건 수정, 2964 tests passed) |
 | B-12 | P2 | DB 계층 | ☑ 완료 (9건 수정) |
-| B-13 | P2 | 설정 관리 | ☑ 부분 완료 (5건 해결 B13-01/02/03/04/05, 잔여 3건 보류 LOW/INFO B13-06/07/08, 2770 tests passed) |
+| B-13 | P2 | 설정 관리 | ☑ 부분 완료 (6건 해결 B13-01/02/03/04/05/07, 잔여 2건 보류 LOW/INFO B13-06/08, 2770 tests passed) |
 | B-14 | P2 | Broker 추상화 (공통) | ☑ 완료 (B-14-a 6건 + B-14-b 2건 = 8건) |
 | B-15 | P2 | 증권사 구현: 키움 | ☑ 완료 (B-15-a 7건 + B-15-b 7건 = 14건) |
 | B-16 | P2 | 증권사 구현: LS | ☑ 완료 (B-16-a 5건 + B-16-b 7건 = 12건) |
