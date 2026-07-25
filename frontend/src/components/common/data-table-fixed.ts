@@ -292,7 +292,7 @@ export function createFixedMode<T extends object>(
                     if (columns[cIdx].flash) triggerFlash(cell)
                   }
                 }
-              } catch (err) { console.error('[data-table] cell render error:', err) }
+              } catch (e) { console.error('[DataTable] cell render error', e) }
             }
           }
         }
