@@ -1,7 +1,7 @@
 # SectorFlow 아키텍처 위반 전수 조사 태스크 파일
 
 > 작성일: 2026-07-18
-> 기준 문서: `ARCHITECTURE.md` (불변 원칙 24개) + `docs/architecture_audit_plan.md` (세션 분할 계획)
+> 기준 문서: `ARCHITECTURE.md` (불변 원칙 25개) + `docs/architecture_audit_plan.md` (세션 분할 계획)
 > 목적: `architecture_audit_plan.md`의 30세션 계획을 실행 가능한 체크리스트 태스크로 전개. 각 세션별 조사·수정·검증 단계를 추적 가능한 단위로 분해.
 > 대상: 백엔드 Python 107파일 + 프론트엔드 TypeScript 57파일 + 테스트 67파일 = 총 231파일
 
@@ -18,9 +18,9 @@
 
 ---
 
-## 1. 24개 불변 원칙 빠른 참조
+## 1. 25개 원칙 빠른 참조
 
-> 각 세션 체크리스트에서 P1~P24 번호로 참조. 상세 정의는 `ARCHITECTURE.md` 제1부 및 `architecture_audit_plan.md` 섹션 2.
+> 각 세션 체크리스트에서 P1~P25 번호로 참조. 상세 정의는 `ARCHITECTURE.md` 제1부 및 `architecture_audit_plan.md` 섹션 2.
 
 | 번호 | 원칙명 | 1줄 점검 포인트 |
 |------|--------|-----------------|
@@ -28,26 +28,27 @@
 | P2 | 모든 I/O async | 동기 `requests`/`sqlite3`/`time.sleep`/`threading.Lock` 금지 |
 | P3 | run_in_executor 우회 금지 | `loop.run_in_executor()` 존재 여부 |
 | P4 | 증권사명 공통 침투 금지 | 공통 로직에 `kiwoom_`/`ls_` 접두사 금지 |
-| P5 | EventBus/발행구독 금지 | 콜백 리스트 옵서버, fire-and-forget `create_task` 금지 |
-| P6 | SQLite 단일화 | ORM/PostgreSQL 금지, Raw SQL |
+| P5 | 현재 단일 프로세스에서 EventBus 미사용 | 직접 호출 체인과 `asyncio.Queue` 사용, 프로세스 분리 시 재검토 |
+| P6 | SQLite 단일화 | 현재 구조의 SQLite·WAL·Raw SQL 사용 확인 |
 | P7 | 블로킹 금지 | per-tick O(n), 매 틱 DB 조회/전체 순회 금지 |
 | P8 | 실시간/배치 분리 | `tick_queue` vs `market_close_pipeline` 물리 분리 |
 | P9 | 파이프라인 독립성 | 배치 중 실시간 틱 차단 금지, `db_write_queue` 직렬화 |
 | P10 | SSOT | 같은 데이터 다중 관리 금지, 캐시 직접 참조 |
-| P11 | 이벤트 기반 | `while + sleep` 폴링 금지, `asyncio.Queue`/`call_later` |
+| P11 | 이벤트 기반 | 내부 상태의 `while + sleep` 금지, 외부 long polling은 예외 조건 확인 |
 | P12 | DB 연결 싱글톤 | 매 요청 `connect()` 금지, `_db_connection` 공유 |
 | P13 | 설정 메모리 상주 | 틱 연산 단계 DB 설정 조회 금지 |
 | P14 | 멀티스레드 금지 | `threading.Thread()` 신규 생성, 무분별 `create_task` 금지 |
 | P15 | 단일 주문 경로 | `execute_buy()`/`execute_sell()` 단일 경로 |
 | P16 | 살아있는 경로 | 호출되지 않는 안전코드/dead code 금지 |
 | P17 | 플래그 단일 소스 | `auto_buy_on` 등 다중 수정 금지 |
-| P18 | 테스트모드 동등성 | 모드 분기는 돈 I/O 최소 지점만 |
+| P18 | 테스트모드 동등성 | 전략·리스크·주문 상태는 동일, 계좌·잔고·체결·정산 원장만 테스트용으로 대체 |
 | P19 | 런타임 검증 | `RuntimeWarning(coroutine never awaited)` 검출 |
 | P20 | 폴백 금지 | 빈 문자열/None 폴백, silent `except: pass` 금지 |
 | P21 | 사용자 투명성 | 백엔드 상태 UI 표시 의무 |
 | P22 | 데이터 정합성 | 파생 데이터 모델, 기동 시 대조, 불일치 시 차단 |
 | P23 | 일관성 | 용어("업종"/"종목"), 에러/비동기/네이밍/상수 일관, 공통 컴포넌트 추출 |
-| P24 | 단순성 | 함수 50줄·파일 500줄·복잡도 10, 불필요한 추상화 금지 |
+| P24 | 단순성 | 길어지는 코드의 분할 검토, 불필요한 추상화와 중복 로직 검토 |
+| P25 | 격리된 실패 | 구성요소 경계에서 예외 전파 차단, 로깅, 다른 구성요소 정상 작동 |
 
 ---
 
@@ -125,7 +126,7 @@
 - [x] P20: 폴백/silent `except: pass` 없음 ("행 없음" vs "DB 에러" 구분) — **해결 B10-10, B10-11** (B-10-a 완료)
 - [x] P21: 계좌 상태 변화(잔고/평가금/서킷브레이커)가 WS 브로드캐스트로 UI에 전달됨 — 준수
 - [x] P23: 용어 사전 준수 ("업종"/"종목"), 에러/비동기/네이밍/상수 패턴 파일 간 일관 — 준수
-- [x] P24: 함수 50줄·파일 500줄·복잡도 10 기준, 불필요한 추상화/1회용 래퍼 없음 — **해결 B10-12 ~ B10-17** (B-10-b 완료)
+- [x] P24: 길어지는 코드의 분할 검토와 복잡도 참고 지표, 불필요한 추상화/1회용 래퍼 없음 — **해결 B10-12 ~ B10-17** (B-10-b 완료)
 
 **검증** (B-10-b 세션에서 수행 완료)
 - [x] `pytest backend/tests` 2961 passed (test_engine_account_notify + test_engine_account_rest + 전체)
@@ -163,7 +164,7 @@
 - [x] P19: `await` 누락 없음 — 준수 (런타임 기동 검증)
 - [x] P20: 폴백/silent except 없음 — **해결 B11-08~10** (B-11-b: PGM `except ValueError: tval=0` → 로깅+스킵, `get(nk, {})` 폴백 2건 → `nk in cache` 명시적 분기+로깅)
 - [x] P23: 용어 사전 준수, 패턴 일관 — 준수 ("업종"/"종목" 사용)
-- [x] P24: 단순성 기준 — **해결 B11-01~07** (B-11-a: 모든 함수 50줄 이하, 파일 863줄→672줄+320줄 분할). 잔여 172줄 초과분은 수신율 로직(테스트 모듈 전역 직접 참조)으로 B-11-b에서 별도 검토
+- [x] P24: 단순성 기준 — **해결 B11-01~07** (B-11-a: 모든 함수 길이 참고 기준, 파일 863줄→672줄+320줄 분할). 잔여 172줄 초과분은 수신율 로직(테스트 모듈 전역 직접 참조)으로 B-11-b에서 별도 검토
 - [x] P16/P21: `add_done_callback` 배선 — **해결 B11-12** (B-11-a: compute/sector_recompute 태스크 실패 시 로깅, gateway 루프와 일관)
 
 **검증** (B-11-a + B-11-b 세션에서 수행 완료)
@@ -193,7 +194,7 @@
 
 **조사 체크리스트**
 - [ ] P2: `aiosqlite` 사용, 동기 `sqlite3` 없음
-- [ ] P6: SQLite 단일화, ORM/SQLAlchemy 없음, Raw SQL
+- [ ] P6: SQLite 단일화, Raw SQL
 - [ ] P8: 실시간/배치 쓰기 분리
 - [ ] P9: `db_write_queue` 쓰기 직렬화
 - [ ] P10: 데이터 SSOT (같은 데이터 다중 테이블 관리 금지)
@@ -481,7 +482,7 @@
 - [x] P20: 폴백/silent except 없음 — `or ""` 패턴은 외부 입력 None 정규화로 P20 위반 아님
 - [x] P21: 중요 상태 변화가 알림으로 전달됨 — B20-03 app.py shutdown에 NotificationWorker.shutdown() 호출 추가
 - [x] P23: 용어 사전 준수, 패턴 일관 — "업종"/"종목"/"매수 후보" 용어 사용
-- [x] P24: 단순성 기준 — 함수 50줄 이하, 불필요한 추상화 없음
+- [x] P24: 단순성 기준 — 함수 길이 참고 기준, 불필요한 추상화 없음
 
 **검증**
 - [x] `pytest backend/tests -k "telegram or notification"` 통과 (146 passed)
@@ -625,7 +626,7 @@
 
 **P23 (일관성) — 위반 0건**
 - 모든 9개 파일에서 용어 사전 준수 ("섹터"/"주식"/"바이 리스트" 사용 없음, "업종"/"종목"/"매수 후보" 올바르게 사용).
-- 코드 식별자(`sector`, `stock`, `buy`)는 ARCHITECTURE.md 부록 L/M 예외 조항에 따라 허용.
+- 코드 식별자(`sector`, `stock`, `buy`)는 ARCHITECTURE.md 부록 M 예외 조항에 따라 허용.
 - 네이밍/에러/비동기/상수 패턴 파일 내 일관적.
 
 **P24 (단순성) — 위반 7건**
@@ -1005,7 +1006,7 @@
 ┌─────────────────────────────────────────────────────────────┐
 │  1. 사전조사 (규칙 0-2 의무)                                  │
 │  ├── 각 파일 전체 읽기                                        │
-│  ├── 24개 원칙 체크리스트 대조                                │
+│  ├── 25개 원칙 체크리스트 대조                                │
 │  ├── 의존성/호출 관계 추적 (grep)                             │
 │  ├── 기존 공통 자산 확인 (P23 사전 절차)                      │
 │  └── 위반 사항 식별 → plan 섹션 7에 ID 부여 기록              │
@@ -1063,7 +1064,7 @@
 
 1. [ ] 30개 세션 모두 완료 표시 (본 파일 섹션 2 + plan 섹션 8)
 2. [ ] 발견된 모든 CRITICAL/HIGH 문제가 `해결` 상태
-3. [ ] 24개 불변 원칙에 대해 전체 코드베이스 위반 사항 0건 확인
+3. [ ] 25개 원칙에 대해 전체 코드베이스 위반 사항 0건 확인
 4. [ ] 백엔드 런타임 기동 검증 통과 (`python -W error::RuntimeWarning main.py`)
 5. [ ] 프론트엔드 빌드 검증 통과 (`npm run build`)
 6. [ ] 테스트 스위트 통과 (`pytest backend/tests` 전체 성공)
@@ -1099,7 +1100,7 @@
 
 ## 8. 참고 문서
 
-- `ARCHITECTURE.md` — 24개 불변 원칙 정의 + 금지 패턴 5개 + 부록 L 용어 사전
+- `ARCHITECTURE.md` — 25개 원칙 정의 + 금지 패턴 5개 + 부록 M 용어 사전
 - `docs/architecture_audit_plan.md` — 원본 전수 점검 계획서 (세션 분할 논리, 과거 해결 이력 42건)
 - `AGENTS.md` — 수행 규칙 (규칙 0, 0-1, 0-2, 0-3, 0-4, 0-5)
 - `HANDOVER.md` — 세션별 진행 이력
