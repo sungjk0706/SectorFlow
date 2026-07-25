@@ -38,16 +38,22 @@ export interface Position {
 export interface SectorStock {
   code: string;
   name: string;
+  // ── 실시간 파생 필드 (sectorStocks가 SSOT, buyTargets는 파생 캐시) ──
+  // P10: sectorStocks Record가 실시간 시세의 단일 진실 소스.
+  // buyTargets 배열 요소의 이 필드들은 DataTable O(1) updateItemByKey 갱신을 위한
+  // 파생 캐시 — applyRealData가 in-place mutation으로 동기화,
+  // applySectorStocksRefresh/applyRealtimeReset이 rebindBuyTargetsRealtime으로 재결합.
   cur_price: number;
   change_rate: number;
   trade_amount?: number;
-  sector?: string;
   change?: number;
   strength?: number;
+  // ── 정적·식별 필드 (업종 종목·매수 후보 공통) ──
+  sector?: string;
   avg_amt_5d?: number;
   market_type?: string;
   nxt_enable?: boolean;
-  // 매수후보 테이블용 추가 필드 (단일 소스 진리 유지)
+  // ── 매수 후보 전용 정적 필드 (buyTargets에만 의미 있음) ──
   rank?: number;
   guard_pass?: boolean;
   reason?: string;

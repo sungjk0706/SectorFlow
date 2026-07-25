@@ -319,7 +319,12 @@ export function applyRealData(item: RealDataEvent): void {
     }
   }
 
-  // buyTargets - sectorStocks에서 실시간 데이터 병합 (단일 소스 진리)
+  // buyTargets 실시간 필드 — sectorStocks(SSOT)에서 파생된 캐시.
+  // P10: sectorStocks가 실시간 시세의 단일 진실 소스. buyTargets의 실시간 필드는
+  // DataTable의 O(1) updateItemByKey 갱신을 위해 in-place mutation으로 동기화하는
+  // 파생 캐시(객체 참조를 DataTable currentRows가 보관 중).
+  // P22: sectorStocks 교체/초기화 시 applySectorStocksRefresh/applyRealtimeReset에서
+  // rebindBuyTargetsRealtime으로 재동기화됨.
   const bt = state.buyTargets;
   const btIdx = getBuyTargetIndex(code);
   if (btIdx !== undefined) {
@@ -333,7 +338,7 @@ export function applyRealData(item: RealDataEvent): void {
 
       if (!(t.cur_price === price && t.change === change && t.change_rate === rate &&
             t.strength === strength && t.trade_amount === amount)) {
-        // In-place mutation
+        // In-place mutation — DataTable currentRows 객체 참조 유지
         t.cur_price = price;
         t.change = change;
         t.change_rate = rate;
@@ -445,8 +450,13 @@ export function applyRealtimeReset(): void {
     }
     if (sectorChanged) updates.sectorStocks = sectorStocks
 
-    // buyTargets: 실시간 필드는 sectorStocks 단일 소스에서 가져오므로 초기화 제거
-    // (아키텍처 원칙: 단일 소스 진리)
+    // buyTargets: sectorStocks 실시간 필드가 null화되었으므로 파생 캐시도 동기화.
+    // (applyRealData가 buyTargets 실시간 필드도 in-place mutation하므로
+    //  reset 시 sectorStocks만 null화하면 buyTargets에 stale 값이 잔류 — P22 위반.
+    //  rebindBuyTargetsRealtime 재사용 — in-place mutation으로 DataTable 객체 참조 유지)
+    if (sectorChanged) {
+      rebindBuyTargetsRealtime(state.buyTargets, sectorStocks)
+    }
 
     // positions: 현재가/대비/등락률
     let positionsChanged = false
@@ -525,10 +535,40 @@ export function applySectorScores(data: SectorScoresEvent): void {
 }
 
 /* ── sector-stocks-refresh: 필터 변경 시 종목 목록 교체 ── */
+// P10(SSOT) + P22(데이터 정합성): sectorStocks가 실시간 시세의 단일 진실 소스.
+// buyTargets의 실시간 필드(cur_price/change/change_rate/strength/trade_amount)는
+// DataTable의 O(1) updateItemByKey 갱신을 위한 파생 캐시이므로, sectorStocks 교체 시
+// 새 기준점으로 재결합해야 다음 틱 전까지 stale 값이 남지 않는다.
+// (buy-targets-delta 이벤트가 이미 동일한 결합 패턴을 사용 — P23 일관성)
+
+/** buyTargets 요소의 실시간 필드를 sectorStocks 기준으로 in-place 재결합 */
+function rebindBuyTargetsRealtime(
+  buyTargets: SectorStock[],
+  sectorStocks: Record<string, SectorStock>,
+): boolean {
+  let changed = false
+  for (let i = 0; i < buyTargets.length; i++) {
+    const t = buyTargets[i]
+    const ss = sectorStocks[normalizeStockCode(t.code)]
+    if (!ss) continue
+    if (t.cur_price !== ss.cur_price) { t.cur_price = ss.cur_price; changed = true }
+    if (t.change !== ss.change) { t.change = ss.change; changed = true }
+    if (t.change_rate !== ss.change_rate) { t.change_rate = ss.change_rate; changed = true }
+    if (t.strength !== ss.strength) { t.strength = ss.strength; changed = true }
+    if (t.trade_amount !== ss.trade_amount) { t.trade_amount = ss.trade_amount; changed = true }
+  }
+  return changed
+}
+
 export function applySectorStocksRefresh(data: { stocks: SectorStock[] }): void {
   const stocks = data.stocks ?? []
   const newRecord = stocksToMap(stocks)
-  hotStore.setState({ sectorStocks: newRecord })
+  hotStore.setState((state) => {
+    // buyTargets 실시간 필드를 새 sectorStocks 기준으로 재결합
+    // (in-place mutation — DataTable currentRows 객체 참조 유지, O(1) 갱신 경로 보존)
+    rebindBuyTargetsRealtime(state.buyTargets, newRecord)
+    return { sectorStocks: newRecord }
+  })
 }
 
 /* ── order-filled: 체결 이벤트 -- 거래내역 테이블 즉시 갱신 ── */
