@@ -15,7 +15,26 @@ logger = logging.getLogger(__name__)
 
 # ── NotificationCache: 알림 레이어 델타 캐시 통합 클래스 ─────────────────────────
 class NotificationCache:
-    """알림 레이어 델타 캐시 통합 클래스 - 생명주기 관리 단순화."""
+    """알림 레이어 델타 캐시 통합 클래스 - 생명주기 관리 단순화.
+
+    책임 경계 (세션 5 — cache_state_fix_tasks.md):
+      본 캐시는 **전역 delta 기준점**만 담당한다. WS 연결별 초기 스냅샷 상태는
+      본 클래스에서 관리하지 않으며, 각 연결의 `_send_initial_snapshot_delayed`
+      태스크가 `init_sent_caches()`를 호출할 때 전역 기준점을 덮어쓴다.
+
+    현재 구조의 단일 연결 가정:
+      - `notify_cache`는 모듈 수준 전역 싱글톤 (인스턴스 1개).
+      - 단일 WS 연결 환경에서는 정상 동작.
+      - 다중 WS 연결(다중 탭/재연결 경쟁) 환경에서는 한 연결의 `init_sent_caches`가
+        다른 연결의 delta 기준점을 덮어쓰는 경쟁 조건이 발생 가능 (P22/P25 위반 후보).
+      - `_reset_realtime_fields`의 `clear_all()` 호출은 모든 연결의 delta 기준점을
+        한 번에 파괴한다 (P25 격리 위반 후보).
+
+    수정 계약 (세션 6 — notify_cache 생명주기 수정):
+      - 연결별 초기 스냅샷 상태와 전역 delta 기준점의 소유권을 코드로 분리.
+      - 시나리오 테스트 5건은 `test_engine_account_notify.py::TestNotifyCacheConcurrencyScenarios` 참조.
+      - 실전 주문 경로에는 영향 없음.
+    """
     def __init__(self):
         self.position_sent = {}
         self.snapshot_sent = {}
