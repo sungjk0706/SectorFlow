@@ -288,7 +288,10 @@ async def reconcile_with_trades() -> None:
     global _orderable
     try:
         from backend.app.services import trade_history
-        expected = await trade_history.compute_expected_orderable(_initial_deposit, "test")
+        # accumulated_investment(초기투자금 + 충전 누적)을 재구축 시작 잔고로 사용.
+        # _initial_deposit은 charge() 시 증가하지 않으므로 충전 후 재기동 시
+        # 거짓 불일치로 충전금이 삭제되는 결함 방지 (P22 데이터 정합성).
+        expected = await trade_history.compute_expected_orderable(_accumulated_investment, "test")
         actual = _orderable
         if expected == actual:
             logger.info("[정산] 기동 대조 완료 — 주문가능 %s원 (일치)", f"{actual:,}")

@@ -576,6 +576,56 @@ class TestReconcileWithTrades:
         # error 로그로 대조 실패 기록 (silent pass 금지, P20)
         mock_logger.error.assert_called()
 
+    @pytest.mark.asyncio
+    async def test_reconcile_after_charge_does_not_drop_funds(self, fresh_engine):
+        """충전 후 재기동 시 거짓 불일치로 충전금이 삭제되지 않음 (P22 회귀).
+
+        시나리오: 초기투자금 10M → charge(5M) → _accumulated_investment=15M,
+        _orderable=15M, _initial_deposit=10M(불변) 으로 DB 저장 후 재기동.
+        compute_expected_orderable이 _accumulated_investment 기준이면
+        expected=15M == actual=15M → 복구 없음.
+        _initial_deposit 기준이면 expected=10M != actual=15M → 5M 삭제 (결함).
+
+        본 테스트는 실제 compute_expected_orderable 로직을 실행 (모킹 X) 하여
+        reconcile_with_trades의 인자 전달이 올바른지 검증.
+        """
+        from backend.app.services import trade_history
+
+        mock_persist, mock_broadcast = fresh_engine
+        # charge(5M) 후 상태 — _initial_deposit은 불변, _accumulated_investment만 증가
+        settlement_engine._initial_deposit = 10_000_000
+        settlement_engine._accumulated_investment = 15_000_000
+        settlement_engine._orderable = 15_000_000  # DB에서 복원된 값
+
+        # 거래 이력 없음 — 충전만 있는 상태
+        orig_buy = trade_history._buy_history[:]
+        orig_sell = trade_history._sell_history[:]
+        trade_history._buy_history.clear()
+        trade_history._sell_history.clear()
+
+        # _ensure_loaded와 _history_lock만 모킹 (DB I/O 회피),
+        # compute_expected_orderable 본체는 실제 실행
+        fake_lock = AsyncMock()
+        fake_lock.__aenter__ = AsyncMock(return_value=None)
+        fake_lock.__aexit__ = AsyncMock(return_value=None)
+
+        try:
+            with patch.object(trade_history, "_ensure_loaded", new_callable=AsyncMock), \
+                 patch.object(trade_history, "_history_lock", fake_lock), \
+                 patch(
+                     "backend.app.services.engine_account_notify._safe_broadcast",
+                     new_callable=AsyncMock,
+                 ) as mock_safe_broadcast:
+                await settlement_engine.reconcile_with_trades()
+            # 충전금이 보존됨 — 복구 미발생
+            assert settlement_engine._orderable == 15_000_000
+            mock_persist.assert_not_awaited()
+            mock_broadcast.assert_not_awaited()
+            mock_safe_broadcast.assert_not_awaited()
+        finally:
+            trade_history._buy_history[:] = orig_buy
+            trade_history._sell_history[:] = orig_sell
+
 
 # ── 수수료/세금 상수 검증 ─────────────────────────────────────────────────────
 

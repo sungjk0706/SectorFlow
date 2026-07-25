@@ -365,10 +365,14 @@ async def record_sell(
     return rec
 
 
-async def compute_expected_orderable(initial_deposit: int, trade_mode: str = "test") -> int:
+async def compute_expected_orderable(starting_balance: int, trade_mode: str = "test") -> int:
     """거래 이력에서 주문가능금액(orderable)을 재계산하여 반환.
 
     Settlement Engine 정합성 대조용 (P22 데이터 정합성).
+    starting_balance: 재구축 시작 잔고 — settlement_engine.accumulated_investment
+    (초기투자금 + 충전 누적). _initial_deposit을 넘기면 충전 후 재기동 시
+    거짓 불일치로 충전금이 삭제되는 결함 발생.
+
     on_buy_fill/on_sell_fill 공식과 동일하게 적용:
       - 매수 차감: price*qty + round(price*qty*BUY_COMMISSION)
       - 매도 증가: price*qty - round(price*qty*SECURITIES_TAX) - round(price*qty*SELL_COMMISSION)
@@ -382,7 +386,7 @@ async def compute_expected_orderable(initial_deposit: int, trade_mode: str = "te
         buys = [r for r in _buy_history if r.get("trade_mode") == trade_mode]
         sells = [r for r in _sell_history if r.get("trade_mode") == trade_mode]
     merged = sorted(buys + sells, key=lambda r: r.get("ts", ""))
-    orderable = int(initial_deposit)
+    orderable = int(starting_balance)
     for rec in merged:
         price = int(rec.get("price", 0))
         qty = int(rec.get("qty", 0))
