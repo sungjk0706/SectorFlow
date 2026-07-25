@@ -39,6 +39,10 @@ import {
   initStagingCallbacks,
   resetStagingCallbacks,
 } from './stock-classification-staging'
+import {
+  buildTripleHeader,
+  updateIndicatorBar,
+} from './stock-classification-header'
 
 /* ── 모듈 상태 (P10 SSOT — 모든 가변 상태를 단일 소스로 관리) ── */
 
@@ -189,199 +193,6 @@ function setControlsDisabled(disabled: boolean): void {
     })
   }
 }
-
-/* ── 8.2: tripleHeader — 공통 헤더 (Indicator_Bar) ── */
-
-function buildHeaderLeft(): HTMLElement {
-  const left = document.createElement('div')
-  Object.assign(left.style, {
-    flex: '1', display: 'flex', flexDirection: 'column', justifyContent: 'flex-start', gap: '6px', alignItems: 'flex-start'
-  })
-
-  const descLabel = createStepLabel('', '장마감 후 매매적격종목 확정시세 및 5거래일 일봉 거래대금,고가 데이터 저장', { whiteSpace: 'nowrap' })
-  left.appendChild(descLabel)
-
-  const buttonContainer = document.createElement('div')
-  Object.assign(buttonContainer.style, { display: 'flex', gap: '6px' })
-
-  const btn1 = createSolidBtn({
-    label: '⬇️ 일봉차트 시세 다운로드',
-    color: COLOR.success,
-    hoverColor: '#157347',
-    onClick: (e) => onTriggerConfirmedDownload(e),
-  })
-  const btn2 = createSolidBtn({
-    label: '⬇️ 5거래일 일봉차트 거래대금,고가 다운로드',
-    color: COLOR.success,
-    hoverColor: '#157347',
-    onClick: (e) => onTrigger5dDownload(e),
-  })
-
-  buttonContainer.appendChild(btn1)
-  buttonContainer.appendChild(btn2)
-  left.appendChild(buttonContainer)
-  return left
-}
-
-function buildHeaderCenter(): HTMLElement {
-  const center = document.createElement('div')
-  Object.assign(center.style, {
-    flex: '1', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-    textAlign: 'center', fontSize: FONT_SIZE.title,
-    minWidth: '0',
-  })
-  return center
-}
-
-function buildHeaderRight(): HTMLElement {
-  const right = document.createElement('div')
-  Object.assign(right.style, {
-    flex: '3', display: 'flex', flexDirection: 'column', alignItems: 'flex-end',
-    justifyContent: 'center', textAlign: 'right', minWidth: '0', gap: '2px',
-  })
-
-  state.indicatorLabelMain = document.createElement('span')
-  Object.assign(state.indicatorLabelMain.style, {
-    fontSize: FONT_SIZE.body, color: COLOR.neutral, whiteSpace: 'nowrap',
-    overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%',
-  })
-
-  state.indicatorLabelSub = document.createElement('span')
-  Object.assign(state.indicatorLabelSub.style, {
-    fontSize: FONT_SIZE.small, color: COLOR.tertiary, whiteSpace: 'nowrap',
-    overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%',
-  })
-
-  right.appendChild(state.indicatorLabelMain)
-  right.appendChild(state.indicatorLabelSub)
-  return right
-}
-
-function buildTripleHeader(): void {
-  const header = shell.tripleHeader
-  while (header.firstChild) header.removeChild(header.firstChild)
-  header.style.fontFamily = FONT_FAMILY
-  header.appendChild(buildHeaderLeft())
-  header.appendChild(buildHeaderCenter())
-  header.appendChild(buildHeaderRight())
-}
-
-function updateIndicatorBar(): void {
-  const storeState = stockClassificationStore.getState()
-  const { filter_summary } = storeState
-  if (!state.indicatorLabelMain || !state.indicatorLabelSub) return
-  if (!filter_summary) {
-    state.indicatorLabelMain.textContent = ''
-    state.indicatorLabelSub.textContent = ''
-    return
-  }
-  // "전체 N종목 → 매매 가능 N종목 (제외 N종목, N%)" | "주요 제외: ..."
-  const sepIdx = filter_summary.indexOf(' | ')
-  if (sepIdx === -1) {
-    state.indicatorLabelMain.textContent = filter_summary
-    state.indicatorLabelSub.textContent = ''
-  } else {
-    state.indicatorLabelMain.textContent = filter_summary.slice(0, sepIdx)
-    state.indicatorLabelSub.textContent = filter_summary.slice(sepIdx + 3)
-  }
-}
-
-async function onTriggerConfirmedDownload(e: MouseEvent): Promise<void> {
-  const label = '일봉차트 시세 다운로드'
-  const endpoint = '/api/stock-classification/trigger-confirmed-download'
-
-  // 설정 재로드 완료 확인
-  const { engineReloadComplete } = uiStore.getState()
-  if (!engineReloadComplete) {
-    toastResult({ ok: false, error: '설정 재로드가 완료되지 않았습니다. 잠시 후 다시 시도하세요.' })
-    return
-  }
-
-  // 당일 데이터 존재 여부 사전 확인 (P21 사용자 투명성)
-  let dataExists: boolean
-  try {
-    const check = await api.get<{ confirmed_exists: boolean; '5d_exists': boolean }>(
-      '/api/stock-classification/download-data-exists',
-    )
-    dataExists = check.confirmed_exists
-  } catch {
-    // 확인 API 실패 시 기존 동작 유지 (폴백 아님 — 사용자에게 알림)
-    toastResult({ ok: false, error: '데이터 저장 여부 확인에 실패했습니다.' })
-    return
-  }
-
-  const message = dataExists
-    ? `이미 당일 시세 데이터가 저장되어 있습니다.\n${label}를 다시 실행하시겠습니까?\n이 작업은 백그라운드에서 진행됩니다.`
-    : `${label}를 지금 수동으로 즉시 실행하시겠습니까?\n이 작업은 백그라운드에서 진행됩니다.`
-
-  const result = await showContextPopup({
-    type: 'confirm',
-    x: e.clientX,
-    y: e.clientY,
-    title: `${label} 실행`,
-    message,
-    confirmText: '실행',
-    confirmColor: COLOR.success,
-  })
-
-  if (!result.confirmed) return
-
-  try {
-    const res = await api.post<StockClassificationMutationResponse>(endpoint, {})
-    handleMutationResult(res)
-  } catch {
-    toastResult({ ok: false })
-  }
-}
-
-async function onTrigger5dDownload(e: MouseEvent): Promise<void> {
-  const label = '5거래일 일봉차트 거래대금,고가 다운로드'
-  const endpoint = '/api/stock-classification/trigger-5d-download'
-
-  // 설정 재로드 완료 확인
-  const { engineReloadComplete } = uiStore.getState()
-  if (!engineReloadComplete) {
-    toastResult({ ok: false, error: '설정 재로드가 완료되지 않았습니다. 잠시 후 다시 시도하세요.' })
-    return
-  }
-
-  // 당일 데이터 존재 여부 사전 확인 (P21 사용자 투명성)
-  let dataExists: boolean
-  try {
-    const check = await api.get<{ confirmed_exists: boolean; '5d_exists': boolean }>(
-      '/api/stock-classification/download-data-exists',
-    )
-    dataExists = check['5d_exists']
-  } catch {
-    toastResult({ ok: false, error: '데이터 저장 여부 확인에 실패했습니다.' })
-    return
-  }
-
-  const message = dataExists
-    ? `이미 당일 5거래일 일봉 데이터가 저장되어 있습니다.\n${label}를 다시 실행하시겠습니까?\n이 작업은 백그라운드에서 진행됩니다.`
-    : `${label}를 지금 수동으로 즉시 실행하시겠습니까?\n이 작업은 백그라운드에서 진행됩니다.`
-
-  const result = await showContextPopup({
-    type: 'confirm',
-    x: e.clientX,
-    y: e.clientY,
-    title: `${label} 실행`,
-    message,
-    confirmText: '실행',
-    confirmColor: COLOR.success,
-  })
-
-  if (!result.confirmed) return
-
-  try {
-    const res = await api.post<StockClassificationMutationResponse>(endpoint, {})
-    handleMutationResult(res)
-  } catch {
-    toastResult({ ok: false })
-  }
-}
-
-
 
 /* ── 업종 관리 테이블 (Sector_Table) ── */
 
@@ -1326,7 +1137,7 @@ function handleStockClassificationChange(storeState: StockClassificationState, p
     updateCenterPanel()
     updateRightPanel()
     updateStagingChipSectors(state)
-    updateIndicatorBar()
+    updateIndicatorBar(state)
     return
   }
 
@@ -1335,7 +1146,7 @@ function handleStockClassificationChange(storeState: StockClassificationState, p
   }
 
   if (storeState.allStocks !== prev.allStocks || storeState.editWindowOpen !== prev.editWindowOpen || storeState.filter_summary !== prev.filter_summary) {
-    updateIndicatorBar()
+    updateIndicatorBar(state)
     setControlsDisabled(!storeState.editWindowOpen)
   }
 }
@@ -1356,7 +1167,7 @@ function mount(_container: HTMLElement): void {
   state.mounted = true
   // Staging 분할 모듈에 main 잔류 함수 주입 (순환 참조 해결 — F-04 분할 2단계)
   initStagingCallbacks({ updateAllInlineMoveButtons, updateRightPanel })
-  buildTripleHeader()
+  buildTripleHeader(state)
   buildTripleLeft()
   buildTripleCenter()
   buildTripleRight()
@@ -1384,7 +1195,7 @@ function mount(_container: HTMLElement): void {
 
   // 초기 렌더링 강제 실행 (초기 상태 반영)
   updateStockNameIndex()
-  updateIndicatorBar()
+  updateIndicatorBar(state)
   updateMasterPanel()
   updateCenterPanel()
   updateRightPanel()
