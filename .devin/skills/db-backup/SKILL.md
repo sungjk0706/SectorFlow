@@ -48,7 +48,7 @@ cp "${LATEST}-wal.backup" "backend/data/stocks.db-wal" 2>/dev/null || true
 - 백업 파일명
 - 파일 크기
 - 백업 시점
-- **용어 사전 준수 (P23)**: 사용자 보고 시 `ARCHITECTURE.md` 부록 L 표준 용어 사전 준수 — "종목" not "주식", "업종" not "섹터"
+- **용어 사전 준수 (P23)**: 사용자 보고 시 `ARCHITECTURE.md` 부록 M 표준 용어 사전 준수 — "종목" not "주식", "업종" not "섹터"
 
 ⚠️ DB 백업이 확인되기 전에는 절대 마이그레이션/스키마 변경/테이블 삭제를 진행하지 마라.
 
