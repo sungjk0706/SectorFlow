@@ -134,6 +134,39 @@ def _migrate_remove_ws_subscribe_on(merged: dict) -> tuple[dict, bool]:
     return merged, dirty
 
 
+def _migrate_loss_val_to_negative(merged: dict) -> tuple[dict, bool]:
+    """손절 하락률(loss_val) 양수→음수 규약 전환 (후안 B Step 2).
+    종목 손익률이 이 값 이하일 때 손절 발동 — 하락/손실은 음수 규약(P23).
+    top-level loss_val + sell_per_symbol JSON 내부 loss_val 모두 변환.
+    양수(>0)만 음수화, 0/음수는 그대로 (idempotent)."""
+    dirty = False
+    _v = merged.get("loss_val")
+    if _v is not None:
+        try:
+            _f = float(_v)
+        except (TypeError, ValueError):
+            _f = None
+        if _f is not None and _f > 0:
+            merged["loss_val"] = -_f
+            dirty = True
+    _sps = merged.get("sell_per_symbol")
+    if isinstance(_sps, dict):
+        for _row in _sps.values():
+            if not isinstance(_row, dict):
+                continue
+            _rv = _row.get("loss_val")
+            if _rv is None:
+                continue
+            try:
+                _rf = float(_rv)
+            except (TypeError, ValueError):
+                continue
+            if _rf > 0:
+                _row["loss_val"] = -_rf
+                dirty = True
+    return merged, dirty
+
+
 # 암호화 필드 목록 (단일 정의)
 _ENCRYPT_FIELDS: frozenset[str] = frozenset({
     "kiwoom_app_key", "kiwoom_app_secret",
@@ -298,7 +331,7 @@ def _decrypt_encrypt_fields(merged: dict) -> None:
 
 
 async def _apply_all_migrations(merged: dict, db_data: dict) -> None:
-    """레거시 키 마이그레이션 9개 순차 적용. dirty 시 DB에 저장."""
+    """레거시 키 마이그레이션 10개 순차 적용. dirty 시 DB에 저장."""
     _keys_before = set(merged.keys())
     merged, dirty = _migrate_legacy_auto_trade_on(merged)
     merged, dirty_tm = _migrate_trade_mode(merged)
@@ -309,8 +342,9 @@ async def _apply_all_migrations(merged: dict, db_data: dict) -> None:
     merged, dirty_krx = _migrate_remove_krx_subscribe_keys(merged)
     merged, dirty_ws = _migrate_remove_ws_subscribe_window_keys(merged)
     merged, dirty_wso = _migrate_remove_ws_subscribe_on(merged)
+    merged, dirty_lv = _migrate_loss_val_to_negative(merged)
 
-    if dirty or dirty_tm or dirty_tr or dirty_si or dirty_bc or dirty_tg or dirty_krx or dirty_ws or dirty_wso:
+    if dirty or dirty_tm or dirty_tr or dirty_si or dirty_bc or dirty_tg or dirty_krx or dirty_ws or dirty_wso or dirty_lv:
         _legacy_keys = list(_keys_before - set(merged.keys()))
         await save_settings(merged, delete_keys=_legacy_keys or None)
 

@@ -82,7 +82,7 @@ def _raw_settings(**overrides):
         "tp_val": 10.0,
         "tp_apply": True,
         "loss_apply": True,
-        "loss_val": 5.0,
+        "loss_val": -5.0,
         "ts_apply": False,
         "ts_start_val": 0.0,
         "ts_drop_val": 0.0,
@@ -716,7 +716,7 @@ class TestSellIntervalGate:
         stock = {
             "stk_cd": "005930", "stk_nm": "삼성전자",
             "cur_price": "65000", "qty": "10",
-            "pnl_rate": -6.0, "pnl_amount": -50000,  # 손절 조건 (loss_val 5% 초과 손실)
+            "pnl_rate": -6.0, "pnl_amount": -50000,  # 손절 조건 (loss_val -5% 이하 손실)
         }
         with patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.services.trading.get_risk_manager") as mock_rm:

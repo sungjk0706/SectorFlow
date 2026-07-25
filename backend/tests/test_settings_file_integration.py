@@ -144,6 +144,58 @@ class TestLoadIntegratedSystemSettingsDB:
         result = await load_integrated_system_settings()
         assert result["trade_mode"] == "test"
 
+    @pytest.mark.asyncio
+    async def test_migrates_loss_val_positive_to_negative(self, in_memory_db):
+        """loss_val 양수→음수 규약 전환 (후안 B Step 2). 양수 3 → -3."""
+        await in_memory_db.execute(
+            "INSERT INTO integrated_system_settings (key, value, value_type) VALUES (?, ?, ?)",
+            ("loss_val", "3", "number"),
+        )
+        await in_memory_db.commit()
+
+        result = await load_integrated_system_settings()
+        assert result["loss_val"] == -3.0
+
+    @pytest.mark.asyncio
+    async def test_migrates_loss_val_zero_unchanged(self, in_memory_db):
+        """loss_val=0은 변환 없음 (0은 유효값, 하락/손실 음수 규약에서 중성)."""
+        await in_memory_db.execute(
+            "INSERT INTO integrated_system_settings (key, value, value_type) VALUES (?, ?, ?)",
+            ("loss_val", "0", "number"),
+        )
+        await in_memory_db.commit()
+
+        result = await load_integrated_system_settings()
+        assert result["loss_val"] == 0
+
+    @pytest.mark.asyncio
+    async def test_migrates_loss_val_negative_unchanged(self, in_memory_db):
+        """loss_val 음수는 이미 새 규약 — 변환 없음 (idempotent)."""
+        await in_memory_db.execute(
+            "INSERT INTO integrated_system_settings (key, value, value_type) VALUES (?, ?, ?)",
+            ("loss_val", "-5", "number"),
+        )
+        await in_memory_db.commit()
+
+        result = await load_integrated_system_settings()
+        assert result["loss_val"] == -5.0
+
+    @pytest.mark.asyncio
+    async def test_migrates_loss_val_in_sell_per_symbol_json(self, in_memory_db):
+        """sell_per_symbol JSON 내부 loss_val 양수→음수 변환 (종목별 덮어쓰기)."""
+        import json as _json
+        _sps = _json.dumps({"005930": {"loss_val": 4.0, "loss_apply": True}})
+        await in_memory_db.execute(
+            "INSERT INTO integrated_system_settings (key, value, value_type) VALUES (?, ?, ?)",
+            ("sell_per_symbol", _sps, "json"),
+        )
+        await in_memory_db.commit()
+
+        result = await load_integrated_system_settings()
+        _row = result["sell_per_symbol"]["005930"]
+        assert _row["loss_val"] == -4.0
+        assert _row["loss_apply"] is True
+
 
 class TestSaveSettingsDB:
 

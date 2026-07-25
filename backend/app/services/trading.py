@@ -801,7 +801,7 @@ class AutoTradeManager:
 
             if s.get("chk_loss", False):
                 loss_val = float(s.get("loss_val") or 0)
-                hit_sl = pnl_rate <= -loss_val
+                hit_sl = pnl_rate <= loss_val
                 if hit_sl:
                     try:
                         _sold = await self.execute_sell(stk_cd, cur_price, stk_nm, "손절 발동", sell_qty, pnl_rate, s, base_settings, access_token)

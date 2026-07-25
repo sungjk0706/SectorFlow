@@ -713,7 +713,7 @@ check_sell_conditions()  — 스냅샷 루프에서 주기적 호출
     ├── RiskManager CircuitBreaker 체크
     │
     ▼ (종목별)
-    ├── 손절: pnl_rate <= -loss_val
+    ├── 손절: pnl_rate <= loss_val (둘 다 음수 — 후안 B 부호 규칙)
     ├── 익절: pnl_rate >= tp_val
     └── T/S: 최고점 대비 하락률 >= ts_drop_val
          │

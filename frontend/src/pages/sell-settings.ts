@@ -97,12 +97,12 @@ function buildSellTypeSection(root: HTMLElement): void {
     root.appendChild(r.el)
   }
 
-  // 손절 (토글 + 입력)
-  lossValInput = createNumInput({ value: 0, onChange: v => { const orig = Number(vals.loss_val); vals.loss_val = v; saveHelper!.autoSave('loss_val', v, () => { vals.loss_val = orig; lossValInput!.setValue(orig) }) }, step: 0.1, min: 0, max: 100, name: 'loss_val' })
+  // 손절 (토글 + 입력) — 음수 규약 (후안 B: 하락/손실은 음수)
+  lossValInput = createNumInput({ value: 0, onChange: v => { const orig = Number(vals.loss_val); vals.loss_val = v; saveHelper!.autoSave('loss_val', v, () => { vals.loss_val = orig; lossValInput!.setValue(orig) }) }, step: 0.1, min: -100, max: 0, name: 'loss_val' })
   {
     const r = createToggleLabelControlsRow({
       labelText: '손절 (하락률 %)',
-      infoText: '종목 하락률이 이 값 이상이면 손절 매도. 0~100%',
+      infoText: '종목 손익률이 이 값 이하이면 손절 매도. -100%~0%, 기본 -5%',
       toggleOn: false,
       onToggle: next => { vals.loss_apply = next; saveHelper!.saveImmediate({ loss_apply: next }) },
       controlsChild: lossValInput.el,

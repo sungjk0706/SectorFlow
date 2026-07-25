@@ -163,11 +163,11 @@ class TestBuildEngineSettingsDictOverride:
         assert result["max_stock_cnt"] == 10
 
     def test_loss_cut(self):
-        result = build_engine_settings_dict({"loss_apply": True, "loss_val": 5.0})
+        result = build_engine_settings_dict({"loss_apply": True, "loss_val": -5.0})
         assert result["loss_cut_apply"] is True
-        assert result["loss_cut_value"] == 5.0
+        assert result["loss_cut_value"] == -5.0
         assert result["loss_apply"] is True
-        assert result["loss_val"] == 5.0
+        assert result["loss_val"] == -5.0
 
     def test_trailing_stop(self):
         result = build_engine_settings_dict({
