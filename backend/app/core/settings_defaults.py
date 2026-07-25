@@ -92,7 +92,7 @@ DEFAULT_USER_SETTINGS: dict[str, Any] = {
      "buy_block_rise_on": True,
      "buy_block_rise_pct": 7.0,
      "buy_block_fall_on": True,
-     "buy_block_fall_pct": 7.0,
+     "buy_block_fall_pct": -7.0,
      "sector_min_trade_amt": 0.0,
      "sector_max_targets": 3,
      "sector_sort_keys": ["score"],

@@ -188,12 +188,12 @@ function buildBuyBlockSection(root: HTMLElement): void {
     root.appendChild(r.el)
   }
 
-  // 하락률 제한 (토글 + 입력)
-  fallInput = createNumInput({ value: 0, onChange: v => { const orig = Number(vals.buy_block_fall_pct); vals.buy_block_fall_pct = v; saveHelper!.autoSave('buy_block_fall_pct', v, () => { vals.buy_block_fall_pct = orig; fallInput!.setValue(orig) }) }, step: 1, min: 0, max: 100, name: 'buy_block_fall_pct' })
+  // 하락률 제한 (토글 + 입력) — 음수 규약 (후안 B: 하락/손실은 음수)
+  fallInput = createNumInput({ value: 0, onChange: v => { const orig = Number(vals.buy_block_fall_pct); vals.buy_block_fall_pct = v; saveHelper!.autoSave('buy_block_fall_pct', v, () => { vals.buy_block_fall_pct = orig; fallInput!.setValue(orig) }) }, step: 1, min: -100, max: 0, name: 'buy_block_fall_pct' })
   {
     const r = createToggleLabelControlsRow({
       labelText: '종목 하락률 매수차단',
-      infoText: '종목 하락률이 이 값 이상이면 매수를 차단합니다. 0~100%',
+      infoText: '종목 하락률이 이 값 이하이면 매수를 차단합니다. -100%~0%, 기본 -7%',
       toggleOn: true,
       onToggle: next => { vals.buy_block_fall_on = next; saveHelper!.saveImmediate({ buy_block_fall_on: next }) },
       controlsChild: fallInput.el,

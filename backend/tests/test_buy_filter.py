@@ -73,7 +73,7 @@ def _sector(
 class TestCheckStockGuards:
     def test_pass_all_guards(self):
         stock = _stock(change_rate=2.0, strength=100.0)
-        result = check_stock_guards(stock, block_rise_pct=7.0, block_fall_pct=7.0)
+        result = check_stock_guards(stock, block_rise_pct=7.0, block_fall_pct=-7.0)
         assert result.guard_pass is True
         assert result.guard_reason == ""
 
@@ -96,24 +96,24 @@ class TestCheckStockGuards:
 
     def test_block_by_fall_pct(self):
         stock = _stock(change_rate=-7.0)
-        result = check_stock_guards(stock, block_fall_pct=7.0)
+        result = check_stock_guards(stock, block_fall_pct=-7.0)
         assert result.guard_pass is False
         assert result.guard_reason == "하락률"
 
     def test_block_by_fall_pct_below_threshold(self):
         stock = _stock(change_rate=-8.0)
-        result = check_stock_guards(stock, block_fall_pct=7.0)
+        result = check_stock_guards(stock, block_fall_pct=-7.0)
         assert result.guard_pass is False
         assert result.guard_reason == "하락률"
 
     def test_pass_just_above_fall_threshold(self):
         stock = _stock(change_rate=-6.9)
-        result = check_stock_guards(stock, block_fall_pct=7.0)
+        result = check_stock_guards(stock, block_fall_pct=-7.0)
         assert result.guard_pass is True
 
     def test_rise_takes_priority_over_fall(self):
         stock = _stock(change_rate=7.0)
-        result = check_stock_guards(stock, block_rise_pct=7.0, block_fall_pct=7.0)
+        result = check_stock_guards(stock, block_rise_pct=7.0, block_fall_pct=-7.0)
         assert result.guard_pass is False
         assert result.guard_reason == "상승률"
 
@@ -129,7 +129,7 @@ class TestCheckStockGuards:
 
     def test_block_fall_on_false_disables_check(self):
         stock = _stock(change_rate=-5.0)
-        result = check_stock_guards(stock, block_fall_on=False, block_fall_pct=7.0)
+        result = check_stock_guards(stock, block_fall_on=False, block_fall_pct=-7.0)
         assert result.guard_pass is True
 
     def test_block_fall_pct_zero_disables_check(self):
@@ -446,7 +446,7 @@ class TestCreateBuyTargets:
         s1 = _stock(code="A001", change_rate=10.0)
         s2 = _stock(code="A002", change_rate=-10.0)
         sc = _sector(rank=1, stocks=[s1, s2])
-        result = create_buy_targets([sc], block_rise_pct=7.0, block_fall_pct=7.0)
+        result = create_buy_targets([sc], block_rise_pct=7.0, block_fall_pct=-7.0)
         assert result.blocked_targets[0].rank == 1
         assert result.blocked_targets[1].rank == 2
 
@@ -598,7 +598,7 @@ class TestCreateBuyTargets:
         """전역 조건(금일매수)이 개별 가드(하락률)보다 우선."""
         s_bought = _stock(code="A003", change_rate=-10.0)
         sc = _sector(rank=1, stocks=[s_bought])
-        result = create_buy_targets([sc], bought_today_codes={"A003"}, block_fall_pct=7.0)
+        result = create_buy_targets([sc], bought_today_codes={"A003"}, block_fall_pct=-7.0)
         assert result.blocked_targets[0].reason == "금일매수"
 
     # ── rebuy_block_on=False: 보유/금일매수 종목 매수 허용 ──

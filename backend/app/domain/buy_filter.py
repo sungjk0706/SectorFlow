@@ -74,21 +74,21 @@ def check_stock_guards(
     block_rise_on: bool = True,
     block_rise_pct: float = 7.0,
     block_fall_on: bool = True,
-    block_fall_pct: float = 7.0,
+    block_fall_pct: float = -7.0,
 ) -> object:  # StockScore
     """
     개별 종목 매수 가드 적용.
     block_rise_on: 상승률 차단 활성화 여부 (토글)
-    block_rise_pct: 이 값 이상 상승 시 차단
+    block_rise_pct: 이 값 이상 상승 시 차단 (양수)
     block_fall_on: 하락률 차단 활성화 여부 (토글)
-    block_fall_pct: 이 값 이상 하락 시 차단
+    block_fall_pct: 이 값 이하 하락 시 차단 (음수, 후안 B 부호 규약)
     (5거래일 평균 거래대금 필터는 업종분석 단계에서 1차 처리됨 — 여기서 중복 체크하지 않음)
     """
     if block_rise_on and block_rise_pct > 0 and stock.change_rate >= block_rise_pct:
         stock.guard_pass = False
         stock.guard_reason = "상승률"
         return stock
-    if block_fall_on and block_fall_pct > 0 and stock.change_rate <= -block_fall_pct:
+    if block_fall_on and block_fall_pct < 0 and stock.change_rate <= block_fall_pct:
         stock.guard_pass = False
         stock.guard_reason = "하락률"
         return stock
@@ -113,7 +113,7 @@ def create_buy_targets(
     block_rise_on: bool = True,
     block_rise_pct: float = 7.0,
     block_fall_on: bool = True,
-    block_fall_pct: float = 7.0,
+    block_fall_pct: float = -7.0,
     max_sectors: int = 3,
     # ── 가산점 관련 파라미터 (기본값 = 모든 가산점 OFF → boost_score=0.0) ──
     high_5d_cache: dict[str, int] | None = None,
@@ -294,7 +294,7 @@ def build_buy_targets_from_settings(
         block_rise_on=bool(settings.get("buy_block_rise_on", True)),
         block_rise_pct=float(settings.get("buy_block_rise_pct", 7.0)),
         block_fall_on=bool(settings.get("buy_block_fall_on", True)),
-        block_fall_pct=float(settings.get("buy_block_fall_pct", 7.0)),
+        block_fall_pct=float(settings.get("buy_block_fall_pct", -7.0)),
         max_sectors=int(settings.get("sector_max_targets", 3)),
         high_5d_cache=get_high_price_5d_cache(),
         orderbook_cache=get_orderbook_cache(),

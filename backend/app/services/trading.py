@@ -340,7 +340,7 @@ class AutoTradeManager:
         _rise_on = bool(raw_all.get("buy_block_rise_on", True))
         _fall_on = bool(raw_all.get("buy_block_fall_on", True))
         _rise_limit = float(raw_all.get("buy_block_rise_pct", 7.0))
-        _fall_limit = float(raw_all.get("buy_block_fall_pct", 7.0))
+        _fall_limit = float(raw_all.get("buy_block_fall_pct", -7.0))
         _change_rate = state.master_stocks_cache.get(stk_cd, {}).get("change_rate")
         if _change_rate is not None:
             _blocked = False
@@ -350,9 +350,9 @@ class AutoTradeManager:
                 _blocked = True
                 _block_reason = f"상승률 {_change_rate:+.1f}%"
                 _reject_code = BUY_REJECT_RISE_GUARD
-            elif _fall_on and _fall_limit > 0 and _change_rate <= -_fall_limit:
+            elif _fall_on and _fall_limit < 0 and _change_rate <= _fall_limit:
                 _blocked = True
-                _block_reason = f"하락률 {abs(_change_rate):.1f}%"
+                _block_reason = f"하락률 {_change_rate:+.1f}%"
                 _reject_code = BUY_REJECT_FALL_GUARD
             if _blocked:
                 stk_nm_g = data_manager.get_stock_name(stk_cd, access_token)

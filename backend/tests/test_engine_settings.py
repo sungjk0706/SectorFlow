@@ -41,6 +41,8 @@ class TestBuildEngineSettingsDictDefaults:
         result = build_engine_settings_dict({})
         assert result["buy_block_rise_on"] is True
         assert result["buy_block_fall_on"] is True
+        assert result["buy_block_rise_pct"] == 7.0
+        assert result["buy_block_fall_pct"] == -7.0
 
     def test_buy_amt_on_migration_from_zero(self):
         # 기존 buy_amt=0 → buy_amt_on=False (한도 없음)
@@ -72,6 +74,14 @@ class TestBuildEngineSettingsDictDefaults:
     def test_buy_block_rise_on_migration_from_value(self):
         result = build_engine_settings_dict({"buy_block_rise_pct": 5.0})
         assert result["buy_block_rise_on"] is True
+
+    def test_buy_block_fall_on_migration_from_zero(self):
+        result = build_engine_settings_dict({"buy_block_fall_pct": 0})
+        assert result["buy_block_fall_on"] is False
+
+    def test_buy_block_fall_on_migration_from_value(self):
+        result = build_engine_settings_dict({"buy_block_fall_pct": -7.0})
+        assert result["buy_block_fall_on"] is True
 
     def test_risk_fields_defaults(self):
         result = build_engine_settings_dict({})
