@@ -7,6 +7,17 @@
 
 import { COLOR } from './ui-styles'
 import { TEXT_INPUT_WIDTH, focusNext, applyInputBase, createSpinButtons } from './setting-row'
+import { showToast } from './toast'
+
+/* ── 숫자 입력 문자열 검증 (P22 데이터 정합성) ────────────────
+ * 유효 형식: 선택적 맨 앞 "-", 숫자, 소수점 1개, 숫자
+ * 허용 중간 상태: "", "-", "-.", ".5", "1.", "1.5"
+ * 차단: "0-7", "--7", "1.2.3", "abc" 등
+ * 반환: true=유효(계속 처리), false=무효(이전 값 복원 + 토스트)
+ */
+function _isValidNumericInput(s: string): boolean {
+  return s === '' || /^-?\d*\.?\d*$/.test(s)
+}
 
 /* ── 숫자 입력란 (커스텀 스핀 버튼) ────────────────────────── */
 export function createNumInput(options: {
@@ -40,9 +51,24 @@ export function createNumInput(options: {
   } as Partial<CSSStyleDeclaration>)
 
   input.addEventListener('input', () => {
-    const raw = input.value.replace(/[^0-9.-]/g, '')
-    const parsed = Number(raw) || 0
-    // 실시간 clamp — 범위 밖 값 입력 즉시 보정 (슬라이더·▲▼ 버튼과 단일 범위, P10 SSOT)
+    // 1. 형식 검증 — "-"는 맨 앞 1개만, 소수점 1개만 허용 (P22)
+    if (!_isValidNumericInput(input.value)) {
+      input.value = String(currentValue)
+      showToast('warning', '올바른 값을 입력하세요 (숫자만 입력 가능)')
+      return
+    }
+    const raw = input.value
+    // 2. 빈 문자열 또는 "-", "-." 등 중간 상태는 저장하지 않고 대기
+    if (raw === '' || raw === '-' || raw === '-.' || raw === '.') {
+      return
+    }
+    const parsed = Number(raw)
+    if (!isFinite(parsed)) {
+      input.value = String(currentValue)
+      showToast('warning', '올바른 값을 입력하세요')
+      return
+    }
+    // 3. 실시간 clamp — 범위 밖 값 입력 즉시 보정 (슬라이더·▲▼ 버튼과 단일 범위, P10 SSOT)
     const clamped = Math.round(Math.min(maxVal, Math.max(minVal, parsed)) * 100) / 100
     currentValue = clamped
     // 보정된 경우에만 DOM 갱신 — 범위 내 타이핑 시 커서 위치 보존
@@ -119,8 +145,22 @@ export function createMoneyInput(options: {
     input.value = currentValue !== 0 ? String(currentValue) : ''
   })
   input.addEventListener('input', () => {
-    const raw = input.value.replace(/,/g, '')
-    const parsed = Number(raw) || 0
+    // 콤마 제거 후 형식 검증 (createNumInput과 동일 패턴, P10/P23)
+    const stripped = input.value.replace(/,/g, '')
+    if (!_isValidNumericInput(stripped)) {
+      input.value = fmtMoney(currentValue)
+      showToast('warning', '올바른 값을 입력하세요 (숫자만 입력 가능)')
+      return
+    }
+    if (stripped === '' || stripped === '-' || stripped === '-.' || stripped === '.') {
+      return
+    }
+    const parsed = Number(stripped)
+    if (!isFinite(parsed)) {
+      input.value = fmtMoney(currentValue)
+      showToast('warning', '올바른 값을 입력하세요')
+      return
+    }
     // 실시간 clamp — 범위 밖 값 입력 즉시 보정 (createNumInput과 동일 패턴, P10/P23)
     const clamped = Math.min(maxVal, Math.max(minVal, parsed))
     currentValue = clamped
