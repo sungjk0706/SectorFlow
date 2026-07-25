@@ -397,7 +397,7 @@ export function buildChartFromDailySummary(summary: Record<string, unknown>[]): 
  * 보유 종목 positions + 실시간 시세 sectorStocks로부터 평가금액/평가손익/수익률 계산.
  * 개별 종목 행(sell-position.ts COLUMNS pnl/rate 컬럼)과 동일한 데이터 소스·공식 사용.
  *
- * - 현재가: sectorStocks[code].cur_price ?? p.cur_price (실시간 틱 우선)
+ * - 현재가: sectorStocks[code].cur_price (실시간 틱, 없으면 null → 0 처리)
  * - 매입가: p.avg_price
  * - 평가금액 = sum(현재가 × 수량)
  * - 매입금액 = sum(매입가 × 수량)
@@ -414,7 +414,7 @@ export function computeHoldingsSummary(
     const qty = p.qty ?? 0
     if (qty <= 0) continue
     const code = normalizeStockCode(p.stk_cd)
-    const curPrice = sectorStocks[code]?.cur_price ?? p.cur_price ?? 0
+    const curPrice = sectorStocks[code]?.cur_price ?? null
     const buyPrice = p.avg_price
     evalTotal += Number(curPrice) * qty
     buyTotal += buyPrice * qty
