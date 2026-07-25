@@ -1139,7 +1139,7 @@ SectorFlow 전체 코드베이스를 `ARCHITECTURE.md`에 정의된 P1~P25, 총 
 | B13-01 | B-13 | `settings_file.py:461-470`, `telegram_bot.py:275-282`, `dry_run.py:329` | P22 | MEDIUM | `update_settings` 함수가 저장만 수행하고 저널링/검증(타임테이블 순서, 숫자 범위) 생략 — `apply_settings_updates`가 제공하는 검증+저널링 우회 경로. 텔레그램 토글/가상 예수금 변경 시 설정 변경 이력 누락 | 해결 (함수 삭제 + 호출자 2곳 `apply_settings_updates` 전환) |
 | B13-02 | B-13 | `settings_store.py:24-35` | P16 | MEDIUM | `_schedule_settings_task` dead code — 호출처 0건 (전체 코드베이스 grep 확인) | 해결 (함수 삭제 + 미사용 `asyncio` import 제거) |
 | B13-03 | B-13 | `engine_settings.py` 61곳 | P10/P16 | LOW | `merged = {**DEFAULT_USER_SETTINGS, **flat}` 후에도 `_build_*` 함수들이 `merged.get(key, default)`로 기본값 하드코딩 — `settings_defaults.py`와 중복 (SSOT 위반). `merged`에 항상 값 존재하므로 `else default` 분기는 dead code | 보류 (별도 세션) |
-| B13-04 | B-13 | `engine_settings.py:53, 272` | P4/P10 | LOW | `"kiwoom"` 기본값 공통 로직 침투 2곳 — `merged.get("broker", "kiwoom")`. SSOT는 `settings_defaults.py:31`. B13-03 해결 시 함께 처리 가능 | 보류 (별도 세션) |
+| B13-04 | B-13 | `engine_settings.py:53, 272` | P4/P10 | LOW | `"kiwoom"` 기본값 공통 로직 침투 2곳 — `merged.get("broker", "kiwoom")`. SSOT는 `settings_defaults.py:31`. B13-03 해결 시 함께 처리 가능 | 해결 (B13-04 세션: 하드코딩 `"kiwoom"` 2곳 → `DEFAULT_USER_SETTINGS["broker"]` SSOT 참조로 변경. 기존 import 재사용, 프로덕션 동작 변화 없음, 2771 tests passed, 런타임 기동 정상) |
 | B13-05 | B-13 | `engine_settings.py:32-47` | P4 | LOW | `_pick_broker_credentials` 키움 특수 분기 — kiwoom 명시处理后 `if b_name == "kiwoom": continue` skip. 공통 로직에 증권사 특수 케이스 | 해결 (동적 loop 통일 — 현재 선택 증권사 + `_app_key` 접미 키 기반 균일 처리) |
 | B13-06 | B-13 | `settings_file.py:261-279` | P3 | LOW | `asyncio.to_thread`로 `Path.exists`/`glob` 실행 — `run_in_executor` 우회. 단, `aiofiles` 미지원 메서드, 1회 실행, 핫 경로 아님 | 보류 (async 대체재 없음, 보류 권장) |
 | B13-07 | B-13 | `engine_settings.py:179-237`, `settings_store.py:154-221` | P24 | LOW | 함수 길이 50줄 초과 2곳 — `_build_sector_and_order_settings` 59줄, `_validate_timetable_order` 68줄 | 보류 (별도 세션 — 그룹별 헬퍼 분리) |
@@ -1177,7 +1177,7 @@ SectorFlow 전체 코드베이스를 `ARCHITECTURE.md`에 정의된 P1~P25, 총 
 | B-10 | P1 | 엔진 계좌/서비스 | ☑ 완료 (B-10-a 11건 + B-10-b 7건 = 18건, B10-02는 B-14 이월) |
 | B-11 | P1 | 파이프라인 (Compute/Gateway) | ☑ 완료 (B-11-a 8건 + B-11-b 4건 = 12건 수정, 2964 tests passed) |
 | B-12 | P2 | DB 계층 | ☑ 완료 (9건 수정) |
-| B-13 | P2 | 설정 관리 | ☑ 부분 완료 (3건 해결 B13-01/02/05, 잔여 5건 보류 LOW/INFO, 2788 tests passed) |
+| B-13 | P2 | 설정 관리 | ☑ 부분 완료 (4건 해결 B13-01/02/04/05, 잔여 4건 보류 LOW/INFO B13-03/06/07/08, 2771 tests passed) |
 | B-14 | P2 | Broker 추상화 (공통) | ☑ 완료 (B-14-a 6건 + B-14-b 2건 = 8건) |
 | B-15 | P2 | 증권사 구현: 키움 | ☑ 완료 (B-15-a 7건 + B-15-b 7건 = 14건) |
 | B-16 | P2 | 증권사 구현: LS | ☑ 완료 (B-16-a 5건 + B-16-b 7건 = 12건) |

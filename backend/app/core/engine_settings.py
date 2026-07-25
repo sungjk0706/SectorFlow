@@ -49,7 +49,7 @@ def _pick_broker_credentials(merged: dict) -> dict:
 def _build_operation_settings(merged: dict, tm: str) -> dict:
     """운영 설정: 증권사, 투자모드, 자동매매 토글, 매수/매도 시간대."""
     return {
-        "broker": merged.get("broker", "kiwoom"),
+        "broker": merged.get("broker", DEFAULT_USER_SETTINGS["broker"]),
         "trade_mode": tm,
         "time_scheduler_on": bool(merged.get("time_scheduler_on")),
         "auto_buy_on": bool(merged.get("auto_buy_on")),
@@ -262,7 +262,7 @@ def _build_boost_settings(merged: dict) -> dict:
 
 def _normalize_broker_config(settings: dict) -> dict:
     """브로커 기능별 매핑 (기본값: 동일 브로커 사용)."""
-    broker = settings.get("broker", "kiwoom")
+    broker = settings.get("broker", DEFAULT_USER_SETTINGS["broker"])
     return {
         "websocket": broker,
         "order": broker,
