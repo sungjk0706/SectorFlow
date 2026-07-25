@@ -37,10 +37,6 @@ def risk_manager(mock_circuit_breaker):
     rm.risk_block_sell_on = False
     rm.daily_loss_rate_limit_on = False
     rm.daily_loss_rate_limit = -5.0
-    rm.daily_profit_limit_on = False
-    rm.daily_profit_limit = 500_000
-    rm.daily_profit_rate_limit_on = False
-    rm.daily_profit_rate_limit = 5.0
     rm.consecutive_loss_limit_on = False
     rm.consecutive_loss_limit = 3
     return rm
@@ -329,8 +325,6 @@ class TestRiskManagerToggle:
     async def test_risk_manager_off_skips_extended_checks(self, risk_manager, settings_cache):
         """risk_manager_on=False 시 신규 조건 스킵 — 기존 일일 손실 한도/예수금/비중은 항상 실행."""
         risk_manager.risk_manager_on = False
-        risk_manager.daily_profit_limit_on = True  # 신규 조건 활성화되어 있어도 스킵되어야 함
-        risk_manager.daily_profit_limit = 100_000
         with patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.services.risk_manager.is_test_mode", return_value=False), \
              patch("backend.app.services.risk_manager.get_total_realized_pnl", new_callable=AsyncMock, return_value=200_000), \
@@ -347,8 +341,6 @@ class TestRiskManagerToggle:
         """risk_block_buy_on=False 시 신규 조건 스킵 — 기존 체크는 항상 실행."""
         risk_manager.risk_manager_on = True
         risk_manager.risk_block_buy_on = False
-        risk_manager.daily_profit_limit_on = True
-        risk_manager.daily_profit_limit = 100_000
         with patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.services.risk_manager.is_test_mode", return_value=False), \
              patch("backend.app.services.risk_manager.get_total_realized_pnl", new_callable=AsyncMock, return_value=200_000), \
@@ -415,53 +407,6 @@ class TestDailyLossRateLimit:
         assert allowed is False
         assert "일일 손실률 한도" in reason
         assert "매도 차단" in reason
-
-
-class TestDailyProfitLimit:
-    """일일 수익 한도 도달 시 차단 검증."""
-
-    @pytest.mark.asyncio
-    async def test_profit_reached_blocks_buy(self, risk_manager, settings_cache):
-        """수익 한도 도달 시 매수 차단."""
-        risk_manager.risk_manager_on = True
-        risk_manager.risk_block_buy_on = True
-        risk_manager.daily_profit_limit_on = True
-        risk_manager.daily_profit_limit = 500_000
-        with patch("backend.app.services.engine_state.state") as mock_state, \
-             patch("backend.app.services.risk_manager.is_test_mode", return_value=False), \
-             patch("backend.app.services.risk_manager.get_total_realized_pnl", new_callable=AsyncMock, return_value=500_000), \
-             patch("backend.app.services.trade_history.get_buy_history", new_callable=AsyncMock, return_value=[]), \
-             patch.object(risk_manager, "_sync_thresholds", lambda: None):
-            mock_state.integrated_system_settings_cache = settings_cache
-            mock_state.account_snapshot = {"orderable": 100_000_000}
-            mock_state.positions = []
-            allowed, reason = await risk_manager.check_buy_order_allowed("005930", 70_000, 10)
-        assert allowed is False
-        assert "일일 수익 한도" in reason
-
-
-class TestDailyProfitRateLimit:
-    """일일 수익률 한도 도달 시 차단 검증."""
-
-    @pytest.mark.asyncio
-    async def test_profit_rate_reached_blocks_buy(self, risk_manager, settings_cache):
-        """수익률 한도 도달 시 매수 차단."""
-        risk_manager.risk_manager_on = True
-        risk_manager.risk_block_buy_on = True
-        risk_manager.daily_profit_rate_limit_on = True
-        risk_manager.daily_profit_rate_limit = 5.0  # 5%
-        # today_pnl=600_000, today_principal=10_000_000 → 6% ≥ 5% → 차단
-        with patch("backend.app.services.engine_state.state") as mock_state, \
-             patch("backend.app.services.risk_manager.is_test_mode", return_value=False), \
-             patch("backend.app.services.risk_manager.get_total_realized_pnl", new_callable=AsyncMock, return_value=600_000), \
-             patch("backend.app.services.trade_history.get_buy_history", new_callable=AsyncMock, return_value=[{"price": 50_000, "qty": 200}]), \
-             patch.object(risk_manager, "_sync_thresholds", lambda: None):
-            mock_state.integrated_system_settings_cache = settings_cache
-            mock_state.account_snapshot = {"orderable": 100_000_000}
-            mock_state.positions = []
-            allowed, reason = await risk_manager.check_buy_order_allowed("005930", 70_000, 10)
-        assert allowed is False
-        assert "일일 수익률 한도" in reason
 
 
 class TestConsecutiveLossLimit:

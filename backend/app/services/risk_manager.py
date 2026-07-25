@@ -40,10 +40,6 @@ class RiskManager:
         self.daily_loss_limit_on = bool(cache.get("daily_loss_limit_on", True))
         self.daily_loss_rate_limit_on = bool(cache.get("daily_loss_rate_limit_on", False))
         self.daily_loss_rate_limit = float(cache.get("daily_loss_rate_limit", -5.0) or -5.0)
-        self.daily_profit_limit_on = bool(cache.get("daily_profit_limit_on", False))
-        self.daily_profit_limit = int(cache.get("daily_profit_limit", 500000) or 500000)
-        self.daily_profit_rate_limit_on = bool(cache.get("daily_profit_rate_limit_on", False))
-        self.daily_profit_rate_limit = float(cache.get("daily_profit_rate_limit", 5.0) or 5.0)
         self.risk_block_buy_on = bool(cache.get("risk_block_buy_on", True))
         self.risk_block_sell_on = bool(cache.get("risk_block_sell_on", False))
         self.consecutive_loss_limit_on = bool(cache.get("consecutive_loss_limit_on", False))
@@ -85,19 +81,7 @@ class RiskManager:
                 logger.warning("[매매] 일일 손실률 한도 초과: 현재 %.2f%%, 한도 %.2f%%", today_pnl_rate, self.daily_loss_rate_limit)
                 return False, "일일 손실률 한도 초과"
 
-        # 2. 일일 수익 한도
-        if self.daily_profit_limit_on and today_pnl >= self.daily_profit_limit:
-            logger.warning("[매매] 일일 수익 한도 도달: 현재 %s, 한도 %s", f"{today_pnl:,}", f"{self.daily_profit_limit:,}")
-            return False, "일일 수익 한도 도달"
-
-        # 3. 일일 수익률 한도
-        if self.daily_profit_rate_limit_on and today_principal > 0:
-            today_pnl_rate = today_pnl / today_principal * 100
-            if today_pnl_rate >= self.daily_profit_rate_limit:
-                logger.warning("[매매] 일일 수익률 한도 도달: 현재 %.2f%%, 한도 %.2f%%", today_pnl_rate, self.daily_profit_rate_limit)
-                return False, "일일 수익률 한도 도달"
-
-        # 4. 연속 손실 횟수
+        # 2. 연속 손실 횟수
         if self.consecutive_loss_limit_on:
             consec_count = await self._get_consecutive_loss_count(trade_mode)
             if consec_count >= self.consecutive_loss_limit:
@@ -213,16 +197,6 @@ class RiskManager:
                 today_pnl_rate = today_pnl / today_principal * 100
                 if today_pnl_rate <= self.daily_loss_rate_limit:
                     return False, "일일 손실률 한도 초과 (매도 차단)"
-
-            # 일일 수익 한도
-            if self.daily_profit_limit_on and today_pnl >= self.daily_profit_limit:
-                return False, "일일 수익 한도 도달 (매도 차단)"
-
-            # 일일 수익률 한도
-            if self.daily_profit_rate_limit_on and today_principal > 0:
-                today_pnl_rate = today_pnl / today_principal * 100
-                if today_pnl_rate >= self.daily_profit_rate_limit:
-                    return False, "일일 수익률 한도 도달 (매도 차단)"
 
             # 연속 손실 횟수
             if self.consecutive_loss_limit_on:

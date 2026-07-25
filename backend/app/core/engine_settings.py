@@ -109,10 +109,6 @@ def _build_risk_settings(merged: dict) -> dict:
     daily_loss = int(_v if _v is not None else -500000)
     _v = merged.get("daily_loss_rate_limit")
     daily_loss_rate = float(_v if _v is not None else -5.0)
-    _v = merged.get("daily_profit_limit")
-    daily_profit = int(_v if _v is not None else 500000)
-    _v = merged.get("daily_profit_rate_limit")
-    daily_profit_rate = float(_v if _v is not None else 5.0)
     _v = merged.get("consecutive_loss_limit")
     consecutive_loss = int(_v if _v is not None else 3)
     return {
@@ -124,10 +120,6 @@ def _build_risk_settings(merged: dict) -> dict:
         "daily_loss_limit": daily_loss,
         "daily_loss_rate_limit_on": bool(merged.get("daily_loss_rate_limit_on", False)),
         "daily_loss_rate_limit": daily_loss_rate,
-        "daily_profit_limit_on": bool(merged.get("daily_profit_limit_on", False)),
-        "daily_profit_limit": daily_profit,
-        "daily_profit_rate_limit_on": bool(merged.get("daily_profit_rate_limit_on", False)),
-        "daily_profit_rate_limit": daily_profit_rate,
         "risk_block_buy_on": bool(merged.get("risk_block_buy_on", True)),
         "risk_block_sell_on": bool(merged.get("risk_block_sell_on", False)),
         "consecutive_loss_limit_on": bool(merged.get("consecutive_loss_limit_on", False)),

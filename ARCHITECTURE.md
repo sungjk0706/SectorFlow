@@ -821,8 +821,6 @@ RiskManager
 ├── [항상 실행] 단일 종목 비중 한도 (TODO)
 └── [risk_manager_on + risk_block_buy_on 시 실행] 확장 리스크 조건
     ├── 일일 손실률 한도 (daily_loss_rate_limit, 기본 -5.0%)
-    ├── 일일 수익 한도 (daily_profit_limit, 기본 +500,000원)
-    ├── 일일 수익률 한도 (daily_profit_rate_limit, 기본 +5.0%)
     └── 연속 손실 한도 (consecutive_loss_limit, 기본 3회)
 ```
 

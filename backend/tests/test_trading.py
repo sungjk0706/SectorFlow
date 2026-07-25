@@ -34,8 +34,6 @@ from backend.app.services.trading import (  # noqa: E402
     BUY_REJECT_RISK_CONSEC_LOSS,
     BUY_REJECT_RISK_LOSS,
     BUY_REJECT_RISK_LOSS_RATE,
-    BUY_REJECT_RISK_PROFIT,
-    BUY_REJECT_RISK_PROFIT_RATE,
     BUY_REJECT_RISK_SINGLE,
     BUY_REJECT_SIGNAL_INTERVAL,
     _map_risk_reason_to_code,
@@ -480,14 +478,8 @@ class TestMapRiskReasonToCode:
     def test_single_mapping(self):
         assert _map_risk_reason_to_code("단일 종목 비중 한도 초과 (삼성전자)") == BUY_REJECT_RISK_SINGLE
 
-    def test_profit_mapping(self):
-        assert _map_risk_reason_to_code("일일 수익 한도 도달") == BUY_REJECT_RISK_PROFIT
-
     def test_loss_rate_mapping(self):
         assert _map_risk_reason_to_code("일일 손실률 한도 초과") == BUY_REJECT_RISK_LOSS_RATE
-
-    def test_profit_rate_mapping(self):
-        assert _map_risk_reason_to_code("일일 수익률 한도 도달") == BUY_REJECT_RISK_PROFIT_RATE
 
     def test_consec_loss_mapping(self):
         assert _map_risk_reason_to_code("연속 손실 한도 초과 (3회)") == BUY_REJECT_RISK_CONSEC_LOSS

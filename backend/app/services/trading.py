@@ -35,9 +35,7 @@ BUY_REJECT_BUY_AMT_ZERO = "buy_amt_zero"         # 종목당 한도 설정값 0
 BUY_REJECT_DAILY_LIMIT = "daily_limit"           # 일일 매수 한도 초과
 BUY_REJECT_RISK_CIRCUIT = "risk_circuit"         # 서킷브레이커 차단
 BUY_REJECT_RISK_LOSS = "risk_loss"               # 일일 손실 한도 초과
-BUY_REJECT_RISK_PROFIT = "risk_profit"           # 일일 수익 한도 도달
 BUY_REJECT_RISK_LOSS_RATE = "risk_loss_rate"     # 일일 손실률 한도 초과
-BUY_REJECT_RISK_PROFIT_RATE = "risk_profit_rate" # 일일 수익률 한도 도달
 BUY_REJECT_RISK_CONSEC_LOSS = "risk_consec_loss" # 연속 손실 한도 초과
 BUY_REJECT_RISK_CASH = "risk_cash"               # 예수금 부족 (잔액 0)
 BUY_REJECT_TEST_CASH = "test_cash"               # 테스트 예수금 검증 실패
@@ -67,9 +65,7 @@ BUY_GLOBAL_REJECT_REASONS: frozenset[str] = frozenset({
     BUY_REJECT_DAILY_LIMIT,
     BUY_REJECT_RISK_CIRCUIT,
     BUY_REJECT_RISK_LOSS,
-    BUY_REJECT_RISK_PROFIT,
     BUY_REJECT_RISK_LOSS_RATE,
-    BUY_REJECT_RISK_PROFIT_RATE,
     BUY_REJECT_RISK_CONSEC_LOSS,
     BUY_REJECT_RISK_CASH,
     BUY_REJECT_TEST_CASH,
@@ -88,10 +84,6 @@ def _map_risk_reason_to_code(risk_reason: str) -> str:
         return BUY_REJECT_RISK_LOSS
     if "일일 손실률 한도" in risk_reason:
         return BUY_REJECT_RISK_LOSS_RATE
-    if "일일 수익 한도" in risk_reason:
-        return BUY_REJECT_RISK_PROFIT
-    if "일일 수익률 한도" in risk_reason:
-        return BUY_REJECT_RISK_PROFIT_RATE
     if "연속 손실 한도" in risk_reason:
         return BUY_REJECT_RISK_CONSEC_LOSS
     if "예수금 부족" in risk_reason:

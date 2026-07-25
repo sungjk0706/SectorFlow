@@ -331,7 +331,7 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
   })
   header.appendChild(orderTimeBlockedChip)
 
-  // 리스크 매니저 차단 칩 (빨간색 — 손실/수익 한도 도달, 클릭 시 해제)
+  // 리스크 매니저 차단 칩 (빨간색 — 손실 한도 도달, 클릭 시 해제)
   const riskBlockChip = createChipEl()
   riskBlockChip.style.display = 'none'
   riskBlockChip.style.cursor = 'pointer'
@@ -430,7 +430,7 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
       }
     } catch (e) { console.error('[header] orderTimeBlocked chip error', e) }
 
-    // 리스크 매니저 차단 칩 (빨간색 — 손실/수익 한도 도달, 클릭 시 해제)
+    // 리스크 매니저 차단 칩 (빨간색 — 손실 한도 도달, 클릭 시 해제)
     try {
       if (riskBlockStatus) {
         riskBlockChip.style.display = ''

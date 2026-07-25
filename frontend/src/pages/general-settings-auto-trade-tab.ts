@@ -154,63 +154,6 @@ function buildDailyLossRateRow(state: GeneralSettingsState): void {
   state.riskManagerChildren!.appendChild(r.el)
 }
 
-function buildDailyProfitRow(state: GeneralSettingsState): void {
-  state.dailyProfitInput = createMoneyInput({
-    value: 500000,
-    onChange: async v => {
-      const orig = Number(state.vals.daily_profit_limit)
-      state.vals.daily_profit_limit = v
-      const res = await state.settingsMgr!.saveSection({ daily_profit_limit: v })
-      toastResult(res)
-      if (!res.ok) { state.vals.daily_profit_limit = orig; state.dailyProfitInput!.setValue(orig) }
-    },
-    name: 'daily_profit_limit',
-    min: 0, max: 1_000_000_000,
-  })
-  const r = createToggleLabelControlsRow({
-    labelText: '일일 수익 한도 (원)',
-    infoText: '당일 누적 수익이 이 값 이상이면 매매 중단. 0~10억원, 기본 50만원.',
-    toggleOn: false,
-    onToggle: async next => {
-      state.vals.daily_profit_limit_on = next
-      const res = await state.settingsMgr!.saveSection({ daily_profit_limit_on: next })
-      toastResult(res)
-      if (!res.ok) state.vals.daily_profit_limit_on = !next
-    },
-    controlsChild: state.dailyProfitInput.el,
-  })
-  state.dailyProfitToggle = r.toggle; state.dailyProfitControls = r.controls
-  state.riskManagerChildren!.appendChild(r.el)
-}
-
-function buildDailyProfitRateRow(state: GeneralSettingsState): void {
-  state.dailyProfitRateInput = createNumInput({
-    value: 5,
-    onChange: async v => {
-      const orig = Number(state.vals.daily_profit_rate_limit)
-      state.vals.daily_profit_rate_limit = v
-      const res = await state.settingsMgr!.saveSection({ daily_profit_rate_limit: v })
-      toastResult(res)
-      if (!res.ok) { state.vals.daily_profit_rate_limit = orig; state.dailyProfitRateInput!.setValue(orig) }
-    },
-    step: 0.1, min: 0, max: 1000, name: 'daily_profit_rate_limit',
-  })
-  const r = createToggleLabelControlsRow({
-    labelText: '일일 수익률 한도 (%)',
-    infoText: '당일 누적 수익률이 이 값 이상이면 매매 중단. 0~1000%, 기본 5%.',
-    toggleOn: false,
-    onToggle: async next => {
-      state.vals.daily_profit_rate_limit_on = next
-      const res = await state.settingsMgr!.saveSection({ daily_profit_rate_limit_on: next })
-      toastResult(res)
-      if (!res.ok) state.vals.daily_profit_rate_limit_on = !next
-    },
-    controlsChild: state.dailyProfitRateInput.el,
-  })
-  state.dailyProfitRateToggle = r.toggle; state.dailyProfitRateControls = r.controls
-  state.riskManagerChildren!.appendChild(r.el)
-}
-
 function buildConsecLossRow(state: GeneralSettingsState): void {
   state.consecLossInput = createNumInput({
     value: 3,
@@ -279,8 +222,6 @@ function buildRiskManagerChildren(state: GeneralSettingsState): HTMLElement {
   // 매매 안전장치 OFF 시 일괄 비활성화
   buildDailyLossRow(state)
   buildDailyLossRateRow(state)
-  buildDailyProfitRow(state)
-  buildDailyProfitRateRow(state)
   buildConsecLossRow(state)
   state.riskManagerChildren!.appendChild(buildRiskBlockBuyRow(state))
   state.riskManagerChildren!.appendChild(buildRiskBlockSellRow(state))
@@ -332,8 +273,6 @@ function syncRiskManager(state: GeneralSettingsState, r: Record<string, unknown>
   if (state.riskManagerChildren) setDisabled(state.riskManagerChildren, !r.risk_manager_on)
   syncToggleInputRow(state.dailyLossToggle, state.dailyLossInput, state.dailyLossControls, r.daily_loss_limit_on !== false, Number(r.daily_loss_limit ?? -500000), act)
   syncToggleInputRow(state.dailyLossRateToggle, state.dailyLossRateInput, state.dailyLossRateControls, !!r.daily_loss_rate_limit_on, Number(r.daily_loss_rate_limit ?? -5), act)
-  syncToggleInputRow(state.dailyProfitToggle, state.dailyProfitInput, state.dailyProfitControls, !!r.daily_profit_limit_on, Number(r.daily_profit_limit ?? 500000), act)
-  syncToggleInputRow(state.dailyProfitRateToggle, state.dailyProfitRateInput, state.dailyProfitRateControls, !!r.daily_profit_rate_limit_on, Number(r.daily_profit_rate_limit ?? 5), act)
   syncToggleInputRow(state.consecLossToggle, state.consecLossInput, state.consecLossControls, !!r.consecutive_loss_limit_on, Number(r.consecutive_loss_limit ?? 3), act)
   state.riskBlockBuyToggle?.setOn(r.risk_block_buy_on !== false)
   state.riskBlockSellToggle?.setOn(!!r.risk_block_sell_on)

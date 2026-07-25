@@ -82,12 +82,6 @@ export interface GeneralSettingsState {
   dailyLossRateToggle: ReturnType<typeof createToggleBtn> | null
   dailyLossRateInput: ReturnType<typeof createNumInput> | null
   dailyLossRateControls: HTMLElement | null
-  dailyProfitToggle: ReturnType<typeof createToggleBtn> | null
-  dailyProfitInput: ReturnType<typeof createMoneyInput> | null
-  dailyProfitControls: HTMLElement | null
-  dailyProfitRateToggle: ReturnType<typeof createToggleBtn> | null
-  dailyProfitRateInput: ReturnType<typeof createNumInput> | null
-  dailyProfitRateControls: HTMLElement | null
   consecLossToggle: ReturnType<typeof createToggleBtn> | null
   consecLossInput: ReturnType<typeof createNumInput> | null
   consecLossControls: HTMLElement | null
@@ -163,12 +157,6 @@ function createState(): GeneralSettingsState {
     dailyLossRateToggle: null,
     dailyLossRateInput: null,
     dailyLossRateControls: null,
-    dailyProfitToggle: null,
-    dailyProfitInput: null,
-    dailyProfitControls: null,
-    dailyProfitRateToggle: null,
-    dailyProfitRateInput: null,
-    dailyProfitRateControls: null,
     consecLossToggle: null,
     consecLossInput: null,
     consecLossControls: null,

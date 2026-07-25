@@ -69,7 +69,7 @@ export interface UIState {
   /* ── 체결 불가 시간대 주문 차단 상태 (동시호가/장외) ── */
   orderTimeBlocked: { reason: string } | null
 
-  /* ── 리스크 매니저 차단 상태 (손실/수익 한도 도달 등) ── */
+  /* ── 리스크 매니저 차단 상태 (손실 한도 도달 등) ── */
   riskBlockStatus: { side: string; reason: string } | null
 
   /* ── 실시간 통신 지연 200ms 초과 상태 (매수/매도 공통 차단) ── */

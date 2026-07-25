@@ -219,12 +219,10 @@ _TIME_FIELDS = frozenset({
 # 리스크 매니저 설정 검증 (P20/P22) — 범위/부호 검증
 _RISK_INT_KEYS = {
     "daily_loss_limit": (-1_000_000_000, 0),        # 음수만 허용 (손실 한도)
-    "daily_profit_limit": (0, 1_000_000_000),       # 양수만 허용 (수익 한도)
     "consecutive_loss_limit": (1, 100),             # 1~100회
 }
 _RISK_FLOAT_KEYS = {
     "daily_loss_rate_limit": (-100.0, 0.0),         # 음수만 허용
-    "daily_profit_rate_limit": (0.0, 1000.0),       # 양수만 허용 (200% 이상 수익 허용 — 사용자 결정)
     "sector_min_trade_amt": (1.0, 100_000.0),       # 5거래일 평균 최소 거래대금: 1억~10조 (억 단위, P22 데이터 정합성)
 }
 

@@ -654,15 +654,6 @@ class TestRiskManagerSettingsValidation:
             mock_save.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_rejects_negative_daily_profit_limit(self):
-        """daily_profit_limit 음수 입력 시 ValueError (양수만 허용)."""
-        with patch("backend.app.core.settings_store.load_selected_settings", new=AsyncMock(return_value={})), \
-             patch("backend.app.core.settings_store.save_selected_settings", new=AsyncMock()) as mock_save:
-            with pytest.raises(ValueError, match="daily_profit_limit는 0~1000000000 사이여야 합니다"):
-                await apply_settings_updates({"daily_profit_limit": -100000})
-            mock_save.assert_not_called()
-
-    @pytest.mark.asyncio
     async def test_rejects_zero_consecutive_loss_limit(self):
         """consecutive_loss_limit 0 입력 시 ValueError (1~100만 허용)."""
         with patch("backend.app.core.settings_store.load_selected_settings", new=AsyncMock(return_value={})), \
@@ -678,15 +669,6 @@ class TestRiskManagerSettingsValidation:
              patch("backend.app.core.settings_store.save_selected_settings", new=AsyncMock()) as mock_save:
             with pytest.raises(ValueError, match="daily_loss_rate_limit는 -100.0~0.0 사이여야 합니다"):
                 await apply_settings_updates({"daily_loss_rate_limit": 5.0})
-            mock_save.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_rejects_negative_daily_profit_rate_limit(self):
-        """daily_profit_rate_limit 음수 입력 시 ValueError (양수만 허용)."""
-        with patch("backend.app.core.settings_store.load_selected_settings", new=AsyncMock(return_value={})), \
-             patch("backend.app.core.settings_store.save_selected_settings", new=AsyncMock()) as mock_save:
-            with pytest.raises(ValueError, match="daily_profit_rate_limit는 0.0~100.0 사이여야 합니다"):
-                await apply_settings_updates({"daily_profit_rate_limit": -5.0})
             mock_save.assert_not_called()
 
     @pytest.mark.asyncio
@@ -713,14 +695,10 @@ class TestRiskManagerSettingsValidation:
         valid_cases = [
             ("daily_loss_limit", 0),               # 상한 경계 (0 포함)
             ("daily_loss_limit", -1_000_000_000),  # 하한 경계
-            ("daily_profit_limit", 0),             # 하한 경계
-            ("daily_profit_limit", 1_000_000_000), # 상한 경계
             ("consecutive_loss_limit", 1),         # 하한 경계
             ("consecutive_loss_limit", 100),       # 상한 경계
             ("daily_loss_rate_limit", 0.0),        # 상한 경계
             ("daily_loss_rate_limit", -100.0),     # 하한 경계
-            ("daily_profit_rate_limit", 0.0),      # 하한 경계
-            ("daily_profit_rate_limit", 100.0),    # 상한 경계
         ]
         for k, v in valid_cases:
             with patch("backend.app.core.settings_store.load_selected_settings", new=AsyncMock(return_value={})), \

@@ -327,7 +327,7 @@ export function bindWSToStore(
     applyOrderTimeBlocked(data as { blocked?: boolean; reason?: string })
   })
 
-  /* ── risk_block_status: 리스크 매니저 차단 상태 (손실/수익 한도 도달 등) ── */
+  /* ── risk_block_status: 리스크 매니저 차단 상태 (손실 한도 도달 등) ── */
   pricesClient.onEvent('risk_block_status', (data) => {
     applyRiskBlockStatus(data as { blocked?: boolean; side?: string; reason?: string })
   })
