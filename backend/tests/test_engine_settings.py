@@ -171,11 +171,11 @@ class TestBuildEngineSettingsDictOverride:
 
     def test_trailing_stop(self):
         result = build_engine_settings_dict({
-            "ts_apply": True, "ts_start_val": 10.0, "ts_drop_val": 3.0
+            "ts_apply": True, "ts_start_val": 10.0, "ts_drop_val": -3.0
         })
         assert result["trailing_stop_apply"] is True
         assert result["trailing_start_value"] == 10.0
-        assert result["trailing_drop_value"] == 3.0
+        assert result["trailing_drop_value"] == -3.0
 
     def test_max_position_size_none(self):
         result = build_engine_settings_dict({"max_position_size": None})

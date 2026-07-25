@@ -137,10 +137,10 @@ class TestToTradeSettings:
 
     def test_ts_enabled(self):
         mgr = _make_manager()
-        ts = mgr._to_trade_settings(_raw_settings(ts_apply=True, ts_start_val=5.0, ts_drop_val=2.0))
+        ts = mgr._to_trade_settings(_raw_settings(ts_apply=True, ts_start_val=5.0, ts_drop_val=-2.0))
         assert ts["chk_ts"] is True
         assert ts["ts_start_val"] == 5.0
-        assert ts["ts_drop_val"] == 2.0
+        assert ts["ts_drop_val"] == -2.0
 
     def test_sell_limit_order_type(self):
         mgr = _make_manager()
@@ -567,7 +567,7 @@ class TestCheckSellConditions:
     @pytest.mark.asyncio
     @patch("backend.app.services.trading.auto_sell_effective", return_value=True)
     async def test_trailing_stop_trigger(self, _mock_sell):
-        mgr = _make_manager(_raw_settings(ts_apply=True, ts_start_val=5.0, ts_drop_val=2.0))
+        mgr = _make_manager(_raw_settings(ts_apply=True, ts_start_val=5.0, ts_drop_val=-2.0))
         mgr.execute_sell = AsyncMock()
         # First call: pnl_rate=8% → sets highest_price
         stock_up = {
@@ -590,9 +590,9 @@ class TestCheckSellConditions:
              patch("backend.app.services.trading.get_risk_manager") as mock_rm:
             mock_state.realtime_latency_exceeded = False
             mock_rm.return_value.check_sell_order_allowed = AsyncMock(return_value=(True, "승인"))
-            await mgr.check_sell_conditions([stock_up], _raw_settings(ts_apply=True, ts_start_val=5.0, ts_drop_val=2.0), "token")
-            # drop_rate = (76000 - 74000) / 76000 * 100 = 2.63% >= 2.0
-            await mgr.check_sell_conditions([stock_drop], _raw_settings(ts_apply=True, ts_start_val=5.0, ts_drop_val=2.0), "token")
+            await mgr.check_sell_conditions([stock_up], _raw_settings(ts_apply=True, ts_start_val=5.0, ts_drop_val=-2.0), "token")
+            # drop_rate = (74000 - 76000) / 76000 * 100 = -2.63% <= -2.0
+            await mgr.check_sell_conditions([stock_drop], _raw_settings(ts_apply=True, ts_start_val=5.0, ts_drop_val=-2.0), "token")
         # First call: no sell (trailing stop not triggered yet, just tracking high)
         # Second call: trailing stop triggered
         assert mgr.execute_sell.await_count == 1

@@ -832,8 +832,8 @@ class AutoTradeManager:
                 ts_drop_val = float(s.get("ts_drop_val") or 0)
 
                 if max_reached["pnl_rate"] >= ts_start_val:
-                    drop_rate = ((highest_price - cur_price) / highest_price * 100) if highest_price > 0 else 0
-                    if drop_rate >= ts_drop_val:
+                    drop_rate = ((cur_price - highest_price) / highest_price * 100) if highest_price > 0 else 0
+                    if drop_rate <= ts_drop_val:
                         try:
                             _sold = await self.execute_sell(stk_cd, cur_price, stk_nm, "T/S 익절", sell_qty, pnl_rate, s, base_settings, access_token)
                         except Exception:

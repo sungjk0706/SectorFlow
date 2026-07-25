@@ -113,8 +113,8 @@ function buildSellTypeSection(root: HTMLElement): void {
 
   // 추적 매도 (토글 + 시작값 한 줄, 하락값 별도 행)
   tsStartValInput = createNumInput({ value: 0, onChange: v => { const orig = Number(vals.ts_start_val); vals.ts_start_val = v; saveHelper!.autoSave('ts_start_val', v, () => { vals.ts_start_val = orig; tsStartValInput!.setValue(orig) }) }, step: 0.1, min: 0, max: 100, name: 'ts_start_val' })
-  tsDropValInput = createNumInput({ value: 0, onChange: v => { const orig = Number(vals.ts_drop_val); vals.ts_drop_val = v; saveHelper!.autoSave('ts_drop_val', v, () => { vals.ts_drop_val = orig; tsDropValInput!.setValue(orig) }) }, step: 0.1, min: 0, max: 100, name: 'ts_drop_val' })
-  tsDropRow = createSettingRow('추적 고점대비 하락률 (%)', tsDropValInput.el, { infoText: '추적 시작 후 고점 대비 하락률이 이 값 이상이면 매도. 0~100%' })
+  tsDropValInput = createNumInput({ value: 0, onChange: v => { const orig = Number(vals.ts_drop_val); vals.ts_drop_val = v; saveHelper!.autoSave('ts_drop_val', v, () => { vals.ts_drop_val = orig; tsDropValInput!.setValue(orig) }) }, step: 0.1, min: -100, max: 0, name: 'ts_drop_val' })
+  tsDropRow = createSettingRow('추적 고점대비 하락률 (%)', tsDropValInput.el, { infoText: '추적 시작 후 고점 대비 하락률이 이 값 이하이면 매도. -100%~0%, 기본 -2%' })
   {
     const r = createToggleLabelControlsRow({
       labelText: '고점추적매도 (시작상승률%)',
