@@ -661,7 +661,9 @@ async def _do_unified_confirmed_fetch() -> None:
         engine_state.state.confirmed_done = False
         logger.warning("[스케줄] 통합 확정 조회 실패 — 플래그 복원: %s", e, exc_info=True)
         try:
-            engine_state.state.confirmed_refresh_running_confirmed = False
+            # confirmed_refresh_running_confirmed 쓰기는 _reset_confirmed_refresh_running() 단일 경로 (세션 11 P10 SSOT)
+            from backend.app.services.market_close_pipeline import _reset_confirmed_refresh_running
+            _reset_confirmed_refresh_running()
         except Exception as _e:
             logger.warning("[시스템] 플래그 복원 실패: %s", _e, exc_info=True)
 
@@ -836,7 +838,7 @@ async def _on_realtime_fields_reset() -> None:
         gc.disable()
         logger.info("[스케줄] 장중 메모리 정리 비활성화 (실시간 처리 지연 방지)")
         # 실시간 필드 초기화 (전일 확정 데이터 제거)
-        from backend.app.services.engine_snapshot import _reset_realtime_fields
+        from backend.app.services.engine_snapshot import _reset_realtime_fields, _mark_realtime_reset_done
         await _reset_realtime_fields()
         # 수신율 임계값 게이트 리셋 — 새 구독 세션 시작 시 임계값 대기 상태로 전환
         from backend.app.pipelines.pipeline_compute import reset_sector_threshold
@@ -845,7 +847,8 @@ async def _on_realtime_fields_reset() -> None:
         from backend.app.services.engine_account_notify import notify_cache
         notify_cache.prev_scores = []
         engine_state.state.sector_summary_cache = None
-        engine_state.state.last_realtime_reset_date = today_str
+        # last_realtime_reset_date 쓰기는 _mark_realtime_reset_done() 단일 경로 (세션 11 P10 SSOT)
+        _mark_realtime_reset_done(today_str)
         logger.info("[작업실행] 실시간 필드 초기화 + GC 비활성화 + 캐시 초기화 완료 (사전 — 07:58)")
     except Exception as e:
         logger.warning("[작업실행] 실시간 필드 초기화 오류: %s", e, exc_info=True)
@@ -1220,9 +1223,10 @@ async def _init_ws_subscribe_state() -> None:
         # 캐시 로드 전이면 스킵 — engine_cache._load_caches_preboot()에서 DB 로드 후 수행
         if engine_state.state.preboot_cache_loaded:
             logger.info("[스케줄] 구독 구간 내 시작 — 실시간 필드 초기화")
-            from backend.app.services.engine_snapshot import _reset_realtime_fields
+            from backend.app.services.engine_snapshot import _reset_realtime_fields, _mark_realtime_reset_done
             await _reset_realtime_fields()
-            engine_state.state.last_realtime_reset_date = today_str
+            # last_realtime_reset_date 쓰기는 _mark_realtime_reset_done() 단일 경로 (세션 11 P10 SSOT)
+            _mark_realtime_reset_done(today_str)
         else:
             logger.info("[스케줄] 구독 구간 내 시작 — 실시간 필드 초기화는 캐시 로드 후 수행")
         # delta 비교 캐시 초기화 → 다음 sector-scores 전송이 전체 스냅샷으로 나감

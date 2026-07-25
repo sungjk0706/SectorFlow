@@ -98,11 +98,11 @@ async def _load_caches_preboot(settings: dict) -> None:
         from backend.app.services.daily_time_scheduler import is_ws_subscribe_window
         _in_ws_window = await is_ws_subscribe_window(settings)
         if _in_ws_window:
-            from backend.app.services.engine_snapshot import _reset_realtime_fields
+            from backend.app.services.engine_snapshot import _reset_realtime_fields, _mark_realtime_reset_done
             await _reset_realtime_fields()
             # ── 4단계: 사전 트리거 멱등성 플래그 동기화 (중복 실행 방지) ──
-            from backend.app.services.daily_time_scheduler import _kst_now
-            engine_state.state.last_realtime_reset_date = _kst_now().strftime("%Y%m%d")
+            # last_realtime_reset_date 쓰기는 _mark_realtime_reset_done() 단일 경로 (세션 11 P10 SSOT)
+            _mark_realtime_reset_done()
             logger.info("[데이터] 실시간 통신 구독 구간 — 실시간 필드 초기화 완료 (DB 로드 후)")
 
         # ── 기동 완료 로직 ──

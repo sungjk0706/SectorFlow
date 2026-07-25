@@ -45,6 +45,35 @@
                 engine_lifecycle)
   - access_token: 3곳 (engine_lifecycle, engine_loop ×2)
 
+D/E/F 소유권 계약 (세션 11 — CACHE-STATE-IMPL-11, 비거래 상태 단일화):
+  단일화 완료 (헬퍼 경유, 외부 직접 쓰기 제거):
+    - last_realtime_reset_date (D) → engine_snapshot._mark_realtime_reset_done()
+        호출부: engine_cache, daily_time_scheduler ×2
+    - confirmed_refresh_running_confirmed (F) → market_close_pipeline (소유 모듈 직접 쓰기)
+        외부 예외 경로: daily_time_scheduler → _reset_confirmed_refresh_running() 헬퍼 경유
+    - latest_filter_summary_meta (F) → market_close_pipeline._set_latest_filter_summary_meta()
+        호출부: market_close_pipeline (4단계), web/app.py (기동 시 DB 캐시 로드)
+
+  자연스러운 산재 (init/오류/성공 패턴 — 단일화 대상 아님):
+    - running (F): engine_lifecycle(start/stop) + engine_loop(run/exit) — 라이프사이클 협업
+    - degraded_mode (F): engine_lifecycle(초기화=False) + engine_loop(오류 시=True)
+    - preboot_cache_loaded (F): engine_loop(초기화=False) + engine_cache(성공 시=True)
+    - ws_reg_pipeline_done (E): engine_ws(set) + engine_bootstrap(set) — 준비 이벤트
+    - sector_summary_ready_event (E): sector_data_provider + engine_sector_confirm — 준비 이벤트
+    - confirmed_refresh_running_confirmed (F): market_close_pipeline 내 3곳 (소유 모듈)
+
+  거래 관련 산재 (변경 금지 — 본 세션 범위 외):
+    - integrated_system_settings_cache (F): 10+ 파일 (engine_config 전체 갱신 + 각 모듈 항목 수정)
+    - _last_global_buy_ts / _last_global_sell_ts (E): order_interval + web/routes/settings
+
+  상수 (쓰기 없음, 선언만):
+    - MIN_CACHE_LIFETIME_SEC (E): 읽기 참조 0건 (사용 안 함 — 별도 승인 시 제거 검토)
+    - REG_POST_ACK_GAP_SEC (E): 읽기만 존재 (engine_ws)
+
+  미사용 / Dead code (별도 승인 시 제거 검토):
+    - shutdown_requested (F): 선언만, 읽기/쓰기 0건
+    - confirmed_refresh_running (F): 쓰기 0건, 읽기만 2건 (미구현 플래그)
+
 Fallback 패턴 (세션 12 — active_connector 정리 인계):
   `engine_state.state.connector_manager or engine_state.state.active_connector`
   — 7개 파일 20곳 (engine_ws_reg ×6, engine_ws ×6, daily_time_scheduler ×3,
@@ -54,6 +83,8 @@ Fallback 패턴 (세션 12 — active_connector 정리 인계):
 
 Dead code 후보 (참조 0건 — 별도 승인 시 제거 검토):
   - shutdown_requested: 선언만 존재, 읽기/쓰기 참조 0건
+  - confirmed_refresh_running: 쓰기 0건, 읽기만 2건 (미구현 플래그)
+  - MIN_CACHE_LIFETIME_SEC: 읽기 참조 0건 (사용 안 함)
 """
 import asyncio
 from datetime import datetime

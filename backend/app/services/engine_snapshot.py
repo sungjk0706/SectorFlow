@@ -207,3 +207,25 @@ async def _reset_realtime_fields() -> None:
     await notify_desktop_sector_stocks_refresh()
     await _broadcast_account("realtime_reset")
     await _broadcast("realtime-reset", {})
+
+
+def _mark_realtime_reset_done(date_str: str | None = None) -> None:
+    """``last_realtime_reset_date`` 갱신 (단일 소유자 — 세션 11 CACHE-STATE-IMPL-11).
+
+    실시간 필드 초기화(``_reset_realtime_fields``) 완료 후 중복 실행 방지용
+    날짜 플래그(YYYYMMDD)를 설정한다. 모든 ``last_realtime_reset_date`` 쓰기는
+    본 함수에서만 수행한다 (P10 SSOT — 그룹 D 소유권 계약).
+
+    호출부:
+      - ``engine_cache._load_caches_preboot`` — WS 구독 구간 내 기동 시 DB 로드 후
+      - ``daily_time_scheduler._on_pre_ws_subscribe`` — 07:58 사전 트리거
+      - ``daily_time_scheduler._on_ws_subscribe_start`` — 07:59/08:00 phase 변경
+
+    Args:
+        date_str: YYYYMMDD 형식. None이면 ``_kst_now()``로 계산.
+                  호출부에서 이미 ``today_str``을 계산한 경우 전달하여 일관성 유지.
+    """
+    if date_str is None:
+        from backend.app.services.daily_time_scheduler import _kst_now
+        date_str = _kst_now().strftime("%Y%m%d")
+    engine_state.state.last_realtime_reset_date = date_str

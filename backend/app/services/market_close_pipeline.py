@@ -841,7 +841,8 @@ async def _step4_save_to_db_and_cache(
             from backend.app.core.stock_classification_data import sync_sector_from_custom_sectors
             await sync_sector_from_custom_sectors()
 
-        engine_state.state.latest_filter_summary_meta = filter_summary_meta
+        # latest_filter_summary_meta 쓰기는 _set_latest_filter_summary_meta() 단일 경로 (세션 11 P10 SSOT)
+        _set_latest_filter_summary_meta(filter_summary_meta)
 
         all_codes = list(confirmed_codes)
         await _update_layout_cache(all_codes, name_map)
@@ -974,6 +975,25 @@ async def _step7_recompute_and_broadcast(tag: str) -> None:
         logger.info("%s 업종순위 재계산 + 실시간 화면 전송 완료", tag)
     except Exception as _ws_err:
         logger.warning("%s 업종순위 재계산 실패: %s", tag, _ws_err, exc_info=True)
+
+
+def _reset_confirmed_refresh_running() -> None:
+    """``confirmed_refresh_running_confirmed`` 플래그 리셋 (단일 소유자 — 세션 11).
+
+    확정 데이터 파이프라인 실패 시 외부 모듈(``daily_time_scheduler``)에서 호출하는
+    안전 청소. 정상 경로의 True/False 수명 주기는 ``_run_confirmed_pipeline``에서
+    직접 관리하므로 본 함수는 예외 경로의 외부 리셋 전용 (P10 SSOT — 그룹 F 소유권 계약).
+    """
+    engine_state.state.confirmed_refresh_running_confirmed = False
+
+
+def _set_latest_filter_summary_meta(meta: str) -> None:
+    """``latest_filter_summary_meta`` 갱신 (단일 소유자 — 세션 11).
+
+    기동 시 DB 캐시 로드(``web/app.py``)와 파이프라인 4단계 완료 후 갱신 양쪽에서 호출.
+    모든 ``latest_filter_summary_meta`` 쓰기는 본 함수에서만 수행 (P10 SSOT — 그룹 F 소유권 계약).
+    """
+    engine_state.state.latest_filter_summary_meta = meta
 
 
 async def _run_confirmed_pipeline(

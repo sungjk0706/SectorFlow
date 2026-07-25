@@ -1,15 +1,17 @@
-"""engine_state.py 속성 그룹 분류 회귀 테스트 — 세션 10 (CACHE-STATE-IMPL-10).
+"""engine_state.py 속성 그룹 분류 회귀 테스트 — 세션 10 + 세션 11.
 
 엔진 전역 상태 70개 속성을 6개 그룹(A~F)으로 분류하고, 분류 계약을 회귀 테스트로 고정.
-프로덕션 동작 변경 없음 — 분류 주석 + 매핑 테이블 일치성만 검증.
+세션 10: 분류 주석 + 매핑 테이블 일치성 + fallback/산재/dead code 인벤토리.
+세션 11: D/E/F 비거래 상태 소유권 계약 — 3종 단일화 + 자연스러운 산재 문서화 + dead code 3종.
 
 검증 항목:
   1. 속성 → 그룹 매핑 (70개 전부, 누락/중복 없음)
   2. 6개 그룹 속성 수 합계 = 전체 속성 수
   3. 실제 EngineState 인스턴스 속성과 매핑 테이블 일치
-  4. fallback 패턴 인벤토리 (세션 12 인계 — 7개 파일 15곳)
+  4. fallback 패턴 인벤토리 (세션 12 인계 — 7개 파일 20곳)
   5. 갱신 분산 주의 속성 명시 (향후 단일화 후보)
-  6. dead code 후보 (shutdown_requested — 참조 0건)
+  6. dead code 후보 (shutdown_requested — 참조 0건, MIN_CACHE_LIFETIME_SEC — 읽기 0건)
+  7. D/E/F 소유권 계약 (세션 11 — 3종 단일화 + 자연스러운 산재 + confirmed_refresh_running 미구현)
 """
 from __future__ import annotations
 
@@ -379,4 +381,152 @@ class TestDeadCodeCandidate:
         assert "shutdown_requested" not in all_state_refs, (
             "shutdown_requested 참조가 발견됨 — dead code 상태에서 변경됨. "
             "본 테스트를 갱신하거나 속성 제거 검토 필요."
+        )
+
+    def test_min_cache_lifetime_sec_has_no_refs(self, all_state_refs):
+        """MIN_CACHE_LIFETIME_SEC: 읽기 참조 0건 (사용 안 함 — 세션 11 조사).
+
+        상수 선언만 존재. 참조가 추가되면 사용 안 함 상태에서 변경됨을 감지.
+        제거는 별도 승인 필요.
+        """
+        assert "MIN_CACHE_LIFETIME_SEC" not in all_state_refs, (
+            "MIN_CACHE_LIFETIME_SEC 참조가 발견됨 — 사용 안 함 상태에서 변경됨. "
+            "본 테스트를 갱신하거나 속성 제거 검토 필요."
+        )
+
+
+# ── 6. D/E/F 소유권 계약 (세션 11 — 비거래 상태 단일화) ──────────────────────────
+class TestOwnershipContractSession11:
+    """세션 11에서 단일화한 3종 속성의 소유권 계약 회귀 테스트.
+
+    단일화 완료 속성의 쓰기가 단일 소유자 모듈에만 존재하는지 검증.
+    외부 모듈의 직접 쓰기가 추가되면 회귀 감지.
+    """
+
+    @pytest.fixture(scope="class")
+    def write_locations_by_attr_v2(self):
+        """각 속성별 state.<attr> = (쓰기) 위치를 가진 파일 집합 (세션 11 재사용)."""
+        repo_root = Path(__file__).resolve().parents[2]
+        app_dir = repo_root / "backend" / "app"
+        pattern = re.compile(
+            r"engine_state\.state\.([a-zA-Z_][a-zA-Z0-9_]*)\s*=(?!=)"
+        )
+        pattern_short = re.compile(r"(?<!\w)state\.([a-zA-Z_][a-zA-Z0-9_]*)\s*=(?!=)")
+        locations: dict[str, set[str]] = {}
+        for py_file in sorted(app_dir.rglob("*.py")):
+            if "__pycache__" in py_file.parts:
+                continue
+            try:
+                lines = py_file.read_text(encoding="utf-8").splitlines()
+            except (OSError, UnicodeDecodeError):
+                continue
+            rel = str(py_file.relative_to(repo_root))
+            for line in lines:
+                for pat in (pattern, pattern_short):
+                    for m in pat.finditer(line):
+                        attr = m.group(1)
+                        locations.setdefault(attr, set()).add(rel)
+        return locations
+
+    def test_last_realtime_reset_date_single_owner(self, write_locations_by_attr_v2):
+        """last_realtime_reset_date (D): 쓰기는 engine_snapshot.py에만 존재 (세션 11 단일화).
+
+        헬퍼: engine_snapshot._mark_realtime_reset_done()
+        호출부 (engine_cache, daily_time_scheduler)는 헬퍼를 경유하므로 직접 쓰기 없음.
+        """
+        locs = write_locations_by_attr_v2.get("last_realtime_reset_date", set())
+        expected = {"backend/app/services/engine_snapshot.py"}
+        assert locs == expected, (
+            f"last_realtime_reset_date 쓰기 위치 불일치.\n"
+            f"예상: {expected}\n실제: {locs}\n"
+            f"외부 직접 쓰기가 발견되면 _mark_realtime_reset_done() 헬퍼 경유로 변경 필요."
+        )
+
+    def test_confirmed_refresh_running_confirmed_single_owner(self, write_locations_by_attr_v2):
+        """confirmed_refresh_running_confirmed (F): 쓰기는 market_close_pipeline.py에만 존재 (세션 11 단일화).
+
+        소유 모듈 내 3곳 (True 시작 + False finally + _reset_confirmed_refresh_running 헬퍼).
+        외부 (daily_time_scheduler)는 _reset_confirmed_refresh_running() 헬퍼 경유.
+        """
+        locs = write_locations_by_attr_v2.get("confirmed_refresh_running_confirmed", set())
+        expected = {"backend/app/services/market_close_pipeline.py"}
+        assert locs == expected, (
+            f"confirmed_refresh_running_confirmed 쓰기 위치 불일치.\n"
+            f"예상: {expected}\n실제: {locs}\n"
+            f"외부 직접 쓰기가 발견되면 _reset_confirmed_refresh_running() 헬퍼 경유로 변경 필요."
+        )
+
+    def test_latest_filter_summary_meta_single_owner(self, write_locations_by_attr_v2):
+        """latest_filter_summary_meta (F): 쓰기는 market_close_pipeline.py에만 존재 (세션 11 단일화).
+
+        헬퍼: market_close_pipeline._set_latest_filter_summary_meta()
+        호출부 (market_close_pipeline 4단계, web/app.py 기동 로드)는 헬퍼 경유.
+        """
+        locs = write_locations_by_attr_v2.get("latest_filter_summary_meta", set())
+        expected = {"backend/app/services/market_close_pipeline.py"}
+        assert locs == expected, (
+            f"latest_filter_summary_meta 쓰기 위치 불일치.\n"
+            f"예상: {expected}\n실제: {locs}\n"
+            f"외부 직접 쓰기가 발견되면 _set_latest_filter_summary_meta() 헬퍼 경유로 변경 필요."
+        )
+
+    def test_running_natural_scatter_documented(self, write_locations_by_attr_v2):
+        """running (F): 자연스러운 산재 — engine_lifecycle + engine_loop (라이프사이클 협업).
+
+        단일화 대상 아님 — 시작/중지는 lifecycle, 실행/종료는 loop가 담당.
+        산재 파일 수가 변경되면 문서화 갱신 필요.
+        """
+        locs = write_locations_by_attr_v2.get("running", set())
+        expected = {
+            "backend/app/services/engine_lifecycle.py",
+            "backend/app/services/engine_loop.py",
+        }
+        assert locs == expected, (
+            f"running 쓰기 위치 불일치.\n"
+            f"예상: {expected}\n실제: {locs}\n"
+            f"자연스러운 산재 패턴에서 변경됨 — 문서화 갱신 또는 단일화 검토 필요."
+        )
+
+    def test_degraded_mode_natural_scatter_documented(self, write_locations_by_attr_v2):
+        """degraded_mode (F): 자연스러운 산재 — engine_lifecycle(초기화) + engine_loop(오류 설정).
+
+        단일화 대상 아님 — init/오류 패턴.
+        """
+        locs = write_locations_by_attr_v2.get("degraded_mode", set())
+        expected = {
+            "backend/app/services/engine_lifecycle.py",
+            "backend/app/services/engine_loop.py",
+        }
+        assert locs == expected, (
+            f"degraded_mode 쓰기 위치 불일치.\n"
+            f"예상: {expected}\n실제: {locs}\n"
+            f"자연스러운 산재 패턴에서 변경됨 — 문서화 갱신 또는 단일화 검토 필요."
+        )
+
+    def test_preboot_cache_loaded_natural_scatter_documented(self, write_locations_by_attr_v2):
+        """preboot_cache_loaded (F): 자연스러운 산재 — engine_cache(성공) + engine_loop(초기화).
+
+        단일화 대상 아님 — init/성공 패턴.
+        """
+        locs = write_locations_by_attr_v2.get("preboot_cache_loaded", set())
+        expected = {
+            "backend/app/services/engine_cache.py",
+            "backend/app/services/engine_loop.py",
+        }
+        assert locs == expected, (
+            f"preboot_cache_loaded 쓰기 위치 불일치.\n"
+            f"예상: {expected}\n실제: {locs}\n"
+            f"자연스러운 산재 패턴에서 변경됨 — 문서화 갱신 또는 단일화 검토 필요."
+        )
+
+    def test_confirmed_refresh_running_has_no_writes(self, write_locations_by_attr_v2):
+        """confirmed_refresh_running (F): 쓰기 0건 (미구현 플래그 — 세션 11 조사).
+
+        읽기만 2건 존재. 쓰기가 추가되면 미구현 상태에서 변경됨을 감지.
+        제거는 별도 승인 필요.
+        """
+        locs = write_locations_by_attr_v2.get("confirmed_refresh_running", set())
+        assert not locs, (
+            f"confirmed_refresh_running 쓰기 발견: {locs} — "
+            "미구현 플래그 상태에서 변경됨. 본 테스트 갱신 또는 구현 검토 필요."
         )

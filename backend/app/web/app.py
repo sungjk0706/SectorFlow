@@ -78,7 +78,9 @@ async def lifespan(app: FastAPI):
 
     async def _load_filter_summary_meta():
         try:
-            state.latest_filter_summary_meta = await load_filter_summary_meta_cache()
+            # latest_filter_summary_meta 쓰기는 _set_latest_filter_summary_meta() 단일 경로 (세션 11 P10 SSOT)
+            from backend.app.services.market_close_pipeline import _set_latest_filter_summary_meta
+            _set_latest_filter_summary_meta(await load_filter_summary_meta_cache())
             logger.info("[웹서버] 필터 요약 메타 캐시 로드 완료")
         except Exception as e:
             logger.warning("[웹서버] 필터 요약 메타 캐시 초기 로드 실패: %s", e)
