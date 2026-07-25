@@ -903,3 +903,108 @@ class TestDailyBuySpentFeeInclusive:
         _expected_base = 14 * 70000
         assert mgr._daily_buy_spent == _expected_base
         assert mgr._symbol_daily_buy_spent["005930"] == _expected_base
+
+
+# ── execute_buy 주문 전송 실패 (P22 정합성, P15 단일 경로, P18 테스트모드 동등성) ──
+
+class TestExecuteBuyOrderFailure:
+    """주문 전송 실패 시 사전 차감 롤백 + 실전 주문 경로 미호출 검증.
+
+    trading.py 422-429: fake_send_order 실패 → release_buy_power(_reserved_cost) 호출.
+    현재 이 경로의 테스트 커버리지 0개 — 세션1에서 불변조건 고정.
+    """
+
+    @pytest.mark.asyncio
+    async def test_buy_order_send_failure_releases_reserved_cash(self):
+        """테스트모드 매수 주문 전송 실패 시 release_buy_power 호출 → 주문가능금액 예약 전 복원 (P22).
+
+        시나리오:
+          1. reserve_test_buy_power 성공 (사전 차감)
+          2. fake_send_order 실패 (success=False)
+          3. release_buy_power 호출 → _orderable 예약 전 복원
+          4. execute_buy returns (False, BUY_REJECT_ORDER_FAIL)
+        """
+        from backend.app.services import settlement_engine
+        mgr = _make_manager(_raw_settings(rebuy_block_on=False))
+        # 사전 차감될 금액 (reserve_test_buy_power가 반환하는 cost)
+        _reserved_cost = 980_147  # 14주 * 70000 + round(14*70000*0.00015)
+        # 주문가능금액을 사전 차감 전 잔액으로 설정
+        original_cash = 10_000_000
+        settlement_engine._orderable = original_cash
+        settlement_engine._loaded = True
+        with patch("backend.app.services.engine_state.state") as mock_state, \
+             patch("backend.app.services.trading.auto_buy_effective", return_value=True), \
+             patch("backend.app.services.engine_account.get_positions", new_callable=AsyncMock, return_value=[]), \
+             patch("backend.app.services.trading.is_test_mode", return_value=True), \
+             patch("backend.app.services.settlement_engine.get_available_cash", return_value=original_cash), \
+             patch("backend.app.services.dry_run.estimate_fill_price", return_value=70000), \
+             patch("backend.app.services.trading.get_risk_manager") as mock_rm, \
+             patch("backend.app.services.data_manager.get_stock_name", return_value="삼성전자"), \
+             patch("backend.app.services.engine_strategy_core.reserve_test_buy_power", new_callable=AsyncMock, return_value=(True, "", _reserved_cost)) as mock_reserve, \
+             patch("backend.app.services.dry_run.fake_send_order", new_callable=AsyncMock, return_value={"success": False}) as mock_send, \
+             patch("backend.app.services.settlement_engine.release_buy_power", new_callable=AsyncMock) as mock_release, \
+             patch("backend.app.services.dry_run.set_stock_name", new_callable=AsyncMock), \
+             patch("backend.app.services.dry_run.fake_fill_event", new_callable=AsyncMock), \
+             patch("backend.app.services.trade_history.record_buy", new_callable=AsyncMock), \
+             patch("backend.app.core.journal.record_order_request", new_callable=AsyncMock), \
+             patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock), \
+             patch("backend.app.services.engine_lifecycle.schedule_engine_task", side_effect=_close_coro), \
+             patch("backend.app.services.trading._fire_and_forget_telegram"):
+            mock_state.realtime_latency_exceeded = False
+            mock_state.integrated_system_settings_cache = _raw_settings(rebuy_block_on=False)
+            mock_state.master_stocks_cache = {}
+            mock_rm.return_value.circuit_breaker.get_state.return_value = "CLOSED"
+            mock_rm.return_value.get_withdrawable_deposit.return_value = original_cash
+            mock_rm.return_value.check_buy_order_allowed = AsyncMock(return_value=(True, "승인"))
+            result, reason = await mgr.execute_buy("005930", 70000, "token")
+        # 주문 실패
+        assert result is False
+        from backend.app.services.trading import BUY_REJECT_ORDER_FAIL
+        assert reason == BUY_REJECT_ORDER_FAIL
+        # 사전 차감 호출됨
+        mock_reserve.assert_awaited_once()
+        # 주문 전송 실패
+        mock_send.assert_awaited_once()
+        # 롤백 호출 — 사전 차감액이 release_buy_power에 전달됨
+        mock_release.assert_awaited_once()
+        released_amount = mock_release.call_args.args[0]
+        assert released_amount == _reserved_cost, \
+            f"롤백 금액이 사전 차감액과 일치해야 함 (P22): expected={_reserved_cost}, actual={released_amount}"
+
+    @pytest.mark.asyncio
+    async def test_buy_order_failure_does_not_call_real_broker(self):
+        """테스트모드 주문 실패 시 실전 get_router().order.send_order 호출 안 함 (P15/P18).
+
+        테스트모드는 fake_send_order만 사용하고 실전 브로커 경로로 우회하지 않음.
+        """
+        mgr = _make_manager(_raw_settings(rebuy_block_on=False))
+        _reserved_cost = 980_147
+        with patch("backend.app.services.engine_state.state") as mock_state, \
+             patch("backend.app.services.trading.auto_buy_effective", return_value=True), \
+             patch("backend.app.services.engine_account.get_positions", new_callable=AsyncMock, return_value=[]), \
+             patch("backend.app.services.trading.is_test_mode", return_value=True), \
+             patch("backend.app.services.settlement_engine.get_available_cash", return_value=10_000_000), \
+             patch("backend.app.services.dry_run.estimate_fill_price", return_value=70000), \
+             patch("backend.app.services.trading.get_risk_manager") as mock_rm, \
+             patch("backend.app.services.data_manager.get_stock_name", return_value="삼성전자"), \
+             patch("backend.app.services.engine_strategy_core.reserve_test_buy_power", new_callable=AsyncMock, return_value=(True, "", _reserved_cost)), \
+             patch("backend.app.services.dry_run.fake_send_order", new_callable=AsyncMock, return_value={"success": False}), \
+             patch("backend.app.services.settlement_engine.release_buy_power", new_callable=AsyncMock), \
+             patch("backend.app.services.dry_run.set_stock_name", new_callable=AsyncMock), \
+             patch("backend.app.services.dry_run.fake_fill_event", new_callable=AsyncMock), \
+             patch("backend.app.services.trade_history.record_buy", new_callable=AsyncMock), \
+             patch("backend.app.core.journal.record_order_request", new_callable=AsyncMock), \
+             patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock), \
+             patch("backend.app.services.engine_lifecycle.schedule_engine_task", side_effect=_close_coro), \
+             patch("backend.app.services.trading._fire_and_forget_telegram"), \
+             patch("backend.app.services.trading.get_router") as mock_get_router:
+            mock_state.realtime_latency_exceeded = False
+            mock_state.integrated_system_settings_cache = _raw_settings(rebuy_block_on=False)
+            mock_state.master_stocks_cache = {}
+            mock_rm.return_value.circuit_breaker.get_state.return_value = "CLOSED"
+            mock_rm.return_value.get_withdrawable_deposit.return_value = 10_000_000
+            mock_rm.return_value.check_buy_order_allowed = AsyncMock(return_value=(True, "승인"))
+            result, _reason = await mgr.execute_buy("005930", 70000, "token")
+        assert result is False
+        # 실전 라우터가 조회되지 않아야 함 (테스트모드는 fake_send_order만 사용)
+        mock_get_router.assert_not_called()

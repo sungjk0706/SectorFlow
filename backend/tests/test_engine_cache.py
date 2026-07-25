@@ -405,6 +405,51 @@ class TestLoadCachesPrebootTradeMode:
 
         mock_load_state.assert_not_called()
 
+    @pytest.mark.asyncio
+    async def test_test_mode_calls_reconcile_after_load_state(self):
+        """세션1 시나리오: 테스트모드 기동 시 load_state → reconcile_with_trades 호출 순서 (P22).
+
+        engine_cache.py 113-116: load_state(initial_deposit) 후 reconcile_with_trades() 호출.
+        autouse fixture가 reconcile을 AsyncMock으로 차단하므로, 테스트 내에서 직접 patch하여
+        호출 여부와 순서를 검증.
+        """
+        from backend.app.services import engine_cache
+
+        snap = _make_snapshot(3)
+        mock_state = MagicMock()
+        settings = _make_settings(trade_mode="test", virtual_deposit=50_000_000)
+        _apply_mocks(mock_state, settings=settings)
+
+        # load_state 호출 시점에 reconcile이 아직 호출되지 않았음을 검증하기 위한 클로저
+        reconcile_mock = AsyncMock()
+        load_state_call_order: list[int] = []
+
+        async def _load_state_side_effect(*args, **kwargs):
+            # load_state 호출 시점에 reconcile이 아직 await되지 않아야 함 (순서 보장)
+            load_state_call_order.append(reconcile_mock.await_count)
+            return None
+
+        with (
+            patch.object(engine_state, "state", mock_state),
+            patch("backend.app.db.stock_tables.load_master_stocks_table", new_callable=AsyncMock, return_value=snap),
+            patch("backend.app.services.engine_account_notify._rebuild_layout_cache"),
+            patch("backend.app.services.engine_account_notify.notify_cache"),
+            patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock, return_value=False),
+            patch("backend.app.services.settlement_engine.load_state", side_effect=_load_state_side_effect) as mock_load_state,
+            patch("backend.app.services.settlement_engine.reconcile_with_trades", reconcile_mock),
+            patch("backend.app.services.daily_time_scheduler.retry_pipeline_catchup_after_bootstrap", new_callable=AsyncMock),
+            patch.object(engine_cache.asyncio, "create_task", side_effect=swallow_coro_side_effect),
+        ):
+            await engine_cache._load_caches_preboot(settings)
+
+            # load_state 호출됨
+            mock_load_state.assert_awaited_once_with(initial_deposit=50_000_000)
+            # reconcile_with_trades 호출됨
+            reconcile_mock.assert_awaited_once()
+            # 순서 검증: load_state가 await되는 시점에 reconcile이 아직 호출되지 않았어야 함
+            assert load_state_call_order == [0], \
+                f"load_state가 reconcile보다 먼저 호출되어야 함 (P22): load_state 호출 시 reconcile await_count={load_state_call_order}"
+
 
 # ── _load_caches_preboot — 5거래일 평균/시장구분 ─────────────────────────────────────
 

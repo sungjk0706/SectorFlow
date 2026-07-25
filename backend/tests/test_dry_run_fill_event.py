@@ -197,6 +197,63 @@ class TestFakeFillEventSell:
         cash_after_sell = settlement_engine.get_orderable()
         assert cash_after_sell > cash_after_buy, "매도 후 예수금이 증가해야 함"
 
+    async def test_sell_net_proceeds_exact_amount(self):
+        """세션1 시나리오: 매도 체결 후 순매도대금 정확값 반영 (P22).
+
+        on_sell_fill 공식: gross - round(gross*SECURITIES_TAX) - round(gross*SELL_COMMISSION).
+        부등호 비교가 아닌 정확값으로 주문가능금액 증가분 검증.
+        """
+        # 선매수
+        await _do_buy(_TEST_CODE, _TEST_QTY, _TEST_PRICE, _TEST_NM)
+        cash_after_buy = settlement_engine.get_orderable()
+
+        # 매도 (슬리피지 적용된 가격으로 정산)
+        sell_raw_price = _TEST_PRICE + 1_000
+        await _do_sell(_TEST_CODE, _TEST_QTY, sell_raw_price, _TEST_NM)
+
+        cash_after_sell = settlement_engine.get_orderable()
+        expected_sell_price = dry_run.estimate_fill_price(sell_raw_price, "SELL")
+        gross = expected_sell_price * _TEST_QTY
+        expected_net = gross - round(gross * SECURITIES_TAX) - round(gross * SELL_COMMISSION)
+        assert cash_after_sell == cash_after_buy + expected_net, \
+            f"매도 순대금 불일치: expected={cash_after_buy + expected_net}, actual={cash_after_sell}"
+
+    async def test_sell_invalidates_position_cache_for_rebuild(self):
+        """세션1 시나리오: 매도 체결 후 포지션 캐시 무효화 → 재구축 흐름 고정 (P10 SSOT).
+
+        _test_positions는 파생 캐시 (P10):
+          1. record_sell → _positions_dirty=True (원천 trades 변경)
+          2. fake_fill_event → _apply_sell → _refresh_positions_if_dirty → 재구축 → dirty=False
+        매도 후 dirty가 리셋되고 포지션이 원천 기준으로 재구축(삭제)되는지 검증.
+        """
+        # 선매수로 포지션 생성
+        await _do_buy(_TEST_CODE, _TEST_QTY, _TEST_PRICE, _TEST_NM)
+        # 매도 전 포지션 존재 확인
+        pos_before = await dry_run.get_position(_TEST_CODE)
+        assert pos_before is not None
+        assert dry_run._positions_dirty is False
+
+        # record_sell 직접 호출 — dirty=True 설정 검증 (원천 변경 알림)
+        sell_price = _TEST_PRICE + 1_000
+        fill_price = dry_run.estimate_fill_price(sell_price, "SELL")
+        await trade_history.record_sell(
+            stk_cd=_TEST_CODE, stk_nm=_TEST_NM, price=fill_price, qty=_TEST_QTY,
+            avg_buy_price=dry_run.estimate_fill_price(_TEST_PRICE, "BUY"),
+            reason="test", trade_mode="test",
+        )
+        assert dry_run._positions_dirty is True, \
+            "record_sell 후 _positions_dirty=True여야 원천 변경이 캐시에 전파됨 (P10)"
+
+        # fake_fill_event → _apply_sell → _refresh_positions_if_dirty → 재구축
+        await dry_run.fake_fill_event("SELL", _TEST_CODE, _TEST_QTY, sell_price, _TEST_NM)
+
+        # 재구축 완료: dirty=False + 매도한 종목 포지션 삭제
+        assert dry_run._positions_dirty is False, \
+            "fake_fill_event 후 _refresh_positions_if_dirty가 재구축을 완료하여 dirty=False"
+        pos_after = await dry_run.get_position(_TEST_CODE)
+        assert pos_after is None, \
+            "매도 후 원천(trades) 기준 재구축 시 해당 종목 포지션이 삭제되어야 함 (P10)"
+
 
 class TestOnFillUpdateCalledInTestMode:
     """Step 6: fake_fill_event → on_fill_update 호출 확인 (has_open_buy 해제, _recent_sells 해제)."""

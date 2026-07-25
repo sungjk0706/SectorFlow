@@ -254,6 +254,43 @@ class TestReserveBuyPower:
         assert ok2 is False
         assert settlement_engine._orderable == after_first
 
+    @pytest.mark.asyncio
+    async def test_multiple_sequential_reserves_reflect_running_balance(self, fresh_engine):
+        """세션1 시나리오: 여러 매수 예약이 순차적으로 현재 잔액을 반영하고 잔액을 초과하지 않는다 (P22).
+
+        잔고 10_000_000에서 3_000_000, 2_000_000, 1_000_000 순차 예약 시
+        각 예약은 직전 예약 후 잔액을 기준으로 검증되며, 누적 차감액이 초기 잔액을 초과하지 않는다.
+        """
+        settlement_engine._orderable = 10_000_000
+        original = settlement_engine._orderable
+
+        ok1, _, cost1 = await reserve_buy_power(3_000_000)
+        assert ok1 is True
+        after1 = settlement_engine._orderable
+        assert after1 == original - cost1
+
+        ok2, _, cost2 = await reserve_buy_power(2_000_000)
+        assert ok2 is True
+        after2 = settlement_engine._orderable
+        assert after2 == after1 - cost2
+
+        ok3, _, cost3 = await reserve_buy_power(1_000_000)
+        assert ok3 is True
+        after3 = settlement_engine._orderable
+        assert after3 == after2 - cost3
+
+        # 누적 차감액이 초기 잔액을 초과하지 않음
+        total_deducted = cost1 + cost2 + cost3
+        assert total_deducted <= original
+        assert settlement_engine._orderable == original - total_deducted
+        # 잔액이 음수가 아님
+        assert settlement_engine._orderable >= 0
+
+        # 네 번째 예약: 남은 잔액으로는 5_000_000원 매수 불가 (잔액 ≈ 3_993_550원)
+        ok4, _, _ = await reserve_buy_power(5_000_000)
+        assert ok4 is False
+        assert settlement_engine._orderable == after3
+
 
 # ── release_buy_power (롤백) ──────────────────────────────────────────────────
 
@@ -453,6 +490,91 @@ class TestReset:
         await reset(10_000_000)
         mock_persist.assert_awaited_once()
         mock_broadcast.assert_awaited_once()
+
+
+# ── reconcile_with_trades (기동 시 정합성 대조, P22/P21/P25) ──────────────────
+
+class TestReconcileWithTrades:
+    """reconcile_with_trades: 기동 시 거래 이력 기준 주문가능금액 대조.
+
+    - 일치 시: 로그만, 복구/브로드캐스트 없음.
+    - 불일치 시: 재계산값으로 _orderable 복구 + 영속화 + 브로드캐스트 + UI 알림.
+    - 대조 자체 실패 시: 로깅만 하고 기동 중단 안 함 (P25 격리된 실패).
+    """
+
+    @pytest.mark.asyncio
+    async def test_reconcile_match_skips_recovery(self, fresh_engine):
+        """거래 이력 기준값 == 현재 _orderable → 복구/브로드캐스트 없음."""
+        mock_persist, mock_broadcast = fresh_engine
+        settlement_engine._orderable = 7_500_000
+        settlement_engine._initial_deposit = 10_000_000
+        with patch(
+            "backend.app.services.trade_history.compute_expected_orderable",
+            new_callable=AsyncMock, return_value=7_500_000,
+        ), patch(
+            "backend.app.services.engine_account_notify._safe_broadcast",
+            new_callable=AsyncMock,
+        ) as mock_safe_broadcast:
+            await settlement_engine.reconcile_with_trades()
+        # 일치 시 복구 없음
+        assert settlement_engine._orderable == 7_500_000
+        mock_persist.assert_not_awaited()
+        mock_broadcast.assert_not_awaited()
+        mock_safe_broadcast.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_reconcile_mismatch_restores_expected_and_broadcasts(self, fresh_engine):
+        """불일치 시 재계산값으로 _orderable 복구 + settlement_reconciled 브로드캐스트 (P21)."""
+        mock_persist, mock_broadcast = fresh_engine
+        # DB에 저장된 값이 거래 이력 기준보다 500_000원 많은 상황 (fake_fill 누락 등)
+        settlement_engine._orderable = 8_000_000
+        settlement_engine._initial_deposit = 10_000_000
+        with patch(
+            "backend.app.services.trade_history.compute_expected_orderable",
+            new_callable=AsyncMock, return_value=7_500_000,
+        ), patch(
+            "backend.app.services.engine_account_notify._safe_broadcast",
+            new_callable=AsyncMock,
+        ) as mock_safe_broadcast:
+            await settlement_engine.reconcile_with_trades()
+        # 재계산값으로 복구
+        assert settlement_engine._orderable == 7_500_000
+        mock_persist.assert_awaited_once()
+        mock_broadcast.assert_awaited_once()
+        # UI 알림 — settlement_reconciled 이벤트에 복구 정보 포함
+        mock_safe_broadcast.assert_awaited_once()
+        event_name, payload = mock_safe_broadcast.call_args.args
+        assert event_name == "settlement_reconciled"
+        assert payload["recovered"] is True
+        assert payload["expected"] == 7_500_000
+        assert payload["previous"] == 8_000_000
+        assert payload["diff"] == 500_000
+
+    @pytest.mark.asyncio
+    async def test_reconcile_failure_logs_and_continues(self, fresh_engine):
+        """compute_expected_orderable 예외 시 로깅만 하고 기동 중단 안 함 (P25).
+
+        _orderable은 변경되지 않고, _persist/_broadcast_delta/_safe_broadcast 호출 없음.
+        """
+        mock_persist, mock_broadcast = fresh_engine
+        settlement_engine._orderable = 7_500_000
+        settlement_engine._initial_deposit = 10_000_000
+        with patch(
+            "backend.app.services.trade_history.compute_expected_orderable",
+            new_callable=AsyncMock, side_effect=RuntimeError("trade_history load fail"),
+        ), patch(
+            "backend.app.services.engine_account_notify._safe_broadcast",
+            new_callable=AsyncMock,
+        ) as mock_safe_broadcast, patch.object(settlement_engine, "logger") as mock_logger:
+            # 예외 전파 없이 로깅 후 진행
+            await settlement_engine.reconcile_with_trades()
+        # _orderable 변경 없음
+        assert settlement_engine._orderable == 7_500_000
+        mock_persist.assert_not_awaited()
+        mock_broadcast.assert_not_awaited()
+        mock_safe_broadcast.assert_not_awaited()
+        # error 로그로 대조 실패 기록 (silent pass 금지, P20)
+        mock_logger.error.assert_called()
 
 
 # ── 수수료/세금 상수 검증 ─────────────────────────────────────────────────────
