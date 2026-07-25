@@ -14,6 +14,44 @@ SectorFlow is a local real-time stock auto-trading web app for one person.
 - Pipeline: After market close → download 5-day bars → filter by trading amount → group by custom sector → sector screening → sector ranking → top N sectors → buy candidates → buy (market order) → hold list → sell
 - Key frontend state: `frontend/src/stores/store.ts`
 
+### 디렉터리 구조 (주요)
+
+- `backend/app/core/` — 브로커 연결·설정·상수·로깅 (`broker_factory.py`/`broker_registry.py` 레지스트리, `settings_store.py`, `constants.py`)
+- `backend/app/services/` — 엔진·매매·리스크·WS 디스패치 (가장 큼, 40+ 파일)
+- `backend/app/pipelines/` — 장마감 파이프라인
+- `backend/app/web/` — FastAPI 라우트·WS 매니저
+- `backend/data/stocks.db` — SQLite DB (삭제 금지, Safety Rule 1)
+- `frontend/src/components/common/` — 공통 컴포넌트 (P23 재사용 1순위, 29파일)
+- `frontend/src/stores/` — 상태 관리 (`store.ts` 메인, `uiStore.ts` UI 상태)
+- `frontend/src/pages/` — 페이지 진입점
+- `docs/` — 설계·태스크·조사 문서
+
+### 핵심 SSOT 위치 (P10)
+
+| 대상 | 위치 | 관련 원칙 |
+|------|------|-----------|
+| 백엔드 진입점 | `main.py` → `backend/app/web/app.py` | — |
+| 엔진 진입점 | `backend/app/services/engine_lifecycle.py`, `engine_loop.py` | — |
+| 설정 저장소 | `backend/app/core/settings_store.py` + `settings_defaults.py` | P10 |
+| 설정 메모리 캐시 | `integrated_system_settings_cache` | P17 |
+| 주문 단일 경로 | `backend/app/services/trading.py` `execute_buy()`/`execute_sell()` | P15 |
+| 프론트엔드 상태 | `frontend/src/stores/store.ts` (메인), `uiStore.ts` (UI) | — |
+| WS 바인딩 | `frontend/src/binding.ts` | — |
+| 프론트엔드 라우터 | `frontend/src/router.ts` | — |
+
+### 검증 명령어 (프로젝트 루트에서 실행)
+
+| 대상 | 명령어 | 비고 |
+|------|--------|------|
+| 백엔드 테스트 | `.venv/bin/python -m pytest backend/tests -q` | 2697 tests, asyncio_mode=auto |
+| 백엔드 런타임 기동 | `.venv/bin/python main.py` | 규칙 5 잔존 프로세스 0건 확인 |
+| RuntimeWarning 검증 | `.venv/bin/python -W error::RuntimeWarning main.py` | await 누락 검증 (금지 패턴 4번째) |
+| 프론트엔드 타입체크 | `cd frontend && npm run typecheck` | `tsc --noEmit` |
+| 프론트엔드 빌드 | `cd frontend && npm run build` | `tsc -b && vite build` |
+| 프론트엔드 테스트 | `cd frontend && npm run test` | vitest, 116 tests |
+
+> `mypy`는 사전 에러 존재로 표준 검증 게이트 아님 (사용 시 에이전트가 기존 실패 추적 비용 발생).
+
 ### 사용자 프로필 (필수 전제)
 
 - **사용자는 코딩 지식이 전혀 없음 ("코딩 1도 모름").** 이 전제를 모든 안내, 보고, 질문에 항상 유지.
@@ -54,7 +92,7 @@ SectorFlow is a local real-time stock auto-trading web app for one person.
 
 #### 백엔드 수정 시 필수 점검
 - [ ] **P1-P3 (async 일관성)**: 모든 I/O는 `async def`, 동기 함수(`requests`, `sqlite3`, `time.sleep`, `threading.Lock`) 금지, `run_in_executor()` 우회 금지
-- [ ] **P4 (증권사명 침투 금지)**: 공통 로직에 `kiwoom_`/`ls_` 접두사가 없는가? 증권사별 코드는 `broker_factory.py` 레지스트리에 분리되었는가?
+- [ ] **P4 (증권사명 침투 금지)**: 공통 로직에 `kiwoom_`/`ls_` 접두사가 없는가? 증권사별 코드는 `core/kiwoom_*.py`·`core/ls_*.py`에 분리 허용(레지스트리 패턴, `broker_factory.py`/`broker_registry.py` 경유), 공통 로직 침투 금지.
 - [ ] **P5 (EventBus 금지)**: Redis/Pub-Sub/콜백 리스트 옵서버 패턴을 도입하지 않았는가? 직접 호출 체인을 유지했는가?
 - [ ] **P7 (블로킹 금지)**: 틱 핸들러에 per-tick O(n) 연산, 매 틱 DB 조회, 매 틱 전체 리스트 순회가 없는가?
 - [ ] **P11 (폴링 금지)**: `while + sleep` 폴링을 도입하지 않았는가? `asyncio.Queue` + `asyncio.wait()` 이벤트 기반인가?
