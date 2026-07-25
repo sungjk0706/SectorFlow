@@ -330,7 +330,7 @@ class TestDebugWsStatus:
         with patch("backend.app.services.engine_state.state") as mock_state:
             mock_ws = MagicMock()
             mock_ws.is_connected.return_value = True
-            mock_state.active_connector = mock_ws
+            mock_state.connector_manager = mock_ws
             mock_state.login_ok = True
             mock_state.running = True
             mock_state.master_stocks_cache.values.return_value = [
@@ -350,7 +350,7 @@ class TestDebugWsStatus:
     async def test_ws_not_connected(self):
         from backend.app.web.routes.status import debug_ws_status
         with patch("backend.app.services.engine_state.state") as mock_state:
-            mock_state.active_connector = None
+            mock_state.connector_manager = None
             mock_state.login_ok = False
             mock_state.running = False
             mock_state.master_stocks_cache.values.return_value = []

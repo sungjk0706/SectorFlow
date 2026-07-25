@@ -1569,7 +1569,6 @@ class TestTriggerRegPipeline:
     def test_ws_not_connected_skips(self):
         mock_state = MagicMock()
         mock_state.connector_manager = None
-        mock_state.active_connector = None
         with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.engine_lifecycle.schedule_engine_task") as mock_sched:
             _trigger_reg_pipeline()
@@ -1580,7 +1579,6 @@ class TestTriggerRegPipeline:
         mock_ws.is_connected.return_value = True
         mock_state = MagicMock()
         mock_state.connector_manager = mock_ws
-        mock_state.active_connector = None
         mock_state.login_ok = True
         with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler.schedule_engine_task", side_effect=_close_coro) as mock_sched:
@@ -1595,7 +1593,6 @@ class TestTriggerUnregAll:
     async def test_no_ws_returns_early(self):
         mock_state = MagicMock()
         mock_state.connector_manager = None
-        mock_state.active_connector = None
         with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._do_unreg_all", new_callable=AsyncMock) as mock_do:
             await _trigger_unreg_all()
@@ -1607,7 +1604,6 @@ class TestTriggerUnregAll:
         mock_ws.is_connected.return_value = False
         mock_state = MagicMock()
         mock_state.connector_manager = mock_ws
-        mock_state.active_connector = None
         mock_state.login_ok = True
         with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._do_unreg_all", new_callable=AsyncMock) as mock_do:
@@ -1620,7 +1616,6 @@ class TestTriggerUnregAll:
         mock_ws.is_connected.return_value = True
         mock_state = MagicMock()
         mock_state.connector_manager = mock_ws
-        mock_state.active_connector = None
         mock_state.login_ok = True
         with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._do_unreg_all", new_callable=AsyncMock) as mock_do:
@@ -1648,7 +1643,6 @@ class TestDoUnregAll:
         mock_cm.send_message = AsyncMock()
         mock_state = MagicMock()
         mock_state.connector_manager = mock_cm
-        mock_state.active_connector = None
         mock_state.master_stocks_cache = {
             "005930": {"_subscribed": True},
             "000660": {"_subscribed": True},

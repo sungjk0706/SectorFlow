@@ -78,7 +78,7 @@ async def debug_sector_stock(code: str):
 async def debug_ws_status():
     """디버그용: WS 연결 상태 + 구독 현황 확인."""
     from backend.app.services.engine_state import state
-    ws = state.active_connector
+    ws = state.connector_manager
     return {
         "ws_connected": bool(ws and ws.is_connected()) if ws else False,
         "login_ok": state.login_ok,

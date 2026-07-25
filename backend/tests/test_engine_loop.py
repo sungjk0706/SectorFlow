@@ -70,7 +70,6 @@ def _mock_state(
     mock.access_token = access_token
     mock.login_ok = True
     mock.connector_manager = None
-    mock.active_connector = None
     mock.running = False
     mock.auto_trade = None
     mock.preboot_cache_loaded = False

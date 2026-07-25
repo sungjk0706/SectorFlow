@@ -1251,7 +1251,7 @@ async def _init_ws_subscribe_state() -> None:
 def _trigger_reg_pipeline() -> None:
     """로그인 상태면 REG 파이프라인 재실행."""
     try:
-        ws = engine_state.state.connector_manager or engine_state.state.active_connector
+        ws = engine_state.state.connector_manager
         if ws and ws.is_connected() and engine_state.state.login_ok:
             from backend.app.services.engine_bootstrap import _login_post_pipeline
             schedule_engine_task(_login_post_pipeline(), context="REG 파이프라인 재실행")
@@ -1267,7 +1267,7 @@ async def _trigger_unreg_all() -> None:
         # 실시간 틱 데이터 캐시 clear() 로직 삭제 (_latest_trade_prices, _latest_trade_amounts, _latest_strength)
         logger.info("[스케줄] 캐시 데이터 삭제 완료")
 
-        ws = engine_state.state.connector_manager or engine_state.state.active_connector
+        ws = engine_state.state.connector_manager
         if not ws or not ws.is_connected() or not engine_state.state.login_ok:
             return
         await _do_unreg_all()
@@ -1279,7 +1279,7 @@ async def _do_unreg_all() -> None:
     """구독 중인 종목 전체 REMOVE 전송 (비동기)."""
     try:
         subscribed = {cd for cd, entry in engine_state.state.master_stocks_cache.items() if entry.get("_subscribed", False)}
-        ws = engine_state.state.connector_manager or engine_state.state.active_connector
+        ws = engine_state.state.connector_manager
         if not ws or not ws.is_connected():
             return
 

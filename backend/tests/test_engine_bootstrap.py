@@ -31,7 +31,6 @@ def _make_login_state_mock(**overrides):
     _state.positions = {}
     _state.master_stocks_cache = {}
     _state.connector_manager = None
-    _state.active_connector = None
     for k, v in overrides.items():
         setattr(_state, k, v)
     return _state

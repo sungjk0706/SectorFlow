@@ -321,7 +321,6 @@ async def run_engine_loop() -> None:
                                     connector.set_queue_callback(tick_queue)
                             logger.info("[연결] 커넥터 큐 콜백 설정 완료 (틱 큐)")
                             engine_state.state.connector_manager = _mgr
-                            engine_state.state.active_connector = _mgr.get_connector(broker_nm)
                             await _mgr.connect_all()
                             if _mgr.is_connected():
                                 logger.info("[연결] 실시간 연결 완료")
@@ -331,14 +330,12 @@ async def run_engine_loop() -> None:
                         except Exception as e:
                             logger.error("[연결] 실시간 연결 초기화 실패: %s", e, exc_info=True)
                             engine_state.state.connector_manager = None
-                            engine_state.state.active_connector = None
                 else:
                     if engine_state.state.connector_manager is not None:
                         try:
                             if hasattr(engine_state.state.connector_manager, 'disconnect_all'):
                                 await engine_state.state.connector_manager.disconnect_all()
                             engine_state.state.connector_manager = None
-                            engine_state.state.active_connector = None
                             logger.info("[연결] 실시간 연결 해제 완료")
                             await _broadcast_engine_ws()
                         except Exception as e:
@@ -385,13 +382,7 @@ async def run_engine_loop() -> None:
                 await engine_state.state.connector_manager.disconnect_all()
             except Exception as e:
                 logger.warning("[연산] 실시간 연결 일괄 해제 실패: %s", e, exc_info=True)
-        elif engine_state.state.active_connector:
-            try:
-                await engine_state.state.active_connector.disconnect()
-            except Exception as e:
-                logger.warning("[연산] 실시간 연결 해제 실패: %s", e, exc_info=True)
         engine_state.state.connector_manager = None
-        engine_state.state.active_connector = None
         # 증권사별 REST API 클라이언트 정리 — per-broker 격리 (P25)
         # 한 증권사 토큰 폐기/클라이언트 정리 실패가 다른 증권사 정리를 차단하지 않음.
         for _broker_id, _rest_api in engine_state.state.broker_rest_apis.items():

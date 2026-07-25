@@ -1,17 +1,19 @@
-"""engine_state.py 속성 그룹 분류 회귀 테스트 — 세션 10 + 세션 11.
+"""engine_state.py 속성 그룹 분류 회귀 테스트 — 세션 10 + 세션 11 + 세션 12.
 
-엔진 전역 상태 70개 속성을 6개 그룹(A~F)으로 분류하고, 분류 계약을 회귀 테스트로 고정.
+엔진 전역 상태 69개 속성을 6개 그룹(A~F)으로 분류하고, 분류 계약을 회귀 테스트로 고정.
 세션 10: 분류 주석 + 매핑 테이블 일치성 + fallback/산재/dead code 인벤토리.
 세션 11: D/E/F 비거래 상태 소유권 계약 — 3종 단일화 + 자연스러운 산재 문서화 + dead code 3종.
+세션 12: A 그룹 소유권 계약 — active_connector 제거 + connector_manager 단일 소유자 + fallback 22곳 제거.
 
 검증 항목:
-  1. 속성 → 그룹 매핑 (70개 전부, 누락/중복 없음)
+  1. 속성 → 그룹 매핑 (69개 전부, 누락/중복 없음)
   2. 6개 그룹 속성 수 합계 = 전체 속성 수
   3. 실제 EngineState 인스턴스 속성과 매핑 테이블 일치
-  4. fallback 패턴 인벤토리 (세션 12 인계 — 7개 파일 20곳)
+  4. fallback 패턴 인벤토리 (세션 12 — 0곳, 제거 완료)
   5. 갱신 분산 주의 속성 명시 (향후 단일화 후보)
   6. dead code 후보 (shutdown_requested — 참조 0건, MIN_CACHE_LIFETIME_SEC — 읽기 0건)
   7. D/E/F 소유권 계약 (세션 11 — 3종 단일화 + 자연스러운 산재 + confirmed_refresh_running 미구현)
+  8. A 그룹 소유권 계약 (세션 12 — active_connector 제거 + connector_manager 단일 소유자)
 """
 from __future__ import annotations
 
@@ -27,7 +29,6 @@ from backend.app.services.engine_state import EngineState
 # ── 그룹 정의 (세션 10 분류 — engine_state.py docstring과 동일) ────────────────
 GROUP_A_BROKER = {
     "connector_manager",
-    "active_connector",
     "broker_tokens",
     "access_token",
     "login_ok",
@@ -120,22 +121,22 @@ ALL_GROUPS = {
 
 # ── 1. 그룹 분류 계약 ──────────────────────────────────────────────────────────
 class TestGroupClassification:
-    """70개 속성이 6개 그룹으로 정확히 분류되었는지 검증."""
+    """69개 속성이 6개 그룹으로 정확히 분류되었는지 검증."""
 
     def test_group_sizes_match_docstring(self):
         """docstring에 명시된 그룹별 속성 수와 일치."""
-        expected_sizes = {"A": 6, "B": 11, "C": 9, "D": 13, "E": 18, "F": 13}
+        expected_sizes = {"A": 5, "B": 11, "C": 9, "D": 13, "E": 18, "F": 13}
         for name, group in ALL_GROUPS.items():
             assert len(group) == expected_sizes[name], (
                 f"그룹 {name} 속성 수 불일치: 예상 {expected_sizes[name]}, 실제 {len(group)}"
             )
 
-    def test_total_attribute_count_is_70(self):
-        """6개 그룹 합계 = 70 (누락/중복 없음)."""
+    def test_total_attribute_count_is_69(self):
+        """6개 그룹 합계 = 69 (누락/중복 없음)."""
         all_attrs = set()
         for group in ALL_GROUPS.values():
             all_attrs |= group
-        assert len(all_attrs) == 70, f"전체 속성 수: {len(all_attrs)} (예상 70)"
+        assert len(all_attrs) == 69, f"전체 속성 수: {len(all_attrs)} (예상 69)"
 
     def test_no_overlap_between_groups(self):
         """어떤 속성도 두 그룹에 중복 분류되지 않음."""
@@ -218,17 +219,17 @@ class TestExternalReferences:
         )
 
 
-# ── 3. Fallback 패턴 인벤토리 (세션 12 인계) ────────────────────────────────────
+# ── 3. Fallback 패턴 인벤토리 (세션 12 — 제거 완료) ─────────────────────────────
 class TestFallbackPatternInventory:
-    """`state.connector_manager or state.active_connector` fallback 패턴 인벤토리.
+    """`connector_manager or active_connector` fallback 패턴 인벤토리.
 
-    세션 12 (active_connector 정리)에서 단일화 대상. 현재 7개 파일 15곳.
-    회귀: fallback 패턴 수가 변경되면 테스트 실패 → 의도적 변경인지 감지.
+    세션 12 (active_connector 정리)에서 22곳 fallback 전부 제거 완료.
+    회귀: fallback 패턴이 재도입되면 테스트 실패 → 의도적 변경인지 감지.
     """
 
     @pytest.fixture(scope="class")
     def fallback_locations(self):
-        """fallback 패턴이 등장하는 파일별 위치."""
+        """fallback 패턴이 등장하는 파일별 위치 (제거 완료 → 0건 기대)."""
         repo_root = Path(__file__).resolve().parents[2]
         app_dir = repo_root / "backend" / "app"
         pattern = re.compile(
@@ -252,35 +253,97 @@ class TestFallbackPatternInventory:
                 locations[str(py_file.relative_to(repo_root))] = match_lines
         return locations
 
-    def test_fallback_pattern_file_count(self, fallback_locations):
-        """fallback 패턴이 7개 파일에 존재."""
-        assert len(fallback_locations) == 7, (
-            f"fallback 패턴 파일 수: {len(fallback_locations)} (예상 7). "
-            f"파일: {list(fallback_locations.keys())}"
+    def test_fallback_pattern_removed(self, fallback_locations):
+        """fallback 패턴이 제거됨 (0건)."""
+        assert not fallback_locations, (
+            f"fallback 패턴 잔존: {fallback_locations} (예상 0건 — 세션 12 제거 완료)"
         )
 
-    def test_fallback_pattern_total_count(self, fallback_locations):
-        """fallback 패턴 총 출현 수 = 20."""
-        total = sum(len(lines) for lines in fallback_locations.values())
-        assert total == 20, (
-            f"fallback 패턴 총 수: {total} (예상 20). "
-            f"위치: {fallback_locations}"
+    def test_active_connector_attr_removed(self):
+        """active_connector 속성이 EngineState에서 제거됨 (세션 12)."""
+        instance = EngineState()
+        assert not hasattr(instance, "active_connector"), (
+            "active_connector 속성이 잔존 — 세션 12 제거 대상"
         )
 
-    def test_fallback_pattern_expected_files(self, fallback_locations):
-        """예상된 7개 파일에만 fallback 존재."""
-        expected_files = {
-            "backend/app/services/engine_ws_reg.py",
-            "backend/app/services/engine_ws.py",
-            "backend/app/services/engine_lifecycle.py",
-            "backend/app/services/daily_time_scheduler.py",
-            "backend/app/services/engine_sector_confirm.py",
-            "backend/app/services/market_close_pipeline.py",
-            "backend/app/services/engine_bootstrap.py",
-        }
-        actual_files = set(fallback_locations.keys())
-        assert actual_files == expected_files, (
-            f"fallback 파일 불일치. 예상: {expected_files}, 실제: {actual_files}"
+    def test_active_connector_refs_in_app_zero(self):
+        """backend/app에서 active_connector 참조 0건 (docstring 역사적 기록 제외)."""
+        repo_root = Path(__file__).resolve().parents[2]
+        app_dir = repo_root / "backend" / "app"
+        pattern = re.compile(r"\.active_connector\b")
+        refs: list[str] = []
+        for py_file in sorted(app_dir.rglob("*.py")):
+            if "__pycache__" in py_file.parts:
+                continue
+            if py_file.name == "engine_state.py":
+                # docstring의 역사적 기록(제거 사유)은 허용
+                continue
+            try:
+                text = py_file.read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError):
+                continue
+            if pattern.search(text):
+                refs.append(str(py_file.relative_to(repo_root)))
+        assert not refs, (
+            f"active_connector 참조 잔존 (예상 0건): {refs}"
+        )
+
+
+# ── 3-A. A 그룹 소유권 계약 (세션 12 — connector_manager 단일 소유자) ───────────
+class TestAGroupOwnershipContract:
+    """A 그룹(브로커 연결) 소유권 계약 — connector_manager 단일 소유자.
+
+    세션 12 (CACHE-STATE-IMPL-12)에서 active_connector 파생 참조 제거.
+    connector_manager가 모든 WS 송신·구독·상태 조회의 단일 소유자.
+    """
+
+    def test_connector_manager_is_only_ws_owner_in_app(self):
+        """backend/app에서 WS 연결 참조는 connector_manager 단독 사용.
+
+        active_connector fallback 없이 connector_manager만 사용하는지 검증.
+        """
+        repo_root = Path(__file__).resolve().parents[2]
+        app_dir = repo_root / "backend" / "app"
+        # connector_manager를 사용하는 파일 수 (engine_state.py 자신 제외)
+        cm_pattern = re.compile(r"engine_state\.state\.connector_manager\b")
+        cm_files: set[str] = set()
+        for py_file in sorted(app_dir.rglob("*.py")):
+            if "__pycache__" in py_file.parts:
+                continue
+            if py_file.name == "engine_state.py":
+                continue
+            try:
+                text = py_file.read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError):
+                continue
+            if cm_pattern.search(text):
+                cm_files.add(str(py_file.relative_to(repo_root)))
+        # 8개 서비스 파일 + 1개 라우트 파일 = 9개 이상 (회귀 감지)
+        assert len(cm_files) >= 9, (
+            f"connector_manager 사용 파일 수: {len(cm_files)} (예상 ≥9). "
+            f"파일: {cm_files}"
+        )
+
+    def test_connector_manager_write_only_in_engine_loop(self):
+        """connector_manager 쓰기는 engine_loop.py에서만 발생 (단일 소유자)."""
+        repo_root = Path(__file__).resolve().parents[2]
+        app_dir = repo_root / "backend" / "app"
+        write_pattern = re.compile(
+            r"engine_state\.state\.connector_manager\s*=(?!=)"
+        )
+        write_files: set[str] = set()
+        for py_file in sorted(app_dir.rglob("*.py")):
+            if "__pycache__" in py_file.parts:
+                continue
+            try:
+                text = py_file.read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError):
+                continue
+            if write_pattern.search(text):
+                write_files.add(str(py_file.relative_to(repo_root)))
+        assert write_files == {"backend/app/services/engine_loop.py"}, (
+            f"connector_manager 쓰기 파일 불일치: {write_files} "
+            f"(예상: engine_loop.py만)"
         )
 
 

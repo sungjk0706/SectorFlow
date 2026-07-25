@@ -51,7 +51,7 @@ async def _login_post_pipeline() -> None:
 
         if _in_ws_window:
             # Connector 연결 확인 및 구독
-            ws = engine_state.state.connector_manager or engine_state.state.active_connector
+            ws = engine_state.state.connector_manager
             if ws and ws.is_connected():
                 # 실시간 구독 전 종목 필터링 상태(_filtered)를 최신화하기 위해 1회 재계산
                 await recompute_sector_summary_now()

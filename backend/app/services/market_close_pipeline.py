@@ -127,7 +127,7 @@ async def remove_krx_only_stocks() -> dict:
         {"removed": int, "failed": int, "skipped": bool}
     """
     # 0B REMOVE 페이로드 전송 — 증권사별 ACK 지원 여부로 분기
-    ws = engine_state.state.connector_manager or engine_state.state.active_connector
+    ws = engine_state.state.connector_manager
     if not ws or not ws.is_connected():
         logger.warning("[스케줄] KRX 장마감 구독해지 생략 — 실시간 미연결")
         return {"removed": 0, "failed": 0, "skipped": True}

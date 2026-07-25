@@ -5,8 +5,8 @@
 모든 engine_*.py 모듈은 이 파일에서 전역 상태를 직접 import한다.
 순환 import 방지: 이 모듈은 다른 engine_*.py를 import하지 않는다.
 
-속성 그룹 분류 (세션 10 — CACHE-STATE-IMPL-10, 70개 속성):
-  A. 브로커 연결 (6)   — connector_manager, active_connector, broker_tokens,
+속성 그룹 분류 (세션 10 — CACHE-STATE-IMPL-10, 69개 속성):
+  A. 브로커 연결 (5)   — connector_manager, broker_tokens,
                          access_token, login_ok, broker_spec
   B. 계좌 (11)          — engine_user_id, ws_account_subscribed, ws_connection_status,
                          quote_subscribed, account_rest_bootstrapped, broker_rest_totals,
@@ -74,12 +74,17 @@ D/E/F 소유권 계약 (세션 11 — CACHE-STATE-IMPL-11, 비거래 상태 단�
     - shutdown_requested (F): 선언만, 읽기/쓰기 0건
     - confirmed_refresh_running (F): 쓰기 0건, 읽기만 2건 (미구현 플래그)
 
-Fallback 패턴 (세션 12 — active_connector 정리 인계):
-  `engine_state.state.connector_manager or engine_state.state.active_connector`
-  — 7개 파일 20곳 (engine_ws_reg ×6, engine_ws ×6, daily_time_scheduler ×3,
-   engine_lifecycle ×2, engine_sector_confirm ×1, market_close_pipeline ×1,
-   engine_bootstrap ×1)
-  추가: engine_ws.py 2곳이 `if ... is_connected() else active_connector` 삼항 fallback.
+A 그룹 소유권 계약 (세션 12 — CACHE-STATE-IMPL-12, active_connector 제거):
+  단일 연결 소유자: connector_manager (ConnectorManager | None)
+    - engine_loop에서만 생성·해제·None 할당 (단일 소유자)
+    - 모든 WS 송신·구독·상태 조회는 connector_manager 단독 사용
+    - 다중 커넥터 관리 로직은 ConnectorManager 클래스 내부에 캡슐화 (P10 SSOT)
+  제거됨: active_connector (파생 참조 — connector_manager.get_connector(broker_nm) 결과)
+    - 제거 사유: 파생 참조의 수동 동기화가 drift 버그 원인 (P10/P24 위반)
+    - 업계 표준 (Algomirror/AlgoKing/QuantConnect LEAN/QuantX-IB Bridge) 모두
+      단일 연결 관리자 + 파생 "active" 참조 없음
+    - 22곳 fallback 패턴 제거 (P20 폴백 금지, P16 살아있는 경로)
+  불변조건: connector_manager is None ⟺ WS 연결 없음 (engine_loop에서 보장)
 
 Dead code 후보 (참조 0건 — 별도 승인 시 제거 검토):
   - shutdown_requested: 선언만 존재, 읽기/쓰기 참조 0건
@@ -89,7 +94,6 @@ Dead code 후보 (참조 0건 — 별도 승인 시 제거 검토):
 import asyncio
 from datetime import datetime
 from typing import Any, TYPE_CHECKING
-from backend.app.core.broker_connector import BrokerConnector
 from backend.app.services.trading import AutoTradeManager
 from backend.app.services.engine_utils import LazyEvent
 
@@ -106,7 +110,6 @@ class EngineState:
         self.running = False
         self.shutdown_requested: bool = False
         self.connector_manager: "ConnectorManager | None" = None  # type: ignore[name-defined]
-        self.active_connector: BrokerConnector | None = None
         self.broker_tokens: dict[str, str] = {}  # {broker_id: access_token}
         self.engine_task: asyncio.Task | None = None
         self.engine_loop_ref: asyncio.AbstractEventLoop | None = None

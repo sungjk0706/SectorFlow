@@ -52,7 +52,6 @@ def _mock_state(**overrides):
     """engine_state.state 기본 mock — 모든 asyncio 객체를 mock으로 대체."""
     mock = MagicMock()
     mock.connector_manager = None
-    mock.active_connector = None
     mock.login_ok = False
     mock.reg_seq_lock = _mock_lock()
     mock.reg_ack_event = _mock_event()
@@ -73,7 +72,6 @@ class TestWsLive:
     def test_no_connector(self):
         with patch("backend.app.services.engine_state.state") as mock_state:
             mock_state.connector_manager = None
-            mock_state.active_connector = None
             assert _ws_live() is False
 
     def test_connector_manager_connected(self):
@@ -81,15 +79,6 @@ class TestWsLive:
             mock_cm = MagicMock()
             mock_cm.is_connected.return_value = True
             mock_state.connector_manager = mock_cm
-            mock_state.active_connector = None
-            assert _ws_live() is True
-
-    def test_active_connector_connected(self):
-        with patch("backend.app.services.engine_state.state") as mock_state:
-            mock_state.connector_manager = None
-            mock_ac = MagicMock()
-            mock_ac.is_connected.return_value = True
-            mock_state.active_connector = mock_ac
             assert _ws_live() is True
 
     def test_connector_disconnected(self):
@@ -97,7 +86,6 @@ class TestWsLive:
             mock_cm = MagicMock()
             mock_cm.is_connected.return_value = False
             mock_state.connector_manager = mock_cm
-            mock_state.active_connector = None
             assert _ws_live() is False
 
 

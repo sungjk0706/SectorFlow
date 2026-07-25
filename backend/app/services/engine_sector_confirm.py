@@ -273,7 +273,7 @@ def sync_dynamic_subscriptions(new_buy_targets) -> None:
     import time
 
     # 실시간 통신 미연결 → 생략
-    ws = engine_state.state.connector_manager or engine_state.state.active_connector
+    ws = engine_state.state.connector_manager
     if not ws or not ws.is_connected() or not engine_state.state.login_ok:
         return
 

@@ -222,8 +222,4 @@ async def cleanup_stale_subscriptions() -> None:
 
 def _ws_connected() -> bool:
     """실시간 통신 연결 + 로그인 완료 여부."""
-    # ConnectorManager가 있으면 우선 사용 (키움/LS 모두 지원)
-    if engine_state.state.connector_manager is not None:
-        return bool(engine_state.state.connector_manager.is_connected() and engine_state.state.login_ok)
-    # 하위 호환: 키움 단독
-    return bool(engine_state.state.active_connector and engine_state.state.active_connector.is_connected() and engine_state.state.login_ok)
+    return bool(engine_state.state.connector_manager and engine_state.state.connector_manager.is_connected() and engine_state.state.login_ok)

@@ -210,7 +210,7 @@ async def _unreg_grp(grp_no: str) -> bool:
     Returns:
         True if 성공(또는 등록 항목 없음), False if 실패/시간 초과.
     """
-    ws = engine_state.state.connector_manager or engine_state.state.active_connector
+    ws = engine_state.state.connector_manager
     if not ws or not ws.is_connected():
         return True
 
@@ -251,7 +251,7 @@ async def subscribe_sector_stocks_0b(*, nxt_only: bool = False) -> None:
         nxt_only: True일 때 NXT 중복상장 종목(is_nxt_enabled=True)만 구독.
                   KRX 단독 종목은 08:59 _on_krx_pre_subscribe()에서 사전 구독.
     """
-    ws = engine_state.state.connector_manager or engine_state.state.active_connector
+    ws = engine_state.state.connector_manager
     if not ws or not ws.is_connected() or not engine_state.state.login_ok:
         return
 
@@ -335,7 +335,7 @@ async def subscribe_index_realtime() -> None:
 
     커넥터의 subscribe_index() 메서드를 호출 (증권사별 내부 구현에 위임).
     """
-    ws = engine_state.state.connector_manager or engine_state.state.active_connector
+    ws = engine_state.state.connector_manager
     if not ws or not ws.is_connected():
         logger.warning("[구독] 업종지수 구독 생략 — 연결 없음")
         return
@@ -365,7 +365,7 @@ async def subscribe_account_realtime() -> None:
     if broker_nm != "kiwoom":
         return
 
-    ws = engine_state.state.connector_manager or engine_state.state.active_connector
+    ws = engine_state.state.connector_manager
     if not ws or not ws.is_connected():
         return
 
@@ -391,7 +391,7 @@ async def subscribe_account_realtime() -> None:
 
 async def subscribe_positions_stocks_realtime() -> None:
     """보유 종목 0B REG — 이미 구독된 종목 제외, 누적 등록."""
-    ws = engine_state.state.connector_manager or engine_state.state.active_connector
+    ws = engine_state.state.connector_manager
     if not ws or not ws.is_connected():
         logger.warning("[구독] 보유종목 구독 생략 — 연결 없음")
         return
@@ -449,7 +449,7 @@ async def restore_subscriptions_after_reconnect(broker_id: str) -> None:
     if not engine_state.state.login_ok:
         return
 
-    ws = engine_state.state.connector_manager or engine_state.state.active_connector
+    ws = engine_state.state.connector_manager
     if not ws or not ws.is_connected():
         logger.warning("[연결] %s 구독 복원 생략 — 연결 없음", BROKER_DISPLAY_NAMES.get(broker_id, broker_id.upper()))
         return

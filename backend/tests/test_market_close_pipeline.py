@@ -55,7 +55,6 @@ def _mock_state(**overrides):
     ms.confirmed_done = False
     ms.latest_filter_summary_meta = ""
     ms.connector_manager = None
-    ms.active_connector = None
     ms.login_ok = False
     for k, v in overrides.items():
         setattr(ms, k, v)

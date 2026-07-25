@@ -183,7 +183,6 @@ class TestSyncDynamicSubscriptions:
         """WS 미연결 시 스킵."""
         with patch("backend.app.services.engine_state.state") as mock_state:
             mock_state.connector_manager = None
-            mock_state.active_connector = None
             mock_state.login_ok = False
             from backend.app.services.engine_sector_confirm import sync_dynamic_subscriptions
             sync_dynamic_subscriptions([])
@@ -195,7 +194,6 @@ class TestSyncDynamicSubscriptions:
             mock_ws = MagicMock()
             mock_ws.is_connected.return_value = True
             mock_state.connector_manager = mock_ws
-            mock_state.active_connector = None
             mock_state.login_ok = True
             mock_state.master_stocks_cache = {}
             from backend.app.services.engine_sector_confirm import sync_dynamic_subscriptions
@@ -906,7 +904,6 @@ class TestSyncDynamicSubscriptionsReg:
         with patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.services.core_queues.get_control_queue", return_value=mock_queue):
             mock_state.connector_manager = mock_ws
-            mock_state.active_connector = None
             mock_state.login_ok = True
             mock_state.master_stocks_cache = {}
             sync_dynamic_subscriptions([bt])
@@ -928,7 +925,6 @@ class TestSyncDynamicSubscriptionsReg:
         with patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.services.core_queues.get_control_queue", return_value=mock_queue):
             mock_state.connector_manager = mock_ws
-            mock_state.active_connector = None
             mock_state.login_ok = True
             mock_state.master_stocks_cache = {}
             # 예외 없이 종료
@@ -947,7 +943,6 @@ class TestSyncDynamicSubscriptionsReg:
         with patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.services.core_queues.get_control_queue", return_value=mock_queue):
             mock_state.connector_manager = mock_ws
-            mock_state.active_connector = None
             mock_state.login_ok = True
             # 기존 구독 코드가 있지만 새 buy_targets에 없음 → 해지 대상
             mock_state.master_stocks_cache = {
@@ -973,7 +968,6 @@ class TestSyncDynamicSubscriptionsReg:
              patch("backend.app.services.core_queues.get_control_queue", return_value=mock_queue), \
              patch("backend.app.services.engine_sector_confirm.asyncio.get_running_loop", return_value=mock_loop):
             mock_state.connector_manager = mock_ws
-            mock_state.active_connector = None
             mock_state.login_ok = True
             mock_state.master_stocks_cache = {
                 "005935": {"_subscribed_dynamic": True},
@@ -1000,7 +994,6 @@ class TestSyncDynamicSubscriptionsReg:
              patch("backend.app.services.core_queues.get_control_queue", return_value=mock_queue), \
              patch("backend.app.services.engine_sector_confirm.asyncio.get_running_loop", return_value=mock_loop):
             mock_state.connector_manager = mock_ws
-            mock_state.active_connector = None
             mock_state.login_ok = True
             mock_state.master_stocks_cache = {}
             sync_dynamic_subscriptions([bt])
@@ -1024,7 +1017,6 @@ class TestSyncDynamicSubscriptionsReg:
         with patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.services.core_queues.get_control_queue", return_value=mock_queue):
             mock_state.connector_manager = mock_ws
-            mock_state.active_connector = None
             mock_state.login_ok = True
             mock_state.master_stocks_cache = {
                 "005930": {},
@@ -1057,7 +1049,6 @@ class TestSyncDynamicSubscriptionsReg:
              patch("backend.app.services.core_queues.get_control_queue", return_value=mock_queue), \
              patch("backend.app.services.engine_sector_confirm.asyncio.get_running_loop", return_value=mock_loop):
             mock_state.connector_manager = mock_ws
-            mock_state.active_connector = None
             mock_state.login_ok = True
             mock_state.master_stocks_cache = {}
             sync_dynamic_subscriptions([bt1, bt2, bt3])
