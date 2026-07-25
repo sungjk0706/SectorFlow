@@ -4,7 +4,7 @@
 // frontend/src/pages/sell-position.ts
 
 import { createDataTable, type DataTableApi, type ColumnDef } from '../components/common/data-table'
-import { hotStore, normalizeStockCode, getPositionIndex } from '../stores/hotStore'
+import { hotStore, normalizeStockCode, getPositionIndex, type HotState } from '../stores/hotStore'
 import { uiStore } from '../stores/uiStore'
 import { notifyPageActive, notifyPageInactive } from '../api/ws'
 import { createCardHeaderWithMargin } from '../components/common/card-header'
@@ -117,6 +117,11 @@ let _statusRafId: number | null = null
 let onRealDataTick: ((e: Event) => void) | null = null
 let _mounted = false
 
+/* ── hotStore 구독 참조 상태 — onHotStoreChange 참조 비교용 (mount 시 초기화, unmount 시 reset) ── */
+let _prevPositions: HotState['positions'] = []
+let _prevSectorStocks: HotState['sectorStocks'] = {}
+let _prevAccount: HotState['account'] = null
+
 /* ── 보유 종목 요약 행 참조 ── */
 let summaryEvalBadge: BadgeHandle | null = null
 let summaryPnlBadge: BadgeHandle | null = null
@@ -165,12 +170,10 @@ function updateSellStatusBadge(): void {
   }
 }
 
-function mount(container: HTMLElement): void {
-  _mounted = true
-  notifyPageActive('sell-position')
-  const root = document.createElement('div')
-  Object.assign(root.style, { display: 'flex', flexDirection: 'column', height: '100%' })
+/* ── DOM 빌더 — mount에서 호출 (P24 책임 분할, buy-target.ts/sector-stock.ts 동일 패턴 P23) ── */
 
+/** 헤더 + 보유 종목 요약 배지 행 빌드 */
+function buildSummary(root: HTMLElement): void {
   // 헤더: 제목
   const headerRow = createCardHeaderWithMargin('보유종목', undefined, '8px')
   root.appendChild(headerRow)
@@ -186,12 +189,15 @@ function mount(container: HTMLElement): void {
   summaryRow.appendChild(summaryRateBadge.el)
   summaryRow.appendChild(summaryStatusBadge.el)
   root.appendChild(summaryRow)
+}
 
+/** 스크롤 컨테이너 + DataTable 빌드 */
+function buildTableArea(root: HTMLElement): void {
   const scrollContainer = document.createElement('div')
-  Object.assign(scrollContainer.style, { 
-    flex: '1', 
-    minHeight: '200px', 
-    display: 'flex', 
+  Object.assign(scrollContainer.style, {
+    flex: '1',
+    minHeight: '200px',
+    display: 'flex',
     flexDirection: 'column',
     overflowY: 'auto'
   })
@@ -206,83 +212,57 @@ function mount(container: HTMLElement): void {
 
   scrollContainer.appendChild(dataTable.el)
   root.appendChild(scrollContainer)
-  container.appendChild(root)
+}
 
-  const state = hotStore.getState()
+/* ── 구독 콜백 — mount에서 등록 (P24 책임 분할) ── */
 
-  const initialPositions = state.positions
-  dataTable.updateRows(initialPositions)
-  renderSummary()
-  updateSellStatusBadge()
+/** hotStore 구독 콜백 — reference equality guard + rAF 배칭
+ *  account 변경 시 요약 행 즉시 갱신, positions/sectorStocks 변경 시 rAF로 updateRows */
+function onHotStoreChange(state: HotState): void {
+  const positionsChanged = state.positions !== _prevPositions
+  const sectorStocksChanged = state.sectorStocks !== _prevSectorStocks
+  const accountChanged = state.account !== _prevAccount
 
-  // Store 구독 — reference equality guard + rAF 배칭
-  {
-    let prevPositions = state.positions
-    let prevSectorStocks = state.sectorStocks
-    let prevAccount = state.account
+  _prevPositions = state.positions
+  _prevSectorStocks = state.sectorStocks
+  _prevAccount = state.account
 
-    unsubStore = hotStore.subscribe((state) => {
-      const positionsChanged = state.positions !== prevPositions
-      const sectorStocksChanged = state.sectorStocks !== prevSectorStocks
-      const accountChanged = state.account !== prevAccount
-
-      prevPositions = state.positions
-      prevSectorStocks = state.sectorStocks
-      prevAccount = state.account
-
-      // account 변경 시 요약 행 즉시 갱신 (rAF 배칭 불필요 — 텍스트 4개만 교체)
-      if (accountChanged) {
-        renderSummary()
-      }
-
-      // positions 또는 sectorStocks 변경 시 updateRows 실행
-      // sectorStocks 변경 시에도 createStockNameColumn의 market_type/nxt_enable 배지가 갱신되어야 함
-      if (!positionsChanged && !sectorStocksChanged) {
-        return
-      }
-
-      // WS 상태 배지는 전역 싱글톤이 자동 업데이트하므로 수동 업데이트 제거
-
-      // rAF 배칭 — 프레임당 1회만 갱신 예약
-      if (_rafId === null) {
-        _rafId = requestAnimationFrame(() => {
-          _rafId = null
-          if (!_mounted) return
-          const latest = hotStore.getState()
-          dataTable?.updateRows(latest.positions)
-        })
-      } else {
-        // 보유 종목 없음
-      }
-    })
+  // account 변경 시 요약 행 즉시 갱신 (rAF 배칭 불필요 — 텍스트 4개만 교체)
+  if (accountChanged) {
+    renderSummary()
   }
 
-  // uiStore 구독 — 매도상태 배지 갱신 (서킷브레이커/리스크/시간대 차단)
-  // rAF 배칭 — 프레임당 1회만 갱신 예약 (buy-target.ts 동일 패턴, P23 일관성)
-  {
-    unsubUiStore = uiStore.subscribe(() => {
-      if (_statusRafId !== null) return
-      _statusRafId = requestAnimationFrame(() => {
-        _statusRafId = null
-        if (!_mounted) return
-        updateSellStatusBadge()
-      })
-    })
+  // positions 또는 sectorStocks 변경 시 updateRows 실행
+  // sectorStocks 변경 시에도 createStockNameColumn의 market_type/nxt_enable 배지가 갱신되어야 함
+  if (!positionsChanged && !sectorStocksChanged) {
+    return
   }
 
-  // globalSettingsManager 구독 — 자동매매/자동매도/매도 시간대 설정 변경 시 배지 갱신
-  {
-    unsubSettings = globalSettingsManager.subscribe(() => {
-      if (_statusRafId !== null) return
-      _statusRafId = requestAnimationFrame(() => {
-        _statusRafId = null
-        if (!_mounted) return
-        updateSellStatusBadge()
-      })
+  // WS 상태 배지는 전역 싱글톤이 자동 업데이트하므로 수동 업데이트 제거
+
+  // rAF 배칭 — 프레임당 1회만 갱신 예약
+  if (_rafId === null) {
+    _rafId = requestAnimationFrame(() => {
+      _rafId = null
+      if (!_mounted) return
+      const latest = hotStore.getState()
+      dataTable?.updateRows(latest.positions)
     })
   }
+}
 
-  // O(1) 초저지연 DOM 갱신 이벤트 리스너
+/** 매도상태 배지 rAF 배칭 갱신 — uiStore/settings 구독 공통 (P24 중복 제거) */
+function scheduleStatusUpdate(): void {
+  if (_statusRafId !== null) return
+  _statusRafId = requestAnimationFrame(() => {
+    _statusRafId = null
+    if (!_mounted) return
+    updateSellStatusBadge()
+  })
+}
+
+/** O(1) 초저지연 DOM 갱신 이벤트 리스너 등록 */
+function setupTickListener(): void {
   onRealDataTick = (e: Event) => {
     try {
       const code = (e as CustomEvent<string>).detail
@@ -304,6 +284,40 @@ function mount(container: HTMLElement): void {
   window.addEventListener('real-data-tick', onRealDataTick)
 }
 
+/* ── mount ── */
+function mount(container: HTMLElement): void {
+  _mounted = true
+  notifyPageActive('sell-position')
+  const root = document.createElement('div')
+  Object.assign(root.style, { display: 'flex', flexDirection: 'column', height: '100%' })
+
+  buildSummary(root)
+  buildTableArea(root)
+  container.appendChild(root)
+
+  // 초기 데이터
+  const state = hotStore.getState()
+  _prevPositions = state.positions
+  _prevSectorStocks = state.sectorStocks
+  _prevAccount = state.account
+  dataTable?.updateRows(state.positions)
+  renderSummary()
+  updateSellStatusBadge()
+
+  // Store 구독 — reference equality guard + rAF 배칭
+  unsubStore = hotStore.subscribe(onHotStoreChange)
+
+  // uiStore 구독 — 매도상태 배지 갱신 (서킷브레이커/리스크/시간대 차단)
+  // rAF 배칭 — 프레임당 1회만 갱신 예약 (buy-target.ts 동일 패턴, P23 일관성)
+  unsubUiStore = uiStore.subscribe(scheduleStatusUpdate)
+
+  // globalSettingsManager 구독 — 자동매매/자동매도/매도 시간대 설정 변경 시 배지 갱신
+  unsubSettings = globalSettingsManager.subscribe(scheduleStatusUpdate)
+
+  // O(1) 초저지연 DOM 갱신 이벤트 리스너
+  setupTickListener()
+}
+
 function unmount(): void {
   _mounted = false
   notifyPageInactive('sell-position')
@@ -322,6 +336,9 @@ function unmount(): void {
   summaryPnlBadge = null
   summaryRateBadge = null
   summaryStatusBadge = null
+  _prevPositions = []
+  _prevSectorStocks = {}
+  _prevAccount = null
 }
 
 export default { mount, unmount }

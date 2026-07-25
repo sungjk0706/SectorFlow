@@ -13,9 +13,9 @@ import { createBadgeRow, createBadge, updateBadge, type BadgeHandle, type BadgeS
 import { computeOrderBlockStatus } from '../utils/order-block-status'
 import { filterStocksBySearch } from './sector-stock-rows'
 import { COLUMNS } from './buy-target-columns'
-import type { SectorStock } from '../types'
+import type { SectorStock, AppSettings } from '../types'
 import type { UIState } from '../stores/uiStore'
-import type { AppSettings } from '../types'
+import type { HotState } from '../stores/hotStore'
 
 /* ── 모듈 변수 ── */
 let dataTable: DataTableApi<SectorStock> | null = null
@@ -30,6 +30,20 @@ let onRealDataTick: ((e: Event) => void) | null = null
 let onOrderbookTick: ((e: Event) => void) | null = null
 let onProgramTick: ((e: Event) => void) | null = null
 let _mounted = false
+
+/* ── 렌더링 참조 상태 — scheduleRender 참조 비교용 (mount 시 초기화, unmount 시 reset)
+ *    UIState/HotState 필드 타입을 직접 참조하여 SSOT 유지 (P10) ── */
+let _rsBuyTargets: HotState['buyTargets'] = []
+let _rsSearchTerm = ''
+let _rsPositions: HotState['positions'] = []
+let _rsAccount: HotState['account'] = null
+let _rsSettings: AppSettings | null = null
+let _rsBuyLimitStatus: UIState['buyLimitStatus'] = { daily_buy_spent: 0 }
+let _rsCircuitBreaker: UIState['circuitBreakerOpen'] = null
+let _rsOrderTimeBlocked: UIState['orderTimeBlocked'] = null
+let _rsRiskBlockStatus: UIState['riskBlockStatus'] = null
+let _rsRealtimeLatency: UIState['realtimeLatencyExceeded'] = false
+let _rsDailyBuyStateFailed: UIState['dailyBuyStateFailed'] = false
 
 /* ── 배지 컨텍스트 — updateBadges 공통 조회 (P24 단순성 — 분할) ── */
 
@@ -182,14 +196,10 @@ function updateBadges(): void {
   updateHoldingBadge(ctx, badgeEls.holding)
 }
 
-/* ── mount ── */
-function mount(container: HTMLElement): void {
-  _mounted = true
-  notifyPageActive('buy-target')
-  const initState = hotStore.getState()
-  const root = document.createElement('div')
-  Object.assign(root.style, { display: 'flex', flexDirection: 'column', height: '100%' })
+/* ── DOM 빌더 — mount에서 호출 (P24 책임 분할, sector-stock.ts 동일 패턴 P23) ── */
 
+/** 헤더 + 한도 배지 행 빌드 */
+function buildHeader(root: HTMLElement): void {
   // 헤더: 제목 — 공통 컴포넌트 (sell-position.ts 동일 패턴, P23 일관성)
   const headerRow = createCardHeaderWithMargin('매수후보', undefined, '8px')
   root.appendChild(headerRow)
@@ -206,7 +216,10 @@ function mount(container: HTMLElement): void {
   badgeRow.appendChild(holdingBadge.el)
   badgeEls = { combined: combinedBadge, daily: dailyBadge, holding: holdingBadge }
   root.appendChild(badgeRow)
+}
 
+/** 검색 입력란 빌드 */
+function buildSearchRow(root: HTMLElement): void {
   // 검색 입력란 — 테이블 좌측 상단, 주문가능금액 배지 하단 (업종별 종목 시세와 동일한 패턴)
   const searchRow = document.createElement('div')
   Object.assign(searchRow.style, {
@@ -228,7 +241,10 @@ function mount(container: HTMLElement): void {
   })
   searchRow.appendChild(searchInput.el)
   root.appendChild(searchRow)
+}
 
+/** 스크롤 컨테이너 + DataTable + 빈 상태 메시지 빌드 */
+function buildTableArea(root: HTMLElement): void {
   // 스크롤 컨테이너
   const scrollContainer = document.createElement('div')
   Object.assign(scrollContainer.style, { flex: '1', minHeight: '200px', display: 'flex', flexDirection: 'column', overflowY: 'auto' })
@@ -254,119 +270,119 @@ function mount(container: HTMLElement): void {
   scrollContainer.appendChild(dataTable.el)
   scrollContainer.appendChild(emptyEl)
   root.appendChild(scrollContainer)
-  container.appendChild(root)
+}
 
-  // 초기 데이터 — 검색 필터링 적용 (SSOT: filterStocksBySearch 재사용)
-  const initialMatched = filterStocksBySearch(initState.buyTargets, searchTerm)
-  const initialTargets = [...initState.buyTargets]
-    .filter(t => !initialMatched || initialMatched.has(t.code))
+/* ── 렌더링 상태 관리 + rAF 배칭 — scheduleRender 참조 비교용 (P24 책임 분할) ── */
+
+/** 렌더링 참조 상태 초기화 — mount 시 호출 */
+function initRenderState(initHot: HotState, initUi: UIState): void {
+  _rsBuyTargets = initHot.buyTargets
+  _rsSearchTerm = searchTerm
+  _rsPositions = initHot.positions
+  _rsAccount = initHot.account
+  _rsSettings = globalSettingsManager.getSettings()
+  _rsBuyLimitStatus = initUi.buyLimitStatus
+  _rsCircuitBreaker = initUi.circuitBreakerOpen
+  _rsOrderTimeBlocked = initUi.orderTimeBlocked
+  _rsRiskBlockStatus = initUi.riskBlockStatus
+  _rsRealtimeLatency = initUi.realtimeLatencyExceeded
+  _rsDailyBuyStateFailed = initUi.dailyBuyStateFailed
+}
+
+/** 렌더링 참조 상태 reset — unmount 시 호출 */
+function resetRenderState(): void {
+  _rsBuyTargets = []
+  _rsSearchTerm = ''
+  _rsPositions = []
+  _rsAccount = null
+  _rsSettings = null
+  _rsBuyLimitStatus = { daily_buy_spent: 0 }
+  _rsCircuitBreaker = null
+  _rsOrderTimeBlocked = null
+  _rsRiskBlockStatus = null
+  _rsRealtimeLatency = false
+  _rsDailyBuyStateFailed = false
+}
+
+/** 상태 변화 감지 — positions/account/settings/차단 상태 중 하나라도 변경 시 true */
+function hasStateChanged(latest: HotState, latestUi: UIState): boolean {
+  return (
+    latest.positions !== _rsPositions ||
+    latest.account !== _rsAccount ||
+    globalSettingsManager.getSettings() !== _rsSettings ||
+    latestUi.buyLimitStatus !== _rsBuyLimitStatus ||
+    latestUi.circuitBreakerOpen !== _rsCircuitBreaker ||
+    latestUi.orderTimeBlocked !== _rsOrderTimeBlocked ||
+    latestUi.riskBlockStatus !== _rsRiskBlockStatus ||
+    latestUi.realtimeLatencyExceeded !== _rsRealtimeLatency ||
+    latestUi.dailyBuyStateFailed !== _rsDailyBuyStateFailed
+  )
+}
+
+/** 테이블 행 렌더 — 필터링 + 정렬 + updateRows + 빈 상태 갱신 (초기 렌더 + rAF 콜백 공용) */
+function renderTableRows(buyTargets: SectorStock[]): void {
+  // 필터링 (SSOT: filterStocksBySearch 재사용) → 정렬
+  const matchedCodes = filterStocksBySearch(buyTargets, searchTerm)
+  const targets = [...buyTargets]
+    .filter(t => !matchedCodes || matchedCodes.has(t.code))
     .sort((a, b) => {
       if (a.guard_pass !== b.guard_pass) return a.guard_pass ? -1 : 1
       return (a.rank ?? 999999) - (b.rank ?? 999999)
     })
-  updateBadges()
-
-  dataTable.updateRows(initialTargets)
+  dataTable?.updateRows(targets)
   if (emptyEl) {
-    emptyEl.style.display = initialTargets.length === 0 ? '' : 'none'
+    emptyEl.style.display = targets.length === 0 ? '' : 'none'
     emptyEl.textContent = searchTerm ? `'${searchTerm}' 검색 결과가 없습니다.` : '매수후보가 없습니다.'
   }
+}
 
-  // Store 구독 — rAF 배칭 + reference equality guard
-  // 마지막 렌더링 시점의 참조 (rAF 콜백에서 갱신)
-  let lastRenderedBuyTargets = initState.buyTargets
-  let lastRenderedSearchTerm = searchTerm
-  let lastRenderedPositions = initState.positions
-  let lastRenderedAccount = initState.account
-  let lastRenderedSettings = globalSettingsManager.getSettings()
-  const initUiState = uiStore.getState()
-  let lastRenderedBuyLimitStatus = initUiState.buyLimitStatus
-  let lastRenderedCircuitBreaker = initUiState.circuitBreakerOpen
-  let lastRenderedOrderTimeBlocked = initUiState.orderTimeBlocked
-  let lastRenderedRiskBlockStatus = initUiState.riskBlockStatus
-  let lastRenderedRealtimeLatency = initUiState.realtimeLatencyExceeded
-  let lastRenderedDailyBuyStateFailed = initUiState.dailyBuyStateFailed
+/** rAF 콜백 — 최신 상태로 테이블 + 배지 갱신 */
+function renderFrame(): void {
+  rafHandle = null
+  if (!_mounted) return
+  const latest = hotStore.getState()
+  const latestUi = uiStore.getState()
 
-  function scheduleRender(): void {
-    const hotState = hotStore.getState()
-    const uiState = uiStore.getState()
-    const anyChanged =
-      hotState.buyTargets !== lastRenderedBuyTargets ||
-      hotState.positions !== lastRenderedPositions ||
-      hotState.account !== lastRenderedAccount ||
-      globalSettingsManager.getSettings() !== lastRenderedSettings ||
-      uiState.buyLimitStatus !== lastRenderedBuyLimitStatus ||
-      uiState.circuitBreakerOpen !== lastRenderedCircuitBreaker ||
-      uiState.orderTimeBlocked !== lastRenderedOrderTimeBlocked ||
-      uiState.riskBlockStatus !== lastRenderedRiskBlockStatus ||
-      uiState.realtimeLatencyExceeded !== lastRenderedRealtimeLatency ||
-      uiState.dailyBuyStateFailed !== lastRenderedDailyBuyStateFailed ||
-      searchTerm !== lastRenderedSearchTerm
-
-    if (!anyChanged) return
-
-    // rAF 배칭: 이미 예약된 rAF가 있으면 추가 예약하지 않음
-    // 콜백 실행 시 getState()로 최신 상태를 가져오므로 항상 최신 반영
-    if (rafHandle !== null) return
-
-    rafHandle = requestAnimationFrame(() => {
-      rafHandle = null
-      if (!_mounted) return
-      const latest = hotStore.getState()
-      const latestUi = uiStore.getState()
-
-      // buyTargets 참조 또는 검색어 변경 시 필터링 + sort + updateRows
-      const targetsChanged = latest.buyTargets !== lastRenderedBuyTargets
-      const searchChanged = searchTerm !== lastRenderedSearchTerm
-      if (targetsChanged || searchChanged) {
-        lastRenderedBuyTargets = latest.buyTargets
-        lastRenderedSearchTerm = searchTerm
-        // 필터링 (SSOT: filterStocksBySearch 재사용) → 정렬
-        const matchedCodes = filterStocksBySearch(latest.buyTargets, searchTerm)
-        const targets = [...latest.buyTargets]
-          .filter(t => !matchedCodes || matchedCodes.has(t.code))
-          .sort((a, b) => {
-            if (a.guard_pass !== b.guard_pass) return a.guard_pass ? -1 : 1
-            return (a.rank ?? 999999) - (b.rank ?? 999999)
-          })
-        dataTable?.updateRows(targets)
-        if (emptyEl) {
-          emptyEl.style.display = targets.length === 0 ? '' : 'none'
-          emptyEl.textContent = searchTerm ? `'${searchTerm}' 검색 결과가 없습니다.` : '매수후보가 없습니다.'
-        }
-      }
-
-      // buyTargets / positions / account / settings / buyLimitStatus / 차단 상태 변경 시 배지 업데이트
-      if (
-        targetsChanged ||
-        latest.positions !== lastRenderedPositions ||
-        latest.account !== lastRenderedAccount ||
-        globalSettingsManager.getSettings() !== lastRenderedSettings ||
-        latestUi.buyLimitStatus !== lastRenderedBuyLimitStatus ||
-        latestUi.circuitBreakerOpen !== lastRenderedCircuitBreaker ||
-        latestUi.orderTimeBlocked !== lastRenderedOrderTimeBlocked ||
-        latestUi.riskBlockStatus !== lastRenderedRiskBlockStatus ||
-        latestUi.realtimeLatencyExceeded !== lastRenderedRealtimeLatency ||
-        latestUi.dailyBuyStateFailed !== lastRenderedDailyBuyStateFailed
-      ) {
-        lastRenderedPositions = latest.positions
-        lastRenderedAccount = latest.account
-        lastRenderedSettings = globalSettingsManager.getSettings()
-        lastRenderedBuyLimitStatus = latestUi.buyLimitStatus
-        lastRenderedCircuitBreaker = latestUi.circuitBreakerOpen
-        lastRenderedOrderTimeBlocked = latestUi.orderTimeBlocked
-        lastRenderedRiskBlockStatus = latestUi.riskBlockStatus
-        lastRenderedRealtimeLatency = latestUi.realtimeLatencyExceeded
-        lastRenderedDailyBuyStateFailed = latestUi.dailyBuyStateFailed
-        updateBadges()
-      }
-    })
+  // buyTargets 참조 또는 검색어 변경 시 필터링 + sort + updateRows
+  const targetsChanged = latest.buyTargets !== _rsBuyTargets
+  const searchChanged = searchTerm !== _rsSearchTerm
+  if (targetsChanged || searchChanged) {
+    _rsBuyTargets = latest.buyTargets
+    _rsSearchTerm = searchTerm
+    renderTableRows(latest.buyTargets)
   }
 
-  unsubTargets = hotStore.subscribe(() => scheduleRender())
-  unsubUiStore = uiStore.subscribe(() => scheduleRender())
+  // buyTargets / positions / account / settings / buyLimitStatus / 차단 상태 변경 시 배지 업데이트
+  if (targetsChanged || hasStateChanged(latest, latestUi)) {
+    _rsPositions = latest.positions
+    _rsAccount = latest.account
+    _rsSettings = globalSettingsManager.getSettings()
+    _rsBuyLimitStatus = latestUi.buyLimitStatus
+    _rsCircuitBreaker = latestUi.circuitBreakerOpen
+    _rsOrderTimeBlocked = latestUi.orderTimeBlocked
+    _rsRiskBlockStatus = latestUi.riskBlockStatus
+    _rsRealtimeLatency = latestUi.realtimeLatencyExceeded
+    _rsDailyBuyStateFailed = latestUi.dailyBuyStateFailed
+    updateBadges()
+  }
+}
 
-  // O(1) 초저지연 DOM 갱신 이벤트 리스너
+/** rAF 배칭 — 상태 변화 감지 후 단일 rAF 예약 */
+function scheduleRender(): void {
+  const hotState = hotStore.getState()
+  const uiState = uiStore.getState()
+  const targetsChanged = hotState.buyTargets !== _rsBuyTargets
+  const searchChanged = searchTerm !== _rsSearchTerm
+  if (!(targetsChanged || searchChanged || hasStateChanged(hotState, uiState))) return
+
+  // rAF 배칭: 이미 예약된 rAF가 있으면 추가 예약하지 않음
+  // 콜백 실행 시 getState()로 최신 상태를 가져오므로 항상 최신 반영
+  if (rafHandle !== null) return
+  rafHandle = requestAnimationFrame(renderFrame)
+}
+
+/** O(1) 초저지연 DOM 갱신 이벤트 리스너 등록 */
+function setupTickListeners(): void {
   onRealDataTick = (e: Event) => {
     try {
       const code = (e as CustomEvent<string>).detail
@@ -404,6 +420,32 @@ function mount(container: HTMLElement): void {
   window.addEventListener('program-tick', onProgramTick)
 }
 
+/* ── mount ── */
+function mount(container: HTMLElement): void {
+  _mounted = true
+  notifyPageActive('buy-target')
+  const initState = hotStore.getState()
+  const root = document.createElement('div')
+  Object.assign(root.style, { display: 'flex', flexDirection: 'column', height: '100%' })
+
+  buildHeader(root)
+  buildSearchRow(root)
+  buildTableArea(root)
+  container.appendChild(root)
+
+  // 초기 데이터 + 렌더링 상태 초기화
+  initRenderState(initState, uiStore.getState())
+  updateBadges()
+  renderTableRows(initState.buyTargets)
+
+  // Store 구독 — rAF 배칭 + reference equality guard
+  unsubTargets = hotStore.subscribe(() => scheduleRender())
+  unsubUiStore = uiStore.subscribe(() => scheduleRender())
+
+  // O(1) 초저지연 DOM 갱신 이벤트 리스너
+  setupTickListeners()
+}
+
 /* ── unmount ── */
 function unmount(): void {
   _mounted = false
@@ -428,6 +470,7 @@ function unmount(): void {
   emptyEl = null
   searchInput = null
   searchTerm = ''
+  resetRenderState()
 }
 
 export default { mount, unmount }
