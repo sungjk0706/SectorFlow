@@ -1890,6 +1890,26 @@ npm run lint  # 린팅
 > **코드 식별자 예외**: 파일명, 클래스명, 함수명, 변수명에 포함된 영어 식별자(`sector`, `stock`, `buy`, `sell`, `position`, `5d`, `fiveday`)는 코드 가독성과 관행상 허용. 원칙 23의 용어 통일은 **사용자에게 보이는 화면 텍스트, 로그 메시지, 문서 설명**에 적용.
 > **확장**: 신규 용어 혼용 발견 시 이 사전에 추가하여 합의 후 적용.
 
+### M.2 후안 B 부호 규칙 (의미 기반 부호 규약)
+
+> 하락/손실은 **음수**, 상승/이익은 **양수**로 통일 (P23 일관성).
+> 부호가 의미를 직관적으로 표현하도록 절댓값 양수 표기 대신 의미 기반 부호 사용.
+> 검증은 `_RISK_FLOAT_KEYS`(`backend/app/core/settings_store.py`)가 저장 시 부호 위반을 차단 (P20/P22).
+
+| 설정 키 | 부호 | 범위 | 의미 | 비교 로직 |
+|---------|------|------|------|-----------|
+| `daily_loss_rate_limit` | 음수 | -100~0 | 일일 손실률 한도 | pnl_rate <= daily_loss_rate_limit 시 매수 차단 |
+| `daily_loss_limit` | 음수 | -10억~0 | 일일 손실액 한도 | daily_pnl <= daily_loss_limit 시 매수 차단 |
+| `loss_val` | 음수 | -100~0 | 손절 하락률 | pnl_rate <= loss_val 시 손절 매도 (둘 다 음수) |
+| `ts_drop_val` | 음수 | -100~0 | 추적 고점대비 하락률 | drop_rate <= ts_drop_val 시 T/S 매도 (둘 다 음수) |
+| `buy_block_fall_pct` | 음수 | -100~0 | 종목 하락률 매수차단 | change_rate <= buy_block_fall_pct 시 매수 차단 |
+| `tp_val` | 양수 | 0~100 | 익절 상승률 | pnl_rate >= tp_val 시 익절 매도 |
+| `ts_start_val` | 양수 | 0~100 | 추적 시작 상승률 | pnl_rate >= ts_start_val 시 T/S 추적 시작 |
+| `buy_block_rise_pct` | 양수 | 0~100 | 종목 상승률 매수차단 | change_rate >= buy_block_rise_pct 시 매수 차단 |
+
+> **마이그레이션**: 기존 양수(절댓값) 표기에서 음수 표기로 전환 시 `settings_file.py`의 idempotent 마이그레이션 함수가 런타임 기동 시 자동 변환 (`_migrate_loss_val_to_negative`, `_migrate_ts_drop_val_to_negative` 등).
+> **확장**: 신규 하락/손실 관련 설정 키 추가 시 음수 규약 적용 후 이 표에 추가.
+
 ---
 
 # 최종 권고

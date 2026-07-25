@@ -689,6 +689,62 @@ class TestRiskManagerSettingsValidation:
                 await apply_settings_updates({"daily_loss_rate_limit": "abc"})
             mock_save.assert_not_called()
 
+    # ── 후안 B 부호 규칙 — 하락/손실 음수 키 검증 (loss_val/ts_drop_val/buy_block_fall_pct) ──
+
+    @pytest.mark.asyncio
+    async def test_rejects_positive_loss_val(self):
+        """loss_val 양수 입력 시 ValueError (음수만 허용 — 후안 B 부호 규칙)."""
+        with patch("backend.app.core.settings_store.load_selected_settings", new=AsyncMock(return_value={})), \
+             patch("backend.app.core.settings_store.save_selected_settings", new=AsyncMock()) as mock_save:
+            with pytest.raises(ValueError, match="loss_val는 -100.0~0.0 사이여야 합니다"):
+                await apply_settings_updates({"loss_val": 5.0})
+            mock_save.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_rejects_non_float_loss_val(self):
+        """loss_val 숫자가 아닌 값 입력 시 ValueError."""
+        with patch("backend.app.core.settings_store.load_selected_settings", new=AsyncMock(return_value={})), \
+             patch("backend.app.core.settings_store.save_selected_settings", new=AsyncMock()) as mock_save:
+            with pytest.raises(ValueError, match="loss_val는 숫자여야 합니다"):
+                await apply_settings_updates({"loss_val": "abc"})
+            mock_save.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_rejects_positive_ts_drop_val(self):
+        """ts_drop_val 양수 입력 시 ValueError (음수만 허용 — 후안 B 부호 규칙)."""
+        with patch("backend.app.core.settings_store.load_selected_settings", new=AsyncMock(return_value={})), \
+             patch("backend.app.core.settings_store.save_selected_settings", new=AsyncMock()) as mock_save:
+            with pytest.raises(ValueError, match="ts_drop_val는 -100.0~0.0 사이여야 합니다"):
+                await apply_settings_updates({"ts_drop_val": 2.0})
+            mock_save.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_rejects_non_float_ts_drop_val(self):
+        """ts_drop_val 숫자가 아닌 값 입력 시 ValueError."""
+        with patch("backend.app.core.settings_store.load_selected_settings", new=AsyncMock(return_value={})), \
+             patch("backend.app.core.settings_store.save_selected_settings", new=AsyncMock()) as mock_save:
+            with pytest.raises(ValueError, match="ts_drop_val는 숫자여야 합니다"):
+                await apply_settings_updates({"ts_drop_val": "abc"})
+            mock_save.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_rejects_positive_buy_block_fall_pct(self):
+        """buy_block_fall_pct 양수 입력 시 ValueError (음수만 허용 — 후안 B 부호 규칙)."""
+        with patch("backend.app.core.settings_store.load_selected_settings", new=AsyncMock(return_value={})), \
+             patch("backend.app.core.settings_store.save_selected_settings", new=AsyncMock()) as mock_save:
+            with pytest.raises(ValueError, match="buy_block_fall_pct는 -100.0~0.0 사이여야 합니다"):
+                await apply_settings_updates({"buy_block_fall_pct": 7.0})
+            mock_save.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_rejects_non_float_buy_block_fall_pct(self):
+        """buy_block_fall_pct 숫자가 아닌 값 입력 시 ValueError."""
+        with patch("backend.app.core.settings_store.load_selected_settings", new=AsyncMock(return_value={})), \
+             patch("backend.app.core.settings_store.save_selected_settings", new=AsyncMock()) as mock_save:
+            with pytest.raises(ValueError, match="buy_block_fall_pct는 숫자여야 합니다"):
+                await apply_settings_updates({"buy_block_fall_pct": "abc"})
+            mock_save.assert_not_called()
+
     @pytest.mark.asyncio
     async def test_accepts_valid_risk_values(self):
         """유효한 경계값 저장 성공 (P20 — 0/음수 유효값 허용)."""
@@ -699,6 +755,13 @@ class TestRiskManagerSettingsValidation:
             ("consecutive_loss_limit", 100),       # 상한 경계
             ("daily_loss_rate_limit", 0.0),        # 상한 경계
             ("daily_loss_rate_limit", -100.0),     # 하한 경계
+            # 후안 B 부호 규칙 — 하락/손실 음수 키 경계값
+            ("loss_val", 0.0),                     # 상한 경계 (0 포함 — 손절 미설정)
+            ("loss_val", -100.0),                  # 하한 경계
+            ("ts_drop_val", 0.0),                  # 상한 경계 (0 포함 — T/S 미설정)
+            ("ts_drop_val", -100.0),               # 하한 경계
+            ("buy_block_fall_pct", 0.0),           # 상한 경계 (0 포함 — 차단 미설정)
+            ("buy_block_fall_pct", -100.0),        # 하한 경계
         ]
         for k, v in valid_cases:
             with patch("backend.app.core.settings_store.load_selected_settings", new=AsyncMock(return_value={})), \
