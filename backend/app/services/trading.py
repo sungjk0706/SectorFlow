@@ -461,7 +461,7 @@ class AutoTradeManager:
         if is_test_mode(raw_all):
             fill_price = dry_run.estimate_fill_price(fill_price, "BUY")
         # 한도 누적 기준 = trade_history.record_buy의 total_amt 공식과 동일 (P10/P22)
-        # 테스트모드: 수수료 포함 / 실전모드: 순수 매수가 (실전 수수료 대응은 별도 세션)
+        # 테스트모드: 수수료 포함 / 실전모드: 순수 매수가 (P18 — 실전은 증권사 서버가 SSOT, 앱 수수료 계산 금지)
         _base = int(buy_qty * fill_price)
         _fee = round(_base * BUY_COMMISSION) if is_test_mode(raw_all) else 0
         spent = _base + _fee

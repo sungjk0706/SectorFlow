@@ -871,7 +871,7 @@ class TestDailyBuySpentFeeInclusive:
 
     @pytest.mark.asyncio
     async def test_post_buy_accumulation_real_mode_excludes_fee(self):
-        """실전모드 매수 성공 후 _daily_buy_spent는 수수료 미포함 (현행 유지, P18 갭은 HANDOVER 기록)."""
+        """실전모드 매수 성공 후 _daily_buy_spent는 수수료 미포함 (P18 부합 — 실전은 증권사 SSOT, 앱 수수료 계산 금지)."""
         mgr = _make_manager(_raw_settings(rebuy_block_on=False))
         with patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.services.trading.auto_buy_effective", return_value=True), \

@@ -54,8 +54,9 @@ def get_orderable() -> int:
 
 def check_buy_power(order_amount: int, daily_limit: int = 0, daily_spent: int = 0) -> tuple[bool, str]:
     """
-    매수 가능 여부 확인.
+    매수 가능 여부 확인 (테스트모드 전용 — P18).
     order_amount + 수수료가 주문가능금액(Effective_Buy_Power) 이내인지 검사.
+    실전은 증권사 서버가 SSOT이므로 이 함수 미호출 (실전 예수금은 account_snapshot['orderable'] 사용).
     """
     cost = order_amount + round(order_amount * BUY_COMMISSION)
     effective = get_effective_buy_power(daily_limit, daily_spent)
@@ -66,9 +67,10 @@ def check_buy_power(order_amount: int, daily_limit: int = 0, daily_spent: int = 
 
 async def reserve_buy_power(order_amount: int, daily_limit: int = 0, daily_spent: int = 0) -> tuple[bool, str, int]:
     """
-    매수 가능 여부 확인 + 즉시 차감 (원자적). TOCTOU 경쟁 상태 방지.
+    매수 가능 여부 확인 + 즉시 차감 (원자적). TOCTOU 경쟁 상태 방지 (테스트모드 전용 — P18).
     check_buy_power 검증 통과 시 _orderable에서 즉시 차감하고 영속화.
     반환: (ok, reason, cost) — cost는 차감된 금액 (롤백 시 release_buy_power에 전달).
+    실전은 증권사 서버가 SSOT이므로 이 함수 미호출 (engine_strategy_core.reserve_test_buy_power 경유, trading.py에서 is_test_mode 게이트).
     """
     cost = order_amount + round(order_amount * BUY_COMMISSION)
     effective = get_effective_buy_power(daily_limit, daily_spent)
@@ -84,7 +86,7 @@ async def reserve_buy_power(order_amount: int, daily_limit: int = 0, daily_spent
 
 async def release_buy_power(cost: int) -> None:
     """
-    사전 차감 롤백 (주문 실패 시).
+    사전 차감 롤백 (주문 실패 시). 테스트모드 전용 (P18).
     reserve_buy_power로 차감한 금액을 _orderable에 복원.
     """
     if cost <= 0:
@@ -98,10 +100,11 @@ async def release_buy_power(cost: int) -> None:
 
 async def on_buy_fill(price: int, qty: int) -> int:
     """
-    매수 체결 처리.
+    매수 체결 처리 (테스트모드 전용 — P18).
     - 주문가능금액(orderable)에서만 차감
     - 누적투자금은 변하지 않음
     반환: 차감 후 주문가능금액.
+    실전은 dry_run._apply_buy 경유로만 호출되므로 실전 미호출 — 증권사 서버가 SSOT.
     """
     global _orderable
     cost = price * qty + round(price * qty * BUY_COMMISSION)
@@ -116,10 +119,11 @@ async def on_buy_fill(price: int, qty: int) -> int:
 
 async def on_sell_fill(price: int, qty: int, stk_cd: str, stk_nm: str) -> int:
     """
-    매도 체결 처리.
+    매도 체결 처리 (테스트모드 전용 — P18).
     - 순매도대금을 주문가능금액(orderable)에만 추가
     - 누적투자금은 변하지 않음
     반환: 추가 후 주문가능금액.
+    실전은 dry_run._apply_sell 경유로만 호출되므로 실전 미호출 — 증권사 서버가 SSOT.
     """
     global _orderable
     gross = price * qty
@@ -157,8 +161,9 @@ async def charge(amount: int) -> int:
 
 def get_effective_buy_power(daily_limit: int = 0, daily_spent: int = 0) -> int:
     """
-    실제 매수 가능 금액 계산 (주문가능금액 기준).
+    실제 매수 가능 금액 계산 (주문가능금액 기준). 테스트모드 전용 (P18).
     daily_limit == 0이면 무제한 (주문가능금액만 사용).
+    check_buy_power/reserve_buy_power에서만 호출 → 실전 미호출.
     """
     if daily_limit > 0:
         return min(_orderable, max(0, daily_limit - daily_spent))
@@ -166,10 +171,11 @@ def get_effective_buy_power(daily_limit: int = 0, daily_spent: int = 0) -> int:
 
 
 def max_buy_qty_for_budget(price: int, budget: int, is_test: bool) -> int:
-    """예산 내 최대 매수 수량 (수수료 포함, P10 SSOT).
+    """예산 내 최대 매수 수량 (수수료 포함, P10 SSOT, P18 부합).
 
     테스트모드: reserve_buy_power의 cost 공식(price*qty + round(price*qty*BUY_COMMISSION))
-    과 정합되도록 수수료 여유분 확보. 실전모드: 수수료 미적용(브로커 처리, 별도 세션).
+    과 정합되도록 수수료 여유분 확보.
+    실전모드: 증권사 서버가 SSOT이므로 앱에서 수수료 계산하지 않음 — budget // price 만 사용.
     trading.py의 buy_qty 계산과 buy_order_executor._refresh_buyable_prices가
     동일 기준으로 호출 (P22 정합성).
     """

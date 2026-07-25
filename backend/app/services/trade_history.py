@@ -261,7 +261,7 @@ async def record_buy(
     await _ensure_loaded()
     now = datetime.now()
     total_amt = price * qty
-    # 테스트모드: 수수료 0.015% 계산
+    # 테스트모드만 앱에서 수수료 계산 / 실전은 증권사 데이터 그대로 사용 (P18 — 실전은 증권사 SSOT)
     fee = round(total_amt * BUY_COMMISSION) if trade_mode == "test" else 0
     rec = {
         "ts": now.isoformat(timespec="seconds"),
@@ -322,7 +322,7 @@ async def record_sell(
         logger.warning("[정산] 외부에서 전달된 평균매입가가 0 이하입니다. 유령 데이터 혼입 방지를 위해 실현손익 계산을 건너뜁니다.")
         # realized_pnl 및 pnl_rate를 0으로 처리 (이후 코드에서 avg_buy_price > 0 체크로 안전하게 처리됨)
     total_amt = price * qty
-    # 테스트모드: 수수료 0.015%, 세금 0.20%
+    # 테스트모드만 앱에서 수수료/세금 계산 / 실전은 증권사 데이터 그대로 사용 (P18 — 실전은 증권사 SSOT)
     fee = round(total_amt * SELL_COMMISSION) if trade_mode == "test" else 0
     tax = round(total_amt * SECURITIES_TAX) if trade_mode == "test" else 0
     # 매도금액(실수령) = 매도가×수량 - 수수료 - 세금
