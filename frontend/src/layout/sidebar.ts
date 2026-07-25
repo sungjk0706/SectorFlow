@@ -59,12 +59,12 @@ export function createSidebar(onNavigate: (path: string) => void): {
 
   const builtBy = document.createElement('span')
   builtBy.style.cssText =
-    `font-size:${FONT_SIZE.chip};color:${COLOR.muted};font-weight:${FONT_WEIGHT.normal};`
+    `font-size:${FONT_SIZE.label};color:${COLOR.muted};font-weight:${FONT_WEIGHT.normal};`
   builtBy.textContent = 'Built by '
 
   const initials = document.createElement('span')
   initials.style.cssText =
-    `font-size:${FONT_SIZE.chip};color:${COLOR.tertiary};font-weight:${FONT_WEIGHT.semibold};`
+    `font-size:${FONT_SIZE.label};color:${COLOR.tertiary};font-weight:${FONT_WEIGHT.semibold};`
   initials.textContent = 'J.K'
 
   footer.appendChild(builtBy)
