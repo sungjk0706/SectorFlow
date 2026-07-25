@@ -249,7 +249,7 @@ export function applyAccountUpdate(data: AccountUpdateEvent): void {
   const positionsSame = prevPos.length === incomingPos.length && prevPos.every((p, i) => {
     const n = incomingPos[i]
     return p.stk_cd === n.stk_cd && p.qty === n.qty
-      && p.buy_price === n.buy_price && p.avg_price === n.avg_price
+      && p.avg_price === n.avg_price
       && p.cur_price === n.cur_price && p.pnl_rate === n.pnl_rate
   })
   const incomingSnap = data.snapshot ?? null

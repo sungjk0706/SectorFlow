@@ -19,9 +19,7 @@ export interface Position {
   stk_cd: string;
   stk_nm: string;
   qty: number;
-  /** 실전모드: buy_price, 테스트모드: avg_price */
-  buy_price?: number;
-  avg_price?: number;
+  avg_price: number;
   cur_price: number;
   eval_amount?: number;
   eval_amt?: number;

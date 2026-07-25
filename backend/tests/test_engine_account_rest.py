@@ -96,8 +96,8 @@ class TestMergePositionsFromRest:
         assert pos["stk_cd"] == "005930"
         assert pos["stk_nm"] == "삼성전자"
         assert pos["qty"] == 100
-        assert pos["buy_price"] == 70000
-        assert pos["buy_amount"] == 70000 * 100  # buy * qty
+        assert pos["avg_price"] == 70000
+        assert pos["buy_amount"] == 70000 * 100  # avg * qty
 
     def test_al_suffix_stripped(self):
         result = merge_positions_from_rest([{"stk_cd": "005930_AL", "qty": "10"}], {})
@@ -226,7 +226,7 @@ class TestReal04OfficialApplyPositionLine:
         assert pos["stk_cd"] == "005930"
         assert pos["stk_nm"] == "삼성전자"
         assert pos["qty"] == 100
-        assert pos["buy_price"] == 70000
+        assert pos["avg_price"] == 70000
         assert pos["cur_price"] == 80000
         assert pos["eval_amount"] == 80000 * 100
 
@@ -240,14 +240,14 @@ class TestReal04OfficialApplyPositionLine:
     def test_existing_position_updated(self):
         item = {"item": "A005930", "9001": "005930"}
         vals = {"930": "200", "931": "75000", "932": "15000000", "10": "85000", "302": "삼성전자"}
-        positions = [{"stk_cd": "005930", "stk_nm": "삼성전자", "qty": 100, "buy_price": 70000,
+        positions = [{"stk_cd": "005930", "stk_nm": "삼성전자", "qty": 100, "avg_price": 70000,
                        "cur_price": 80000, "buy_amount": 7000000, "eval_amount": 8000000,
                        "pnl_amount": 1000000, "pnl_rate": 14.29, "avail_qty": 100}]
         real04_official_apply_position_line(item, vals, positions, {})
         assert len(positions) == 1
         pos = positions[0]
         assert pos["qty"] == 200
-        assert pos["buy_price"] == 75000
+        assert pos["avg_price"] == 75000
         assert pos["cur_price"] == 85000
         assert pos["eval_amount"] == 85000 * 200
 

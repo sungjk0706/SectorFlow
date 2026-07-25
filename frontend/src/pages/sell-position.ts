@@ -41,7 +41,7 @@ const COLUMNS: ColumnDef<Position>[] = [
       const sectorStock = hotStore.getState().sectorStocks[normalizeStockCode(p.stk_cd)]
       const curPrice = sectorStock?.cur_price
       if (curPrice == null) return createPriceCell(null, null)
-      const buyPrice = p.buy_price ?? p.avg_price ?? 0
+      const buyPrice = p.avg_price
       const diff = Number(curPrice) - buyPrice
       const rate = buyPrice > 0 ? (diff / buyPrice) * 100 : 0
       return createPriceCell(Number(curPrice), rate)
@@ -49,7 +49,7 @@ const COLUMNS: ColumnDef<Position>[] = [
   },
   {
     key: 'buy_price', label: '매수가', align: 'right', type: 'buy_price',
-    render: (p) => createNumberCell(p.buy_price ?? p.avg_price ?? 0),
+    render: (p) => createNumberCell(p.avg_price),
   },
   {
     key: 'buy_amt', label: '매수금액(수수료 포함)', align: 'right', type: 'total_amt',
@@ -60,7 +60,7 @@ const COLUMNS: ColumnDef<Position>[] = [
     render: (p) => {
       const sectorStock = hotStore.getState().sectorStocks[normalizeStockCode(p.stk_cd)]
       const curPrice = sectorStock?.cur_price ?? p.cur_price
-      const buyPrice = p.buy_price ?? p.avg_price ?? 0
+      const buyPrice = p.avg_price
       const qty = p.qty
       const pnl = (Number(curPrice) - buyPrice) * qty
       const span = document.createElement('span')
@@ -74,7 +74,7 @@ const COLUMNS: ColumnDef<Position>[] = [
     render: (p) => {
       const sectorStock = hotStore.getState().sectorStocks[normalizeStockCode(p.stk_cd)]
       const curPrice = sectorStock?.cur_price ?? p.cur_price
-      const buyPrice = p.buy_price ?? p.avg_price ?? 0
+      const buyPrice = p.avg_price
       const rate = buyPrice > 0 ? ((Number(curPrice) - buyPrice) / buyPrice) * 100 : 0
       const span = document.createElement('span')
       span.style.color = rateColor(rate)

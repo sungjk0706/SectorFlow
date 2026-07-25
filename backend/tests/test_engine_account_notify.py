@@ -74,7 +74,7 @@ class TestNotificationCache:
 
 class TestPosEqual:
     def test_identical(self):
-        a = {"stk_cd": "005930", "stk_nm": "삼성전자", "qty": 10, "buy_price": 70000,
+        a = {"stk_cd": "005930", "stk_nm": "삼성전자", "qty": 10,
              "avg_price": 70000, "cur_price": 80000, "pnl_amount": 100000, "pnl_rate": 14.29}
         assert _pos_equal(a, dict(a)) is True
 

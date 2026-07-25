@@ -87,7 +87,7 @@ def real04_official_apply_position_line(
     prefer_01 = live is not None and int(live) > 0
 
     qty       = _parse_int_loose(vals.get("930")) if "930" in vals else None
-    buy_price = _parse_int_loose(vals.get("931")) if "931" in vals else None
+    avg_price = _parse_int_loose(vals.get("931")) if "931" in vals else None
     buy_amt   = _parse_int_loose(vals.get("932")) if "932" in vals else None
     avail_qty = _parse_int_loose(vals.get("933")) if "933" in vals else None
     pnl_amt   = _parse_int_loose(vals.get("950")) if "950" in vals else None
@@ -110,8 +110,7 @@ def real04_official_apply_position_line(
             "stk_nm":     stk_nm or raw_cd,
             "qty":        _qty_new,
             "avail_qty":  avail_qty if avail_qty is not None else _qty_new,
-            "buy_price":  buy_price or 0,
-            "pur_pric":   buy_price or 0,
+            "avg_price":  avg_price or 0,
             "cur_price":  cur_price if (not prefer_01 and cur_price > 0) else (latest_trade_prices.get(raw_cd) or 0),
             "buy_amount": buy_amt or 0,
             "pnl_amount": pnl_amt or 0,
@@ -134,9 +133,8 @@ def real04_official_apply_position_line(
         matched["cur_price"] = cur_price
     if qty is not None and qty > 0:
         matched["qty"] = qty
-    if buy_price is not None and buy_price > 0:
-        matched["buy_price"] = buy_price
-        matched["pur_pric"] = buy_price
+    if avg_price is not None and avg_price > 0:
+        matched["avg_price"] = avg_price
     if buy_amt is not None and buy_amt > 0:
         matched["buy_amount"] = buy_amt
     if avail_qty is not None and avail_qty > 0:
@@ -226,8 +224,7 @@ def parse_kt00018_balance(
             "stk_nm":     str(item.get("stk_nm", stk_cd)).strip(),
             "qty":        qty,
             "avail_qty":  _avail_qty,
-            "buy_price":  _buy_uv,
-            "pur_pric":   _buy_uv,
+            "avg_price":  _buy_uv,
             "cur_price":  _cur,
             "buy_amount": _buy_amt,
             "pnl_amount": _pnl,

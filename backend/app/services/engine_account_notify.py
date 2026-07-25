@@ -128,7 +128,7 @@ def _rebuild_layout_cache(layout: list) -> None:
 
 
 # Position delta 비교 키: 프론트엔드가 실제 사용하는 필드만 비교
-_POSITION_CMP_KEYS = ("stk_cd", "stk_nm", "qty", "buy_price", "avg_price", "buy_amount", "buy_amt", "total_fee", "tax", "cur_price", "buy_date")
+_POSITION_CMP_KEYS = ("stk_cd", "stk_nm", "qty", "avg_price", "buy_amount", "buy_amt", "total_fee", "tax", "cur_price", "buy_date")
 
 # Snapshot delta 비교 키: 프론트엔드가 실제 사용하는 필드만 비교
 _SNAPSHOT_CMP_KEYS = ("deposit", "orderable", "accumulated_investment",

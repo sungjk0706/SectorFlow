@@ -646,7 +646,6 @@ def _position_from_lots(stk_cd: str, q: deque[dict]) -> dict | None:
         "stk_nm": stk_nm,
         "qty": total_qty,
         "avg_price": avg_price,
-        "buy_price": avg_price,
         "buy_amount": buy_amount,
         "buy_amt": buy_amt,
         "total_fee": total_fee,

@@ -31,11 +31,11 @@ def merge_positions_from_rest(
         qty = _rest_row_int(r, "qty", "rmnd_qty")
         if qty <= 0:
             continue
-        buy = _rest_row_int(r, "buy_price", "buy_uv", "pur_pric")
+        avg = _rest_row_int(r, "avg_price", "buy_price", "buy_uv", "pur_pric")
         cur = _rest_row_int(r, "cur_price", "cur_pric", "cur_prc")
         ba = _rest_row_int(r, "buy_amount", "buy_amt", "pur_amt")
         if ba <= 0:
-            ba = buy * qty
+            ba = avg * qty
         total_fee = _rest_row_int(r, "sum_cmsn", "pur_cmsn")
         buy_amt = ba + total_fee
         eval_amt = _rest_row_int(r, "eval_amount", "evlt_amt", "evltv_amt")
@@ -46,9 +46,7 @@ def merge_positions_from_rest(
             "stk_nm":     str(r.get("stk_nm", cd)).strip(),
             "qty":        qty,
             "avail_qty":  _rest_row_int(r, "avail_qty", "trde_able_qty") or qty,
-            "buy_price":  buy,
-            "avg_price":  buy,
-            "pur_pric":   buy,
+            "avg_price":  avg,
             "cur_price":  cur,
             "buy_amount": ba,
             "buy_amt":    buy_amt,
