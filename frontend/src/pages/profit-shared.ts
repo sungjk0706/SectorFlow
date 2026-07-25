@@ -67,10 +67,49 @@ export interface SummaryCardCallbacks {
   onTotalClick?: () => void
 }
 
+const SUMMARY_CARD_STYLE = `flex:1;background:${COLOR.surfaceLight};border:1px solid ${COLOR.borderLight};border-radius:6px;padding:6px 12px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;`
+const SUMMARY_CARD_TITLES = ['당일 손익', '전일 손익', '5거래일 손익', '당월 손익', '누적 손익']
+
+/** 요약 카드 1개 DOM 생성. 실패 시 null 반환 (P25 격리 + P22 인덱스 정합성 — 호출부에서 더미 push). */
+function buildSummaryCard(
+  container: HTMLElement,
+  title: string,
+  handler: (() => void) | undefined,
+): { pnlEl: HTMLSpanElement; rateEl: HTMLSpanElement; cardEl: HTMLDivElement } | null {
+  try {
+    const card = document.createElement('div')
+    card.style.cssText = SUMMARY_CARD_STYLE
+    if (handler) card.addEventListener('click', handler)
+
+    const titleEl = document.createElement('div')
+    Object.assign(titleEl.style, { fontSize: FONT_SIZE.section, color: COLOR.tertiary, whiteSpace: 'nowrap' })
+    titleEl.textContent = title
+
+    const valRow = document.createElement('div')
+    Object.assign(valRow.style, { display: 'flex', justifyContent: 'flex-end', alignItems: 'baseline', gap: '6px' })
+
+    const pnlEl = document.createElement('span')
+    Object.assign(pnlEl.style, { fontSize: FONT_SIZE.section, fontWeight: FONT_WEIGHT.normal })
+    pnlEl.textContent = fmtWon(0)
+
+    const rateEl = document.createElement('span')
+    Object.assign(rateEl.style, { fontSize: FONT_SIZE.label, color: COLOR.neutral })
+    rateEl.textContent = '0.00%'
+
+    valRow.appendChild(pnlEl)
+    valRow.appendChild(rateEl)
+    card.appendChild(titleEl)
+    card.appendChild(valRow)
+    container.appendChild(card)
+    return { pnlEl, rateEl, cardEl: card }
+  } catch (e) {
+    console.error('[profit-shared] summary card build error', e)
+    return null
+  }
+}
+
 /** 요약 카드 5개(당일/전일/5거래일/당월/누적 손익) DOM 생성, 클릭 콜백 주입, 요소 참조 반환 */
 export function createSummaryCards(container: HTMLElement, callbacks: SummaryCardCallbacks = {}): SummaryCardEls {
-  const CARD_STYLE = `flex:1;background:${COLOR.surfaceLight};border:1px solid ${COLOR.borderLight};border-radius:6px;padding:6px 12px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;`
-  const CARD_TITLES = ['당일 손익', '전일 손익', '5거래일 손익', '당월 손익', '누적 손익']
   const clickHandlers = [callbacks.onTodayClick, callbacks.onPrevClick, callbacks.onFivedayClick, callbacks.onMonthClick, callbacks.onTotalClick]
 
   const pnlEls: HTMLSpanElement[] = []
@@ -79,40 +118,13 @@ export function createSummaryCards(container: HTMLElement, callbacks: SummaryCar
 
   for (let i = 0; i < 5; i++) {
     // P25: 카드 단위 격리 — 한 카드 생성 throw 시 다음 카드 계속 렌더링.
-    // pnlEls/rateEls/cardEls push는 인덱스 기반이므로
     // 실패 시 더미 push로 인덱스 정합성 유지 (P22). buildStatRow 패턴과 일치 (P23).
-    try {
-      const card = document.createElement('div')
-      card.style.cssText = CARD_STYLE
-      const handler = clickHandlers[i]
-      if (handler) card.addEventListener('click', handler)
-      cardEls.push(card)
-
-      const titleEl = document.createElement('div')
-      Object.assign(titleEl.style, { fontSize: FONT_SIZE.section, color: COLOR.tertiary, whiteSpace: 'nowrap' })
-      titleEl.textContent = CARD_TITLES[i]
-
-      const valRow = document.createElement('div')
-      Object.assign(valRow.style, { display: 'flex', justifyContent: 'flex-end', alignItems: 'baseline', gap: '6px' })
-
-      const pnlEl = document.createElement('span')
-      Object.assign(pnlEl.style, { fontSize: FONT_SIZE.section, fontWeight: FONT_WEIGHT.normal })
-      pnlEl.textContent = fmtWon(0)
-
-      const rateEl = document.createElement('span')
-      Object.assign(rateEl.style, { fontSize: FONT_SIZE.label, color: COLOR.neutral })
-      rateEl.textContent = '0.00%'
-
-      valRow.appendChild(pnlEl)
-      valRow.appendChild(rateEl)
-      card.appendChild(titleEl)
-      card.appendChild(valRow)
-      container.appendChild(card)
-
-      pnlEls.push(pnlEl)
-      rateEls.push(rateEl)
-    } catch (e) {
-      console.error('[profit-shared] summary card build error', e)
+    const built = buildSummaryCard(container, SUMMARY_CARD_TITLES[i], clickHandlers[i])
+    if (built) {
+      pnlEls.push(built.pnlEl)
+      rateEls.push(built.rateEl)
+      cardEls.push(built.cardEl)
+    } else {
       const dummyPnl = document.createElement('span')
       dummyPnl.textContent = '-'
       pnlEls.push(dummyPnl)
@@ -442,25 +454,47 @@ export interface AccountValsParams {
   holdingCountSpanTest: HTMLSpanElement | null
 }
 
-export function renderAccountVals(params: AccountValsParams): void {
-  const { account: a, positionCount, isTestMode, buyHistory, sellHistory } = params
-
-  // 당일 매수/매도금액은 체결 이력에서 직접 집계
-  const today = getLocalToday()
+/** 당일 매수/매도금액 + 당일/누적 수수료·세금 집계 (buyHistory + sellHistory 기반). */
+function computeTodayAggregates(
+  buyHistory: Record<string, unknown>[],
+  sellHistory: Record<string, unknown>[],
+  today: string,
+): { todayBuyAmt: number; todaySellAmt: number; todayFeeTax: number; cumFeeTax: number } {
   const todayBuyAmt = buyHistory
     .filter(r => String(r.date ?? '') === today)
     .reduce((s, r) => s + Number(r.total_amt ?? 0), 0)
   const todaySellAmt = sellHistory
     .filter(r => String(r.date ?? '') === today)
     .reduce((s, r) => s + Number(r.total_amt ?? 0), 0)
-
-  // 당일/누적 수수료·세금 집계 (buyHistory.fee + sellHistory.fee + sellHistory.tax)
   const todayFeeTax =
     buyHistory.filter(r => String(r.date ?? '') === today).reduce((s, r) => s + Number(r.fee ?? 0), 0) +
     sellHistory.filter(r => String(r.date ?? '') === today).reduce((s, r) => s + Number(r.fee ?? 0) + Number(r.tax ?? 0), 0)
   const cumFeeTax =
     buyHistory.reduce((s, r) => s + Number(r.fee ?? 0), 0) +
     sellHistory.reduce((s, r) => s + Number(r.fee ?? 0) + Number(r.tax ?? 0), 0)
+  return { todayBuyAmt, todaySellAmt, todayFeeTax, cumFeeTax }
+}
+
+/** 계좌 현황 11행 렌더링 (test/real 공통 — P24 중복 제거).
+ *  refs: 11개 span 참조, values: 11개 행 텍스트(원 단위·% 포함), colors: 색상 적용 인덱스↔색상 맵. */
+function renderAccountRowSet(
+  refs: HTMLSpanElement[],
+  values: string[],
+  colorMap: Map<number, string>,
+): void {
+  if (refs.length < 11) return
+  for (let i = 0; i < 11; i++) {
+    refs[i].textContent = values[i]
+    const color = colorMap.get(i)
+    if (color) refs[i].style.color = color
+  }
+}
+
+export function renderAccountVals(params: AccountValsParams): void {
+  const { account: a, positionCount, isTestMode, buyHistory, sellHistory } = params
+
+  const today = getLocalToday()
+  const { todayBuyAmt, todaySellAmt, todayFeeTax, cumFeeTax } = computeTodayAggregates(buyHistory, sellHistory, today)
 
   // 보유 종목 평가금액/평가손익/수익률: positions + sectorStocks에서 직접 계산 (개별 종목 행과 동일 소스·공식)
   const { evalTotal, evalPnl, evalRate } = computeHoldingsSummary(params.positions, params.sectorStocks)
@@ -474,59 +508,35 @@ export function renderAccountVals(params: AccountValsParams): void {
     params.testAccountContainer.style.display = isTestMode ? '' : 'none'
   }
 
+  // 11행 공통 값 조립 (행 0만 모드별 상이: 테스트=누적투자금, 실전=예수금)
+  const row0 = isTestMode ? (a?.initial_deposit ?? 0) : (a?.deposit ?? 0)
+  const orderable = a?.orderable ?? 0
+  const evalSign = evalPnl > 0 ? '+' : ''
+  const evalColor = pnlColor(evalPnl)
+  const evalRateSign = evalRate > 0 ? '+' : ''
+  const cumSign = cumPnl.pnl > 0 ? '+' : ''
+  const cumColor = pnlColor(cumPnl.pnl)
+
+  const values = [
+    `${row0.toLocaleString()}원`,
+    `${orderable.toLocaleString()}원`,
+    `${todayBuyAmt.toLocaleString()}원`,
+    `${todaySellAmt.toLocaleString()}원`,
+    `${evalTotal.toLocaleString()}원`,
+    `${evalSign}${evalPnl.toLocaleString()}원`,
+    `${evalRateSign}${evalRate.toFixed(2)}%`,
+    `${todayFeeTax.toLocaleString()}원`,
+    `${cumFeeTax.toLocaleString()}원`,
+    `${cumSign}${cumPnl.pnl.toLocaleString()}원`,
+    `${cumSign}${cumPnl.rate.toFixed(2)}%`,
+  ]
+  const colorMap = new Map<number, string>([[5, evalColor], [6, evalColor], [9, cumColor], [10, cumColor]])
+
   if (isTestMode) {
-    // 테스트모드: 11행 (누적투자금, 주문가능금액, 오늘매수, 오늘매도, 보유평가금액, 보유평가손익, 보유평가수익률, 오늘수수료/세금, 누적수수료/세금, 누적손익, 누적수익률)
-    const tv = params.testAccountValRefs
-    if (tv.length < 11) return
-    const accumulatedInvestment = a?.initial_deposit ?? 0
-    const orderable = a?.orderable ?? 0
-    tv[0].textContent = `${accumulatedInvestment.toLocaleString()}원`
-    tv[1].textContent = `${orderable.toLocaleString()}원`
-    tv[2].textContent = `${todayBuyAmt.toLocaleString()}원`
-    tv[3].textContent = `${todaySellAmt.toLocaleString()}원`
-    tv[4].textContent = `${evalTotal.toLocaleString()}원`
     if (params.holdingCountSpanTest) params.holdingCountSpanTest.textContent = String(positionCount)
-    const evalSign = evalPnl > 0 ? '+' : ''
-    const evalColor = pnlColor(evalPnl)
-    tv[5].textContent = `${evalSign}${evalPnl.toLocaleString()}원`
-    tv[5].style.color = evalColor
-    const evalRateSign = evalRate > 0 ? '+' : ''
-    tv[6].textContent = `${evalRateSign}${evalRate.toFixed(2)}%`
-    tv[6].style.color = evalColor
-    tv[7].textContent = `${todayFeeTax.toLocaleString()}원`
-    tv[8].textContent = `${cumFeeTax.toLocaleString()}원`
-    const cumSign = cumPnl.pnl > 0 ? '+' : ''
-    const cumColor = pnlColor(cumPnl.pnl)
-    tv[9].textContent = `${cumSign}${cumPnl.pnl.toLocaleString()}원`
-    tv[9].style.color = cumColor
-    tv[10].textContent = `${cumSign}${cumPnl.rate.toFixed(2)}%`
-    tv[10].style.color = cumColor
+    renderAccountRowSet(params.testAccountValRefs, values, colorMap)
   } else {
-    // 실전모드: 11행 (예수금, 주문가능금액, 오늘매수, 오늘매도, 보유평가금액, 보유평가손익, 보유평가수익률, 오늘수수료/세금, 누적수수료/세금, 누적손익, 누적수익률)
-    const rv = params.accountValRefs
-    if (rv.length < 11) return
-    const deposit = a?.deposit ?? 0
-    const orderable = a?.orderable ?? 0
-    rv[0].textContent = `${deposit.toLocaleString()}원`
-    rv[1].textContent = `${orderable.toLocaleString()}원`
-    rv[2].textContent = `${todayBuyAmt.toLocaleString()}원`
-    rv[3].textContent = `${todaySellAmt.toLocaleString()}원`
-    rv[4].textContent = `${evalTotal.toLocaleString()}원`
     if (params.holdingCountSpan) params.holdingCountSpan.textContent = String(positionCount)
-    const evalSign = evalPnl > 0 ? '+' : ''
-    const evalColor = pnlColor(evalPnl)
-    rv[5].textContent = `${evalSign}${evalPnl.toLocaleString()}원`
-    rv[5].style.color = evalColor
-    const evalRateSign = evalRate > 0 ? '+' : ''
-    rv[6].textContent = `${evalRateSign}${evalRate.toFixed(2)}%`
-    rv[6].style.color = evalColor
-    rv[7].textContent = `${todayFeeTax.toLocaleString()}원`
-    rv[8].textContent = `${cumFeeTax.toLocaleString()}원`
-    const cumSign = cumPnl.pnl > 0 ? '+' : ''
-    const cumColor = pnlColor(cumPnl.pnl)
-    rv[9].textContent = `${cumSign}${cumPnl.pnl.toLocaleString()}원`
-    rv[9].style.color = cumColor
-    rv[10].textContent = `${cumSign}${cumPnl.rate.toFixed(2)}%`
-    rv[10].style.color = cumColor
+    renderAccountRowSet(params.accountValRefs, values, colorMap)
   }
 }
