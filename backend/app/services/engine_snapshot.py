@@ -175,7 +175,10 @@ async def _reset_realtime_fields() -> None:
 
     # 업종 점수 캐시 초기화 (실시간 데이터 재계산 유도)
     engine_state.state.sector_summary_cache = None
-    # 캡슐화된 notify_cache.clear_all() 호출로 결합성 제거
+    # 캡슐화된 notify_cache.clear_all() 호출로 결합성 제거.
+    # 본 시점은 엔진 전체 재초기화(장마감·개시 등)이며 다중 WS 연결 동시 초기화 정상.
+    # clear_all은 _initialized=False로 리셋 → 다음 init_sent_caches가 정상 재설정.
+    # clear_all 직후 첫 delta는 full snapshot으로 전송되어 정합성 보장 (P25 격리).
     notify_cache.clear_all()
 
     # DB master_stocks_table 실시간 필드 초기화 (과거 데이터 혼입 방지)

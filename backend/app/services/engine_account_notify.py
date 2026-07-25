@@ -15,25 +15,30 @@ logger = logging.getLogger(__name__)
 
 # ── NotificationCache: 알림 레이어 델타 캐시 통합 클래스 ─────────────────────────
 class NotificationCache:
-    """알림 레이어 델타 캐시 통합 클래스 - 생명주기 관리 단순화.
+    """알림 레이어 델타 캐시 통합 클래스 — 동일 사용자 모든 WS 연결이 공유하는 단일 delta SSOT.
 
-    책임 경계 (세션 5 — cache_state_fix_tasks.md):
-      본 캐시는 **전역 delta 기준점**만 담당한다. WS 연결별 초기 스냅샷 상태는
-      본 클래스에서 관리하지 않으며, 각 연결의 `_send_initial_snapshot_delayed`
-      태스크가 `init_sent_caches()`를 호출할 때 전역 기준점을 덮어쓴다.
+    책임 경계 (세션 6 — cache_state_fix_tasks.md):
+      본 캐시는 **전역 delta 기준점**을 담당한다. SectorFlow는 1인 로컬 자동매매 앱으로
+      다중 WS 연결(다중 탭/재연결)은 모두 동일 사용자·동일 계정·동일 데이터를 바라본다.
+      따라서 delta 기준점을 연결별로 분리하지 않고 전역 SSOT 1개로 통일한다 (P10 SSOT,
+      P24 단순성). 업계 표준 FastAPI ConnectionManager 패턴과 shared-websocket 패턴도
+      동일 사용자의 다중 연결을 단일 논리 세션으로 묶어 동일 payload를 전송한다.
 
-    현재 구조의 단일 연결 가정:
-      - `notify_cache`는 모듈 수준 전역 싱글톤 (인스턴스 1개).
-      - 단일 WS 연결 환경에서는 정상 동작.
-      - 다중 WS 연결(다중 탭/재연결 경쟁) 환경에서는 한 연결의 `init_sent_caches`가
-        다른 연결의 delta 기준점을 덮어쓰는 경쟁 조건이 발생 가능 (P22/P25 위반 후보).
-      - `_reset_realtime_fields`의 `clear_all()` 호출은 모든 연결의 delta 기준점을
-        한 번에 파괴한다 (P25 격리 위반 후보).
+    초기화 경쟁 제거 (세션 6 수정):
+      - `_initialized` 플래그로 `init_sent_caches`의 멱등성을 보장한다.
+      - 첫 WS 연결이 `init_sent_caches`를 호출해 기준점을 설정하면 `_initialized=True`.
+      - 이후 다중 연결이 `init_sent_caches`를 호출해도 `_initialized=True`이면 스킵 —
+        첫 연결이 설정한 기준점이 유지되어 덮어쓰기 경쟁으로 인한 false positive delta
+        방지 (P22 데이터 정합성, 세션 5 시나리오 2·3 결함 해소).
 
-    수정 계약 (세션 6 — notify_cache 생명주기 수정):
-      - 연결별 초기 스냅샷 상태와 전역 delta 기준점의 소유권을 코드로 분리.
-      - 시나리오 테스트 5건은 `test_engine_account_notify.py::TestNotifyCacheConcurrencyScenarios` 참조.
-      - 실전 주문 경로에는 영향 없음.
+    재초기화 경로 (세션 6 수정):
+      - `_reset_realtime_fields`는 장마감·개시 등 엔진 전체 재초기화 시점에만 호출.
+      - `clear_all()`이 `_initialized=False`로 리셋 → 다음 `init_sent_caches`가 정상 재설정.
+      - clear_all 직후 delta 계산 시 모든 항목이 changed로 나오는 것은 정상 —
+        첫 delta는 full snapshot으로 전송되어 정합성 보장 (P25 격리, 세션 5 시나리오 4 정상화).
+
+    시나리오 테스트 5건은 `test_engine_account_notify.py::TestNotifyCacheConcurrencyScenarios` 참조.
+    실전 주문 경로에는 영향 없음.
     """
     def __init__(self):
         self.position_sent = {}
@@ -46,9 +51,14 @@ class NotificationCache:
         self.layout_code_set = set()
         self.buy_targets_code_set = set()
         self.prev_receive_rate = None
+        self._initialized = False
 
     def clear_all(self):
-        """모든 캐시 초기화."""
+        """모든 캐시 초기화 + _initialized 리셋.
+
+        엔진 전체 재초기화 시점(_reset_realtime_fields)에만 호출되며,
+        호출 후 다음 init_sent_caches가 정상적으로 기준점을 재설정한다.
+        """
         self.position_sent.clear()
         self.snapshot_sent.clear()
         self.prev_scores = []
@@ -59,6 +69,7 @@ class NotificationCache:
         self.layout_code_set.clear()
         self.buy_targets_code_set.clear()
         self.prev_receive_rate = None
+        self._initialized = False
 
 
 # 전역 인스턴스 1개만 생성
@@ -151,7 +162,15 @@ def _compute_position_delta(current_positions: list[dict]) -> tuple[list[dict], 
 
 
 def init_sent_caches(sector_stocks: list[dict], positions: list[dict], snapshot: dict) -> None:
-    """initial-snapshot 전송 후 delta 캐시 초기화."""
+    """initial-snapshot 전송 후 delta 캐시 초기화.
+
+    멱등성 가드 (세션 6 — P22 데이터 정합성):
+      `_initialized=True`이면 스킵하여 다중 WS 연결의 동시 초기화 경쟁을 차단한다.
+      첫 연결이 설정한 기준점이 유지되며, 이후 연결의 init_sent_caches 호출은 no-op.
+      재초기화는 `clear_all()`이 `_initialized=False`로 리셋한 이후에만 수행된다.
+    """
+    if notify_cache._initialized:
+        return
     notify_cache.prev_sector_stock_codes = {s.get("code", "") for s in sector_stocks if s.get("code", "")}
     notify_cache.position_sent = {}
     for p in positions:
@@ -163,6 +182,7 @@ def init_sent_caches(sector_stocks: list[dict], positions: list[dict], snapshot:
     notify_cache.prev_buy_targets_map = None
     # Set 캐시 동기화 — positions_code_set O(1) 조회용
     _rebuild_positions_cache(positions)
+    notify_cache._initialized = True
 
 
 # ── 알림 함수 (WebSocket 브로드캐스트) ─────────────────────────────────────────────
