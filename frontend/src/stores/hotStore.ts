@@ -541,6 +541,14 @@ export function applyRealtimeReset(): void {
 // P10(SSOT) + P22(데이터 정합성): 백엔드 초기 buy-targets-update에 포함된 실시간 필드는
 // sectorStocks와 불일치 가능 (조회 시점 차이). incoming 실시간 필드를 sectorStocks 기준으로
 // 재결합하여 단일 소스 일관성 유지. buy-targets-delta의 added/changed 결합 패턴과 동일 (P23).
+//
+// same 비교 키 (세션 8 — 백엔드 _BUY_TARGET_CMP_KEYS와 일치, P23 일관성):
+//   식별자: code, name (백엔드는 code 기준 delta이므로 불필요, 프론트는 배열 순서 비교용)
+//   정적 필드: rank, boost_score, guard_pass, reason, order_ratio, program_net_buy,
+//             high_5d, avg_amt_5d, news_boost
+//   실시간 필드(cur_price/change/change_rate/strength/trade_amount)는 제외 —
+//   틱 디스패치(real-data-tick)가 별도 갱신 담당, update same에서 비교하면 매 틱마다
+//   setState 트리거하여 비용 낭비. 백엔드 _BUY_TARGET_CMP_KEYS도 동일 제외.
 export function applyBuyTargetsUpdate(data: { buy_targets: SectorStock[] }): void {
   const sectorStocks = hotStore.getState().sectorStocks
   const incoming = (data.buy_targets ?? []).map(t => {
@@ -563,13 +571,13 @@ export function applyBuyTargetsUpdate(data: { buy_targets: SectorStock[] }): voi
   const same = prev.length === incoming.length && prev.every((p, i) => {
     const n = incoming[i]
     return p.rank === n.rank && normalizeStockCode(p.code) === normalizeStockCode(n.code) && p.name === n.name
-      && p.cur_price === n.cur_price && p.change === n.change && p.change_rate === n.change_rate
-      && p.strength === n.strength
       && p.guard_pass === n.guard_pass && p.reason === n.reason
       && p.boost_score === n.boost_score
       && p.order_ratio?.[0] === n.order_ratio?.[0] && p.order_ratio?.[1] === n.order_ratio?.[1]
       && p.program_net_buy === n.program_net_buy
       && p.high_5d === n.high_5d
+      && p.avg_amt_5d === n.avg_amt_5d
+      && p.news_boost === n.news_boost
   })
   if (!same) {
     rebuildBuyTargetIndex(incoming)

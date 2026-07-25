@@ -132,7 +132,25 @@ async def get_buy_targets_sector_stocks() -> list:
 
 
 def _build_target_entry(bt, news_boost_cache: dict[str, float] | None = None) -> dict:
-    """매수 후보/차단 후보 공통 엔트리 생성 — master_stocks_cache 실시간 데이터 병합."""
+    """매수 후보/차단 후보 공통 엔트리 생성 — master_stocks_cache 실시간 데이터 병합.
+
+    필드 표시 규칙 (세션 8 — payload 계약 명시, P22 데이터 정합성):
+      - 정적·식별 필드 (항상 값 존재):
+          code, name, sector, market_type, nxt_enable, rank, guard_pass, reason,
+          boost_score, avg_amt_5d
+      - 실시간 파생 필드 (sectorStocks SSOT에서 파생 — null 허용):
+          cur_price, change, change_rate, strength, trade_amount
+          - null = 틱 미수신 (테스트모드 기동 직후, 장 전, 구독 지연 등)
+          - 프론트 buyTargets는 sectorStocks 기준 rebindBuyTargetsRealtime으로 재결합
+      - 원천 부재 표시 규칙 (P20 폴백 금지 — 명시적 "데이터 없음" 표시):
+          high_5d: int(cache_entry.get("high_5d_price", 0) or 0) — 0 = 원천 부재/미다운로드
+                   (5거래일 일봉 다운로드 전 또는 데이터 없음. 0은 유효 주가가 아니므로
+                   프론트 buy-target.ts는 high_5d > 0 조건으로 표시 여부 판단)
+          news_boost: 0.0 = 미부여 (뉴스 호재 캐시에 종목 코드 부재 시)
+                      (0은 "가산점 없음"의 명시적 값이지 폴백이 아님 — 부재와 부여 안 함을 동일 취급)
+          order_ratio: None = 호가잔량 미수신 (orderbook-update 이벤트로 갱신 전)
+          program_net_buy: None = 프로그램 순매수 미수신 (program-update 이벤트로 갱신 전)
+    """
     s = bt.stock
     cache_entry = engine_state.state.master_stocks_cache.get(s.code, {})
     _nbc = news_boost_cache or {}

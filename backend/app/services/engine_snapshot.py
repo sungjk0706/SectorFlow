@@ -61,6 +61,9 @@ async def build_initial_snapshot() -> dict:
         "sector_stocks":    [],  # 분할 전송 — sector-stocks-refresh 이벤트로 별도 전송
         "sector_scores":    scores_list,
         "sector_status":    {"total_stocks": total_stocks_count, "max_targets": int(engine_state.state.integrated_system_settings_cache["sector_max_targets"]), "ranked_sectors_count": ranked_count},
+        # buy_targets: 실시간 필드 포함 전체 리스트. 이후 sector-stocks-refresh →
+        # 프론트 rebindBuyTargetsRealtime이 sectorStocks 기준으로 실시간 필드 정정 (P10 SSOT).
+        # 별도 buy-targets-update 이벤트도 동일 payload 재전송 (WS delta 메커니즘 기반점 확보).
         "buy_targets":      await _safe(get_buy_targets_sector_stocks, []),
         "settings":         _mask_sensitive_settings(engine_state.state.integrated_system_settings_cache),
         "status":           get_engine_status(),

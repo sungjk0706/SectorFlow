@@ -295,6 +295,136 @@ describe('hotStore — 이벤트 계약 정합성 (세션 4)', () => {
       expect(btD.trade_amount).toBe(9999)
     })
   })
+
+  // ── 세션 8 — same 비교 키 백엔드 _BUY_TARGET_CMP_KEYS 일치 검증 ──────────────
+  // same 키: 정적 필드만 (rank, boost_score, guard_pass, reason, order_ratio,
+  //          program_net_buy, high_5d, avg_amt_5d, news_boost) + 식별자 (code, name)
+  // 실시간 필드(cur_price/change/change_rate/strength/trade_amount)는 same 비교 제외 —
+  // 틱 디스패치가 별도 갱신 담당, 매 틱마다 setState 트리거 방지.
+  describe('applyBuyTargetsUpdate — same 비교 키 (세션 8 — 백엔드 cmp_keys 일치)', () => {
+    it('실시간 필드만 변경 시 setState 미발화 (same=true)', () => {
+      // 초기 buyTargets 설정 (정적 필드 포함)
+      const initial: SectorStock[] = [
+        {
+          code: '000001', name: '종목A', cur_price: 10000, change: 100, change_rate: 1.0,
+          trade_amount: 5000, strength: 80, sector: '업종1', rank: 1, guard_pass: true,
+          reason: '', boost_score: 5.0, high_5d: 12000, avg_amt_5d: 4000, news_boost: 0.0,
+          order_ratio: [100, 200], program_net_buy: null,
+        },
+      ]
+      applyBuyTargetsUpdate({ buy_targets: initial })
+      const stateBefore = hotStore.getState()
+      const prevTargetsRef = stateBefore.buyTargets
+
+      // 동일 정적 필드 + 실시간 필드만 변경 (cur_price 10000 → 11000)
+      const updated: SectorStock[] = [
+        {
+          ...initial[0],
+          cur_price: 11000, change: 200, change_rate: 2.0, trade_amount: 6000, strength: 85,
+        },
+      ]
+      applyBuyTargetsUpdate({ buy_targets: updated })
+
+      const stateAfter = hotStore.getState()
+      // same=true → buyTargets 배열 참조 동일 (setState 미발화)
+      expect(stateAfter.buyTargets).toBe(prevTargetsRef)
+    })
+
+    it('avg_amt_5d 변경 시 setState 발화 (same=false)', () => {
+      const initial: SectorStock[] = [
+        {
+          code: '000001', name: '종목A', cur_price: 10000, change: 100, change_rate: 1.0,
+          trade_amount: 5000, strength: 80, sector: '업종1', rank: 1, guard_pass: true,
+          reason: '', boost_score: 5.0, high_5d: 12000, avg_amt_5d: 4000, news_boost: 0.0,
+          order_ratio: [100, 200], program_net_buy: null,
+        },
+      ]
+      applyBuyTargetsUpdate({ buy_targets: initial })
+
+      // avg_amt_5d 변경 (4000 → 5000)
+      const updated: SectorStock[] = [{ ...initial[0], avg_amt_5d: 5000 }]
+      applyBuyTargetsUpdate({ buy_targets: updated })
+
+      const state = hotStore.getState()
+      expect(state.buyTargets[0].avg_amt_5d).toBe(5000)
+    })
+
+    it('news_boost 변경 시 setState 발화 (same=false, 세션 8 결함 B 수정)', () => {
+      const initial: SectorStock[] = [
+        {
+          code: '000001', name: '종목A', cur_price: 10000, change: 100, change_rate: 1.0,
+          trade_amount: 5000, strength: 80, sector: '업종1', rank: 1, guard_pass: true,
+          reason: '', boost_score: 5.0, high_5d: 12000, avg_amt_5d: 4000, news_boost: 0.0,
+          order_ratio: [100, 200], program_net_buy: null,
+        },
+      ]
+      applyBuyTargetsUpdate({ buy_targets: initial })
+
+      // news_boost 변경 (0.0 → 1.5)
+      const updated: SectorStock[] = [{ ...initial[0], news_boost: 1.5 }]
+      applyBuyTargetsUpdate({ buy_targets: updated })
+
+      const state = hotStore.getState()
+      expect(state.buyTargets[0].news_boost).toBe(1.5)
+    })
+
+    it('high_5d 변경 시 setState 발화 (same=false)', () => {
+      const initial: SectorStock[] = [
+        {
+          code: '000001', name: '종목A', cur_price: 10000, change: 100, change_rate: 1.0,
+          trade_amount: 5000, strength: 80, sector: '업종1', rank: 1, guard_pass: true,
+          reason: '', boost_score: 5.0, high_5d: 12000, avg_amt_5d: 4000, news_boost: 0.0,
+          order_ratio: [100, 200], program_net_buy: null,
+        },
+      ]
+      applyBuyTargetsUpdate({ buy_targets: initial })
+
+      // high_5d 변경 (12000 → 13000)
+      const updated: SectorStock[] = [{ ...initial[0], high_5d: 13000 }]
+      applyBuyTargetsUpdate({ buy_targets: updated })
+
+      const state = hotStore.getState()
+      expect(state.buyTargets[0].high_5d).toBe(13000)
+    })
+
+    it('order_ratio 변경 시 setState 발화 (same=false)', () => {
+      const initial: SectorStock[] = [
+        {
+          code: '000001', name: '종목A', cur_price: 10000, change: 100, change_rate: 1.0,
+          trade_amount: 5000, strength: 80, sector: '업종1', rank: 1, guard_pass: true,
+          reason: '', boost_score: 5.0, high_5d: 12000, avg_amt_5d: 4000, news_boost: 0.0,
+          order_ratio: [100, 200], program_net_buy: null,
+        },
+      ]
+      applyBuyTargetsUpdate({ buy_targets: initial })
+
+      // order_ratio 변경 ([100, 200] → [150, 250])
+      const updated: SectorStock[] = [{ ...initial[0], order_ratio: [150, 250] }]
+      applyBuyTargetsUpdate({ buy_targets: updated })
+
+      const state = hotStore.getState()
+      expect(state.buyTargets[0].order_ratio).toEqual([150, 250])
+    })
+
+    it('program_net_buy 변경 시 setState 발화 (same=false)', () => {
+      const initial: SectorStock[] = [
+        {
+          code: '000001', name: '종목A', cur_price: 10000, change: 100, change_rate: 1.0,
+          trade_amount: 5000, strength: 80, sector: '업종1', rank: 1, guard_pass: true,
+          reason: '', boost_score: 5.0, high_5d: 12000, avg_amt_5d: 4000, news_boost: 0.0,
+          order_ratio: [100, 200], program_net_buy: null,
+        },
+      ]
+      applyBuyTargetsUpdate({ buy_targets: initial })
+
+      // program_net_buy 변경 (null → 5000000)
+      const updated: SectorStock[] = [{ ...initial[0], program_net_buy: 5000000 }]
+      applyBuyTargetsUpdate({ buy_targets: updated })
+
+      const state = hotStore.getState()
+      expect(state.buyTargets[0].program_net_buy).toBe(5000000)
+    })
+  })
 })
 
 describe('hotStore — applyRealData 갱신 계약 + rAF 배칭 (세션 7)', () => {

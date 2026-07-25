@@ -43,7 +43,14 @@ export interface SectorStock {
   // buyTargets 배열 요소의 이 필드들은 DataTable O(1) updateItemByKey 갱신을 위한
   // 파생 캐시 — applyRealData가 in-place mutation으로 동기화,
   // applySectorStocksRefresh/applyRealtimeReset이 rebindBuyTargetsRealtime으로 재결합.
-  cur_price: number;
+  // null 표시 규칙 (세션 8 — P22 데이터 정합성, 백엔드 _build_target_entry 계약 반영):
+  //   cur_price: null = 틱 미수신 (테스트모드 기동 직후, 장 전, 구독 지연).
+  //              첫 틱 도달 후 applyRealData가 number로 갱신.
+  //   change_rate/trade_amount/change/strength: 백엔드 None 시 null/undefined 가능.
+  //              현재 타입은 기존 호환성 유지 (change_rate는 number, 나머지 optional).
+  //              백엔드가 null을 보내면 런타임 값은 null이나 타입은 좁게 선언 —
+  //              소비 측는 null 가드(== null)로 처리 권장.
+  cur_price: number | null;
   change_rate: number;
   trade_amount?: number;
   change?: number;
@@ -59,8 +66,8 @@ export interface SectorStock {
   reason?: string;
   boost_score?: number;
   order_ratio?: [number, number] | null;
-  high_5d?: number;
-  program_net_buy?: number;
+  high_5d?: number;  // 0 = 원천 부재/미다운로드 (5거래일 일봉 전), >0 = 유효 고가
+  program_net_buy?: number | null;  // null/undefined = 프로그램 순매수 미수신
   news_boost?: number;  // 뉴스 호재 가산점 (0 = 미부여, >0 = 부여됨)
 }
 

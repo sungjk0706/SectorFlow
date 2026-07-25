@@ -373,12 +373,30 @@ async def notify_desktop_sector_stocks_refresh(*, force: bool = False) -> None:
             notify_cache.prev_sent[code] = {}
 
 
-# 매수 후보 비교 키: 순위·시세·가드 상태 등 변경 감지 대상 필드
-_BUY_TARGET_CMP_KEYS = ("rank", "cur_price", "change_rate", "strength", "trade_amount", "boost_score", "guard_pass", "reason", "order_ratio", "program_net_buy", "high_5d", "avg_amt_5d")
+# 매수 후보 delta 비교 키 — 정적 필드만 포함 (실시간 필드는 sectorStocks SSOT에서 파생).
+# P10(SSOT) + P22(데이터 정합성) + P23(일관성): 프론트 applyBuyTargetsUpdate same 비교 키와 동일 기준.
+# 실시간 필드(cur_price/change/change_rate/strength/trade_amount)는 매 틱마다 변하므로
+# delta changed 판정에서 제외 — 틱 디스패치가 별도 경로(real-data-tick)로 갱신 담당.
+_BUY_TARGET_REALTIME_KEYS = ("cur_price", "change", "change_rate", "strength", "trade_amount")
+_BUY_TARGET_CMP_KEYS = (
+    "rank", "boost_score", "guard_pass", "reason",
+    "order_ratio", "program_net_buy", "high_5d", "avg_amt_5d", "news_boost",
+)
 
 
 async def notify_buy_targets_update() -> None:
-    """매수 후보 목록 변경 시 delta만 WS로 브로드캐스트한다."""
+    """매수 후보 목록 변경 시 delta만 WS로 브로드캐스트한다.
+
+    Payload 계약 (세션 8 — cache_state_fix_tasks.md):
+      - added/changed 항목은 **정적 필드만** 전송. 실시간 필드(`_BUY_TARGET_REALTIME_KEYS`)는
+        `_BUY_TARGET_REALTIME_KEYS` 리스트 기반으로 일괄 제거 (P24 중복 제거 — 2곳 하드코딩 → 상수).
+      - 프론트엔드는 sectorStocks(실시간 SSOT)에서 실시간 필드를 재결합하여 단일 소스 일관성 유지.
+      - removed: 종목 코드 문자열 리스트만 전송 (정적·실시간 필드 모두 불필요).
+      - changed 판정: `_BUY_TARGET_CMP_KEYS`(정적 필드) 기준. 실시간 필드 제외.
+        `news_boost` 포함 — 뉴스 호재 가산점 변경 시 화면 갱신 보장 (세션 8 결함 B 수정).
+      - 초기 상태(prev_buy_targets_map is None): buy-targets-update 전체 리스트 전송 (실시간 필드 포함).
+        이후 sector-stocks-refresh → 프론트 rebindBuyTargetsRealtime이 실시간 필드 정정.
+    """
     from backend.app.services.sector_data_provider import get_buy_targets_sector_stocks
 
     targets = await get_buy_targets_sector_stocks()
@@ -404,26 +422,22 @@ async def notify_buy_targets_update() -> None:
     prev_codes = set(notify_cache.prev_buy_targets_map.keys())
     cur_codes = set(cur_map.keys())
 
-    # added 항목: 종목 목록만 전송 (실시간 필드 제외)
+    # added 항목: 정적 필드만 전송 (실시간 필드 제거 — 프론트엔드 sectorStocks 단일 소스)
     added = []
     for c in cur_codes - prev_codes:
         item = cur_map[c].copy()
-        # 실시간 필드 제거: 프론트엔드 sectorStocks 단일 소스
-        for key in ['cur_price', 'change', 'change_rate', 'strength', 'trade_amount']:
+        for key in _BUY_TARGET_REALTIME_KEYS:
             item.pop(key, None)
         added.append(item)
     removed = list(prev_codes - cur_codes)
-    # changed 항목: 종목 목록만 전송 (실시간 필드 제외)
+    # changed 항목: 정적 필드만 전송 (실시간 필드 제거) + 정적 필드 기준 변경 감지
     changed = []
     for code in cur_codes & prev_codes:
         cur_t = cur_map[code].copy()
-        # 실시간 필드 제거: 프론트엔드 sectorStocks 단일 소스
-        for key in ['cur_price', 'change', 'change_rate', 'strength', 'trade_amount']:
+        for key in _BUY_TARGET_REALTIME_KEYS:
             cur_t.pop(key, None)
         prev_t = notify_cache.prev_buy_targets_map[code]
-        # 비교 키에서 실시간 필드 제외
-        cmp_keys = [k for k in _BUY_TARGET_CMP_KEYS if k not in ['cur_price', 'change_rate', 'strength', 'trade_amount']]
-        if any(cur_t.get(k) != prev_t.get(k) for k in cmp_keys):
+        if any(cur_t.get(k) != prev_t.get(k) for k in _BUY_TARGET_CMP_KEYS):
             changed.append(cur_t)
 
     if not added and not removed and not changed:

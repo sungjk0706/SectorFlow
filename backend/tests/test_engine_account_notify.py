@@ -20,6 +20,9 @@ from backend.app.services.engine_account_notify import (
     broadcast_engine_status_ws,
     notify_program_update,
     notify_index_data,
+    notify_buy_targets_update,
+    _BUY_TARGET_CMP_KEYS,
+    _BUY_TARGET_REALTIME_KEYS,
 )
 from backend.app.services.engine_account_broadcast import (
     _build_lightweight_payload_for_profit_overview,
@@ -516,4 +519,219 @@ class TestNotifyCacheConcurrencyScenarios:
 
         # buy-targets-update 단건 전송은 수행되었는지 확인
         ws_mock.send_text.assert_awaited_once()
+
+
+# ── notify_buy_targets_update delta 계약 (세션 8 — payload 계약 정리) ────────────
+# 본 클래스는 buy-targets-update/buy-targets-delta의 payload 계약을 고정한다.
+# - 초기 전송: buy-targets-update 전체 리스트 (실시간 필드 포함)
+# - delta 전송: added/changed는 정적 필드만 (실시간 필드 제거), removed는 코드 리스트
+# - changed 판정: _BUY_TARGET_CMP_KEYS(정적 필드) 기준, news_boost 포함
+# - 실시간 필드 제거: _BUY_TARGET_REALTIME_KEYS 상수 기반 (P24 중복 제거)
+
+class TestNotifyBuyTargetsUpdate:
+    """세션 8 — notify_buy_targets_update payload 계약 단위 테스트."""
+
+    def _make_target(self, code="005930", **overrides):
+        base = {
+            "code": code,
+            "name": "삼성전자",
+            "cur_price": 70000,
+            "change": 500,
+            "change_rate": 0.7,
+            "strength": 1.2,
+            "trade_amount": 1000000,
+            "avg_amt_5d": 800000,
+            "market_type": "KS",
+            "nxt_enable": False,
+            "sector": "반도체",
+            "rank": 1,
+            "guard_pass": True,
+            "reason": "",
+            "boost_score": 5.0,
+            "high_5d": 75000,
+            "news_boost": 0.0,
+            "order_ratio": [100, 200],
+            "program_net_buy": None,
+        }
+        base.update(overrides)
+        return base
+
+    def test_cmp_keys_excludes_realtime_and_includes_news_boost(self):
+        """_BUY_TARGET_CMP_KEYS는 실시간 필드 제외 + news_boost 포함 (세션 8 결함 B 수정)."""
+        # 실시간 필드 모두 제외
+        for k in _BUY_TARGET_REALTIME_KEYS:
+            assert k not in _BUY_TARGET_CMP_KEYS
+        # news_boost 포함 (세션 8 결함 B 수정)
+        assert "news_boost" in _BUY_TARGET_CMP_KEYS
+        # 정적 필드 포함
+        for k in ("rank", "boost_score", "guard_pass", "reason", "order_ratio",
+                  "program_net_buy", "high_5d", "avg_amt_5d"):
+            assert k in _BUY_TARGET_CMP_KEYS
+
+    @pytest.mark.asyncio
+    async def test_initial_send_buy_targets_update_with_realtime_fields(self):
+        """초기 전송(prev=None): buy-targets-update 전체 리스트 (실시간 필드 포함)."""
+        targets = [self._make_target("005930"), self._make_target("000660", rank=2)]
+        # notify_cache.prev_buy_targets_map을 None으로 리셋
+        notify_cache.prev_buy_targets_map = None
+        try:
+            with patch("backend.app.services.engine_account_notify._safe_broadcast", new_callable=AsyncMock) as mock_bc, \
+                 patch("backend.app.services.sector_data_provider.get_buy_targets_sector_stocks",
+                       new_callable=AsyncMock, return_value=targets):
+                await notify_buy_targets_update()
+                mock_bc.assert_awaited_once()
+                event, payload = mock_bc.call_args.args
+                assert event == "buy-targets-update"
+                assert payload["buy_targets"] == targets
+                # 실시간 필드 포함 확인
+                assert payload["buy_targets"][0]["cur_price"] == 70000
+                assert payload["buy_targets"][0]["change"] == 500
+        finally:
+            notify_cache.prev_buy_targets_map = None
+
+    @pytest.mark.asyncio
+    async def test_delta_added_excludes_realtime_fields(self):
+        """delta added: 정적 필드만 전송 (실시간 필드 제거)."""
+        prev_map = {"005930": self._make_target("005930")}
+        notify_cache.prev_buy_targets_map = prev_map
+        # 새 종목 000660 added
+        new_targets = [self._make_target("005930"), self._make_target("000660", rank=2)]
+        try:
+            with patch("backend.app.services.engine_account_notify._safe_broadcast", new_callable=AsyncMock) as mock_bc, \
+                 patch("backend.app.services.sector_data_provider.get_buy_targets_sector_stocks",
+                       new_callable=AsyncMock, return_value=new_targets):
+                await notify_buy_targets_update()
+                mock_bc.assert_awaited_once()
+                event, payload = mock_bc.call_args.args
+                assert event == "buy-targets-delta"
+                assert len(payload["added"]) == 1
+                added = payload["added"][0]
+                assert added["code"] == "000660"
+                # 실시간 필드 제거 확인
+                for k in _BUY_TARGET_REALTIME_KEYS:
+                    assert k not in added
+                # 정적 필드 유지 확인
+                assert added["rank"] == 2
+                assert added["avg_amt_5d"] == 800000
+                assert added["news_boost"] == 0.0
+        finally:
+            notify_cache.prev_buy_targets_map = None
+
+    @pytest.mark.asyncio
+    async def test_delta_removed_sends_code_list_only(self):
+        """delta removed: 종목 코드 리스트만 전송."""
+        prev_map = {"005930": self._make_target("005930"), "000660": self._make_target("000660", rank=2)}
+        notify_cache.prev_buy_targets_map = prev_map
+        # 000660 제거
+        new_targets = [self._make_target("005930")]
+        try:
+            with patch("backend.app.services.engine_account_notify._safe_broadcast", new_callable=AsyncMock) as mock_bc, \
+                 patch("backend.app.services.sector_data_provider.get_buy_targets_sector_stocks",
+                       new_callable=AsyncMock, return_value=new_targets):
+                await notify_buy_targets_update()
+                mock_bc.assert_awaited_once()
+                event, payload = mock_bc.call_args.args
+                assert event == "buy-targets-delta"
+                assert payload["removed"] == ["000660"]
+                assert payload["added"] == []
+                assert payload["changed"] == []
+        finally:
+            notify_cache.prev_buy_targets_map = None
+
+    @pytest.mark.asyncio
+    async def test_delta_changed_static_field_triggers_change(self):
+        """delta changed: 정적 필드(rank) 변경 시 changed 전송 (실시간 필드 제거)."""
+        prev_map = {"005930": self._make_target("005930", rank=1)}
+        notify_cache.prev_buy_targets_map = prev_map
+        # rank 변경 (1 → 2)
+        new_targets = [self._make_target("005930", rank=2)]
+        try:
+            with patch("backend.app.services.engine_account_notify._safe_broadcast", new_callable=AsyncMock) as mock_bc, \
+                 patch("backend.app.services.sector_data_provider.get_buy_targets_sector_stocks",
+                       new_callable=AsyncMock, return_value=new_targets):
+                await notify_buy_targets_update()
+                mock_bc.assert_awaited_once()
+                event, payload = mock_bc.call_args.args
+                assert event == "buy-targets-delta"
+                assert len(payload["changed"]) == 1
+                changed = payload["changed"][0]
+                assert changed["code"] == "005930"
+                assert changed["rank"] == 2
+                # 실시간 필드 제거 확인
+                for k in _BUY_TARGET_REALTIME_KEYS:
+                    assert k not in changed
+        finally:
+            notify_cache.prev_buy_targets_map = None
+
+    @pytest.mark.asyncio
+    async def test_delta_changed_news_boost_triggers_change(self):
+        """delta changed: news_boost 변경 시 changed 전송 (세션 8 결함 B 수정 검증)."""
+        prev_map = {"005930": self._make_target("005930", news_boost=0.0)}
+        notify_cache.prev_buy_targets_map = prev_map
+        # news_boost 변경 (0.0 → 1.5)
+        new_targets = [self._make_target("005930", news_boost=1.5)]
+        try:
+            with patch("backend.app.services.engine_account_notify._safe_broadcast", new_callable=AsyncMock) as mock_bc, \
+                 patch("backend.app.services.sector_data_provider.get_buy_targets_sector_stocks",
+                       new_callable=AsyncMock, return_value=new_targets):
+                await notify_buy_targets_update()
+                mock_bc.assert_awaited_once()
+                event, payload = mock_bc.call_args.args
+                assert event == "buy-targets-delta"
+                assert len(payload["changed"]) == 1
+                assert payload["changed"][0]["news_boost"] == 1.5
+        finally:
+            notify_cache.prev_buy_targets_map = None
+
+    @pytest.mark.asyncio
+    async def test_delta_changed_avg_amt_5d_triggers_change(self):
+        """delta changed: avg_amt_5d 변경 시 changed 전송 (세션 8 — cmp_keys에 이미 포함)."""
+        prev_map = {"005930": self._make_target("005930", avg_amt_5d=800000)}
+        notify_cache.prev_buy_targets_map = prev_map
+        new_targets = [self._make_target("005930", avg_amt_5d=900000)]
+        try:
+            with patch("backend.app.services.engine_account_notify._safe_broadcast", new_callable=AsyncMock) as mock_bc, \
+                 patch("backend.app.services.sector_data_provider.get_buy_targets_sector_stocks",
+                       new_callable=AsyncMock, return_value=new_targets):
+                await notify_buy_targets_update()
+                mock_bc.assert_awaited_once()
+                event, payload = mock_bc.call_args.args
+                assert event == "buy-targets-delta"
+                assert len(payload["changed"]) == 1
+                assert payload["changed"][0]["avg_amt_5d"] == 900000
+        finally:
+            notify_cache.prev_buy_targets_map = None
+
+    @pytest.mark.asyncio
+    async def test_delta_realtime_field_change_does_not_trigger(self):
+        """delta changed: 실시간 필드(cur_price)만 변경 시 changed 미전송 (틱 디스패치 담당)."""
+        prev_map = {"005930": self._make_target("005930", cur_price=70000)}
+        notify_cache.prev_buy_targets_map = prev_map
+        # cur_price만 변경 (70000 → 71000), 정적 필드 모두 동일
+        new_targets = [self._make_target("005930", cur_price=71000)]
+        try:
+            with patch("backend.app.services.engine_account_notify._safe_broadcast", new_callable=AsyncMock) as mock_bc, \
+                 patch("backend.app.services.sector_data_provider.get_buy_targets_sector_stocks",
+                       new_callable=AsyncMock, return_value=new_targets):
+                await notify_buy_targets_update()
+                # 변경 없음 → 전송 생략
+                mock_bc.assert_not_awaited()
+        finally:
+            notify_cache.prev_buy_targets_map = None
+
+    @pytest.mark.asyncio
+    async def test_delta_no_change_skips_broadcast(self):
+        """delta: added/removed/changed 모두 없으면 전송 생략."""
+        prev_map = {"005930": self._make_target("005930")}
+        notify_cache.prev_buy_targets_map = prev_map
+        # 동일 타겟 (정적 필드 모두 동일, 실시간 필드는 변경 가능)
+        new_targets = [self._make_target("005930", cur_price=71000, change=600)]
+        try:
+            with patch("backend.app.services.engine_account_notify._safe_broadcast", new_callable=AsyncMock) as mock_bc, \
+                 patch("backend.app.services.sector_data_provider.get_buy_targets_sector_stocks",
+                       new_callable=AsyncMock, return_value=new_targets):
+                await notify_buy_targets_update()
+                mock_bc.assert_not_awaited()
+        finally:
+            notify_cache.prev_buy_targets_map = None
 

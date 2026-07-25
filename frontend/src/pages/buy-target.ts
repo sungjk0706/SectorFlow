@@ -200,7 +200,7 @@ function updateBadges(): void {
     effectiveBuyAmt = Math.min(dailyRemain, orderable)  // 한도 없음
   }
   let qty = 0
-  if (topTarget && effectiveBuyAmt > 0 && topTarget.cur_price > 0) {
+  if (topTarget && effectiveBuyAmt > 0 && topTarget.cur_price != null && topTarget.cur_price > 0) {
     qty = Math.floor(effectiveBuyAmt / topTarget.cur_price)
   }
   const topName = topTarget?.name ?? ''
