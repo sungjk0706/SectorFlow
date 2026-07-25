@@ -1,241 +1,26 @@
 // frontend/src/pages/sector-stock.ts
 // 업종별 종목 실시간 시세 — Web Component (Shadow DOM + DataTable 적용)
+// 순수 로직(컬럼 정의, 행 계산, 검색 필터)은 sector-stock-rows.ts에 분리 (P24 단순성)
 
-import { createDataTable, type DataTableApi, type ColumnDef, type GroupRow as DataTableGroupRow, type TableRow } from '../components/common/data-table'
+import { createDataTable, type DataTableApi } from '../components/common/data-table'
 import { hotStore } from '../stores/hotStore'
 import { uiStore, setSelectedSector } from '../stores/uiStore'
 import { notifyPageActive, notifyPageInactive } from '../api/ws'
-import { createStockNameColumn, makeSeqColumn, makeCodeColumn, makePriceColumn, makeChangeColumn, makeRateColumn, makeStrengthColumn, makeAmountColumn, makeAvgAmountColumn, FONT_SIZE, FONT_WEIGHT, COLOR } from '../components/common/ui-styles'
 import { createCardTitle } from '../components/common/card-title'
 import { createActionButton } from '../components/common/button'
 import { createSearchInput } from '../components/common/search-input'
 import { createMarketCountRow, type MarketCountRowHandle } from '../components/common/market-count-row'
-import { type SectorStock, type SectorScoreRow, DEFAULT_SECTOR_MAX_TARGETS } from '../types'
-
-/* ── ColumnDef 배열 (10개 컬럼) ── */
-
-const COLUMNS: ColumnDef<DataRowItem>[] = [
-  makeSeqColumn<DataRowItem>((item) => item.seq),
-  makeCodeColumn<DataRowItem>((item) => item.stock.code),
-  {
-    ...createStockNameColumn<DataRowItem>(
-      (item: DataRowItem) => ({
-        name: item.stock.name,
-        market_type: item.stock.market_type,
-        nxt_enable: item.stock.nxt_enable
-      })
-    ),
-    maxWidth: 166,
-  },
-  makePriceColumn<DataRowItem>(
-    (item) => item.stock.cur_price != null ? Number(item.stock.cur_price) : null,
-    (item) => item.stock.change_rate != null ? Number(item.stock.change_rate) : null,
-  ),
-  makeChangeColumn<DataRowItem>((item) => item.stock.change != null ? Number(item.stock.change) : null),
-  makeRateColumn<DataRowItem>((item) => item.stock.change_rate != null ? Number(item.stock.change_rate) : null),
-  makeStrengthColumn<DataRowItem>((item) => item.stock.strength != null ? parseFloat(String(item.stock.strength)) : null),
-  {
-    ...makeAmountColumn<DataRowItem>((item) => item.stock.trade_amount != null ? Number(item.stock.trade_amount) : null),
-    maxWidth: 126,
-  },
-  {
-    ...makeAvgAmountColumn<DataRowItem>((item) => Number(item.stock.avg_amt_5d) || 0),
-    maxWidth: 108,
-  },
-]
-
-/* ── 행 타입 ── */
-
-interface GroupRowItem {
-  type: 'group'
-  sector: string
-  label: string
-  score?: number
-  opacity: string
-  bgColor: string
-}
-
-interface DataRowItem {
-  type: 'data'
-  stock: SectorStock
-  opacity: string
-  eliminated: boolean
-  seq: number
-}
-
-type RowItem = GroupRowItem | DataRowItem
-
-/* ── 검색 필터링 (export for PBT) ── */
-
-export function filterStocksBySearch(
-  stocks: Iterable<SectorStock>,
-  query: string,
-): Set<string> | null {
-  const q = query.trim().toLowerCase()
-  if (!q) return null
-  const codes = new Set<string>()
-  for (const s of stocks) {
-    if (s.code.toLowerCase().includes(q) || (s.name || '').toLowerCase().includes(q)) {
-      codes.add(s.code)
-    }
-  }
-  return codes
-}
-
-/* ── 업종명 검색 필터링 ── */
-
-export function filterSectorsByName(
-  stocks: Record<string, SectorStock>,
-  query: string,
-): Set<string> | null {
-  const q = query.trim().toLowerCase()
-  if (!q) return null
-  const sectors = new Set<string>()
-  for (const s of Object.values(stocks)) {
-    const sector = (s.sector || '미분류').toLowerCase()
-    if (sector.includes(q)) {
-      sectors.add(s.sector || '미분류')
-    }
-  }
-  return sectors
-}
-
-/* ── RowItem → TableRow<DataRowItem> 매핑 ── */
-
-function mapRowsToTableRows(rows: RowItem[]): TableRow<DataRowItem>[] {
-  return rows.map(item => {
-    if (item.type === 'group') {
-      return {
-        type: 'group' as const,
-        label: item.label,
-        key: 'g-' + item.sector,
-        score: item.score,
-        style: { opacity: item.opacity, background: item.bgColor },
-      } satisfies DataTableGroupRow
-    }
-    return item
-  })
-}
-
-/* ── rows 계산 ── */
-
-function computeRows(
-  stockMap: Record<string, SectorStock>,
-  sectorScores: SectorScoreRow[],
-  maxTargets: number,
-  selectedSector: string | null,
-  matchedCodes: Set<string> | null,
-  matchedSectors: Set<string> | null,
-  rowCache: Map<string, { stock: SectorStock; row: DataRowItem }>,
-  marketPhase: { krx: string; nxt: string; is_nxt_only?: boolean },
-): RowItem[] {
-  // 업종별 종목 그룹핑
-  const grouped = new Map<string, string[]>()
-  for (const s of Object.values(stockMap)) {
-    const sector = s.sector || '미분류'
-    if (selectedSector && sector !== selectedSector) continue
-    if (matchedSectors && !matchedSectors.has(sector)) continue
-    if (matchedCodes && !matchedCodes.has(s.code)) continue
-
-    // 5거래일 평균 거래대금 필터링은 백엔드에서 수행 (단일 소스 진리)
-
-    let arr = grouped.get(sector)
-    if (!arr) { arr = []; grouped.set(sector, arr) }
-    arr.push(s.code)
-  }
-
-  // rank 오름차순 정렬 (모든 업종에 1..N 순위 부여됨, is_cutoff_passed로 통과 여부 구분)
-  const sortedSectorScores = [...sectorScores].sort((a, b) => a.rank - b.rank)
-  const sectorOrder = sortedSectorScores.map(s => s.sector)
-  // selectedSector 또는 검색 모드: 빈 배열로 시작
-  const orderedSectors = (selectedSector || matchedCodes || matchedSectors) ? [] : [...sectorOrder]
-
-  if (selectedSector) {
-    if (grouped.has(selectedSector)) {
-      orderedSectors.push(selectedSector)
-    }
-  } else if (matchedCodes || matchedSectors) {
-    // 검색 모드: 검색된 종목 또는 업종에 해당하는 업종만 표시
-    for (const sector of grouped.keys()) {
-      if (!orderedSectors.includes(sector)) {
-        orderedSectors.push(sector)
-      }
-    }
-  } else {
-    // 전체 모드: 모든 업종 표시
-    for (const sector of grouped.keys()) {
-      if (!orderedSectors.includes(sector)) {
-        orderedSectors.push(sector)
-      }
-    }
-  }
-
-  const scoreMap = new Map<string, number>()
-  for (const sc of sectorScores) scoreMap.set(sc.sector, sc.final_score)
-
-  const sectorRankMap = new Map<string, number>()
-  for (let i = 0; i < sectorOrder.length; i++) sectorRankMap.set(sectorOrder[i], i + 1)
-
-  const krxInactive = marketPhase.is_nxt_only === true
-  const rows: RowItem[] = []
-  let stockSeq = 0
-
-  for (const sector of orderedSectors) {
-    const codes = grouped.get(sector)
-    const sectorScore = sortedSectorScores.find(s => s.sector === sector)
-    const sectorRank = sectorScore?.rank ?? 0
-    const isEliminated = !sectorScore?.is_cutoff_passed || sectorRank > maxTargets
-    const opacity = isEliminated ? '0.85' : '1'
-    const bgColor = isEliminated ? COLOR.hoverBg : 'transparent'
-    const score = scoreMap.get(sector)
-
-    // NXT 전용 시간대: 이 업종의 활성 종목(NXT 지원)이 0개면 그룹 행도 숨김
-    if (krxInactive && codes) {
-      const hasActiveStock = codes.some(code => {
-        const s = stockMap[code]
-        return s && s.nxt_enable
-      })
-      if (!hasActiveStock) continue
-    }
-
-    rows.push({
-      type: 'group',
-      sector,
-      label: `${sectorRankMap.get(sector) ?? 0}. ${sector}`,
-      score,
-      opacity,
-      bgColor,
-    })
-
-    // 종목이 없으면 종목 행 추가 안 함
-    if (!codes) continue
-
-    // selectedSector 모드: 종목코드 기준 안정 정렬 (Map 삽입순서 변동 방지)
-    const sortedCodes = selectedSector ? [...codes].sort() : codes
-
-    for (const code of sortedCodes) {
-      const stock = stockMap[code]
-      if (!stock) continue
-      // KRX 비활성 구간: KRX 단독 종목 (nxt_enable !== true)은 행 자체를 추가하지 않음 (숨김)
-      if (krxInactive && !stock.nxt_enable) continue
-      stockSeq++
-      const rowOpacity = isEliminated ? '0.85' : opacity
-
-      // 행 객체 캐시: stock 참조가 같으면 이전 행 재사용
-      const cached = rowCache.get(code)
-      if (cached && cached.stock === stock && cached.row.opacity === rowOpacity && cached.row.eliminated === isEliminated && cached.row.seq === stockSeq) {
-        rows.push(cached.row)
-      } else {
-        const row: DataRowItem = { type: 'data', stock, opacity: rowOpacity, eliminated: isEliminated, seq: stockSeq }
-        rowCache.set(code, { stock, row })
-        rows.push(row)
-      }
-    }
-  }
-
-  return rows
-}
-
+import { FONT_SIZE, FONT_WEIGHT, COLOR } from '../components/common/ui-styles'
+import { type SectorStock, DEFAULT_SECTOR_MAX_TARGETS } from '../types'
+import {
+  COLUMNS,
+  type DataRowItem,
+  type RowItem,
+  filterStocksBySearch,
+  filterSectorsByName,
+  mapRowsToTableRows,
+  computeRows,
+} from './sector-stock-rows'
 
 /* ── Web Component 클래스 ── */
 
@@ -349,25 +134,10 @@ class SectorStockTable extends HTMLElement {
     if (this.scrollContainer) this.scrollContainer.style.display = hasRows ? 'flex' : 'none'
   }
 
-  /* ── connectedCallback (mount) ── */
+  /* ── DOM 빌더 (connectedCallback에서 추출 — P24 단순성) ── */
 
-  connectedCallback(): void {
-    this._mounted = true
-    this.searchTerm = ''
-    this.sectorSearchTerm = ''
-    this.currentMatchedCodes = null
-    this.currentMatchedSectors = null
-    this.rowCache = new Map()
-    notifyPageActive('sector-ranking')
-
-    this.rootEl = document.createElement('div')
-    Object.assign(this.rootEl.style, { display: 'flex', flexDirection: 'column', height: '100%', contain: 'content' })
-
-    // 1. 카드 타이틀 — 좌측 정렬 (다른 패널과 동일)
-    this.titleH3 = createCardTitle('업종별 종목 실시간 시세')
-    this.rootEl.appendChild(this.titleH3)
-
-    // 1-1. 합계 정보 바 — 1행: 좌측 5거래일 평균 거래대금, 우측 종목수 요약
+  /** 합계 정보 바: 좌측 5거래일 평균 거래대금 + 우측 종목수 요약 */
+  private buildSummaryBar(): HTMLElement {
     const summaryBar = document.createElement('div')
     Object.assign(summaryBar.style, {
       display: 'flex',
@@ -402,9 +172,11 @@ class SectorStockTable extends HTMLElement {
     // 우측: 합계 KRX NXT▲ 코스피 코스닥 — 공통 컴포넌트 (market-count-row.ts)
     this.marketCountRow = createMarketCountRow()
     summaryBar.appendChild(this.marketCountRow.el)
-    this.rootEl.appendChild(summaryBar)
+    return summaryBar
+  }
 
-    // 2. 선택된 업종 필터 배지
+  /** 선택된 업종 필터 배지 (전체 보기 버튼 포함) */
+  private buildFilterBadge(): HTMLElement {
     this.filterBadge = document.createElement('div')
     Object.assign(this.filterBadge.style, {
       display: 'none',
@@ -436,10 +208,11 @@ class SectorStockTable extends HTMLElement {
       color: COLOR.down,
     })
     this.filterBadge.appendChild(clearBtn)
-    this.rootEl.appendChild(this.filterBadge)
+    return this.filterBadge
+  }
 
-    // 2-1. NXT 전용 시간대 안내 배지 (P21 투명성 — KRX 단독 종목 숨김 사유 명시)
-    // filterBadge 패턴 재사용 (같은 페이지 내 동일 배지 구조 — P23 일관성)
+  /** NXT 전용 시간대 안내 배지 (P21 투명성 — KRX 단독 종목 숨김 사유 명시) */
+  private buildNxtNoticeBadge(): HTMLElement {
     this.nxtOnlyNoticeBadge = document.createElement('div')
     Object.assign(this.nxtOnlyNoticeBadge.style, {
       display: 'none',
@@ -456,9 +229,37 @@ class SectorStockTable extends HTMLElement {
       opacity: '0',
     })
     this.nxtOnlyNoticeBadge.textContent = ''
-    this.rootEl.appendChild(this.nxtOnlyNoticeBadge)
+    return this.nxtOnlyNoticeBadge
+  }
 
-    // 3. 검색 입력란 (좌: 종목명/코드, 우: 업종명)
+  /** 종목명/코드 검색 핸들러 */
+  private onStockSearch = (query: string): void => {
+    this.searchTerm = query
+    if (query) {
+      setSelectedSector(null)
+      if (this.sectorSearchInput) this.sectorSearchInput.clear()
+      this.sectorSearchTerm = ''
+    }
+    // 검색어 변경 시 rowCache 클리어 — rowStyle(outline/background) 갱신 보장
+    this.rowCache.clear()
+    this.refreshRows()
+  }
+
+  /** 업종명 검색 핸들러 */
+  private onSectorSearch = (query: string): void => {
+    this.sectorSearchTerm = query
+    if (query) {
+      setSelectedSector(null)
+      if (this.searchInput) this.searchInput.clear()
+      this.searchTerm = ''
+    }
+    // 검색어 변경 시 rowCache 클리어 — rowStyle(outline/background) 갱신 보장
+    this.rowCache.clear()
+    this.refreshRows()
+  }
+
+  /** 검색 입력란 (좌: 종목명/코드, 우: 업종명) */
+  private buildSearchRow(): HTMLElement {
     const searchRow = document.createElement('div')
     Object.assign(searchRow.style, {
       display: 'flex',
@@ -474,17 +275,7 @@ class SectorStockTable extends HTMLElement {
       labelColor: COLOR.down,
       placeholder: '종목명/코드 검색',
       borderColor: COLOR.down,
-      onSearch: (query) => {
-        this.searchTerm = query
-        if (query) {
-          setSelectedSector(null)
-          if (this.sectorSearchInput) this.sectorSearchInput.clear()
-          this.sectorSearchTerm = ''
-        }
-        // 검색어 변경 시 rowCache 클리어 — rowStyle(outline/background) 갱신 보장
-        this.rowCache.clear()
-        this.refreshRows()
-      },
+      onSearch: this.onStockSearch,
     })
     searchRow.appendChild(this.searchInput.el)
 
@@ -494,22 +285,14 @@ class SectorStockTable extends HTMLElement {
       labelColor: COLOR.warning,
       placeholder: '업종명 검색',
       borderColor: COLOR.warning,
-      onSearch: (query) => {
-        this.sectorSearchTerm = query
-        if (query) {
-          setSelectedSector(null)
-          if (this.searchInput) this.searchInput.clear()
-          this.searchTerm = ''
-        }
-        // 검색어 변경 시 rowCache 클리어 — rowStyle(outline/background) 갱신 보장
-        this.rowCache.clear()
-        this.refreshRows()
-      },
+      onSearch: this.onSectorSearch,
     })
     searchRow.appendChild(this.sectorSearchInput.el)
+    return searchRow
+  }
 
-    this.rootEl.appendChild(searchRow)
-
+  /** 빈 상태 메시지 + 스크롤 컨테이너 + DataTable 생성 */
+  private buildEmptyAndScroll(): { empty: HTMLElement; scroll: HTMLElement } {
     // 5. 빈 상태 메시지
     this.emptyDiv = document.createElement('div')
     Object.assign(this.emptyDiv.style, {
@@ -520,7 +303,6 @@ class SectorStockTable extends HTMLElement {
       fontSize: FONT_SIZE.badge,
     })
     this.emptyDiv.textContent = '종목 데이터가 없습니다. 엔진이 기동 중인지 확인해주세요.'
-    this.rootEl.appendChild(this.emptyDiv)
 
     // 6. 스크롤 컨테이너 (DataTable.el을 삽입)
     this.scrollContainer = document.createElement('div')
@@ -544,69 +326,113 @@ class SectorStockTable extends HTMLElement {
     })
 
     this.scrollContainer.appendChild(this.dataTable.el)
-    this.rootEl.appendChild(this.scrollContainer)
+    return { empty: this.emptyDiv, scroll: this.scrollContainer }
+  }
+
+  /** Store 구독 — 선택적 구독 가드 (Bug 0 fix: sector-stock interest keys only) */
+  private setupSubscriptions(): void {
+    const initHot = hotStore.getState()
+    const initUi = uiStore.getState()
+    let prevSectorStocks = initHot.sectorStocks
+    let prevSectorScores = initHot.sectorScores
+    let prevSelectedSector = initUi.selectedSector
+    let prevWsSubscribeStatus = initUi.wsSubscribeStatus
+    let prevSettings = initUi.settings
+    let prevMarketPhase = initUi.marketPhase
+
+    const checkAndRefresh = () => {
+      const state = hotStore.getState()
+      const uiState = uiStore.getState()
+      const changed =
+        state.sectorStocks !== prevSectorStocks ||
+        state.sectorScores !== prevSectorScores ||
+        uiState.selectedSector !== prevSelectedSector ||
+        uiState.wsSubscribeStatus !== prevWsSubscribeStatus ||
+        uiState.settings !== prevSettings ||
+        uiState.marketPhase !== prevMarketPhase
+
+      if (!changed) return
+
+      // selectedSector가 좌측 패널에서 변경된 경우: 양쪽 검색 입력란 초기화
+      if (uiState.selectedSector !== prevSelectedSector) {
+        if (this.searchInput) { this.searchInput.clear(); this.searchTerm = '' }
+        if (this.sectorSearchInput) { this.sectorSearchInput.clear(); this.sectorSearchTerm = '' }
+      }
+
+      prevSectorStocks = state.sectorStocks
+      prevSectorScores = state.sectorScores
+      prevSelectedSector = uiState.selectedSector
+      prevWsSubscribeStatus = uiState.wsSubscribeStatus
+      prevSettings = uiState.settings
+      prevMarketPhase = uiState.marketPhase
+
+      if (this._rafId === null) {
+        this._rafId = requestAnimationFrame(() => {
+          this._rafId = null
+          if (!this._mounted) return
+          this.refreshRows()
+        })
+      }
+    }
+
+    this.unsubStore = hotStore.subscribe(checkAndRefresh)
+    this.unsubUi = uiStore.subscribe(checkAndRefresh)
+  }
+
+  /* ── connectedCallback (mount) ── */
+
+  connectedCallback(): void {
+    this._mounted = true
+    this.searchTerm = ''
+    this.sectorSearchTerm = ''
+    this.currentMatchedCodes = null
+    this.currentMatchedSectors = null
+    this.rowCache = new Map()
+    notifyPageActive('sector-ranking')
+
+    this.rootEl = document.createElement('div')
+    Object.assign(this.rootEl.style, { display: 'flex', flexDirection: 'column', height: '100%', contain: 'content' })
+
+    // 1. 카드 타이틀 — 좌측 정렬 (다른 패널과 동일)
+    this.titleH3 = createCardTitle('업종별 종목 실시간 시세')
+    this.rootEl.appendChild(this.titleH3)
+
+    // 1-1. 합계 정보 바 — 1행: 좌측 5거래일 평균 거래대금, 우측 종목수 요약
+    this.rootEl.appendChild(this.buildSummaryBar())
+
+    // 2. 선택된 업종 필터 배지
+    this.rootEl.appendChild(this.buildFilterBadge())
+
+    // 2-1. NXT 전용 시간대 안내 배지 (P21 투명성)
+    this.rootEl.appendChild(this.buildNxtNoticeBadge())
+
+    // 3. 검색 입력란 (좌: 종목명/코드, 우: 업종명)
+    this.rootEl.appendChild(this.buildSearchRow())
+
+    // 5-7. 빈 상태 메시지 + 스크롤 컨테이너 + DataTable
+    const { empty, scroll } = this.buildEmptyAndScroll()
+    this.rootEl.appendChild(empty)
+    this.rootEl.appendChild(scroll)
     this.shadow.appendChild(this.rootEl)
 
     // 초기 데이터
     const initialRows = this.buildRows()
     const mappedRows = mapRowsToTableRows(initialRows)
-    this.dataTable.updateRows(mappedRows)
+    if (this.dataTable) this.dataTable.updateRows(mappedRows)
     this.updateUI(initialRows)
 
-    // Store 구독 — 선택적 구독 가드 (Bug 0 fix: sector-stock interest keys only)
-    {
-      const initHot = hotStore.getState()
-      const initUi = uiStore.getState()
-      let prevSectorStocks = initHot.sectorStocks
-      let prevSectorScores = initHot.sectorScores
-      let prevSelectedSector = initUi.selectedSector
-      let prevWsSubscribeStatus = initUi.wsSubscribeStatus
-      let prevSettings = initUi.settings
-      let prevMarketPhase = initUi.marketPhase
-
-      const checkAndRefresh = () => {
-        const state = hotStore.getState()
-        const uiState = uiStore.getState()
-        const changed =
-          state.sectorStocks !== prevSectorStocks ||
-          state.sectorScores !== prevSectorScores ||
-          uiState.selectedSector !== prevSelectedSector ||
-          uiState.wsSubscribeStatus !== prevWsSubscribeStatus ||
-          uiState.settings !== prevSettings ||
-          uiState.marketPhase !== prevMarketPhase
-
-        if (!changed) return
-
-        // selectedSector가 좌측 패널에서 변경된 경우: 양쪽 검색 입력란 초기화
-        if (uiState.selectedSector !== prevSelectedSector) {
-          if (this.searchInput) { this.searchInput.clear(); this.searchTerm = '' }
-          if (this.sectorSearchInput) { this.sectorSearchInput.clear(); this.sectorSearchTerm = '' }
-        }
-
-        prevSectorStocks = state.sectorStocks
-        prevSectorScores = state.sectorScores
-        prevSelectedSector = uiState.selectedSector
-        prevWsSubscribeStatus = uiState.wsSubscribeStatus
-        prevSettings = uiState.settings
-        prevMarketPhase = uiState.marketPhase
-
-        if (this._rafId === null) {
-          this._rafId = requestAnimationFrame(() => {
-            this._rafId = null
-            if (!this._mounted) return
-            this.refreshRows()
-          })
-        }
-      }
-
-      this.unsubStore = hotStore.subscribe(checkAndRefresh)
-      this.unsubUi = uiStore.subscribe(checkAndRefresh)
-    }
+    // Store 구독
+    this.setupSubscriptions()
 
     // 초기 렌더링
     this.refreshRows()
 
     // O(1) 초저지연 DOM 갱신 이벤트 리스너
+    this.setupTickListener()
+  }
+
+  /** O(1) 초저지연 DOM 갱신 이벤트 리스너 등록 */
+  private setupTickListener(): void {
     this.onRealDataTick = (e: Event) => {
       try {
         const code = (e as CustomEvent<string>).detail

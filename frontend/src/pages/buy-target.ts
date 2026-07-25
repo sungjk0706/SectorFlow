@@ -1,157 +1,21 @@
 // frontend/src/pages/buy-target.ts
 // 매수후보 페이지 — DataTable 적용
 
-import { createDataTable, type DataTableApi, type ColumnDef } from '../components/common/data-table'
+import { createDataTable, type DataTableApi } from '../components/common/data-table'
 import { hotStore } from '../stores/hotStore'
 import { uiStore } from '../stores/uiStore'
 import { notifyPageActive, notifyPageInactive } from '../api/ws'
 import { createCardHeaderWithMargin } from '../components/common/card-header'
 import { createSearchInput } from '../components/common/search-input'
 import { globalSettingsManager } from '../settings'
-import { createStockNameColumn, createSeqCell, makeCodeColumn, makeChangeColumn, makeRateColumn, createPriceCell, createNumberCell, FONT_SIZE, FONT_WEIGHT, COLOR } from '../components/common/ui-styles'
+import { FONT_SIZE, COLOR } from '../components/common/ui-styles'
 import { createBadgeRow, createBadge, updateBadge, type BadgeHandle, type BadgeStatus } from '../components/common/badge'
 import { computeOrderBlockStatus } from '../utils/order-block-status'
-import { filterStocksBySearch } from './sector-stock'
+import { filterStocksBySearch } from './sector-stock-rows'
+import { COLUMNS } from './buy-target-columns'
 import type { SectorStock } from '../types'
-
-/* ── ColumnDef 배열 (12개 컬럼) ── */
-const COLUMNS: ColumnDef<SectorStock>[] = [
-  { key: 'seq', label: '순번', align: 'center', type: 'seq', render: (_t, idx) => createSeqCell(idx + 1) },
-  makeCodeColumn<SectorStock>((t) => t.code),
-  {
-    ...createStockNameColumn<SectorStock>(
-      (t: SectorStock) => ({
-        name: t.name,
-        market_type: t.market_type,
-        nxt_enable: t.nxt_enable
-      })
-    ),
-    maxWidth: 168,
-  },
-  {
-    key: 'cur_price', label: '현재가', align: 'right', type: 'price', flash: true,
-    render: (t) => {
-      const cell = createPriceCell(t.cur_price != null ? Number(t.cur_price) : null, t.change_rate != null ? Number(t.change_rate) : null)
-      if (t.high_5d && t.high_5d > 0 && t.cur_price != null && Number(t.cur_price) > t.high_5d) {
-        cell.style.justifyContent = 'space-between'
-        const icon = document.createElement('span')
-        icon.textContent = '▲'
-        icon.style.color = COLOR.up
-        icon.style.fontSize = FONT_SIZE.body
-        icon.style.fontWeight = FONT_WEIGHT.bold
-        cell.insertBefore(icon, cell.firstChild)
-      }
-      return cell
-    },
-  },
-  makeChangeColumn<SectorStock>((t) => t.change != null ? Number(t.change) : null),
-  makeRateColumn<SectorStock>((t) => t.change_rate != null ? Number(t.change_rate) : null),
-  {
-    key: 'order_ratio', label: '호가잔량비(%)', align: 'right', type: 'order_ratio', maxWidth: 110,
-    render: (t) => {
-      if (!t.order_ratio) return ''
-      const [bid, ask] = t.order_ratio
-      if (bid <= 0 && ask <= 0) return ''
-      const wrap = document.createElement('div')
-      Object.assign(wrap.style, { display: 'flex', justifyContent: 'space-between', width: '100%' })
-      const labelSpan = document.createElement('span')
-      const numSpan = document.createElement('span')
-      if (bid === ask) {
-        labelSpan.textContent = '보합'
-        labelSpan.style.color = COLOR.tertiary
-        numSpan.textContent = '100.0'
-        numSpan.style.color = COLOR.tertiary
-      } else if (bid > ask) {
-        labelSpan.textContent = '[매수]'
-        labelSpan.style.color = COLOR.up
-        numSpan.textContent = ((bid / ask) * 100).toFixed(1)
-        numSpan.style.color = COLOR.up
-      } else {
-        labelSpan.textContent = '[매도]'
-        labelSpan.style.color = COLOR.down
-        numSpan.textContent = ((ask / bid) * 100).toFixed(1)
-        numSpan.style.color = COLOR.down
-      }
-      wrap.appendChild(labelSpan)
-      wrap.appendChild(numSpan)
-      return wrap
-    },
-  },
-  {
-    key: 'program_net_buy', label: '프.순.매(백)', align: 'right', type: 'program_net', minWidth: 106, maxWidth: 106,
-    render: (t) => {
-      if (t.program_net_buy === undefined || t.program_net_buy === null) return ''
-      // tval이 금액(원)이라면 백만 원 단위로 환산, LS증권 대금 포맷을 고려하여 백만 단위로 나눈 후 1자리 소수점 표시
-      const valMillions = t.program_net_buy / 1000000;
-      const span = document.createElement('span')
-      // 1자리 소수점 및 콤마 포맷 (Intl.NumberFormat 사용)
-      const formatter = new Intl.NumberFormat('ko-KR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
-      span.textContent = formatter.format(valMillions);
-      if (t.program_net_buy > 0) {
-        span.style.color = COLOR.up
-      } else if (t.program_net_buy < 0) {
-        span.style.color = COLOR.down
-      } else {
-        span.style.color = COLOR.tertiary
-      }
-      return span
-    },
-  },
-  {
-    key: 'news_boost', label: '📰뉴스', align: 'center', type: 'news', maxWidth: 70,
-    render: (t) => {
-      const newsScore = Number(t.news_boost) || 0
-      if (newsScore <= 0) return ''
-      const span = document.createElement('span')
-      span.textContent = '📰'
-      span.style.color = COLOR.up
-      span.style.fontSize = FONT_SIZE.body
-      span.style.fontWeight = FONT_WEIGHT.bold
-      span.title = `뉴스 가산점 ${newsScore.toFixed(1)}점 부여됨`
-      return span
-    },
-  },
-  {
-    key: 'high_5d', label: '5거래일 고가', align: 'right', type: 'high', maxWidth: 96,
-    render: (t) => {
-      const cell = createNumberCell(Number(t.high_5d) || 0)
-      if (t.high_5d && t.high_5d > 0 && t.cur_price != null && Number(t.cur_price) > t.high_5d) {
-        cell.style.backgroundColor = COLOR.successBg
-      }
-      return cell
-    },
-  },
-  {
-    key: 'boost_score', label: '가산점', align: 'right', type: 'boost',
-    render: (t) => {
-      const bs = Number(t.boost_score) || 0
-      return bs > 0 ? bs.toFixed(1) : ''
-    },
-  },
-  {
-    key: 'guard', label: '제한', align: 'center', type: 'guard',
-    render: (t) => {
-      const span = document.createElement('span')
-      span.textContent = t.guard_pass ? '통과' : '차단'
-      span.style.color = t.guard_pass ? COLOR.success : COLOR.up
-      return span
-    },
-  },
-  {
-    key: 'reason', label: '원인', align: 'left', type: 'reason', cellStyle: { color: COLOR.tertiary },
-    render: (t) => {
-      const r = t.reason || ''
-      if (r === '보유중' || r === '금일매수') {
-        const span = document.createElement('span')
-        span.textContent = r
-        span.style.color = COLOR.warning
-        span.style.fontWeight = '600'
-        return span
-      }
-      return r
-    },
-  },
-]
+import type { UIState } from '../stores/uiStore'
+import type { AppSettings } from '../types'
 
 /* ── 모듈 변수 ── */
 let dataTable: DataTableApi<SectorStock> | null = null
@@ -167,9 +31,23 @@ let onOrderbookTick: ((e: Event) => void) | null = null
 let onProgramTick: ((e: Event) => void) | null = null
 let _mounted = false
 
-/* ── 배지 행 업데이트 — DOM 재구성 없이 textContent만 갱신 ── */
-function updateBadges(): void {
-  if (!badgeEls) return
+/* ── 배지 컨텍스트 — updateBadges 공통 조회 (P24 단순성 — 분할) ── */
+
+interface BadgeContext {
+  uiState: UIState
+  settings: AppSettings | null
+  maxDaily: number
+  maxStock: number
+  maxStockOn: boolean
+  holdingCnt: number
+  dailySpent: number
+  orderable: number
+  topName: string
+  qty: number
+}
+
+/** 배지 갱신에 필요한 상태 조회 + 1위 종목 매수 가능 수량 계산 */
+function computeBadgeContext(): BadgeContext {
   const state = hotStore.getState()
   const uiState = uiStore.getState()
   const settings = globalSettingsManager.getSettings()
@@ -205,87 +83,103 @@ function updateBadges(): void {
   }
   const topName = topTarget?.name ?? ''
 
-  // 통합 매수상태 배지 — 하드 게이트 > 소프트 차단(예산 부족) > 정상 (P21 모순 표시 제거)
-  // 하드 게이트 판정은 computeOrderBlockStatus()에 위임 (P10 SSOT — sell-position.ts와 공유)
-  // 소프트 차단(예산 부족)은 매수 후보 1위 종목 가격이 필요해 updateBadges() 내부에서 판정
-  //   → computeOrderBlockStatus 시그니처 확장 불가 (sell-position은 매수 후보 없음)
-  //   → 매수 전용 override를 이곳에 배치 (P23 일관성 예외 — 매수 후보 데이터 의존성)
+  return { uiState, settings, maxDaily, maxStock, maxStockOn, holdingCnt, dailySpent, orderable, topName, qty }
+}
+
+/** 통합 매수상태 배지 — 하드 게이트 > 소프트 차단(예산 부족) > 정상 (P21 모순 표시 제거)
+ *  하드 게이트 판정은 computeOrderBlockStatus()에 위임 (P10 SSOT — sell-position.ts와 공유)
+ *  소프트 차단(예산 부족)은 매수 후보 1위 종목 가격이 필요해 이곳에서 판정
+ *    → computeOrderBlockStatus 시그니처 확장 불가 (sell-position은 매수 후보 없음)
+ *    → 매수 전용 override를 이곳에 배치 (P23 일관성 예외 — 매수 후보 데이터 의존성) */
+/** 통합 매수상태 판정 — 하드 게이트 > 소프트 차단(예산 부족) > 정상 (P21 모순 표시 제거)
+ *  하드 게이트 판정은 computeOrderBlockStatus()에 위임 (P10 SSOT — sell-position.ts와 공유)
+ *  소프트 차단(예산 부족)은 매수 후보 1위 종목 가격이 필요해 이곳에서 판정
+ *    → computeOrderBlockStatus 시그니처 확장 불가 (sell-position은 매수 후보 없음)
+ *    → 매수 전용 override를 이곳에 배치 (P23 일관성 예외 — 매수 후보 데이터 의존성) */
+function computeCombinedStatus(
+  ctx: BadgeContext,
+): { value: string; unit: string; statusText: string; status: BadgeStatus; statusColor: string } {
+  const { uiState, settings, orderable, topName, qty } = ctx
   const insufficient = orderable <= 0
   const cannotBuy = !insufficient && topName !== '' && qty <= 0
-  let combinedValue: string
-  let combinedUnit = '원'
-  let combinedStatusText = ''
-  let combinedStatus: BadgeStatus = 'normal'
-  let combinedStatusColor: string = COLOR.down
+  const base: { value: string; unit: string; statusText: string; status: BadgeStatus; statusColor: string } = {
+    value: orderable.toLocaleString(),
+    unit: '원',
+    statusText: '',
+    status: 'normal',
+    statusColor: COLOR.down,
+  }
   try {
     const { text: hardStatusText, blocked: hardBlocked } = computeOrderBlockStatus('buy', uiState, settings)
     if (hardBlocked) {
       // 하드 게이트 차단 — 주문가능금액 숨기고 차단 사유 우선 표시
-      combinedValue = '차단'
-      combinedUnit = ''
-      combinedStatusText = ` · ${hardStatusText.replace(/^차단: /, '')}`
-      combinedStatus = 'warn'
-      combinedStatusColor = COLOR.up
-    } else if (insufficient) {
-      // 소프트 차단 — 잔액 0
-      combinedValue = orderable.toLocaleString()
-      combinedStatusText = ' · 매수 불가 (잔액 없음)'
-      combinedStatus = 'warn'
-      combinedStatusColor = COLOR.up
-    } else if (cannotBuy) {
-      // 소프트 차단 — 잔여 예산으로 1주도 매수 불가 (백엔드 BUY_REJECT_QTY_ZERO와 동일 기준)
-      combinedValue = orderable.toLocaleString()
-      combinedStatusText = ` · 매수 불가 (1위 ${topName} ${qty}주)`
-      combinedStatus = 'warn'
-      combinedStatusColor = COLOR.up
-    } else if (topName !== '') {
-      // 정상 — 1위 종목 매수 가능 수량 표시
-      combinedValue = orderable.toLocaleString()
-      combinedStatusText = ` · 매수 가능 (1위 ${topName} ${qty}주)`
-    } else {
-      // 매수 후보 없음 — 하드 게이트 통과 + 예산 있음 + 후보 없음
-      combinedValue = orderable.toLocaleString()
-      combinedStatusText = ' · 매수 가능 (후보 없음)'
+      return { value: '차단', unit: '', statusText: ` · ${hardStatusText.replace(/^차단: /, '')}`, status: 'warn', statusColor: COLOR.up }
     }
+    if (insufficient) {
+      // 소프트 차단 — 잔액 0
+      return { ...base, statusText: ' · 매수 불가 (잔액 없음)', status: 'warn', statusColor: COLOR.up }
+    }
+    if (cannotBuy) {
+      // 소프트 차단 — 잔여 예산으로 1주도 매수 불가 (백엔드 BUY_REJECT_QTY_ZERO와 동일 기준)
+      return { ...base, statusText: ` · 매수 불가 (1위 ${topName} ${qty}주)`, status: 'warn', statusColor: COLOR.up }
+    }
+    if (topName !== '') {
+      // 정상 — 1위 종목 매수 가능 수량 표시
+      return { ...base, statusText: ` · 매수 가능 (1위 ${topName} ${qty}주)` }
+    }
+    // 매수 후보 없음 — 하드 게이트 통과 + 예산 있음 + 후보 없음
+    return { ...base, statusText: ' · 매수 가능 (후보 없음)' }
   } catch (err) {
     console.error('[buy-target] combined badge status error', err)
-    combinedValue = orderable.toLocaleString()
-    combinedStatusText = ' · 상태 판정 오류'
-    combinedStatus = 'warn'
-    combinedStatusColor = COLOR.up
+    return { ...base, statusText: ' · 상태 판정 오류', status: 'warn', statusColor: COLOR.up }
   }
-  updateBadge(badgeEls.combined, combinedValue, {
-    status: combinedStatus,
-    statusText: combinedStatusText,
-    statusColor: combinedStatusColor,
-  })
-  // unit 슬롯은 하드 차단 시 빈 값으로 설정 (createBadge 시 '원' 고정이므로 갱신 필요)
-  badgeEls.combined.unitEl.textContent = combinedUnit
+}
 
-  // 일일 매수 금액 배지 — cur / max
+function updateCombinedBadge(ctx: BadgeContext, badge: BadgeHandle): void {
+  const { value, unit, statusText, status, statusColor } = computeCombinedStatus(ctx)
+  updateBadge(badge, value, { status, statusText, statusColor })
+  // unit 슬롯은 하드 차단 시 빈 값으로 설정 (createBadge 시 '원' 고정이므로 갱신 필요)
+  badge.unitEl.textContent = unit
+}
+
+/** 일일 매수 금액 배지 — cur / max */
+function updateDailyBadge(ctx: BadgeContext, badge: BadgeHandle): void {
+  const { maxDaily, dailySpent } = ctx
   const dailyHit = maxDaily > 0 && dailySpent >= maxDaily
   const dailyNear = maxDaily > 0 && dailySpent >= maxDaily * 0.8 && dailySpent < maxDaily
   const dailyStatus: BadgeStatus = dailyHit ? 'hit' : dailyNear ? 'near' : 'normal'
   const dailyValue = `${dailySpent.toLocaleString()} / ${maxDaily > 0 ? maxDaily.toLocaleString() : '무제한'}`
   const dailyStatusText = dailyHit ? ' (한도)' : dailyNear ? ' (근접)' : ''
-  updateBadge(badgeEls.daily, dailyValue, {
+  updateBadge(badge, dailyValue, {
     status: dailyStatus,
     statusText: dailyStatusText,
     statusColor: dailyHit ? COLOR.up : dailyNear ? COLOR.warning : COLOR.code,
   })
+}
 
-  // 동시 보유 종목 배지 — cur / max (maxStockOn=False 시 무제한)
+/** 동시 보유 종목 배지 — cur / max (maxStockOn=False 시 무제한) */
+function updateHoldingBadge(ctx: BadgeContext, badge: BadgeHandle): void {
+  const { maxStockOn, maxStock, holdingCnt } = ctx
   const effectiveMaxStock = maxStockOn ? maxStock : 0  // 0 = 무제한 표시
   const holdingHit = effectiveMaxStock > 0 && holdingCnt >= effectiveMaxStock
   const holdingNear = effectiveMaxStock > 0 && holdingCnt >= effectiveMaxStock * 0.8 && holdingCnt < effectiveMaxStock
   const holdingStatus: BadgeStatus = holdingHit ? 'hit' : holdingNear ? 'near' : 'normal'
   const holdingValue = `${holdingCnt.toLocaleString()} / ${effectiveMaxStock > 0 ? effectiveMaxStock.toLocaleString() : '무제한'}`
   const holdingStatusText = holdingHit ? ' (한도)' : holdingNear ? ' (근접)' : ''
-  updateBadge(badgeEls.holding, holdingValue, {
+  updateBadge(badge, holdingValue, {
     status: holdingStatus,
     statusText: holdingStatusText,
     statusColor: holdingHit ? COLOR.up : holdingNear ? COLOR.warning : COLOR.code,
   })
+}
+
+/* ── 배지 행 업데이트 — DOM 재구성 없이 textContent만 갱신 ── */
+function updateBadges(): void {
+  if (!badgeEls) return
+  const ctx = computeBadgeContext()
+  updateCombinedBadge(ctx, badgeEls.combined)
+  updateDailyBadge(ctx, badgeEls.daily)
+  updateHoldingBadge(ctx, badgeEls.holding)
 }
 
 /* ── mount ── */
