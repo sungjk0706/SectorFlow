@@ -1,7 +1,7 @@
 // frontend/src/layout/sidebar.ts
 // 사이드바 네비게이션 — 8개 메뉴 항목, 활성 경로 시각적 강조(책갈피 스타일), 숫자 배지
 
-import { FONT_SIZE, COLOR } from '../components/common/ui-styles'
+import { FONT_SIZE, FONT_WEIGHT, COLOR } from '../components/common/ui-styles'
 
 const MENU = [
   { path: '#/sector-ranking', label: '업종순위', icon: '📊' },
@@ -51,6 +51,25 @@ export function createSidebar(onNavigate: (path: string) => void): {
     items.set(m.path, a)
     nav.appendChild(a)
   }
+
+  // 하단 이니셜
+  const footer = document.createElement('div')
+  footer.style.cssText =
+    `margin-top:auto;padding:16px 0 12px 0;text-align:center;`
+
+  const builtBy = document.createElement('span')
+  builtBy.style.cssText =
+    `font-size:${FONT_SIZE.chip};color:${COLOR.muted};font-weight:${FONT_WEIGHT.normal};`
+  builtBy.textContent = 'Built by '
+
+  const initials = document.createElement('span')
+  initials.style.cssText =
+    `font-size:${FONT_SIZE.chip};color:${COLOR.tertiary};font-weight:${FONT_WEIGHT.semibold};`
+  initials.textContent = 'J.K'
+
+  footer.appendChild(builtBy)
+  footer.appendChild(initials)
+  nav.appendChild(footer)
 
   function setActive(path: string): void {
     for (const [p, a] of items) {
