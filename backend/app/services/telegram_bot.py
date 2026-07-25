@@ -16,10 +16,11 @@ import asyncio
 import logging
 import re
 import time
-from datetime import datetime, timezone, timedelta
+from datetime import datetime
 
 import httpx
 
+from backend.app.core.constants import _KST
 from backend.app.services.auto_trading_effective import auto_trading_effective
 
 logger = logging.getLogger(__name__)
@@ -51,9 +52,6 @@ def _normalize_chat_id(raw: str) -> str:
         return str(int(s))
     except (ValueError, TypeError):
         return s
-
-_KST = timezone(timedelta(hours=9))
-
 
 class TelegramBot:
     def __init__(self):

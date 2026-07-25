@@ -13,16 +13,14 @@ KRX 거래일 판별 유틸 -- DB 캐시 기반.
 """
 from __future__ import annotations
 import logging
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timedelta
+from backend.app.core.constants import _KST
 logger = logging.getLogger(__name__)
-
-_KST = timezone(timedelta(hours=9))
 
 _trading_days_cache: dict[int, set[str]] = {}
 _cache_initialized: bool = False
 
 __all__ = [
-    "_KST",
     "is_trading_day",
     "get_previous_trading_day",
     "get_previous_trading_day_str",

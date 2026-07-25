@@ -9,10 +9,10 @@ v2: 작동시간을 매수/매도 각각 분리.
     - time_scheduler_on 은 마스터 스위치로 유지.
 """
 from __future__ import annotations
-from datetime import datetime, timezone, timedelta
+from datetime import datetime
 from typing import Any
 import logging
-KST = timezone(timedelta(hours=9))
+from backend.app.core.constants import _KST
 logger = logging.getLogger(__name__)
 
 
@@ -35,7 +35,7 @@ def _master_on(flat: dict[str, Any] | None) -> bool:
 def _in_time_range(flat: dict[str, Any], start_key: str, end_key: str,
                    now: datetime | None = None) -> bool:
     """KST HH:MM 기준 시간 범위 안에 있는지 판단."""
-    now_kst = now if now is not None else datetime.now(KST)
+    now_kst = now if now is not None else datetime.now(_KST)
     hm = now_kst.strftime("%H:%M")
     try:
         start_str = str(flat[start_key])[:5]

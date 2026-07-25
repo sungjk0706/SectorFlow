@@ -8,13 +8,12 @@ time_scheduler_on + KST 시각에 따른 자동매매 허용 여부 변화 감�
 from __future__ import annotations
 import asyncio
 import gc
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta
 import logging
+from backend.app.core.constants import _KST
 from backend.app.services import engine_state
 from backend.app.services.engine_lifecycle import schedule_engine_task
 logger = logging.getLogger(__name__)
-
-KST = timezone(timedelta(hours=9))
 
 
 
@@ -462,7 +461,7 @@ async def is_heavy_operation_allowed(now: datetime | None = None) -> bool:
 
 
 def _kst_now() -> datetime:
-    return datetime.now(KST)
+    return datetime.now(_KST)
 
 
 def _parse_hm(hm_str: str) -> tuple[int, int]:

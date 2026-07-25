@@ -13,6 +13,8 @@ from datetime import datetime, timedelta
 import pytest
 from unittest.mock import AsyncMock, DEFAULT, MagicMock, patch
 
+from backend.app.core.constants import _KST  # noqa: E402
+
 def _close_coro(*args, **kwargs):
     """schedule_engine_task mock에 전달된 코루틴을 close하여 RuntimeWarning 방지."""
     for arg in args:
@@ -27,7 +29,6 @@ initialize_queues()
 
 
 from backend.app.services.daily_time_scheduler import (  # noqa: E402
-    KST,
     NXT_PREMARKET_START,
     KRX_REGULAR_START,
     NXT_AFTERMARKET_END,
@@ -110,7 +111,7 @@ from backend.app.services.daily_time_scheduler import (  # noqa: E402
 
 def _make_kst(h: int, m: int, s: int = 0, weekday: int = 0) -> datetime:
     """Create a KST datetime at given hour:minute:second with given weekday (0=Mon)."""
-    base = datetime(2025, 1, 6, h, m, s, tzinfo=KST)  # 2025-01-06 is Monday
+    base = datetime(2025, 1, 6, h, m, s, tzinfo=_KST)  # 2025-01-06 is Monday
     return base + timedelta(days=weekday)
 
 
@@ -141,7 +142,7 @@ class TestParseHm:
 class TestKstNow:
     def test_returns_kst_timezone(self):
         result = _kst_now()
-        assert result.tzinfo == KST
+        assert result.tzinfo == _KST
 
 
 # ── _seconds_until_hm ─────────────────────────────────────────────────────────

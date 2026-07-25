@@ -17,8 +17,10 @@ from __future__ import annotations
 
 import logging
 import pytest
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
+
+from backend.app.core.constants import _KST
 
 
 # ── 헬퍼 ───────────────────────────────────────────────────────────────────────
@@ -66,7 +68,7 @@ class TestTokenInfo:
 
     def test_expired_soon(self):
         # 만료 시간이 현재 + 30분 (buffer 1시간보다 작음)
-        now = datetime.now(timezone(timedelta(hours=9)))
+        now = datetime.now(_KST)
         exp = now + timedelta(minutes=30)
         dt = exp.strftime("%Y%m%d%H%M%S")
         ti = _make_token_info(dt)

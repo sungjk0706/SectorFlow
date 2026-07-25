@@ -10,8 +10,10 @@ import asyncio
 import logging
 import time
 from dataclasses import dataclass
+from datetime import datetime
 import httpx
 from backend.app.core.broker_urls import BROKER_DISPLAY_NAMES, KIWOOM_REST_REAL
+from backend.app.core.constants import _KST
 
 logger = logging.getLogger(__name__)
 
@@ -30,14 +32,13 @@ class TokenInfo:
             dt = self.expires_dt
             if len(dt) < 14:
                 return True
-            from datetime import datetime, timezone, timedelta
             year = int(dt[0:4])
             month = int(dt[4:6])
             day = int(dt[6:8])
             hour = int(dt[8:10])
             minute = int(dt[10:12])
             second = int(dt[12:14])
-            exp = datetime(year, month, day, hour, minute, second, tzinfo=timezone(timedelta(hours=9)))
+            exp = datetime(year, month, day, hour, minute, second, tzinfo=_KST)
             return (exp.timestamp() - buffer_seconds) <= time.time()
         except (ValueError, IndexError):
             return True
