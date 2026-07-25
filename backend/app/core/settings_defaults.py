@@ -139,6 +139,12 @@ DEFAULT_USER_SETTINGS: dict[str, Any] = {
 
      # 수익현황/수익상세 WS push 일별 요약 범위 (최근 N거래일, 0=전체)
      "daily_summary_days": 20,
+
+     # 확정 시세 다운로드 시 사용할 증권사 (빈 문자열 = 현재 broker 사용)
+     "confirmed_data_broker": "",
+
+     # 실시간 시세 자동 구독 토글 (기본값 False = 수동)
+     "quote_auto_subscribe": False,
  }
  
  # 시스템 설정 기본값 (system_config)

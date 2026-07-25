@@ -227,7 +227,7 @@
 **조사 체크리스트** (2026-07-22 조사 완료)
 - [x] P2: DB I/O `async def` — 준수
 - [x] P6: SQLite, Raw SQL — 준수
-- [x] P10: `integrated_system_settings_cache` SSOT (다중 캐시 금지) — 준수 (잔여: B13-03 engine_settings 기본값 61곳 중복, LOW)
+- [x] P10: `integrated_system_settings_cache` SSOT (다중 캐시 금지) — 준수 (B13-03 해결: engine_settings 기본값 61곳 SSOT 위반 근본 해결 완료)
 - [x] P12: DB 연결 싱글톤 — 준수
 - [x] P13: 설정 메모리 상주, 틱 연산에서 DB 조회 없음 — 준수
 - [x] P17: 플래그 단일 소스 (`auto_buy_on`/`auto_sell_on` 등 다중 수정 금지) — 준수
@@ -244,11 +244,11 @@
 **해결 내역**
 - **B13-01 (MEDIUM, P22)**: `update_settings` 저널링/검증 우회 경로 제거 — 함수 삭제 + 호출자 2곳(telegram_bot, dry_run)을 `apply_settings_updates`로 전환. 모든 설정 변경이 단일 경로 통해 저널 기록.
 - **B13-02 (MEDIUM, P16)**: `_schedule_settings_task` dead code 삭제 — 호출처 0건 + 미사용 `asyncio` import 제거.
+- **B13-03 (LOW, P10/P16)**: engine_settings.py 기본값 61곳 SSOT 위반 근본 해결 — 옵션 1 적용. 진입점 None 정규화(`flat_clean`)로 None 들어오는 근본 원인 차단 + 모든 하드코딩 기본값 `merged[key]` 직접 접근 전환 + None 방어 분기 전체 제거 + "None" 문자열/빈문자열 방어 제거(number 타입은 _parse_value가 int 파싱하므로 프로덕션 불가) + 누락 키 2개(`quote_auto_subscribe`/`confirmed_data_broker`) DEFAULT 추가 + `rebu_block_on` dead key → `rebuy_block_on` 올바른 키로 통일(원래 키 불일치 버그) + 테스트 의미 갱신.
+- **B13-04 (LOW, P4/P10)**: `"kiwoom"` 기본값 공통 로직 침투 2곳 → `DEFAULT_USER_SETTINGS["broker"]` SSOT 참조로 변경.
 - **B13-05 (LOW, P4)**: `_pick_broker_credentials` 키움 특수 분기 제거 — 현재 선택 증권사 + `_app_key` 접미 키 기반 동적 loop로 모든 증권사 균일 처리.
 
 **잔여 위반 (보류 — 별도 세션 가능)**
-- B13-03 (LOW, P10/P16): engine_settings.py 기본값 61곳 중복 — `merged = {**DEFAULT_USER_SETTINGS, **flat}` 후에도 `merged.get(key, default)`로 기본값 하드코딩. `settings_defaults.py`와 중복.
-- B13-04 (LOW, P4/P10): `"kiwoom"` 기본값 공통 로직 침투 2곳 — B13-03 해결 시 함께 처리 가능.
 - B13-06 (LOW, P3): `asyncio.to_thread` 파일 I/O — async 대체재 없음, 1회 실행, 보류 권장.
 - B13-07 (LOW, P24): 함수 길이 50줄 초과 2곳 — 그룹별 헬퍼 분리 필요.
 - B13-08 (INFO, P10/P23): "mock" 매핑 3곳 분산 — 각각 다른 계층/목적, 보류 권장.

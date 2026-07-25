@@ -177,13 +177,14 @@ class TestBuildEngineSettingsDictOverride:
         assert result["trailing_start_value"] == 10.0
         assert result["trailing_drop_value"] == -3.0
 
-    def test_max_position_size_none(self):
-        result = build_engine_settings_dict({"max_position_size": None})
-        assert result["max_position_size"] == 0
+    def test_max_position_size_none_ignored(self):
+        """flat의 None 값은 진입점에서 제거되어 DEFAULT_USER_SETTINGS 값 적용 (P10 SSOT, P16).
 
-    def test_max_position_size_string_none(self):
-        result = build_engine_settings_dict({"max_position_size": "None"})
-        assert result["max_position_size"] == 0
+        근본 원인 차단: None이 들어오면 DEFAULT가 단일 소스 진리로 작동.
+        _load_db_settings()가 프로덕션에서 None을 이미 치환하므로
+        이 정규화는 테스트/직접 호출 시 방어 역할 (dead code 아님)."""
+        result = build_engine_settings_dict({"max_position_size": None})
+        assert result["max_position_size"] == 0  # DEFAULT_USER_SETTINGS["max_position_size"]
 
     def test_max_position_size_value(self):
         result = build_engine_settings_dict({"max_position_size": "5000000"})
