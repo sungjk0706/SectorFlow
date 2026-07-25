@@ -102,7 +102,7 @@ SectorFlow is a local real-time stock auto-trading web app for one person.
 #### 백엔드 수정 시 필수 점검
 - [ ] **P1-P3 (async 일관성)**: 모든 I/O는 `async def`, 동기 함수(`requests`, `sqlite3`, `time.sleep`, `threading.Lock`) 금지, `run_in_executor()` 우회 금지
 - [ ] **P4 (증권사명 침투 금지)**: 공통 로직에 `kiwoom_`/`ls_` 접두사가 없는가? 증권사별 코드는 `core/kiwoom_*.py`·`core/ls_*.py`에 분리 허용(레지스트리 패턴, `broker_factory.py`/`broker_registry.py` 경유), 공통 로직 침투 금지.
-- [ ] **P5 (EventBus 금지)**: Redis/Pub-Sub/콜백 리스트 옵서버 패턴을 도입하지 않았는가? 직접 호출 체인을 유지했는가?
+- [ ] **P5 (현재 단일 프로세스에서는 EventBus 미사용)**: 현재 구조에서는 Redis/Pub-Sub/분산 메시지 브로커/콜백 리스트 옵서버 패턴을 도입하지 않았는가? 직접 호출 체인을 유지했는가? (프로세스 분리나 다중 소비자가 필요해질 경우 재검토 대상 — ARCHITECTURE.md "현재 구조 선택")
 - [ ] **P7 (블로킹 금지)**: 틱 핸들러에 per-tick O(n) 연산, 매 틱 DB 조회, 매 틱 전체 리스트 순회가 없는가?
 - [ ] **P11 (폴링 금지)**: `while + sleep` 폴링을 도입하지 않았는가? `asyncio.Queue` + `asyncio.wait()` 이벤트 기반인가?
 - [ ] **P12 (DB 연결)**: 매 요청마다 `connect()`를 호출하지 않았는가? 싱글톤 연결을 유지했는가?
@@ -115,7 +115,7 @@ SectorFlow is a local real-time stock auto-trading web app for one person.
 - [ ] **P22 (데이터 정합성)**: 파생 데이터를 중복 저장하지 않았는가? 원본에서 파생하는 모델인가? 불일치 시 즉시 차단하는가?
 - [ ] **P23 (용어 통일)**: 로그/문서에 "섹터" 대신 "업종", "주식" 대신 "종목"을 사용했는가? (`ARCHITECTURE.md` 부록 M 참조)
 - [ ] **P23 (공통 자산 재사용)**: 신규 함수/상수/패턴 구현 전, 기존 공통 자산(`core/constants.py`, 공통 유틸, 기존 함수 등)을 먼저 검색했는가? 같은 기능을 새로 만들지 않았는가? (섹션3 규칙 0-2.4)
-- [ ] **P24 (단순성)**: 동일 로직 중복이 없는가? (중복 제거 우선 — 줄 수 단축보다 중복 제거를 먼저 검토, P10/P23과 교차 강화) 함수 50줄 이하, 파일 500줄 이하, 순환 복잡도 10 이하? 불필요한 추상화/1회용 래퍼가 없는가?
+- [ ] **P24 (단순성)**: 동일 로직 중복이 없는가? (중복 제거 우선 — 줄 수 단축보다 중복 제거를 먼저 검토, P10/P23과 교차 강화) 함수/파일 길이가 50/500줄을 초과하면 책임 분리를 검토했는가? (50/500줄은 분할 검토 참고 기준, 자동 위반 아님) 순환 복잡도 10 이하? 불필요한 추상화/1회용 래퍼가 없는가?
 - [ ] **P25 (격리된 실패)**: 한 태스크/코루틴 실패가 루프 전체를 중단하지 않는가? `schedule_engine_task()` 사용? 격리 시 에러 로깅(silent pass 금지)?
 
 #### 프론트엔드 수정 시 필수 점검
@@ -261,9 +261,9 @@ SectorFlow is a local real-time stock auto-trading web app for one person.
 | 설계서 (디자인 파일) | `docs/architecture_*_design.md` | 다단계 작업 1세션 산출물. 완료 시 삭제(규칙 11) |
 | 태스크 파일 | `docs/plan_*.md` | 다단계 작업 2세션 산출물. 완료 시 삭제(규칙 11) |
 | 조사 보고서 | `docs/*_investigation.md` | 역사적 기록. 유지 (삭제 금지) |
+| 아키텍처 감사 문서 | `docs/architecture_audit_*.md` | 감사 계획·태스크. Code Removal Rules 규칙 3 역사적 로그 유지 대상 |
+| 참고자료 | `docs/reference_*.md` | 외부 자료 정리 (시장 운영 시간 등). 유지 |
 | API 스펙 | `docs/api_specs/` | 증권사 API 문서 등 |
-| 아키텍처 감사 계획 | `docs/architecture_audit_plan.md` | Code Removal Rules 규칙 3 역사적 로그 유지 대상 |
-| 기타 계획서 | `docs/plan_*.md` | 단일 세션 구현 계획서 포함 |
 
 - **금지**: `backend/docs/`, `frontend/docs/` 등 코드 디렉터리 하위에 문서 폴더 신규 생성.
 - **기존 참조 갱신**: 문서 이동 시 `AGENTS.md`·`HANDOVER.md`·태스크 파일 등 모든 참조 경로를 함께 갱신 (P10 SSOT — 잔존 참조 방지).
@@ -463,7 +463,8 @@ When in doubt, invoke `/problem-solve` first. Always follow the rules in this fi
     - **삭제 시점**: 모든 단계 완료 후 최종 커밋에 삭제 포함 (동일 커밋)
     - **삭제 제외 (혼동 주의)**:
       - `docs/*_investigation.md` (조사 보고서 — 역사적 기록, 유지)
-      - `docs/architecture_audit_plan.md` (아키텍처 감사 계획 — Code Removal Rules 규칙 3이 역사적 로그 유지 대상으로 명시)
+      - `docs/architecture_audit_*.md` (아키텍처 감사 문서 — Code Removal Rules 규칙 3이 역사적 로그 유지 대상으로 명시)
+      - `docs/reference_*.md` (참고자료 — 유지)
       - 진행 중인 작업의 계획서 (일부 단계만 완료 시 유지)
     - **삭제 전 확인**: `HANDOVER.md` "참조 문서" 섹션에서 해당 계획서 경로도 함께 정리 (P10 SSOT — 잔존 참조 방지)
     - **커밋 메시지**: 삭제된 계획서 파일명 명시
