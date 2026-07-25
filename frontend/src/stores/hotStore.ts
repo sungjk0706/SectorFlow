@@ -90,6 +90,45 @@ export function getPositionIndex(stkCd: string): number | undefined {
   return _positionIndexCache.get(normalizeStockCode(stkCd))
 }
 
+/* ── 틱 디스패치 rAF 배칭 스케줄러 (세션 7) ──
+ * 업계 표준 coalescing mutable store 패턴 (engineered.at "React at 1,000 updates/sec",
+ * svelte #18093, sitepoint "Streaming Backends & React", LMAX Coalescing Ring Buffer):
+ * 고빈도 틱은 in-place mutation으로 상태만 갱신하고, 디스패치는 rAF로 프레임당 1회 coalescing.
+ * last-write-wins: 동일 code 여러 틱 → Set dedup → 1회 디스패치.
+ * 초당 수십~수백 틱을 60fps(프레임당 1회)로 묶어 메인 스레드 점유 최소화 + 60fps 안정성.
+ */
+let _tickDirty = new Set<string>()
+let _orderbookDirty = new Set<string>()
+let _programDirty = new Set<string>()
+let _tickRafId: number | null = null
+
+/** 테스트/동기 호출용 — rAF 대기 없이 즉시 flush (프로덕션은 rAF 콜백이 호출). */
+export function flushTickBatch(): void {
+  _tickRafId = null
+  // flush 중 새 틱이 들어오면 다음 프레임으로 연기하기 위해 Set을 스왑
+  const ticks = _tickDirty; _tickDirty = new Set()
+  const orderbooks = _orderbookDirty; _orderbookDirty = new Set()
+  const programs = _programDirty; _programDirty = new Set()
+  for (const code of ticks) {
+    try { window.dispatchEvent(new CustomEvent('real-data-tick', { detail: code })) }
+    catch (e) { console.error('[hotStore] dispatch real-data-tick error', e) }
+  }
+  for (const code of orderbooks) {
+    try { window.dispatchEvent(new CustomEvent('orderbook-tick', { detail: code })) }
+    catch (e) { console.error('[hotStore] dispatch orderbook-tick error', e) }
+  }
+  for (const code of programs) {
+    try { window.dispatchEvent(new CustomEvent('program-tick', { detail: code })) }
+    catch (e) { console.error('[hotStore] dispatch program-tick error', e) }
+  }
+}
+
+/** 틱 디스패치를 다음 rAF 프레임으로 예약 (이미 예약 중이면 no-op). */
+function scheduleTickFlush(): void {
+  if (_tickRafId !== null) return
+  _tickRafId = requestAnimationFrame(flushTickBatch)
+}
+
 /* ── 실시간 데이터 액션 함수 ── */
 
 /* ── account-update: 계좌·보유종목 갱신 (delta 지원) ── */
@@ -232,6 +271,21 @@ export function applyAccountUpdate(data: AccountUpdateEvent): void {
 }
 
 /* ── real-data: 키움 Raw FID를 직접 파싱하여 상태 갱신 (무결성 보장) ── */
+/**
+ * 키움 실시간 Raw 체결 이벤트 → in-place mutation + rAF 배칭 디스패치.
+ *
+ * 갱신 계약 (세션 7 — 업계 표준 coalescing mutable store 패턴):
+ * - handled types: '01'/'0B'/'0H' (주식체결). 미지원 type은 스킵 (디스패치 안 함, 상태 미변경).
+ * - in-place mutation: sectorStocks(SSOT) + buyTargets(파생 캐시) + positions(cur_price만).
+ *   `hotStore.setState()`를 호출하지 않음 → 일반 `hotStore.subscribe()` 리스너 미발화.
+ *   사유: setState 시 scheduleRender가 배열 참조 비교로 전체 재렌더 트리거 → 초저지연 저해.
+ *   화면 갱신은 `real-data-tick` window 이벤트를 addEventListener로 수신한 페이지만 수행 (row-level).
+ * - rAF 배칭: 변경 시 즉시 디스패치 ❌, dirty Set에 code 추가 후 다음 rAF 프레임에서 1회 디스패치.
+ *   동일 code 여러 틱 → Set dedup → 1회 디스패치 (last-write-wins coalescing).
+ *   초당 수십~수백 틱을 60fps로 묶어 메인 스레드 점유 최소화.
+ * - 디스패치 조건: changed=true(실제 값 변경) 시에만. no-change 틱은 디스패치 안 함.
+ * - payload: code 문자열 (정규화된 종목코드). 수신 측은 `dataTable.updateItemByKey(code)`로 O(1) 갱신.
+ */
 export function applyRealData(item: RealDataEvent): void {
   const type = item.type;
   const rawCode = item.item;
@@ -360,18 +414,25 @@ export function applyRealData(item: RealDataEvent): void {
     }
   }
 
-  // 변경사항이 있을 경우 글로벌 이벤트로 특정 종목의 변경을 알림 (O(1) DOM 갱신용)
+  // 변경사항이 있을 경우 dirty Set에 추가하고 다음 rAF 프레임에서 디스패치 (coalescing).
+  // 매 틱마다 즉시 디스패치하면 초당 수십~수백 회 디스패치 → 60fps 초과 → 끊김.
+  // rAF 배칭: 프레임당 1회 flush, 동일 code 여러 틱 → Set dedup → 1회 디스패치.
   if (changed) {
-    try {
-      window.dispatchEvent(new CustomEvent('real-data-tick', { detail: code }));
-    } catch (e) {
-      console.error('[hotStore] dispatchEvent error (real-data-tick):', e)
-    }
+    _tickDirty.add(code)
+    scheduleTickFlush()
   }
   }
 }
 
 /* ── orderbook-update: 매수후보 호가잔량비 실시간 갱신 ── */
+/**
+ * 호가잔량비 갱신 계약 (applyRealData와 동일 — in-place mutation + rAF 배칭):
+ * - in-place mutation: buyTargets[idx].order_ratio만 갱신. setState ❌ → subscribe 미발화.
+ * - buyTargets에 없는 종목은 스킵 (idx === undefined).
+ * - no-change(동일 bid/ask) 시 디스패치 안 함.
+ * - rAF 배칭: dirty Set에 code 추가 후 다음 프레임에서 1회 디스패치 (last-write-wins).
+ * - payload: code 문자열. 수신 측은 `dataTable.updateItemByKey(code)`로 O(1) 갱신.
+ */
 export function applyOrderbookUpdate(data: { code: string; bid: number; ask: number }): void {
   const code = normalizeStockCode(data.code);
   const { bid, ask } = data;
@@ -383,19 +444,24 @@ export function applyOrderbookUpdate(data: { code: string; bid: number; ask: num
   const t = bt[idx];
   const prev = t.order_ratio;
   if (prev && prev[0] === bid && prev[1] === ask) return;
-  
+
   // In-place mutation: 배열 복사 없이 직접 요소 수정
   t.order_ratio = [bid, ask];
-  
-  // O(1) DOM 갱신을 위해 글로벌 이벤트 발생
-  try {
-    window.dispatchEvent(new CustomEvent('orderbook-tick', { detail: code }));
-  } catch (e) {
-    console.error('[hotStore] dispatchEvent error (orderbook-tick):', e)
-  }
+
+  // rAF 배칭 — 프레임당 1회 coalescing 디스패치
+  _orderbookDirty.add(code)
+  scheduleTickFlush()
 }
 
 /* ── program-update: 매수후보 프로그램순매수 실시간 갱신 ── */
+/**
+ * 프로그램순매수 갱신 계약 (applyRealData/applyOrderbookUpdate와 동일 — in-place mutation + rAF 배칭):
+ * - in-place mutation: buyTargets[idx].program_net_buy만 갱신. setState ❌ → subscribe 미발화.
+ * - buyTargets에 없는 종목은 스킵 (idx === undefined).
+ * - no-change(동일 net_buy) 시 디스패치 안 함.
+ * - rAF 배칭: dirty Set에 code 추가 후 다음 프레임에서 1회 디스패치 (last-write-wins).
+ * - payload: code 문자열. 수신 측은 `dataTable.updateItemByKey(code)`로 O(1) 갱신.
+ */
 export function applyProgramUpdate(data: { code: string; net_buy: number }): void {
   const code = normalizeStockCode(data.code);
   const { net_buy } = data;
@@ -410,12 +476,9 @@ export function applyProgramUpdate(data: { code: string; net_buy: number }): voi
   // In-place mutation: 배열 복사 없이 직접 요소 수정
   t.program_net_buy = net_buy;
 
-  // O(1) DOM 갱신을 위해 글로벌 이벤트 발생
-  try {
-    window.dispatchEvent(new CustomEvent('program-tick', { detail: code }));
-  } catch (e) {
-    console.error('[hotStore] dispatchEvent error (program-tick):', e)
-  }
+  // rAF 배칭 — 프레임당 1회 coalescing 디스패치
+  _programDirty.add(code)
+  scheduleTickFlush()
 }
 
 /* ── 공통 헬퍼: 지정된 필드를 null로 설정 ── */
