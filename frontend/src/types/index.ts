@@ -25,13 +25,13 @@ export interface Position {
   cur_price: number;
   eval_amount?: number;
   eval_amt?: number;
-  buy_amt?: number;
+  buy_amt: number;
   buy_amount?: number;
   pnl_amount?: number;
   pnl_rate: number;
   market_type?: string;
   nxt_enable?: boolean;
-  buy_date?: string;
+  buy_date: string;
   sectorStock?: SectorStock;
 }
 

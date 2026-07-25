@@ -22,14 +22,14 @@ const COLUMNS: ColumnDef<Position>[] = [
   },
   {
     key: 'stk_cd', label: '종목코드', align: 'center', type: 'code',
-    render: (p) => createCodeCell(p.stk_cd || ''),
+    render: (p) => createCodeCell(p.stk_cd),
   },
   createStockNameColumn<Position>(
     (p: Position) => {
       const state = hotStore.getState()
       const sectorStock = state.sectorStocks[normalizeStockCode(p.stk_cd)]
       return {
-        name: p.stk_nm || '',
+        name: p.stk_nm,
         market_type: sectorStock?.market_type,
         nxt_enable: sectorStock?.nxt_enable
       }
@@ -53,7 +53,7 @@ const COLUMNS: ColumnDef<Position>[] = [
   },
   {
     key: 'buy_amt', label: '매수금액(수수료 포함)', align: 'right', type: 'total_amt',
-    render: (p) => createNumberCell(p.buy_amt ?? 0),
+    render: (p) => createNumberCell(p.buy_amt),
   },
   {
     key: 'pnl', label: '평가손익', align: 'right', type: 'pnl',
@@ -61,7 +61,7 @@ const COLUMNS: ColumnDef<Position>[] = [
       const sectorStock = hotStore.getState().sectorStocks[normalizeStockCode(p.stk_cd)]
       const curPrice = sectorStock?.cur_price ?? p.cur_price
       const buyPrice = p.buy_price ?? p.avg_price ?? 0
-      const qty = p.qty ?? 0
+      const qty = p.qty
       const pnl = (Number(curPrice) - buyPrice) * qty
       const span = document.createElement('span')
       span.style.color = rateColor(pnl)
@@ -84,13 +84,13 @@ const COLUMNS: ColumnDef<Position>[] = [
   },
   {
     key: 'qty', label: '수량', align: 'right', type: 'qty',
-    render: (p) => createNumberCell(p.qty ?? 0),
+    render: (p) => createNumberCell(p.qty),
   },
   {
     key: 'buy_date', label: '매수일자', align: 'center', type: 'date',
     render: (p) => {
       const span = document.createElement('span')
-      span.textContent = p.buy_date || ''
+      span.textContent = p.buy_date
       const today = new Date()
       const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
       span.style.color = p.buy_date === todayStr ? COLOR.neutral : COLOR.disabled
@@ -118,7 +118,7 @@ let summaryStatusBadge: BadgeHandle | null = null
 /** 보유 종목 요약 행 렌더 — positions + sectorStocks에서 직접 계산 (개별 종목 행과 동일 소스·공식) */
 function renderSummary(): void {
   const state = hotStore.getState()
-  const count = state.positionCount ?? state.positions.length
+  const count = state.positionCount
   const { evalTotal, evalPnl, evalRate } = computeHoldingsSummary(state.positions, state.sectorStocks)
 
   if (summaryEvalBadge) {
