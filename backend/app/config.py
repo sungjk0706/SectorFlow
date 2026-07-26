@@ -1,7 +1,9 @@
 # -*- coding: utf-8 -*-
 """
 환경 변수 설정 -- 로컬 settings.json 기반 운영.
-암호화·텔레그램 등 시스템 전역 변수만 유지.
+암호화 키·로그 레벨 등 .env 기반 시스템 전역 변수만 유지.
+텔레그램 토큰·채팅 ID·거래 로그 경로는 settings.json(DB) SSOT 사용
+(engine_settings._build_telegram_settings, logger.py 고정 경로).
 """
 import logging
 from pathlib import Path
@@ -43,13 +45,8 @@ class Settings(BaseSettings):
     # Encryption
     ENCRYPTION_KEY: str = ""
 
-    # Telegram
-    TELEGRAM_BOT_TOKEN: str = ""
-    TELEGRAM_CHAT_ID: str = ""
-
     # Engine
     LOG_LEVEL: str = "INFO"
-    TRADING_LOG_PATH: str = "logs/trading.log"
 
     model_config = {
         "env_file": _resolve_env_file(),

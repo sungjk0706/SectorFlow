@@ -6,12 +6,15 @@
 import asyncio
 import logging
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import aiofiles
 from backend.app.core.broker_urls import BROKER_DISPLAY_NAMES
 from backend.app.core.trade_mode import normalize_trade_mode
 from backend.app.db.json_utils import encode_json_field, loads
+
+if TYPE_CHECKING:
+    from backend.app.core.encryption import SecretValueState
 
 logger = logging.getLogger(__name__)
 

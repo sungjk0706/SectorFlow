@@ -32,7 +32,7 @@
 | DC-S4 | P15/P16/P20/P22 | DC-08, DC-11 | ☑ | 서킷브레이커·정산 매수능력 검증. safe-trade 필수 |
 | DC-S5 | P10/P16/P24 | DC-09, DC-12 | ☑ | DC-09 `get_total_buy_amount`/`get_total_pnl` 제거, DC-12 `changed_keys_general_save`/`load_integrated_system_settings_for_editing` + cascading 3함수 제거 |
 | DC-S6 | P16/P24 | 테스트·스크립트 미사용 자산 | ☐ | import·fixture·지역 변수·unreachable code |
-| DC-S7 | P16/P21/P23 | 정적 분석 오탐 및 프론트엔드 최종 확인 | ☐ | 삭제하지 않을 항목의 근거 확정 |
+| DC-S7 | P16/P21/P23 | 정적 분석 오탐 및 프론트엔드 최종 확인 | ☑ | 오탐 9종 근거 확정(유지), DC-13 신규(삭제), pyflakes/ESLint 근본 해결 |
 | DC-S8 | P16/P19/P20/P25 | 전체 잔존 검색·통합 검증 | ☐ | 모든 승인 세션 완료 후 최종 게이트 |
 
 ---
@@ -216,7 +216,7 @@
 
 ### 세션 DC-S7 — 정적 분석 오탐·프론트엔드 최종 확인
 
-**상태:** ☐ 미시작  
+**상태:** ☑ 완료  
 **대상 원칙:** P16, P21, P23, P24
 
 #### 대상 코드
@@ -249,6 +249,25 @@
 - `cd frontend && npm run build`
 - `cd frontend && npm run test`
 - ESLint 재실행 결과를 데드코드 결과와 분리 기록
+
+#### 완료 결과 (DC-S7)
+
+**오탐 확정 (유지, 근거 기록):**
+- `broker_connector.py:55,60` / `kiwoom_connector.py:271,275` / `ls_connector.py:432,436` `data_types` — 추상 브로커 계약 시그니처 + 테스트 4건 호출. 운영은 `subscribe_stocks` 사용. 유지 (P16)
+- `deps.py:13` `credentials` — 개발 모드 인증 자리표시자. 보안 전환 과제. 유지 (DC-S7 규칙3)
+- `engine_utils.py:54` `*args` — `__aexit__` async context manager 프로토콜 필수. 유지
+- `stock_filter.py:126` `parsed_fields` — dataclass 필드, `stock_filter.py:235` 설정 + 테스트 검증. 유지
+- `domain/models.py:53` `sector_rank` — `buy_filter.py:247,256` 설정 + 테스트 검증. 유지
+- `domain/models.py:64` `version` — `buy_filter.py:263,272` 카운터 증가 + 테스트 검증. 유지
+- `config.py` `ENCRYPTION_KEY`/`LOG_LEVEL`/`model_config`/`get_settings` — 사용 중. 유지
+- 프론트엔드 export — typecheck 통과, 미사용 export 0건. 유지
+
+**실제 dead code (신규 DC-13, 제거 완료):**
+- `config.py:47,48,52` `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID`/`TRADING_LOG_PATH` — Pydantic Settings 필드, 소비처 0건. 텔레그램 SSOT는 settings.json(DB) → `engine_settings._build_telegram_settings()`, 로그 경로는 `logger.py:158` 고정. P10(중복 SSOT)/P21(사용자 착각) 위반 → 제거 + docstring 정리
+
+**lint/품질 이슈 (근본 해결, DC-S7 규칙5):**
+- `settings_file.py:344` pyflakes `SecretValueState` undefined — `TYPE_CHECKING` 블록 임포트 추가 (런타임 임포트 유지). pyflakes 0경고
+- `info-tooltip.ts:99` ESLint `no-unused-expressions` — 삼항식 → if/else 분기 전환. ESLint 0경고
 
 ---
 

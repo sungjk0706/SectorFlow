@@ -52,6 +52,7 @@
 | DC-04 | 낮음 | `backend/app/services/engine_state.py:148` | `EngineState.confirmed_refresh_running` | ☑ 제거 — 쓰기 0건, 읽기 2건을 `confirmed_refresh_running_confirmed`/`_5d` 실제 플래그로 전환 후 제거. P21 사용자 투명성 복원 (다운로드 중 상태 표시), P16 중복 다운로드 차단 복원 | P16, P21, P24 |
 | DC-05 | 낮음 | `backend/app/core/ls_rest.py:212` | `LsRestAPI.call_api` | ⊘ 보류 — 운영 코드 참조 0건이나 테스트 7개 메서드(`TestLsRestCallApi`) 존재. 테스트 계약 확인 필요 | P16, P24 |
 | DC-06 | 낮음 | `backend/app/web/ws_manager.py:8` | `asyncio` import | ☑ 제거 — 파일 내 사용 0건으로 pyflakes가 확정 보고. import 제거 완료 | P16, P24 |
+| DC-13 | 낮음 | `backend/app/config.py:47,48,52` | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `TRADING_LOG_PATH` | ☑ 제거 (DC-S7) — Pydantic Settings 필드이나 소비처 0건. 텔레그램 설정 SSOT는 settings.json(DB) → `engine_settings._build_telegram_settings()`, 로그 경로는 `logger.py:158` 고정. P10(중복 SSOT)/P21(사용자 착각 유발) 위반 → 제거 완료 | P10, P16, P21, P24 |
 
 > `DC-02`~`DC-04`는 기존 `engine_state.py` 문서에 이미 dead-code 후보로 기록되어 있어 새 발견이 아니라 잔여 항목 재확인이다. 삭제 시 해당 문서·메타 테스트·참조 주석을 함께 정리해야 한다.
 
@@ -74,14 +75,16 @@
 
 | 위치 | 항목 | 판단 |
 |---|---|---|
-| `backend/app/core/broker_connector.py:55,60` | 추상 메서드 매개변수 `data_types` | 구현 계약의 일부. 매개변수명만 미사용이며 dead method로 확정하지 않음 |
-| `backend/app/core/kiwoom_connector.py:271,275` | `data_types` | 현재 구현에서 미사용. 추상 브로커 계약과 실제 구독 타입 처리의 관계 확인 필요 |
-| `backend/app/core/ls_connector.py:432,436` | `data_types` | 위와 동일 |
-| `backend/app/web/deps.py:13` | `credentials` | 개발 모드에서 의도적으로 토큰을 사용하지 않는 인증 자리표시자. 보안 전환 전 삭제 금지 |
-| `backend/app/services/engine_utils.py:54` | `args` | vulture가 미사용으로 보고. 콜백/이벤트 호출 계약에서 전달되는 인자인지 확인 필요 |
-| `backend/app/config.py:47,48,52,54` | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `TRADING_LOG_PATH`, `model_config` | 설정·Pydantic/dynamic access 가능성이 있어 단순 삭제 금지. 실제 설정 소비처 확인 필요 |
-| `backend/app/core/stock_filter.py:126` | `parsed_fields` | 미사용 지역 변수 후보. 해당 파싱 결과가 side effect 또는 검증용인지 확인 후 정리 |
-| `backend/app/domain/models.py:53,64` | `sector_rank`, `version` | 모델 생성·직렬화 계약에 포함될 수 있어 API 응답과 테스트 대조 필요 |
+| `backend/app/core/broker_connector.py:55,60` | 추상 메서드 매개변수 `data_types` | ☑ 오탐 확정 (DC-S7) — 추상 브로커 계약 시그니처. 구현(kiwoom/ls)은 `subscribe_stocks`로 위임하며 `data_types` 무시. 테스트 4건(`test_kiwoom_connector.py:520,527`, `test_ls_connector.py:623,630`)이 `subscribe("005930", ["0B"])` 형태로 호출. 운영은 `subscribe_stocks`/`subscribe_dynamic`/`subscribe_index` 사용. 추상 계약 + 테스트 경로 활성 → 유지 (P16, 계획 섹션5 보류 항목) |
+| `backend/app/core/kiwoom_connector.py:271,275` | `data_types` | ☑ 오탐 확정 (DC-S7) — 상동. 구현부 `subscribe`/`unsubscribe`는 `subscribe_stocks([code])`로 위임, `data_types`는 하위 호환성용 무시 |
+| `backend/app/core/ls_connector.py:432,436` | `data_types` | ☑ 오탐 확정 (DC-S7) — 상동 |
+| `backend/app/web/deps.py:13` | `credentials` | ☑ 오탐 확정 (DC-S7) — 개발 모드 인증 자리표시자. `HTTPBearer` 의존성으로 토큰 추출 시그니처 유지, 프로덕션 전환 시 검증 로직 추가 예정. DC-S7 규칙3 — 보안 설계 과제로 유지 |
+| `backend/app/services/engine_utils.py:54` | `args` | ☑ 오탐 확정 (DC-S7) — `async __aexit__(self, *args)` 프로토콜 필수 시그니처. `*args`는 `(exc_type, exc_val, exc_tb)` 캡처. async context manager 계약 → 유지 |
+| `backend/app/config.py:47,48,52` | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `TRADING_LOG_PATH` | ☑ 제거 (DC-13, DC-S7) — Pydantic Settings 필드이나 소비처 0건. 텔레그램 설정 SSOT는 settings.json(DB) → `engine_settings._build_telegram_settings()`, 로그 경로는 `logger.py:158` 고정. P10(중복 SSOT)/P21(사용자 착각 유발) 위반 → 제거 완료 |
+| `backend/app/config.py:54` | `model_config` | ☑ 오탐 확정 (DC-S7) — Pydantic BaseSettings 메타 설정(env_file/encoding/case_sensitive/extra). 런타임 필수 → 유지 |
+| `backend/app/core/stock_filter.py:126` | `parsed_fields` | ☑ 오탐 확정 (DC-S7) — `StockFilterEvaluation` dataclass 필드. `stock_filter.py:235`에서 설정, `test_stock_filter.py:283-288`에서 검증. vulture 60%는 dataclass 필드 접근 미추적 오탐 → 유지 |
+| `backend/app/domain/models.py:53` | `sector_rank` | ☑ 오탐 확정 (DC-S7) — `BuyTarget` dataclass 필드. `buy_filter.py:247,256`에서 설정, `test_buy_filter.py:507`에서 검증 → 유지 |
+| `backend/app/domain/models.py:64` | `version` | ☑ 오탐 확정 (DC-S7) — `SectorSummary` dataclass 필드. `buy_filter.py:263,272`에서 카운터 증가+설정, `test_buy_filter.py:514`에서 검증 → 유지 |
 
 #### 테스트·스크립트 코드
 
@@ -122,10 +125,10 @@
 
 ### 3.6 정적 분석의 오탐 또는 별도 품질 이슈
 
-- `backend/app/core/settings_file.py:341`의 `SecretValueState`는 함수 내부 import와 `from __future__ import annotations`를 사용하는 타입 주석 때문에 pyflakes가 undefined로 보고한 것으로 보인다. 실행 경로상 import는 존재하며, 데드코드로 분류하지 않는다. 별도 세션에서 정적 분석 친화성만 검토한다.
+- `backend/app/core/settings_file.py:344`의 `SecretValueState` pyflakes undefined 보고 — ☑ 근본 해결 (DC-S7). 원인: `_classify_secret()` 반환 타입 문자열 주석 `"SecretValueState"`가 모듈 스코프에서 미정의(함수 내부 임포트). 근본 해결: `TYPE_CHECKING` 블록에서 `SecretValueState` 타입 임포트 추가, 런타임 임포트는 함수 본문 유지. pyflakes 0경고 확인.
 - FastAPI 라우트·예외 핸들러·SPA fallback·WebSocket 엔드포인트는 일반 호출 검색과 vulture에서 미사용 함수처럼 보이지만 데코레이터/라우터 등록으로 살아 있는 진입점이다. 예: `backend/app/web/routes/*`, `backend/app/web/app.py`.
 - 브로커 추상 메서드 `subscribe`, `unsubscribe`, `receive`는 자식 구현·인터페이스 계약 대상이므로 vulture 결과만으로 삭제하지 않는다.
-- `frontend/src/components/common/info-tooltip.ts:99`는 ESLint의 no-unused-expressions 오류가 확인되었지만 데드코드가 아니라 문법/스타일 품질 이슈다. 이번 요청 범위의 코드 수정은 하지 않았다.
+- `frontend/src/components/common/info-tooltip.ts:99`의 ESLint no-unused-expressions 오류 — ☑ 근본 해결 (DC-S7). 원인: `popup ? close() : open()` 삼항식이 함수호출 표현식으로 평가. 근본 해결: `if (popup) close() else open()` 분기로 전환. ESLint 0경고 확인.
 
 ## 4. 우선순위별 후속 수정 계획
 

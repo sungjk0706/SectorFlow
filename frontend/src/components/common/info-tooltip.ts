@@ -96,8 +96,14 @@ export function createInfoTooltip(text: string): HTMLElement {
   })
   // 키보드 접근성 — Enter/Space 로 토글, Escape 닫기
   icon.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); popup ? close() : open() }
-    else if (e.key === 'Escape') { e.preventDefault(); close() }
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault()
+      if (popup) close()
+      else open()
+    } else if (e.key === 'Escape') {
+      e.preventDefault()
+      close()
+    }
   })
 
   return icon
