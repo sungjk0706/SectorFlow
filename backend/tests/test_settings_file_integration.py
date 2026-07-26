@@ -487,6 +487,43 @@ class TestClassifySecretFields:
         result = classify_secret_fields(merged)
         assert set(result.keys()) == set(merged.keys())
 
+    def test_pre_computed_states_prevent_plaintext_legacy_misclassification(self):
+        """B21-01 bugfix: _decrypt_encrypt_fields()가 기록한 원본 상태 사용 —
+        평문 치환 후 재분류 시 PLAINTEXT_LEGACY 오분류 방지."""
+        # _decrypt_encrypt_fields() 호출 후: 암호문이 평문으로 치환됨
+        merged = {"kiwoom_app_key": "decrypted_plaintext"}
+        # _decrypt_encrypt_fields()가 원본 상태를 기록한 상태 시뮬레이션
+        merged["_secret_field_states"] = {"kiwoom_app_key": "ENCRYPTED"}
+        result = classify_secret_fields(merged)
+        assert result["kiwoom_app_key"] == "ENCRYPTED"
+
+    def test_decrypt_encrypt_fields_records_original_states(self):
+        """B21-01 bugfix: _decrypt_encrypt_fields()가 원본 상태를 _secret_field_states에 기록."""
+        with patch(
+            "backend.app.core.encryption.decrypt_secret",
+            return_value=DecryptResult(state=SecretValueState.ENCRYPTED, plaintext="secret123"),
+        ):
+            merged = {"kiwoom_app_key": "gAAAAencryptedcipher"}
+            _decrypt_encrypt_fields(merged)
+            assert merged["kiwoom_app_key"] == "secret123"
+            assert merged["_secret_field_states"]["kiwoom_app_key"] == "ENCRYPTED"
+
+    def test_decrypt_encrypt_fields_records_plaintext_legacy_state(self):
+        """B21-01 bugfix: PLAINTEXT_LEGACY 값도 _secret_field_states에 기록."""
+        with patch("backend.app.core.settings_file.logger"):
+            merged = {"kiwoom_app_key": "plaintext_legacy_key"}
+            _decrypt_encrypt_fields(merged)
+            assert merged["kiwoom_app_key"] == "plaintext_legacy_key"
+            assert merged["_secret_field_states"]["kiwoom_app_key"] == "PLAINTEXT_LEGACY"
+
+    def test_decrypt_encrypt_fields_records_empty_state(self):
+        """B21-01 bugfix: 빈 값도 _secret_field_states에 EMPTY로 기록."""
+        with patch("backend.app.core.settings_file.logger") as mock_logger:
+            merged = {"kiwoom_app_key": ""}
+            _decrypt_encrypt_fields(merged)
+            assert merged["_secret_field_states"]["kiwoom_app_key"] == "EMPTY"
+            mock_logger.warning.assert_not_called()
+
     def test_encrypt_field_or_raise_blocks_key_unavailable(self):
         """B21-01 세션3: KEY_UNAVAILABLE 상태 → EncryptionError(ENCRYPTION_KEY_MISSING) (평문 저장 차단 — P20/보안)."""
         with patch(

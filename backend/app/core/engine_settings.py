@@ -55,22 +55,40 @@ def _pick_broker_credentials(merged: dict) -> dict:
 
     _credential_states (B21-01 세션 4): 각 증권사의 app_key/app_secret 복호화 상태를
     SecretValueState.name 문자열로 수집. 세션 5의 broker_router.validate()가
-    연결·주문 차단 판정에 활용 (설계 8.2/8.3)."""
+    연결·주문 차단 판정에 활용 (설계 8.2/8.3).
+
+    B21-01 bugfix: _decrypt_encrypt_fields()가 평문 치환 후 기록한 원본 상태
+    (_secret_field_states)가 있으면 이를 사용 — 이미 복호화된 평문을
+    _decrypt_field() 재호출 시 PLAINTEXT_LEGACY로 오분류하는 문제 해결.
+    원본 상태가 없으면 (테스트/직접 호출) 기존 _decrypt_field() 경로 사용."""
     result: dict = {}
     credential_states: dict[str, dict[str, str]] = {}
     broker_names = {k.split("_")[0] for k in merged if k.endswith("_app_key")}
     current_broker = str(merged["broker"]).strip().lower()
     if current_broker:
         broker_names.add(current_broker)
+    pre_computed = merged.get("_secret_field_states")
     for b_name in broker_names:
-        key_val, key_state = _decrypt_field(merged.get(f"{b_name}_app_key"))
-        sec_val, sec_state = _decrypt_field(merged.get(f"{b_name}_app_secret"))
+        if pre_computed is not None:
+            key_state_name = pre_computed.get(f"{b_name}_app_key", "EMPTY")
+            sec_state_name = pre_computed.get(f"{b_name}_app_secret", "EMPTY")
+            key_val = str(merged.get(f"{b_name}_app_key") or "")
+            sec_val = str(merged.get(f"{b_name}_app_secret") or "")
+            if key_state_name in ("KEY_UNAVAILABLE", "DECRYPT_FAILED"):
+                key_val = ""
+            if sec_state_name in ("KEY_UNAVAILABLE", "DECRYPT_FAILED"):
+                sec_val = ""
+        else:
+            key_val, key_state = _decrypt_field(merged.get(f"{b_name}_app_key"))
+            sec_val, sec_state = _decrypt_field(merged.get(f"{b_name}_app_secret"))
+            key_state_name = key_state.name
+            sec_state_name = sec_state.name
         result[f"{b_name}_app_key"] = key_val
         result[f"{b_name}_app_secret"] = sec_val
         result[f"{b_name}_account_no"] = str(merged.get(f"{b_name}_account_no") or "").strip()
         credential_states[b_name] = {
-            "app_key": key_state.name,
-            "app_secret": sec_state.name,
+            "app_key": key_state_name,
+            "app_secret": sec_state_name,
         }
     result["_credential_states"] = credential_states
     return result

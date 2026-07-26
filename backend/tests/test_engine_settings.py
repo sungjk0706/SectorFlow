@@ -278,6 +278,25 @@ class TestBuildEngineSettingsDictOverride:
         assert result["_credential_states"]["kiwoom"]["app_key"] == "EMPTY"
         assert result["_credential_states"]["kiwoom"]["app_secret"] == "EMPTY"
 
+    def test_encrypted_field_with_pre_computed_states(self):
+        """B21-01 bugfix: _secret_field_states가 있으면 _decrypt_field 재호출 없이 상태 사용 —
+        평문 치환된 값을 PLAINTEXT_LEGACY로 오분류하지 않음."""
+        merged = {
+            "broker": "kiwoom",
+            "trade_mode": "test",
+            "kiwoom_app_key": "decrypted_plaintext",
+            "kiwoom_app_secret": "decrypted_secret",
+            "_secret_field_states": {
+                "kiwoom_app_key": "ENCRYPTED",
+                "kiwoom_app_secret": "ENCRYPTED",
+            },
+        }
+        result = build_engine_settings_dict(merged)
+        assert result["kiwoom_app_key"] == "decrypted_plaintext"
+        assert result["kiwoom_app_secret"] == "decrypted_secret"
+        assert result["_credential_states"]["kiwoom"]["app_key"] == "ENCRYPTED"
+        assert result["_credential_states"]["kiwoom"]["app_secret"] == "ENCRYPTED"
+
     def test_non_kiwoom_broker_credentials(self):
         """kiwoom 외 증권사 자격증명 동적 수집."""
         result = build_engine_settings_dict({

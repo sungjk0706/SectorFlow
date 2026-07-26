@@ -342,4 +342,5 @@ async def build_masked_settings_dict(username: str = "admin", profile: str | Non
     masked["auto_trading_effective"] = auto_trading_effective(masked)
     masked["encryption_key_state"] = get_key_state().name
     masked["secret_field_states"] = secret_field_states
+    masked.pop("_secret_field_states", None)
     return masked
