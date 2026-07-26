@@ -1,5 +1,5 @@
 // frontend/src/pages/stock-classification-master.ts
-// 업종관리 페이지 — tripleLeft(Sector_Table + 검색) 분할 (F-04 분할 4단계)
+// 종목분류 페이지 — tripleLeft(Sector_Table + 검색) 분할 (F-04 분할 4단계)
 // P10 SSOT/P16 살아있는 경로/P24 단순성 — state 첫 인자 전달 패턴
 
 import { shell } from '../main'
@@ -68,7 +68,7 @@ function resolveToken(state: StockClassificationPageState, token: string): strin
   return null
 }
 
-/* ── 업종 관리 테이블 (Sector_Table) ── */
+/* ── 종목분류 테이블 (Sector_Table) ── */
 
 function buildSectorManageTitle(state: StockClassificationPageState): HTMLElement {
   const titleContainer = document.createElement('div')
@@ -76,7 +76,7 @@ function buildSectorManageTitle(state: StockClassificationPageState): HTMLElemen
     display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%',
   })
   const titleText = document.createElement('span')
-  titleText.textContent = '업종 관리'
+  titleText.textContent = '종목 분류'
   state.statsLabelRef = document.createElement('span')
   Object.assign(state.statsLabelRef.style, { fontSize: FONT_SIZE.small, color: COLOR.tertiary, fontWeight: FONT_WEIGHT.normal })
 

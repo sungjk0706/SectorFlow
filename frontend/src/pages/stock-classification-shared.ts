@@ -1,5 +1,5 @@
 // frontend/src/pages/stock-classification-shared.ts
-// 업종관리 페이지 공통 모듈 — stock-classification.ts에서 이관 (F-04 분할, P24 단순성)
+// 종목분류 페이지 공통 모듈 — stock-classification.ts에서 이관 (F-04 분할, P24 단순성)
 // 순수 이동, 동작 변경 없음. state 의존 없는 타입/유틸만 포함.
 
 import { toastResult } from '../components/common/toast'

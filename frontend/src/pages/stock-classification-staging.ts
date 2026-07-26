@@ -1,5 +1,5 @@
 // frontend/src/pages/stock-classification-staging.ts
-// 업종관리 페이지 — Staging_Panel + 업종별 종목 집계 함수 (F-04 분할 2단계, P24 단순성)
+// 종목분류 페이지 — Staging_Panel + 업종별 종목 집계 함수 (F-04 분할 2단계, P24 단순성)
 // stock-classification.ts에서 이관. 순수 이동, 동작 변경 없음.
 //
 // 포함:

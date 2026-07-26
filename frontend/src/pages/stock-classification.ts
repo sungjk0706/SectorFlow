@@ -1,5 +1,5 @@
 // frontend/src/pages/stock-classification.ts
-// 업종관리 페이지 — 3컬럼(triple) 레이아웃 전면 재작성
+// 종목분류 페이지 — 3컬럼(triple) 레이아웃 전면 재작성
 
 import { shell } from '../main'
 import { stockClassificationStore, computeEditWindowOpenByTime, type StockClassificationState } from '../stores/stockClassificationStore'

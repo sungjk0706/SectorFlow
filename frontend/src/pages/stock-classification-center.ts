@@ -1,5 +1,5 @@
 // frontend/src/pages/stock-classification-center.ts
-// 업종관리 페이지 — tripleCenter(Stock_List_Panel + Detail_Table) 분할 (F-04 분할 5단계)
+// 종목분류 페이지 — tripleCenter(Stock_List_Panel + Detail_Table) 분할 (F-04 분할 5단계)
 // P10 SSOT/P16 살아있는 경로/P24 단순성 — state 첫 인자 전달 패턴
 
 import { shell } from '../main'

@@ -1,5 +1,5 @@
 // frontend/src/pages/stock-classification-header.ts
-// 업종관리 페이지 — tripleHeader + Indicator_Bar + 다운로드 트리거 (F-04 분할 3단계, P24 단순성)
+// 종목분류 페이지 — tripleHeader + Indicator_Bar + 다운로드 트리거 (F-04 분할 3단계, P24 단순성)
 // stock-classification.ts에서 이관. 순수 이동, 동작 변경 없음.
 //
 // 포함:

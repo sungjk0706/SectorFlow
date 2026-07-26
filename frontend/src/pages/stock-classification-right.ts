@@ -1,5 +1,5 @@
 // frontend/src/pages/stock-classification-right.ts
-// 업종관리 페이지 — tripleRight(Target_Sector_List + onMoveStock) 분할 (F-04 분할 6단계)
+// 종목분류 페이지 — tripleRight(Target_Sector_List + onMoveStock) 분할 (F-04 분할 6단계)
 // P10 SSOT/P16 살아있는 경로/P24 단순성 — state 첫 인자 전달 패턴
 
 import { shell } from '../main'
