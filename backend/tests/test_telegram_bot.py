@@ -19,6 +19,7 @@ from backend.app.services.telegram_bot import (
     _mask_telegram_url,
     _normalize_chat_id,
 )
+from backend.app.core.encryption import SecretValueState, DecryptResult
 from backend.tests._mock_helpers import swallow_coro_returning
 
 
@@ -242,24 +243,26 @@ class TestFetchEnabledSettings:
     def test_plain_test_token(self):
         bot = TelegramBot()
         with patch("backend.app.services.engine_state.state") as mock_state, \
-             patch("backend.app.core.encryption.decrypt_value") as mock_decrypt:
+             patch("backend.app.core.encryption.decrypt_secret") as mock_decrypt:
             mock_state.integrated_system_settings_cache = {
                 "tele_on": True,
                 "telegram_chat_id": "12345",
                 "telegram_bot_token_test": "plain_test_token",
             }
-            mock_decrypt.return_value = ""
             result = bot._fetch_enabled_settings()
         assert len(result) == 1
         assert result[0]["telegram_bot_token"] == "plain_test_token"
         assert result[0]["telegram_chat_id"] == "12345"
         assert result[0]["telegram_on"] is True
         assert result[0]["_profile"] == "root"
+        # 평문 토큰은 decrypt_secret을 호출하지 않음 (PLAINTEXT_LEGACY 호환).
+        mock_decrypt.assert_not_called()
 
     def test_encrypted_token_decrypted(self):
         bot = TelegramBot()
         with patch("backend.app.services.engine_state.state") as mock_state, \
-             patch("backend.app.core.encryption.decrypt_value", return_value="decrypted_token") as mock_decrypt:
+             patch("backend.app.core.encryption.decrypt_secret",
+                   return_value=DecryptResult(state=SecretValueState.ENCRYPTED, plaintext="decrypted_token")) as mock_decrypt:
             mock_state.integrated_system_settings_cache = {
                 "tele_on": True,
                 "telegram_chat_id": "999",
@@ -270,10 +273,44 @@ class TestFetchEnabledSettings:
         assert result[0]["telegram_bot_token"] == "decrypted_token"
         mock_decrypt.assert_called_once_with("gAAAAencrypteddata")
 
+    def test_encrypted_token_key_unavailable_skipped(self):
+        """gAAAA 토큰 + KEY_UNAVAILABLE → 스킵 + 경고 로그 (P20 폴백 제거, 폴링 차단)."""
+        bot = TelegramBot()
+        with patch("backend.app.services.engine_state.state") as mock_state, \
+             patch("backend.app.core.encryption.decrypt_secret",
+                   return_value=DecryptResult(state=SecretValueState.KEY_UNAVAILABLE)), \
+             patch("backend.app.services.telegram_bot.logger") as mock_logger:
+            mock_state.integrated_system_settings_cache = {
+                "tele_on": True,
+                "telegram_chat_id": "999",
+                "telegram_bot_token_test": "gAAAAencrypteddata",
+            }
+            result = bot._fetch_enabled_settings()
+        assert result == []
+        mock_logger.warning.assert_called_once()
+        assert "암호화 키 없음/오류" in mock_logger.warning.call_args[0][0]
+
+    def test_encrypted_token_decrypt_failed_skipped(self):
+        """gAAAA 토큰 + DECRYPT_FAILED → 스킵 + 경고 로그."""
+        bot = TelegramBot()
+        with patch("backend.app.services.engine_state.state") as mock_state, \
+             patch("backend.app.core.encryption.decrypt_secret",
+                   return_value=DecryptResult(state=SecretValueState.DECRYPT_FAILED)), \
+             patch("backend.app.services.telegram_bot.logger") as mock_logger:
+            mock_state.integrated_system_settings_cache = {
+                "tele_on": True,
+                "telegram_chat_id": "999",
+                "telegram_bot_token_test": "gAAAAencrypteddata",
+            }
+            result = bot._fetch_enabled_settings()
+        assert result == []
+        mock_logger.warning.assert_called_once()
+        assert "암호문 손상" in mock_logger.warning.call_args[0][0]
+
     def test_both_test_and_real_tokens(self):
         bot = TelegramBot()
         with patch("backend.app.services.engine_state.state") as mock_state, \
-             patch("backend.app.core.encryption.decrypt_value", return_value=""):
+             patch("backend.app.core.encryption.decrypt_secret"):
             mock_state.integrated_system_settings_cache = {
                 "tele_on": True,
                 "telegram_chat_id": "555",
@@ -289,7 +326,7 @@ class TestFetchEnabledSettings:
     def test_duplicate_tokens_deduplicated(self):
         bot = TelegramBot()
         with patch("backend.app.services.engine_state.state") as mock_state, \
-             patch("backend.app.core.encryption.decrypt_value", return_value=""):
+             patch("backend.app.core.encryption.decrypt_secret"):
             mock_state.integrated_system_settings_cache = {
                 "tele_on": True,
                 "telegram_chat_id": "555",
@@ -303,7 +340,7 @@ class TestFetchEnabledSettings:
     def test_empty_token_skipped(self):
         bot = TelegramBot()
         with patch("backend.app.services.engine_state.state") as mock_state, \
-             patch("backend.app.core.encryption.decrypt_value", return_value=""):
+             patch("backend.app.core.encryption.decrypt_secret"):
             mock_state.integrated_system_settings_cache = {
                 "tele_on": True,
                 "telegram_chat_id": "555",
@@ -317,7 +354,7 @@ class TestFetchEnabledSettings:
     def test_whitespace_token_stripped(self):
         bot = TelegramBot()
         with patch("backend.app.services.engine_state.state") as mock_state, \
-             patch("backend.app.core.encryption.decrypt_value", return_value=""):
+             patch("backend.app.core.encryption.decrypt_secret"):
             mock_state.integrated_system_settings_cache = {
                 "tele_on": True,
                 "telegram_chat_id": "555",
@@ -330,7 +367,7 @@ class TestFetchEnabledSettings:
     def test_chat_id_normalized(self):
         bot = TelegramBot()
         with patch("backend.app.services.engine_state.state") as mock_state, \
-             patch("backend.app.core.encryption.decrypt_value", return_value=""):
+             patch("backend.app.core.encryption.decrypt_secret"):
             mock_state.integrated_system_settings_cache = {
                 "tele_on": True,
                 "telegram_chat_id": "  007788  ",

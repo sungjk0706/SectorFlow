@@ -14,42 +14,65 @@ P16 (살아있는 경로): flat의 None 값은 진입점에서 제거 (근본 �
 """
 import logging
 from backend.app.core.settings_file import load_integrated_system_settings
-from backend.app.core.encryption import decrypt_value
+from backend.app.core.encryption import decrypt_secret, SecretValueState
 from backend.app.core.trade_mode import effective_trade_mode
 from backend.app.core.settings_defaults import DEFAULT_USER_SETTINGS
 
 logger = logging.getLogger(__name__)
 
 
-def _dec(v) -> str:
-    """암호문(gAAAA) 복호화, 실패 시 경고 로그 + 빈문자열 반환."""
+def _decrypt_field(v) -> tuple[str, SecretValueState]:
+    """암호문(gAAAA) 복호화 — 상태 기반 처리 (B21-01 세션 4, P20 폴백 제거).
+
+    반환: (평문값, 상태).
+    - 빈 값 → ("", EMPTY)
+    - gAAAA 접두 아님 → (원문, PLAINTEXT_LEGACY)  # 레거시 평문 호환 (재저장 시 암호화)
+    - gAAAA 접두 + 복호화 성공 → (평문, ENCRYPTED)
+    - gAAAA 접두 + KEY_UNAVAILABLE/DECRYPT_FAILED → ("", 상태) + 상태별 경고 로그 (P21)
+      엔진 기동 차단 아님 (P25) — 빈값 유지, 연결·주문 차단은 세션 5에서.
+    """
     if not v:
-        return ""
+        return "", SecretValueState.EMPTY
     s = str(v)
-    if s.startswith("gAAAA"):
-        _plain = decrypt_value(s)
-        if _plain is None:
-            # 복호화 실패 — 빈문자열 폴백하되 실패 사실을 로그에 명시 (P21 사용자 투명성)
-            logger.warning("[설정] 복호화 실패 — 빈문자열로 폴백. cipher 앞 10자: %s...", s[:10])
-            return ""
-        return _plain
-    return s
+    if not s.startswith("gAAAA"):
+        return s, SecretValueState.PLAINTEXT_LEGACY
+    result = decrypt_secret(s)
+    if result.state is SecretValueState.ENCRYPTED and result.plaintext is not None:
+        return result.plaintext, SecretValueState.ENCRYPTED
+    # 복호화 불가 — 빈값 유지 + 상태별 경고 로그 (P21 사용자 투명성, P25 기동 차단 없음).
+    if result.state is SecretValueState.KEY_UNAVAILABLE:
+        logger.warning("[설정] 복호화 불가 — 암호화 키 없음/오류. cipher 앞 10자: %s...", s[:10])
+    elif result.state is SecretValueState.DECRYPT_FAILED:
+        logger.warning("[설정] 복호화 실패 — 암호문 손상 또는 다른 키로 암호화됨. cipher 앞 10자: %s...", s[:10])
+    return "", result.state
 
 
 def _pick_broker_credentials(merged: dict) -> dict:
     """동적으로 발견된 모든 증권사의 자격증명을 수집 (복호화 + 타입 정규화).
     kiwoom 특수 분기 없이 모든 증권사를 균일하게 처리 (P4 준수).
     현재 선택된 증권사(broker)는 자격증명 키가 없어도 빈 값으로 포함 —
-    connector가 키 존재 여부에 관계없이 현재 증권사 자격을 참조할 수 있도록 보장."""
+    connector가 키 존재 여부에 관계없이 현재 증권사 자격을 참조할 수 있도록 보장.
+
+    _credential_states (B21-01 세션 4): 각 증권사의 app_key/app_secret 복호화 상태를
+    SecretValueState.name 문자열로 수집. 세션 5의 broker_router.validate()가
+    연결·주문 차단 판정에 활용 (설계 8.2/8.3)."""
     result: dict = {}
+    credential_states: dict[str, dict[str, str]] = {}
     broker_names = {k.split("_")[0] for k in merged if k.endswith("_app_key")}
     current_broker = str(merged["broker"]).strip().lower()
     if current_broker:
         broker_names.add(current_broker)
     for b_name in broker_names:
-        result[f"{b_name}_app_key"] = _dec(merged.get(f"{b_name}_app_key"))
-        result[f"{b_name}_app_secret"] = _dec(merged.get(f"{b_name}_app_secret"))
+        key_val, key_state = _decrypt_field(merged.get(f"{b_name}_app_key"))
+        sec_val, sec_state = _decrypt_field(merged.get(f"{b_name}_app_secret"))
+        result[f"{b_name}_app_key"] = key_val
+        result[f"{b_name}_app_secret"] = sec_val
         result[f"{b_name}_account_no"] = str(merged.get(f"{b_name}_account_no") or "").strip()
+        credential_states[b_name] = {
+            "app_key": key_state.name,
+            "app_secret": sec_state.name,
+        }
+    result["_credential_states"] = credential_states
     return result
 
 
@@ -73,8 +96,8 @@ def _build_telegram_settings(merged: dict) -> dict:
     return {
         "tele_on": bool(merged["tele_on"]),
         "telegram_on": bool(merged["tele_on"]),
-        "telegram_bot_token_test": _dec(merged["telegram_bot_token_test"]),
-        "telegram_bot_token_real": _dec(merged["telegram_bot_token_real"]),
+        "telegram_bot_token_test": _decrypt_field(merged["telegram_bot_token_test"])[0],
+        "telegram_bot_token_real": _decrypt_field(merged["telegram_bot_token_real"])[0],
         "telegram_chat_id": merged["telegram_chat_id"],
     }
 

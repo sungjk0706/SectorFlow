@@ -4,6 +4,7 @@ from __future__ import annotations
 import pytest
 from unittest.mock import patch, AsyncMock
 
+from backend.app.core.encryption import SecretValueState, DecryptResult
 from backend.app.core.engine_settings import (
     get_engine_settings,
     build_engine_settings_dict,
@@ -207,20 +208,55 @@ class TestBuildEngineSettingsDictOverride:
         assert result["kiwoom_account_no"] == "87654321"
 
     def test_encrypted_field_decrypted(self):
-        """gAAAA로 시작하는 값은 decrypt_value 호출."""
-        with patch("backend.app.core.engine_settings.decrypt_value", return_value="decrypted_val"):
+        """gAAAA로 시작하는 값은 decrypt_secret 호출 — ENCRYPTED 시 평문 반환."""
+        with patch("backend.app.core.engine_settings.decrypt_secret",
+                   return_value=DecryptResult(state=SecretValueState.ENCRYPTED, plaintext="decrypted_val")):
             result = build_engine_settings_dict({
                 "kiwoom_app_key": "gAAAAAencrypted",
             })
             assert result["kiwoom_app_key"] == "decrypted_val"
+            assert result["_credential_states"]["kiwoom"]["app_key"] == "ENCRYPTED"
 
-    def test_encrypted_field_decrypt_returns_none(self):
-        """decrypt_value가 None 반환하면 빈 문자열."""
-        with patch("backend.app.core.engine_settings.decrypt_value", return_value=None):
-            result = build_engine_settings_dict({
-                "kiwoom_app_key": "gAAAAAencrypted",
-            })
-            assert result["kiwoom_app_key"] == ""
+    def test_encrypted_field_decrypt_key_unavailable(self):
+        """decrypt_secret KEY_UNAVAILABLE → 빈값 + 상태 기록 (P20 폴백 제거, P25 기동 차단 없음)."""
+        with patch("backend.app.core.engine_settings.decrypt_secret",
+                   return_value=DecryptResult(state=SecretValueState.KEY_UNAVAILABLE)):
+            with patch("backend.app.core.engine_settings.logger") as mock_logger:
+                result = build_engine_settings_dict({
+                    "kiwoom_app_key": "gAAAAAencrypted",
+                })
+                assert result["kiwoom_app_key"] == ""
+                assert result["_credential_states"]["kiwoom"]["app_key"] == "KEY_UNAVAILABLE"
+                mock_logger.warning.assert_called_once()
+                assert "암호화 키 없음/오류" in mock_logger.warning.call_args[0][0]
+
+    def test_encrypted_field_decrypt_failed(self):
+        """decrypt_secret DECRYPT_FAILED → 빈값 + 상태 기록."""
+        with patch("backend.app.core.engine_settings.decrypt_secret",
+                   return_value=DecryptResult(state=SecretValueState.DECRYPT_FAILED)):
+            with patch("backend.app.core.engine_settings.logger") as mock_logger:
+                result = build_engine_settings_dict({
+                    "kiwoom_app_key": "gAAAAAencrypted",
+                })
+                assert result["kiwoom_app_key"] == ""
+                assert result["_credential_states"]["kiwoom"]["app_key"] == "DECRYPT_FAILED"
+                mock_logger.warning.assert_called_once()
+                assert "암호문 손상" in mock_logger.warning.call_args[0][0]
+
+    def test_plaintext_legacy_field(self):
+        """gAAAA 접두 아닌 값은 PLAINTEXT_LEGACY — 평문 그대로 반환 (레거시 호환)."""
+        result = build_engine_settings_dict({
+            "kiwoom_app_key": "plain_key",
+        })
+        assert result["kiwoom_app_key"] == "plain_key"
+        assert result["_credential_states"]["kiwoom"]["app_key"] == "PLAINTEXT_LEGACY"
+
+    def test_empty_credential_field(self):
+        """빈 자격값은 EMPTY 상태."""
+        result = build_engine_settings_dict({})
+        assert result["kiwoom_app_key"] == ""
+        assert result["_credential_states"]["kiwoom"]["app_key"] == "EMPTY"
+        assert result["_credential_states"]["kiwoom"]["app_secret"] == "EMPTY"
 
     def test_non_kiwoom_broker_credentials(self):
         """kiwoom 외 증권사 자격증명 동적 수집."""
@@ -234,8 +270,9 @@ class TestBuildEngineSettingsDictOverride:
         assert result["testbroker_account_no"] == "11111111"
 
     def test_decrypt_failure_logs_warning(self):
-        """복호화 실패 시 logger.warning 호출 (P21 사용자 투명성)."""
-        with patch("backend.app.core.engine_settings.decrypt_value", return_value=None), \
+        """복호화 실패 시 logger.warning 호출 — DECRYPT_FAILED 상태 (P21 사용자 투명성)."""
+        with patch("backend.app.core.engine_settings.decrypt_secret",
+                   return_value=DecryptResult(state=SecretValueState.DECRYPT_FAILED)), \
              patch("backend.app.core.engine_settings.logger") as mock_logger:
             result = build_engine_settings_dict({
                 "kiwoom_app_key": "gAAAAAencrypted",

@@ -109,9 +109,15 @@ class TelegramBot:
                 await asyncio.sleep(2)
 
     def _fetch_enabled_settings(self) -> list[dict]:
-        """state.integrated_system_settings_cache에서 직접 조회 (원칙 13: 메모리 상주)."""
+        """state.integrated_system_settings_cache에서 직접 조회 (원칙 13: 메모리 상주).
+
+        B21-01 세션 4: decrypt_secret() 결과 기반으로 전환 (P20 폴백 제거).
+        - gAAAA 접두 + ENCRYPTED → 평문 토큰 사용
+        - gAAAA 접두 + KEY_UNAVAILABLE/DECRYPT_FAILED → 스킵 + 상태별 경고 로그 (폴링 차단)
+        - gAAAA 접두 아님 → 평문 토큰 그대로 사용 (PLAINTEXT_LEGACY 호환)
+        """
         from backend.app.services.engine_state import state
-        from backend.app.core.encryption import decrypt_value
+        from backend.app.core.encryption import decrypt_secret, SecretValueState
 
         flat = state.integrated_system_settings_cache
         if not flat.get("tele_on"):
@@ -124,10 +130,20 @@ class TelegramBot:
         seen_tokens: set[str] = set()
         for token_field in ("telegram_bot_token_test", "telegram_bot_token_real"):
             raw_token = flat.get(token_field) or ""
-            if str(raw_token).startswith("gAAAA"):
-                token = (decrypt_value(raw_token) or "").strip()
+            s = str(raw_token)
+            if s.startswith("gAAAA"):
+                result = decrypt_secret(s)
+                if result.state is SecretValueState.ENCRYPTED and result.plaintext is not None:
+                    token = result.plaintext.strip()
+                else:
+                    # 복호화 불가 — 스킵 + 상태별 경고 로그 (P21, 폴링 차단).
+                    if result.state is SecretValueState.KEY_UNAVAILABLE:
+                        logger.warning("[알림] 토큰 복호화 불가 — 암호화 키 없음/오류. 필드: %s", token_field)
+                    elif result.state is SecretValueState.DECRYPT_FAILED:
+                        logger.warning("[알림] 토큰 복호화 실패 — 암호문 손상 또는 다른 키. 필드: %s", token_field)
+                    continue
             else:
-                token = str(raw_token).strip()
+                token = s.strip()
             if not token or token in seen_tokens:
                 continue
             seen_tokens.add(token)
