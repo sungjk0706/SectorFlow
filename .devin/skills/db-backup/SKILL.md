@@ -45,6 +45,7 @@ cp "${LATEST}-wal.backup" "backend/data/stocks.db-wal" 2>/dev/null || true
 ```
 
 ### 5. 완료 보고
+> **사용자 보고 의무 (AGENTS.md 섹션3 규칙 0-8 준수)**: 모든 보고는 UI 기준 일반 용어 + P10~P25 부합 여부 명시. 위반 시 규칙 0-6 동일 강제성.
 - 백업 파일명
 - 파일 크기
 - 백업 시점
