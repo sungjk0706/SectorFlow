@@ -25,11 +25,6 @@ def get_settings_snapshot() -> dict:
     # state.integrated_system_settings_cache는 app.py에서 이미 초기화됨 (단일 소스 진리)
     d = dict(engine_state.state.integrated_system_settings_cache)
 
-    if "tele_on" not in d:
-        d["tele_on"] = bool(d.get("telegram_on", False))
-    if "telegram_on" not in d:
-        d["telegram_on"] = bool(d.get("tele_on", False))
-
     # 헤더 칩용: 백엔드 실제 유효 상태 (시간 범위 + 공휴일 + 마스터 스위치 반영)
     from backend.app.services.auto_trading_effective import (
         auto_buy_effective, auto_sell_effective, auto_trading_effective,

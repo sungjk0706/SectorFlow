@@ -56,7 +56,6 @@ DEFAULT_USER_SETTINGS: dict[str, Any] = {
     # 리스크 관리
     "max_daily_loss_limit": -500000,
     "max_single_stock_exposure": 20000000,
-    "max_position_size": 0,
 
     # 리스크 매니저 (일일 손실 한도, 손실률, 연속 손실)
     # risk_manager_on=False 기본 — 사용자가 명시적으로 ON 해야 활성화
@@ -149,23 +148,9 @@ DEFAULT_USER_SETTINGS: dict[str, Any] = {
  
  # 시스템 설정 기본값 (system_config)
 DEFAULT_SYSTEM_CONFIG: dict[str, Any] = {
-    # 마켓 시간 (증권사 공식값)
-    "krx_open_time": "09:00",
-    "krx_close_time": "15:30",
-    "krx_premarket_start": "08:00",
-    "krx_premarket_end": "09:00",
-    "krx_aftermarket_start": "15:40",
-    "krx_aftermarket_end": "16:00",
-    "krx_single_price_start": "16:00",
-    "krx_single_price_end": "18:00",
-    
-    "nxt_premarket_start": "08:00",
-    "nxt_premarket_end": "09:00",
-    "nxt_mainmarket_start": "08:50",
-    "nxt_mainmarket_end": "15:20",
-    "nxt_aftermarket_start": "15:30",
-    "nxt_aftermarket_end": "20:00",
-    
+    # 마켓 시간(krx_*/nxt_* 14키)은 daily_time_scheduler.py 코드 상수가 SSOT (ARCHITECTURE.md 명시).
+    # DB 중복 저장 제거 (COUPLING-S2 후속, P10 SSOT) — 런타임 참조 0건.
+
     # 시스템 동작 설정
     "db_connection_timeout": 30,
     "db_retry_count": 3,

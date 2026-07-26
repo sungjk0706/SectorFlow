@@ -150,7 +150,6 @@ class TelegramBot:
             rows.append({
                 "telegram_bot_token": token,
                 "telegram_chat_id":   _normalize_chat_id(chat_raw),
-                "telegram_on":        True,
                 "_profile":           "root",
             })
         return rows

@@ -869,7 +869,10 @@ RiskManager
 - `risk_block_buy_on`(기본 True): OFF 시 매수 확장 리스크 조건 스킵.
 - `risk_block_sell_on`(기본 False): ON 시 매도 확장 리스크 조건 실행. 손실 상태에서 매도 차단 시 손실 확대 위험 UI 문구 표시.
 
-**레거시 호환:** `max_daily_loss_limit`/`max_single_stock_exposure`/`max_position_size` 키는 기존 호환용으로 유지되며, 신규 `daily_loss_limit` 등과 별도 관리.
+**리스크 키 SSOT (COUPLING-S2 후속):**
+- `max_single_stock_exposure`: 현재 단일 종목 비중 한도 매수 차단 로직에 사용 중 (`risk_manager.py:146`). 레거시 아님 — 살아있는 경로 (P16).
+- `max_daily_loss_limit`: `daily_loss_limit`과 동일 기준(음수). `risk_manager.py`가 `daily_loss_limit`의 폴백 기본값 소스로만 사용. 다음 세션에서 safe-trade 절차와 함께 제거 예정.
+- `max_position_size`: 운영 참조 0건 — COUPLING-S2 후속에서 제거됨 (DEFAULT + DB 마이그레이션).
 
 **CircuitBreaker OPEN 시:** 마스터 스위치 강제 OFF + 프론트엔드 브로드캐스트
 **리스크 조건 차단 시:** `risk_block_status` WS 이벤트 브로드캐스트 → 프론트엔드 헤더 빨간 칩 표시(클릭 시 해제)

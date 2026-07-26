@@ -113,7 +113,6 @@ class TestBuildEngineSettingsDictDefaults:
     def test_telegram_fields_defaults(self):
         result = build_engine_settings_dict({})
         assert result["tele_on"] is False
-        assert result["telegram_on"] is False
         assert result["telegram_bot_token_test"] == ""
         assert result["telegram_bot_token_real"] == ""
 
@@ -198,23 +197,9 @@ class TestBuildEngineSettingsDictOverride:
         assert result["trailing_start_value"] == 10.0
         assert result["trailing_drop_value"] == -3.0
 
-    def test_max_position_size_none_ignored(self):
-        """flat의 None 값은 진입점에서 제거되어 DEFAULT_USER_SETTINGS 값 적용 (P10 SSOT, P16).
-
-        근본 원인 차단: None이 들어오면 DEFAULT가 단일 소스 진리로 작동.
-        _load_db_settings()가 프로덕션에서 None을 이미 치환하므로
-        이 정규화는 테스트/직접 호출 시 방어 역할 (dead code 아님)."""
-        result = build_engine_settings_dict({"max_position_size": None})
-        assert result["max_position_size"] == 0  # DEFAULT_USER_SETTINGS["max_position_size"]
-
-    def test_max_position_size_value(self):
-        result = build_engine_settings_dict({"max_position_size": "5000000"})
-        assert result["max_position_size"] == 5000000
-
     def test_telegram_on(self):
         result = build_engine_settings_dict({"tele_on": True})
         assert result["tele_on"] is True
-        assert result["telegram_on"] is True
 
     def test_kiwoom_credentials(self):
         result = build_engine_settings_dict({
@@ -339,21 +324,6 @@ class TestBuildEngineSettingsDictOverride:
         result = build_engine_settings_dict({"boost_order_ratio_pct": -150})
         assert result["boost_order_ratio_pct"] == -100
 
-    def test_boost_order_ratio_legacy_side_sell(self):
-        """레거시 boost_order_ratio_side=sell → 음수 변환."""
-        result = build_engine_settings_dict({
-            "boost_order_ratio_pct": 20,
-            "boost_order_ratio_side": "sell",
-        })
-        assert result["boost_order_ratio_pct"] == -20
-
-    def test_boost_order_ratio_legacy_side_buy(self):
-        result = build_engine_settings_dict({
-            "boost_order_ratio_pct": 20,
-            "boost_order_ratio_side": "buy",
-        })
-        assert result["boost_order_ratio_pct"] == 20
-
     def test_timetable_confirmed_download_default(self):
         result = build_engine_settings_dict({})
         assert result["timetable.confirmed_download"] == "20:40"
@@ -389,18 +359,6 @@ class TestBuildEngineSettingsDictOverride:
         result = build_engine_settings_dict({"sell_interval_on": True, "sell_interval_sec": 60})
         assert result["sell_interval_on"] is True
         assert result["sell_interval_sec"] == 60
-
-    def test_buy_interval_migration_min_to_sec(self):
-        result = build_engine_settings_dict({"buy_interval_min": 5})
-        assert result["buy_interval_sec"] == 300
-
-    def test_buy_interval_migration_zero(self):
-        result = build_engine_settings_dict({"buy_interval_min": 0})
-        assert result["buy_interval_sec"] == 0
-
-    def test_buy_interval_no_migration_when_sec_present(self):
-        result = build_engine_settings_dict({"buy_interval_sec": 120, "buy_interval_min": 5})
-        assert result["buy_interval_sec"] == 120
 
 
 # ── get_engine_settings (async) ─────────────────────────────────────

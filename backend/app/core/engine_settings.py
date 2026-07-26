@@ -170,10 +170,9 @@ def _build_operation_settings(merged: dict, tm: str) -> dict:
 
 
 def _build_telegram_settings(merged: dict) -> dict:
-    """텔레그램 알림 설정 (토큰은 복호화)."""
+    """텔레그램 알림 설정 (토큰은 복호화). tele_on 단일 키 (P10 SSOT)."""
     return {
         "tele_on": bool(merged["tele_on"]),
-        "telegram_on": bool(merged["tele_on"]),
         "telegram_bot_token_test": _decrypt_field(merged["telegram_bot_token_test"])[0],
         "telegram_bot_token_real": _decrypt_field(merged["telegram_bot_token_real"])[0],
         "telegram_chat_id": merged["telegram_chat_id"],
@@ -198,7 +197,6 @@ def _build_sell_settings(merged: dict) -> dict:
 def _build_risk_settings(merged: dict) -> dict:
     """리스크/리스크매니저 설정 — DEFAULT_USER_SETTINGS가 단일 소스 진리 (P10)."""
     return {
-        "max_position_size": int(merged["max_position_size"]),
         "max_daily_loss_limit": int(merged["max_daily_loss_limit"]),
         "max_single_stock_exposure": int(merged["max_single_stock_exposure"]),
         "risk_manager_on": bool(merged["risk_manager_on"]),
@@ -242,24 +240,17 @@ def _build_buy_settings(merged: dict, flat: dict) -> dict:
     }
 
 
-def _migrate_order_intervals(merged: dict, flat: dict) -> dict:
-    """주문 간격 — 매수: 분→초 마이그레이션 (flat의 레거시 buy_interval_min 처리).
+def _build_order_intervals(merged: dict) -> dict:
+    """주문 간격 — 매수/매도 (초 단위). DEFAULT_USER_SETTINGS가 단일 소스 진리 (P10).
 
-    flat 참조는 레거시 buy_interval_min → buy_interval_sec 변환 분기 전용.
-    나머지 값은 merged[key] 직접 접근 (P10 SSOT)."""
-    out = {
+    레거시 buy_interval_min(분 단위) 변환 분기는 COUPLING-S2 후속에서 제거 —
+    DB 마이그레이션이 buy_interval_min을 제거하므로 merged[key] 직접 접근."""
+    return {
         "buy_interval_on": bool(merged["buy_interval_on"]),
+        "buy_interval_sec": int(merged["buy_interval_sec"]),
         "sell_interval_on": bool(merged["sell_interval_on"]),
         "sell_interval_sec": int(merged["sell_interval_sec"]),
     }
-    if "buy_interval_sec" in flat:
-        out["buy_interval_sec"] = int(merged["buy_interval_sec"])
-    elif "buy_interval_min" in flat:
-        _legacy = merged.get("buy_interval_min")
-        out["buy_interval_sec"] = int(_legacy) * 60 if _legacy is not None and str(_legacy).strip() != "" else 30
-    else:
-        out["buy_interval_sec"] = int(merged["buy_interval_sec"])
-    return out
 
 
 def _build_sector_and_order_settings(merged: dict, flat: dict) -> dict:
@@ -289,18 +280,16 @@ def _build_sector_and_order_settings(merged: dict, flat: dict) -> dict:
         "sector_bonus_trade_amount_slider": int(merged["sector_bonus_trade_amount_slider"]),
         "rebuy_block_on": bool(merged["rebuy_block_on"]),
         "rebuy_block_period": str(merged["rebuy_block_period"]),
-        **_migrate_order_intervals(merged, flat),
+        **_build_order_intervals(merged),
     }
 
 
 def _build_boost_settings(merged: dict) -> dict:
-    """매수 가산점 설정 — DEFAULT_USER_SETTINGS가 단일 소스 진리 (P10)."""
-    _legacy_side = merged.get("boost_order_ratio_side")
+    """매수 가산점 설정 — DEFAULT_USER_SETTINGS가 단일 소스 진리 (P10).
+
+    레거시 boost_order_ratio_side 변환 분기는 COUPLING-S2 후속에서 제거 —
+    DB 마이그레이션이 boost_order_ratio_side를 제거하므로 부호는 pct 값 자체에 인코딩."""
     _raw_pct = int(merged["boost_order_ratio_pct"])
-    if _legacy_side is not None:
-        _side = str(_legacy_side).strip().lower()
-        _abs = abs(_raw_pct)
-        _raw_pct = -_abs if _side == "sell" else _abs
     return {
         "boost_high_breakout_on": bool(merged["boost_high_breakout_on"]),
         "boost_high_breakout_score": max(float(merged["boost_high_breakout_score"]), 0),

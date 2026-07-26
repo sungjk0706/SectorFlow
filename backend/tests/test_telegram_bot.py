@@ -253,7 +253,6 @@ class TestFetchEnabledSettings:
         assert len(result) == 1
         assert result[0]["telegram_bot_token"] == "plain_test_token"
         assert result[0]["telegram_chat_id"] == "12345"
-        assert result[0]["telegram_on"] is True
         assert result[0]["_profile"] == "root"
         # 평문 토큰은 decrypt_secret을 호출하지 않음 (PLAINTEXT_LEGACY 호환).
         mock_decrypt.assert_not_called()
