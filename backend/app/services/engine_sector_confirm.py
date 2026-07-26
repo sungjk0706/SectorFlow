@@ -175,8 +175,9 @@ async def _flush_sector_recompute_impl() -> None:
             bought_today_codes=_bought_today,
         )
 
-        # 참조 교체 방식으로 캐시 갱신 (R5.6)
-        engine_state.state.sector_summary_cache = ss
+        # 참조 교체 방식으로 캐시 갱신 (R5.6) — _set_sector_summary 단일 경로 (COUPLING-S1)
+        from backend.app.services.engine_snapshot import _set_sector_summary
+        _set_sector_summary(ss, "engine_sector_confirm.incremental_recompute")
 
         # 업종 점수 증분 전송 (내부에서 변경분만 비교)
         await notify_desktop_sector_scores()
@@ -239,8 +240,9 @@ async def _full_recompute(codes_snapshot: set[str] | None = None) -> None:
         bought_today_codes=_bought_today,
     )
 
-    # 참조 교체 방식으로 캐시 갱신 (R5.6)
-    engine_state.state.sector_summary_cache = ss
+    # 참조 교체 방식으로 캐시 갱신 (R5.6) — _set_sector_summary 단일 경로 (COUPLING-S1)
+    from backend.app.services.engine_snapshot import _set_sector_summary
+    _set_sector_summary(ss, "engine_sector_confirm.full_recompute")
 
     # 업종 점수 증분 전송 (내부에서 변경분만 비교)
     await notify_desktop_sector_scores()

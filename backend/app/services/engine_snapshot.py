@@ -8,7 +8,11 @@
 """
 import asyncio
 import logging
+from typing import TYPE_CHECKING
 from backend.app.services import engine_state
+
+if TYPE_CHECKING:
+    from backend.app.domain.models import SectorSummary
 
 logger = logging.getLogger(__name__)
 
@@ -177,7 +181,7 @@ async def _reset_realtime_fields() -> None:
             pos["ask_depth"] = None
 
     # 업종 점수 캐시 초기화 (실시간 데이터 재계산 유도)
-    engine_state.state.sector_summary_cache = None
+    _set_sector_summary(None, "engine_snapshot.reset_realtime_fields")
     # 캡슐화된 notify_cache.clear_all() 호출로 결합성 제거.
     # 본 시점은 엔진 전체 재초기화(장마감·개시 등)이며 다중 WS 연결 동시 초기화 정상.
     # clear_all은 _initialized=False로 리셋 → 다음 init_sent_caches가 정상 재설정.
@@ -229,3 +233,27 @@ def _mark_realtime_reset_done(date_str: str | None = None) -> None:
         from backend.app.services.daily_time_scheduler import _kst_now
         date_str = _kst_now().strftime("%Y%m%d")
     engine_state.state.last_realtime_reset_date = date_str
+
+
+def _set_sector_summary(summary: "SectorSummary | None", source: str) -> None:
+    """``sector_summary_cache`` 단일 쓰기 경로 (COUPLING-S1 후속 단일화 — C-01).
+
+    모든 ``sector_summary_cache`` 쓰기는 본 함수에서만 수행한다 (P10 SSOT).
+    ``None`` 할당(리셋)과 ``SectorSummary`` 할당(갱신) 모두 커버하며,
+    참조 교체 방식(R5.6)을 유지한다.
+
+    호출부 (운영 7곳):
+      - ``engine_lifecycle.reset_for_restart`` — 재기동 시 리셋
+      - ``daily_time_scheduler._on_pre_ws_subscribe`` — 07:58 사전 리셋
+      - ``daily_time_scheduler._on_ws_subscribe_start`` — 구독 구간 내 시작 리셋
+      - ``engine_snapshot._reset_realtime_fields`` — WS 구독 시작 시 리셋
+      - ``engine_sector_confirm._incremental_recompute`` — 증분 재계산 갱신
+      - ``engine_sector_confirm._full_recompute`` — 전체 재계산 갱신
+      - ``sector_data_provider.recompute_sector_summary`` — 사용자 요청 재계산 갱신
+
+    Args:
+        summary: 새 ``SectorSummary`` 객체. ``None``이면 캐시 리셋.
+        source: 갱신 출처 식별자 (P21 사용자 투명성 + 디버깅).
+    """
+    engine_state.state.sector_summary_cache = summary
+    logger.debug("[업종] sector_summary_cache 갱신 — source=%s", source)

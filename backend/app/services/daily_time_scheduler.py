@@ -845,7 +845,8 @@ async def _on_realtime_fields_reset() -> None:
         # delta 비교 캐시 초기화 → 다음 sector-scores 전송이 전체 스냅샷으로 나감
         from backend.app.services.engine_account_notify import notify_cache
         notify_cache.prev_scores = []
-        engine_state.state.sector_summary_cache = None
+        from backend.app.services.engine_snapshot import _set_sector_summary
+        _set_sector_summary(None, "daily_time_scheduler.pre_ws_subscribe_reset")
         # last_realtime_reset_date 쓰기는 _mark_realtime_reset_done() 단일 경로 (세션 11 P10 SSOT)
         _mark_realtime_reset_done(today_str)
         logger.info("[작업실행] 실시간 필드 초기화 + GC 비활성화 + 캐시 초기화 완료 (사전 — 07:58)")
@@ -1232,7 +1233,8 @@ async def _init_ws_subscribe_state() -> None:
         try:
             from backend.app.services.engine_account_notify import notify_cache
             notify_cache.prev_scores = []
-            engine_state.state.sector_summary_cache = None
+            from backend.app.services.engine_snapshot import _set_sector_summary
+            _set_sector_summary(None, "daily_time_scheduler.ws_subscribe_in_session_reset")
         except Exception as e:
             logger.warning("[시스템] 캐시 초기화 실패: %s", e, exc_info=True)
 

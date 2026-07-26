@@ -42,10 +42,10 @@
 | 패턴 | 속성 수 | 속성 목록 |
 |------|--------|-----------|
 | **단일 writer (소유권 명확)** | 36 | connector_manager, broker_spec, engine_user_id, ws_connection_status, quote_subscribed, account_rest_lock, account_snapshot, index_data_cache, market_phase, krx_circuit_breaker_active, news_boost_cache, news_keywords_cache, news_boost_score, news_boost_ttl_sec, last_reset_date, krx_remove_done, confirmed_done, auto_trade_timer_handles, midnight_timer_handle, timetable_timer_handle, last_ws_subscribe_start_date, last_krx_pre_subscribe_date, last_confirmed_download_date, last_jif_received_at, krx_countdown_override, nxt_countdown_override, engine_task, engine_loop_ref, realtime_latency_exceeded, data_ready_event, token_ready_event, bootstrap_event, engine_ready_event, server_ready_event, preboot_ready_event, confirmed_refresh_running_5d |
-| **helper 경유 단일화 완료** | 4 | last_realtime_reset_date, confirmed_refresh_running_confirmed, latest_filter_summary_meta, reg_ack_event |
+| **helper 경유 단일화 완료** | 5 | last_realtime_reset_date, confirmed_refresh_running_confirmed, latest_filter_summary_meta, reg_ack_event, sector_summary_cache(COUPLING-S1 후속) |
 | **헬퍼 단일 writer (lazy init)** | 3 | rest_api_thread_sem, reg_seq_lock, account_rest_lock(단일 writer에도 포함) |
 | **자연스러운 산재 (라이프사이클/이벤트 협업)** | 12 | running, degraded_mode, preboot_cache_loaded, position_build_failed, ws_reg_pipeline_done, sector_summary_ready_event, engine_stop_event, ws_window_changed_event, reg_ack_return_code, ws_account_subscribed, account_rest_bootstrapped, auto_trade |
-| **다중 writer (단일화 후보)** | 9 | login_ok, access_token, broker_tokens, broker_rest_totals, broker_rest_apis, positions, sector_summary_cache, master_stocks_cache(전체 재할당은 단일, 항목 쓰기 다중), sector_summary_ready_event(자연스러운 산재로 재분류됨) |
+| **다중 writer (단일화 후보)** | 8 | login_ok, access_token, broker_tokens, broker_rest_totals, broker_rest_apis, positions, master_stocks_cache(전체 재할당은 단일, 항목 쓰기 다중), sector_summary_ready_event(자연스러운 산재로 재분류됨) |
 | **거래 관련 산재 (변경 금지)** | 3 | integrated_system_settings_cache, _last_global_buy_ts, _last_global_sell_ts |
 | **상수 (쓰기 없음)** | 1 | REG_POST_ACK_GAP_SEC |
 | **Dead code (DC-S2 제거 완료)** | 0 | shutdown_requested, confirmed_refresh_running, MIN_CACHE_LIFETIME_SEC — 모두 제거됨 |
@@ -57,7 +57,7 @@
 | 순위 | 속성 | writer 수 | 비고 |
 |------|------|-----------|------|
 | 1 | `integrated_system_settings_cache` | 10+ | 거래 관련 산재 (세션 11 범위 외, 변경 금지 — 별도 승인 필요) |
-| 2 | `sector_summary_cache` | 7 | docstring "가장 분산도 높음" — 가장 우선적 단일화 후보 |
+| 2 | `sector_summary_cache` | 7 → 1 | ☑ 단일화 완료 (COUPLING-S1 후속) — `_set_sector_summary` 헬퍼 경유 |
 | 3 | `master_stocks_cache` (항목 쓰기) | 다중 | 전체 재할당은 engine_cache 단일, 항목 쓰기(_subscribed 등)는 구독 로직 산재 |
 | 4 | `login_ok` | 5 | 브로커별 로그인 이벤트 + 엔진 초기화 (자연스러운 산재 후보) |
 | 5 | `confirmed_done` | 5 (단일 파일 내) | daily_time_scheduler 단일 파일 내 5곳 — 단일화 대상 아님 |
@@ -239,12 +239,13 @@
 
 #### C1. `sector_summary_cache` (SectorSummary | None)
 - **초기값**: `None` (line 147)
-- **owner**: 다중 writer (7곳: engine_lifecycle, daily_time_scheduler ×2, engine_sector_confirm ×2, sector_data_provider, engine_snapshot) — **가장 분산도 높음, 단일화 1순위 후보**
-- **writers (운영)**: `engine_lifecycle.py:160`, `daily_time_scheduler.py:848, 1235`, `engine_sector_confirm.py:179, 243`, `sector_data_provider.py:282`, `engine_snapshot.py:180`
+- **owner**: `engine_snapshot._set_sector_summary()` 헬퍼 단일 경로 — **☑ 단일화 완료 (COUPLING-S1 후속)**
+- **writers (운영)**: 헬퍼 내부 1곳 — `engine_snapshot.py:254` (`engine_state.state.sector_summary_cache = summary`). 기존 7곳 직접 쓰기는 헬퍼 호출로 전환 완료.
+- **헬퍼 호출부 (7곳)**: `engine_lifecycle.py:161` (reset_for_restart), `daily_time_scheduler.py:849, 1237` (pre_ws_subscribe_reset / ws_subscribe_in_session_reset), `engine_sector_confirm.py:180, 245` (incremental_recompute / full_recompute), `sector_data_provider.py:283` (recompute_sector_summary), `engine_snapshot.py:180` (reset_realtime_fields)
 - **readers (운영)**: `web/routes/settings.py:163`, `web/routes/ws.py:126`, `buy_order_executor.py:89`, `engine_bootstrap.py:63`, `engine_sector_confirm.py:88, 215`, `sector_data_provider.py:107, 120, 219`
 - **readers (테스트)**: `test_engine_sector_confirm`, `test_buy_order_executor`, `test_web_routes.py:577` 다수
 - **생명주기**: 세션 시작 / 이벤트 기반 (설정 변경, 재계산, 장마감)
-- **비고**: docstring(세션 10) "sector_summary_cache: 7곳 — 가장 분산도 높음" 일치. 후속 세션에서 가장 우선적 단일화 대상. 헬퍼 `_set_sector_summary(summary, source)`로 수렴 검토.
+- **비고**: docstring(세션 10) "sector_summary_cache: 7곳 — 가장 분산도 높음" → COUPLING-S1 후속 세션에서 `_set_sector_summary(summary, source)` 헬퍼로 단일화 완료. `source` 인자로 갱신 출처 로깅 (P21 사용자 투명성). 회귀 테스트 `test_sector_summary_cache_single_owner`가 단일 소유자 계약 검증.
 
 #### C2. `master_stocks_cache` (dict[str, dict])
 - **초기값**: `{}` (line 152)
@@ -678,12 +679,13 @@
 
 후속 세션에서는 아래 1개 속성만 별도 승인 후 최소 범위로 읽기·쓰기 경계를 좁힌다.
 
-### 4.1 1순위 후보: `sector_summary_cache` (7곳 writer)
+### 4.1 1순위 후보: `sector_summary_cache` (7곳 writer) — ☑ 단일화 완료 (COUPLING-S1 후속)
 
 - **이유**: docstring이 "가장 분산도 높음"으로 명시. 거래 관련이 아니므로 safe-trade 제약 없음. 7곳 writer 중 6곳이 engine_* 모듈이므로 헬퍼 수렴 가능성 높음.
 - **단일화 방향**: `engine_snapshot._set_sector_summary(summary, source: str)` helper 신설. 기존 7곳 직접 쓰기를 helper 호출로 전환. `source` 인자로 갱신 출처 로깅(P21 사용자 투명성).
 - **위험도**: 중간. 7곳 writer 중 일부는 예외 경로(setup 중 오류 시 None 복원)이므로 helper가 예외 경로도 커버해야 함.
 - **검증**: `test_engine_sector_confirm`, `test_buy_order_executor`, `test_web_routes` + 백엔드 전체 테스트 + RuntimeWarning 기동.
+- **완료 결과**: 헬퍼 신설 + 7곳 호출 전환 + 회귀 테스트 `test_sector_summary_cache_single_owner` 전환. 백엔드 2760 passed (회귀 0건), RuntimeWarning 기동 정상 (168ms, Traceback 0건), 잔존 프로세스 0건.
 
 ### 4.2 2순위 후보 (참고용, 본 후속 세션에서는 다루지 않음)
 
@@ -711,7 +713,7 @@
 | 항목 | docstring 기록 | 실제 조사 결과 | 일치 여부 |
 |------|----------------|----------------|-----------|
 | `login_ok` 5곳 | kiwoom_connector, ls_connector ×2, engine_lifecycle, engine_loop, engine_ws_dispatch | 동일 (5곳: ls_connector ×2, kiwoom_connector, engine_lifecycle, engine_loop, engine_ws_dispatch — 총 7 write 라인이나 모듈은 5곳) | 일치 |
-| `sector_summary_cache` 7곳 | engine_lifecycle, daily_time_scheduler ×2, engine_sector_confirm ×2, sector_data_provider, engine_snapshot | 동일 | 일치 |
+| `sector_summary_cache` 7곳 | engine_lifecycle, daily_time_scheduler ×2, engine_sector_confirm ×2, sector_data_provider, engine_snapshot | 단일화 완료 — `_set_sector_summary` 헬퍼 1곳(세션 COUPLING-S1 후속) | 일치(과거 기준) → 단일화 완료 |
 | `confirmed_done` 5곳 | daily_time_scheduler 단일 파일 내 5곳 | 실제 6곳 (646, 657, 660, 727, 907, 1406) | 대체 일치 (1곳 추가) |
 | `positions` 3곳 | engine_account, engine_lifecycle, web/routes/settings | 실제 4곳 (engine_lifecycle, engine_account, kiwoom_account_parsing, web/routes/settings) | 불일치 — `kiwoom_account_parsing.py:126`이 빠져 있음. docstring 업데이트 권장. |
 | `broker_rest_totals` 3곳 | pipeline_compute_tick_handlers, engine_account, engine_lifecycle | 동일 | 일치 |
@@ -737,8 +739,8 @@
 
 - 66개 속성 중 약 40개가 단일 writer(또는 helper 경유 단일화)로 소유권이 명확.
 - 12개는 "자연스러운 산재"(init/오류/성공 라이프사이클 협업)로 단일화 대상 아님.
-- 9개는 다중 writer(단일화 후보). 그중 `sector_summary_cache`(7곳)가 가장 분산도 높음.
+- 9개는 다중 writer(단일화 후보). 그중 `sector_summary_cache`(7곳)는 COUPLING-S1 후속 세션에서 `_set_sector_summary` 헬퍼로 단일화 완료. 남은 후보 8개.
 - 3개는 거래 관련 산재로 본 세션 범위 외(별도 승인 필요).
 - 3개 dead code는 DC-S2에서 제거 완료.
 - docstring과의 대조에서 1건 불일치(`positions`의 `kiwoom_account_parsing` 누락).
-- 본 세션은 매트릭스 작성까지 완료. 후속 세션에서 `sector_summary_cache` 1개 속성만 별도 승인 후 단일화 진행 권장.
+- `sector_summary_cache` 단일화 완료. 후속은 2순위 후보(`positions` 3곳, `broker_rest_totals` 3곳, `access_token` 3곳) 별도 승인 시 진행 권장.

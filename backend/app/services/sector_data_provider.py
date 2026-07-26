@@ -279,7 +279,8 @@ async def recompute_sector_summary_now() -> None:
             held_codes=_held,
             bought_today_codes=_bought_today,
         )
-        engine_state.state.sector_summary_cache = _ss
+        from backend.app.services.engine_snapshot import _set_sector_summary
+        _set_sector_summary(_ss, "sector_data_provider.recompute_sector_summary")
         cancel_sector_recompute()
 
         # ── 5거래일 평균 최소 거래대금(N억원) 이상 종목 마킹 ──

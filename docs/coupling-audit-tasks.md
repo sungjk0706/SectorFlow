@@ -33,7 +33,7 @@
 
 | 세션 | 우선순위 | 대상 | 계획 상태 | 핵심 검증 |
 |---|---|---|---|---|
-| COUPLING-S1 | P0 | C-01 `engine_state` 상태 소유권 | ☑ | 69개 속성 owner/readers/writers 매트릭스 작성(`docs/coupling-engine-state-matrix.md`). 코드 수정 없음(조사·문서만). 후속 단일화 1순위: `sector_summary_cache` (7곳 writer). docstring 대조 1건 불일치(`positions`의 `kiwoom_account_parsing` 누락). |
+| COUPLING-S1 | P0 | C-01 `engine_state` 상태 소유권 | ☑ | 69개 속성 owner/readers/writers 매트릭스 작성(`docs/coupling-engine-state-matrix.md`). 후속 단일화 1순위 `sector_summary_cache`(7곳 writer) 단일화 완료 — `engine_snapshot._set_sector_summary(summary, source)` 헬퍼 신설, 7곳 직접 쓰기 → 헬퍼 호출 전환, 회귀 테스트 `test_sector_summary_cache_single_owner` 전환. 백엔드 2760 passed, RuntimeWarning 기동 정상(168ms), 잔존 프로세스 0건. docstring 대조 1건 불일치(`positions`의 `kiwoom_account_parsing` 누락)는 본 세션 범위 외. |
 | COUPLING-S2 | P0 | C-02 설정 키 영향 매트릭스 | ☑ | `docs/coupling-settings-impact-matrix.md` 작성 (525줄). DEFAULT_USER_SETTINGS 66키 + DEFAULT_SYSTEM_CONFIG 17키 + 동적 증권사 자격증명 + 파생 키 전체 파이프라인(DB→기본값→정규화→캐시→서비스→API/UI) 매트릭스화. 코드 수정 없음(조사·문서만). P10 SSOT 위반 후보 6건, P21 투명성 후보 1건, 검증 누락 키 다수, 단일화 우선순위 5건 식별. |
 | COUPLING-S3 | P1 | C-03 WebSocket 이벤트 계약 인덱스 | ☑ | `docs/coupling-ws-event-contract-index.md` 작성 (575줄). WS 36개 구독 이벤트 + 4개 dead subscription 전수 인덱스화. 3 채널(prices/settings/orders) 구조, 40개 이벤트 producer/consumer/payload/Store 액션/CustomEvent 배칭 매트릭스. 코드 수정 없음(조사·문서만). P16/P21 위반 4건(dead subscription), P23 위반 8건(네이밍 6 + payload 불일치 2), P10/P24 위반 3건(중복 경로), 단일화 우선순위 9건 식별. |
 | COUPLING-S4 | P0 | C-04 주문 호출 그래프 | ☑ | safe-trade 점검, 주문·리스크 테스트, RuntimeWarning 기동 |
@@ -49,13 +49,15 @@
 
 ### 세션 COUPLING-S1 — C-01 `engine_state` 상태 소유권 매트릭스
 
-**상태:** ☑ 완료 (매트릭스 문서 작성)
+**상태:** ☑ 완료 (매트릭스 문서 작성 + 후속 `sector_summary_cache` 단일화 완료)
 **대상 원칙:** P10 SSOT, P16 살아있는 경로, P23 일관성, P24 단순성, P25 격리된 실패
-**결과:** `docs/coupling-engine-state-matrix.md`에 69개 속성의 owner/readers/writers/생명주기 매트릭스 작성. 코드 수정 없음(조사·문서만).
-- 단일 writer 약 40개, 자연스러운 산재 13개, 단일화 후보 9개, 거래 관련 산재(변경 금지) 3개, dead code 후보 3개.
-- 단일화 1순위 후보: `sector_summary_cache` (7곳 writer, 거래 비관련, docstring "가장 분산도 높음").
-- docstring 대조 1건 불일치: `positions`의 `kiwoom_account_parsing.py:126` 누락 (세션 10 조사 시 누락).
-- 후속 세션에서 `sector_summary_cache` 1개만 별도 승인 후 단일화 진행 권장.
+**결과:** `docs/coupling-engine-state-matrix.md`에 69개 속성의 owner/readers/writers/생명주기 매트릭스 작성. 후속 단일화 1순위 `sector_summary_cache` 단일화 완료.
+- 단일 writer 약 40개, 자연스러운 산재 13개, 단일화 후보 9개(→ 8개, `sector_summary_cache` 단일화 완료), 거래 관련 산재(변경 금지) 3개, dead code 후보 3개.
+- 단일화 1순위 후보: `sector_summary_cache` (7곳 writer, 거래 비관련, docstring "가장 분산도 높음") — ☑ 완료.
+- 단일화 완료 내역: `engine_snapshot._set_sector_summary(summary, source)` 헬퍼 신설. 7곳 직접 쓰기 → 헬퍼 호출 전환 (engine_lifecycle, daily_time_scheduler ×2, engine_sector_confirm ×2, sector_data_provider, engine_snapshot 자기 호출). `source` 인자로 갱신 출처 로깅(P21). 회귀 테스트 `test_sector_summary_cache_single_owner`가 단일 소유자 계약 검증(기존 `test_sector_summary_cache_scatter` 전환).
+- 검증: 백엔드 2760 passed (회귀 0건), RuntimeWarning 기동 정상 (168ms, Traceback 0건), 잔존 프로세스 0건.
+- docstring 대조 1건 불일치: `positions`의 `kiwoom_account_parsing.py:126` 누락 (세션 10 조사 시 누락) — 본 세션 범위 외, 2순위 후보 진행 시 정리 권장.
+- 후속 2순위 후보: `positions` (3곳), `broker_rest_totals` (3곳), `access_token` (3곳) — 별도 승인 시 진행.
 
 #### 대상 코드
 

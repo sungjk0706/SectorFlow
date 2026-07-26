@@ -343,11 +343,12 @@ class TestAGroupOwnershipContract:
         )
 
 
-# ── 4. 갱신 분산 주의 속성 (향후 단일화 후보) ──────────────────────────────────
+# ── 4. 갱신 분산 주의 속성 (단일화 후보/완료 혼재) ──────────────────────────────
 class TestUpdateScatterInventory:
     """여러 파일에서 갱신되는 속성 명시적 인벤토리.
 
-    세션 10 조사 결과. 향후 단일화 시 회귀 감지용.
+    세션 10 조사 결과. sector_summary_cache는 COUPLING-S1 후속 단일화 완료.
+    나머지(login_ok, positions, broker_rest_totals)는 향후 단일화 후보.
     """
 
     @pytest.fixture(scope="class")
@@ -384,13 +385,16 @@ class TestUpdateScatterInventory:
             f"login_ok 갱신 위치 수: {len(locs)} (예상 5). 위치: {locs}"
         )
 
-    def test_sector_summary_cache_scatter(self, write_locations_by_attr):
-        """sector_summary_cache: 6~7곳에서 갱신 (가장 분산도 높음)."""
+    def test_sector_summary_cache_single_owner(self, write_locations_by_attr):
+        """sector_summary_cache: 단일 소유자(engine_snapshot)로 단일화 완료 (COUPLING-S1 후속).
+
+        기존 7곳 직접 쓰기를 ``engine_snapshot._set_sector_summary()`` 헬퍼 호출로 전환.
+        외부 모듈의 직접 쓰기가 추가되면 회귀 감지.
+        """
         locs = write_locations_by_attr.get("sector_summary_cache", set())
-        # engine_lifecycle, daily_time_scheduler, engine_sector_confirm,
-        # sector_data_provider, engine_snapshot
-        assert len(locs) >= 5, (
-            f"sector_summary_cache 갱신 위치 수: {len(locs)} (예상 ≥5). 위치: {locs}"
+        assert locs == {"backend/app/services/engine_snapshot.py"}, (
+            f"sector_summary_cache 단일 소유자 위반: {locs} "
+            f"(예상: engine_snapshot.py만 — _set_sector_summary 헬퍼 경유)"
         )
 
     def test_positions_scatter_3_locations(self, write_locations_by_attr):
