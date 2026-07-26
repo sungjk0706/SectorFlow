@@ -69,22 +69,37 @@ class EncryptionError(Exception):
 
 # ── Fernet 인스턴스 / 키 상태 ─────────────────────────────────────────────────
 
+def _build_fernet(key: str) -> Fernet:
+    """키 원문 → Fernet 인스턴스 생성 (키 파생·초기화 SSOT — D-01, P10).
+
+    이미 Fernet 키 형식(44자 + '=')이면 그대로 사용, 아니면 PBKDF2HMAC로 파생.
+    salt·iterations·key[:32] 규칙은 기존 암호문 호환성을 위해 변경하지 않는다
+    (salt 변경 시 기존 암호화 데이터 복호화 불가 → 재입력 필요).
+    파생·Fernet 초기화 실패 시 예외 발생 — 호출부가 None/INVALID로 차단한다.
+    키가 비어 있거나 32자 미만인 경우는 호출부에서 사전 차단한다.
+    """
+    if len(key) == 44 and key.endswith("="):
+        return Fernet(key.encode())
+    kdf = PBKDF2HMAC(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=b"sectorflow_salt",
+        iterations=100000,
+    )
+    derived = base64.urlsafe_b64encode(kdf.derive(key[:32].encode()))
+    return Fernet(derived)
+
+
 def _get_fernet() -> Fernet | None:
-    """ENCRYPTION_KEY에서 Fernet 인스턴스 생성 (키 없거나 오류 시 None)"""
+    """ENCRYPTION_KEY에서 Fernet 인스턴스 생성 (키 없거나 오류 시 None).
+
+    키 파생·Fernet 초기화는 _build_fernet() 공통 경로 사용 (D-01 — P10 SSOT).
+    """
     key = get_settings().ENCRYPTION_KEY
     if not key or len(key.strip()) < 32:
         return None
     try:
-        if len(key) == 44 and key.endswith("="):
-            return Fernet(key.encode())
-        kdf = PBKDF2HMAC(
-            algorithm=hashes.SHA256(),
-            length=32,
-            salt=b"sectorflow_salt",  #  하드코딩 -- salt 변경 시 기존 암호화 데이터 복호화 불가 → 재입력 필요
-            iterations=100000,
-        )
-        derived = base64.urlsafe_b64encode(kdf.derive(key[:32].encode()))
-        return Fernet(derived)
+        return _build_fernet(key)
     except Exception:
         return None
 
@@ -94,22 +109,13 @@ def get_key_state() -> KeyState:
 
     비어 있거나 32자 미만 → MISSING, 파생/Fernet 초기화 실패 → INVALID,
     정상 → AVAILABLE. 키 원문·예외는 노출하지 않는다.
+    키 파생·Fernet 초기화는 _build_fernet() 공통 경로 사용 (D-01 — P10 SSOT).
     """
     key = get_settings().ENCRYPTION_KEY
     if not key or len(key.strip()) < 32:
         return KeyState.MISSING
     try:
-        if len(key) == 44 and key.endswith("="):
-            Fernet(key.encode())
-            return KeyState.AVAILABLE
-        kdf = PBKDF2HMAC(
-            algorithm=hashes.SHA256(),
-            length=32,
-            salt=b"sectorflow_salt",
-            iterations=100000,
-        )
-        derived = base64.urlsafe_b64encode(kdf.derive(key[:32].encode()))
-        Fernet(derived)
+        _build_fernet(key)
         return KeyState.AVAILABLE
     except Exception:
         return KeyState.INVALID

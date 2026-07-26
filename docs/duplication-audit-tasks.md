@@ -30,7 +30,7 @@
 
 | 세션 | 우선순위 | 대상 | 계획 상태 | 핵심 검증 |
 |---|---|---|---|---|
-| DUP-S1 | 높음 | D-01 암호화 키 파생 | ☐ | 암호화 상태별 테스트, 백엔드 전체 테스트, RuntimeWarning 승격 기동 |
+| DUP-S1 | 높음 | D-01 암호화 키 파생 | ☑ | 암호화 상태별 테스트, 백엔드 전체 테스트, RuntimeWarning 승격 기동 |
 | DUP-S2 | 높음 | D-02 시간 기본값 | ☑ | 관련 프론트엔드 테스트, typecheck, build, 화면 대조 |
 | DUP-S3 | 중간 | D-03 HTTP Mock 헬퍼 | ☐ | 대상 테스트, 백엔드 전체 테스트 |
 | DUP-S4 | 중간 | D-04 금액 변환 표시 | ☐ | 관련 프론트엔드 테스트, typecheck, build, 화면 대조 |
@@ -43,8 +43,16 @@
 
 ### 세션 DUP-S1 — D-01 암호화 키 파생 경로 통합
 
-**상태:** ☐ 미시작
+**상태:** ☑ 완료 (2026-07-26)
 **대상 원칙:** P10 SSOT, P16 살아있는 경로, P20 오류 의미 보존, P24 단순성, P25 격리된 실패
+
+#### 완료 요약
+
+- `_build_fernet(key)` 내부 헬퍼 추가: 44자 Fernet 키 형식 분기 + PBKDF2HMAC 파생 + Fernet 생성을 단일 SSOT로 통합.
+- `_get_fernet()` / `get_key_state()` 리팩터: 두 함수 모두 `_build_fernet(key)` 공통 경로 호출. 빈/짧은 키 사전 차단은 그대로, 실패 시 None/INVALID 매핑은 그대로 유지 (P20 폴백 금지).
+- salt·iterations·key[:32] 규칙 변경 없음 → 기존 암호문 호환성 유지 (P22).
+- 함수 시그니처·인터페이스 유지 → 운영 소비자(`settings_store.py`/`settings_file.py`)·테스트 수정 불필요.
+- 검증: `test_encryption.py` 25 passed, 설정 관련 147 passed, 백엔드 전체 2812 passed (회귀 0건), RuntimeWarning 승격 기동 154ms 정상 (RuntimeWarning/Traceback/Error 0건, PLAINTEXT_LEGACY P21 안내만 정상), 잔존 프로세스 0건.
 
 #### 대상 코드
 
