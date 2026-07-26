@@ -15,10 +15,7 @@ import {
   scoreColor,
   createColumnWidthManager,
 } from './data-table'
-
-interface CellWithPrevContent extends HTMLElement {
-  _prevContent?: string
-}
+import type { CellWithPrevContent } from '../virtual-scroller'
 
 /* ── 고정 테이블 모드 ─────────────────────────────────── */
 

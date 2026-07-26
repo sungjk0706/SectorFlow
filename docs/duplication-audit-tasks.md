@@ -34,7 +34,7 @@
 | DUP-S2 | 높음 | D-02 시간 기본값 | ☑ | 관련 프론트엔드 테스트, typecheck, build, 화면 대조 |
 | DUP-S3 | 중간 | D-03 HTTP Mock 헬퍼 | ☑ | 대상 테스트, 백엔드 전체 테스트 |
 | DUP-S4 | 중간 | D-04 금액 변환 표시 | ☑ | 관련 프론트엔드 테스트, typecheck, build, 화면 대조 |
-| DUP-S5 | 낮음~중간 | D-05 `CellWithPrevContent` 타입 | ☐ | typecheck, build |
+| DUP-S5 | 낮음~중간 | D-05 `CellWithPrevContent` 타입 | ☑ | typecheck, build |
 | DUP-S6 | 낮음 | D-06 색상값 반복 | ☐ | typecheck, build, 화면 색상 대조 |
 
 ---
@@ -212,8 +212,18 @@
 
 ### 세션 DUP-S5 — D-05 `CellWithPrevContent` 타입 중복 검토
 
-**상태:** ☐ 미시작
-**대상 원칙:** P23 타입 일관성, P24 단순성, P16 실제 의존 방향
+**상태:** ☑ 완료 (2026-07-26)
+**대상 원칙:** P10 SSOT, P16 살아있는 경로·실제 의존 방향, P23 타입 일관성, P24 단순성
+
+#### 완료 요약
+
+- 두 파일에 동일하게 정의된 `interface CellWithPrevContent extends HTMLElement { _prevContent?: string }` (3줄) 통합 (P10 SSOT, P23 일관성).
+- 통합 방향: `components/virtual-scroller.ts`의 정의를 `export interface`로 승격 → `components/common/data-table-fixed.ts`에서 `import type { CellWithPrevContent } from '../virtual-scroller'`로 전환.
+- 의존성 방향 (P16): 기존 `common/data-table-virtual.ts → virtual-scroller.ts` 의존이 이미 성립하므로, `data-table-fixed.ts → virtual-scroller.ts` (타입 전용 import) 추가는 기존 방향과 일치. `virtual-scroller.ts`는 런타임 import 0건 상태 유지(독립성 유지), `import type` 사용으로 런타임 결합 변화 없음. 새 파일 생성 없음 (P24 단순성 — 3줄 타입용 파일 생성은 과잉 추상화 회피).
+- 사용처 (수정 후 재검색): `virtual-scroller.ts` 260줄 `acquireRow` pool 재사용 시 셀 초기화, `data-table-fixed.ts` 155줄 셀 렌더링 시 content 저장 — 두 사용처 모두 동일 타입 계약으로 정상 동작.
+- 백엔드·거래 실행 경로·DB·테스트 코드 영향 없음 (프론트엔드 타입 정의 2개 파일만).
+- 추가 발견 (DUP-S5 범위 밖 — 별도 이슈): `_prevContent`는 `frontend/src` 전체에서 write 2곳만 존재하고 read하는 곳이 없음. P16(살아있는 경로) 위반 가능성(dead code 후보)이나, 본 세션 범위(타입 중복 통합)를 벗어나므로 후속 dead-code 감사에서 별도 검토 대상으로 기록만 남김.
+- 검증: `cd frontend && npm run typecheck` 통과, `cd frontend && npm run build` 성공 (97 modules, 1.38s). 잔존 `interface CellWithPrevContent` 정의 grep 결과 `virtual-scroller.ts` 1곳만 남음 (SSOT 단일화 완료). `duplication-audit-tasks.md` DUP-S5 상태 ☑ 갱신. 커밋: 이 세션 완료 커밋. 푸시: 안 함.
 
 #### 대상 코드
 

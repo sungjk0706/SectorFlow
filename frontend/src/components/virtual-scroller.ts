@@ -12,7 +12,7 @@
 
 // ── 인터페이스 ──────────────────────────────────────────────
 
-interface CellWithPrevContent extends HTMLElement {
+export interface CellWithPrevContent extends HTMLElement {
   _prevContent?: string
 }
 
