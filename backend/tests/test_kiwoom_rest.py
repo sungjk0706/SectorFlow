@@ -21,31 +21,10 @@ from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from backend.app.core.constants import _KST
+from backend.tests.httpx_mock_helpers import mock_httpx_client, mock_httpx_response
 
 
 # ── 헬퍼 ───────────────────────────────────────────────────────────────────────
-
-def _mock_httpx_response(status_code=200, json_data=None, text="", headers=None):
-    """httpx.Response mock 생성."""
-    resp = MagicMock()
-    resp.status_code = status_code
-    resp.json.return_value = json_data or {}
-    resp.text = text or ("{}" if json_data else "")
-    resp.headers = headers or {}
-    return resp
-
-
-def _mock_httpx_client(post_side_effect=None, post_return=None, is_closed=False):
-    """httpx.AsyncClient mock 생성."""
-    client = AsyncMock()
-    client.is_closed = is_closed
-    if post_side_effect:
-        client.post = AsyncMock(side_effect=post_side_effect)
-    else:
-        client.post = AsyncMock(return_value=post_return)
-    client.aclose = AsyncMock()
-    return client
-
 
 def _make_kiwoom_rest(app_key="key", app_secret="secret", base_url="https://api.kiwoom.com"):
     """KiwoomRestAPI 인스턴스 생성."""
@@ -127,7 +106,7 @@ class TestKiwoomRestClient:
     async def test_get_client_creates_new(self):
         api = _make_kiwoom_rest()
         with patch("backend.app.core.kiwoom_rest.httpx.AsyncClient") as mock_cls:
-            mock_client = _mock_httpx_client()
+            mock_client = mock_httpx_client()
             mock_cls.return_value = mock_client
             client = await api._get_client()
             assert client is mock_client
@@ -135,7 +114,7 @@ class TestKiwoomRestClient:
 
     async def test_get_client_reuses_existing(self):
         api = _make_kiwoom_rest()
-        existing = _mock_httpx_client(is_closed=False)
+        existing = mock_httpx_client(is_closed=False)
         api._client = existing
         with patch("backend.app.core.kiwoom_rest.httpx.AsyncClient") as mock_cls:
             client = await api._get_client()
@@ -144,7 +123,7 @@ class TestKiwoomRestClient:
 
     async def test_reset_client_closes_and_clears(self):
         api = _make_kiwoom_rest()
-        mock_client = _mock_httpx_client(is_closed=False)
+        mock_client = mock_httpx_client(is_closed=False)
         api._client = mock_client
         await api._reset_client()
         mock_client.aclose.assert_called_once()
@@ -158,7 +137,7 @@ class TestKiwoomRestClient:
 
     async def test_reset_client_already_closed(self):
         api = _make_kiwoom_rest()
-        mock_client = _mock_httpx_client(is_closed=True)
+        mock_client = mock_httpx_client(is_closed=True)
         api._client = mock_client
         await api._reset_client()
         mock_client.aclose.assert_not_called()
@@ -199,8 +178,8 @@ class TestKiwoomRestCallApi:
     async def test_success(self):
         api = _make_kiwoom_rest()
         api._token_info = _make_token_info()
-        mock_resp = _mock_httpx_response(200, {"data": "ok"})
-        mock_client = _mock_httpx_client(post_return=mock_resp)
+        mock_resp = mock_httpx_response(200, {"data": "ok"})
+        mock_client = mock_httpx_client(post_return=mock_resp)
         with patch.object(api, "_get_client", AsyncMock(return_value=mock_client)):
             resp, hit_429 = await api._call_api("https://api/test", "ka00001")
             assert resp is mock_resp
@@ -209,9 +188,9 @@ class TestKiwoomRestCallApi:
     async def test_429_then_success(self):
         api = _make_kiwoom_rest()
         api._token_info = _make_token_info()
-        resp_429 = _mock_httpx_response(429)
-        resp_200 = _mock_httpx_response(200, {"data": "ok"})
-        mock_client = _mock_httpx_client(post_side_effect=[resp_429, resp_200])
+        resp_429 = mock_httpx_response(429)
+        resp_200 = mock_httpx_response(200, {"data": "ok"})
+        mock_client = mock_httpx_client(post_side_effect=[resp_429, resp_200])
         with (
             patch.object(api, "_get_client", AsyncMock(return_value=mock_client)),
             patch("backend.app.core.kiwoom_rest.asyncio.sleep", new_callable=AsyncMock),
@@ -225,8 +204,8 @@ class TestKiwoomRestCallApi:
     async def test_http_500_returns_none(self):
         api = _make_kiwoom_rest()
         api._token_info = _make_token_info()
-        mock_resp = _mock_httpx_response(500)
-        mock_client = _mock_httpx_client(post_return=mock_resp)
+        mock_resp = mock_httpx_response(500)
+        mock_client = mock_httpx_client(post_return=mock_resp)
         with patch.object(api, "_get_client", AsyncMock(return_value=mock_client)):
             resp, hit_429 = await api._call_api("https://api/test", "ka00001")
             assert resp is None
@@ -235,7 +214,7 @@ class TestKiwoomRestCallApi:
     async def test_exception_retry_then_fail(self):
         api = _make_kiwoom_rest()
         api._token_info = _make_token_info()
-        mock_client = _mock_httpx_client(post_side_effect=[Exception("net error"), Exception("net error"), Exception("net error")])
+        mock_client = mock_httpx_client(post_side_effect=[Exception("net error"), Exception("net error"), Exception("net error")])
         with (
             patch.object(api, "_get_client", AsyncMock(return_value=mock_client)),
             patch.object(api, "_reset_client", AsyncMock()),
@@ -257,8 +236,8 @@ class TestKiwoomRestCallApi:
         api = _make_kiwoom_rest()
         api._token_info = _make_token_info()
         api._api_delay = 1.0
-        mock_resp = _mock_httpx_response(200, {"data": "ok"})
-        mock_client = _mock_httpx_client(post_return=mock_resp)
+        mock_resp = mock_httpx_response(200, {"data": "ok"})
+        mock_client = mock_httpx_client(post_return=mock_resp)
         with patch.object(api, "_get_client", AsyncMock(return_value=mock_client)):
             await api._call_api("https://api/test", "ka00001")
             assert api._api_delay < 1.0
@@ -269,8 +248,8 @@ class TestKiwoomRestCallApi:
 class TestKiwoomRestIssueToken:
     async def test_success(self):
         api = _make_kiwoom_rest()
-        mock_resp = _mock_httpx_response(200, {"token": "new_tok", "expires_dt": "20990101000000"})
-        mock_client = _mock_httpx_client(post_return=mock_resp)
+        mock_resp = mock_httpx_response(200, {"token": "new_tok", "expires_dt": "20990101000000"})
+        mock_client = mock_httpx_client(post_return=mock_resp)
         with patch.object(api, "_get_client", AsyncMock(return_value=mock_client)):
             result = await api._issue_token()
             assert result is True
@@ -284,16 +263,16 @@ class TestKiwoomRestIssueToken:
 
     async def test_http_failure(self):
         api = _make_kiwoom_rest()
-        mock_resp = _mock_httpx_response(500)
-        mock_client = _mock_httpx_client(post_return=mock_resp)
+        mock_resp = mock_httpx_response(500)
+        mock_client = mock_httpx_client(post_return=mock_resp)
         with patch.object(api, "_get_client", AsyncMock(return_value=mock_client)):
             result = await api._issue_token()
             assert result is False
 
     async def test_token_field_missing(self):
         api = _make_kiwoom_rest()
-        mock_resp = _mock_httpx_response(200, {"return_msg": "some error", "return_code": "8030"})
-        mock_client = _mock_httpx_client(post_return=mock_resp)
+        mock_resp = mock_httpx_response(200, {"return_msg": "some error", "return_code": "8030"})
+        mock_client = mock_httpx_client(post_return=mock_resp)
         with patch.object(api, "_get_client", AsyncMock(return_value=mock_client)):
             result = await api._issue_token()
             assert result is False
@@ -301,9 +280,9 @@ class TestKiwoomRestIssueToken:
 
     async def test_429_retry_then_success(self):
         api = _make_kiwoom_rest()
-        resp_429 = _mock_httpx_response(429)
-        resp_200 = _mock_httpx_response(200, {"token": "tok", "expires_dt": "20990101000000"})
-        mock_client = _mock_httpx_client(post_side_effect=[resp_429, resp_200])
+        resp_429 = mock_httpx_response(429)
+        resp_200 = mock_httpx_response(200, {"token": "tok", "expires_dt": "20990101000000"})
+        mock_client = mock_httpx_client(post_side_effect=[resp_429, resp_200])
         with (
             patch.object(api, "_get_client", AsyncMock(return_value=mock_client)),
             patch("backend.app.core.kiwoom_rest.asyncio.sleep", new_callable=AsyncMock),
@@ -314,8 +293,8 @@ class TestKiwoomRestIssueToken:
 
     async def test_access_token_field(self):
         api = _make_kiwoom_rest()
-        mock_resp = _mock_httpx_response(200, {"access_token": "alt_tok", "expires_dt": "20990101000000"})
-        mock_client = _mock_httpx_client(post_return=mock_resp)
+        mock_resp = mock_httpx_response(200, {"access_token": "alt_tok", "expires_dt": "20990101000000"})
+        mock_client = mock_httpx_client(post_return=mock_resp)
         with patch.object(api, "_get_client", AsyncMock(return_value=mock_client)):
             result = await api._issue_token()
             assert result is True
@@ -323,7 +302,7 @@ class TestKiwoomRestIssueToken:
 
     async def test_exception_continues_retry(self):
         api = _make_kiwoom_rest()
-        mock_client = _mock_httpx_client(post_side_effect=[Exception("err"), Exception("err"), Exception("err")])
+        mock_client = mock_httpx_client(post_side_effect=[Exception("err"), Exception("err"), Exception("err")])
         with (
             patch.object(api, "_get_client", AsyncMock(return_value=mock_client)),
             patch.object(api, "_reset_client", AsyncMock()),
@@ -339,8 +318,8 @@ class TestKiwoomRestRevokeToken:
     async def test_success(self):
         api = _make_kiwoom_rest()
         api._token_info = _make_token_info()
-        mock_resp = _mock_httpx_response(200)
-        mock_client = _mock_httpx_client(post_return=mock_resp)
+        mock_resp = mock_httpx_response(200)
+        mock_client = mock_httpx_client(post_return=mock_resp)
         with patch.object(api, "_get_client", AsyncMock(return_value=mock_client)):
             result = await api.revoke_token()
             assert result is True
@@ -357,8 +336,8 @@ class TestKiwoomRestRevokeToken:
     async def test_http_failure_still_returns_true(self):
         api = _make_kiwoom_rest()
         api._token_info = _make_token_info()
-        mock_resp = _mock_httpx_response(500)
-        mock_client = _mock_httpx_client(post_return=mock_resp)
+        mock_resp = mock_httpx_response(500)
+        mock_client = mock_httpx_client(post_return=mock_resp)
         with patch.object(api, "_get_client", AsyncMock(return_value=mock_client)):
             result = await api.revoke_token()
             assert result is True
@@ -367,7 +346,7 @@ class TestKiwoomRestRevokeToken:
     async def test_exception_still_returns_true(self):
         api = _make_kiwoom_rest()
         api._token_info = _make_token_info()
-        mock_client = _mock_httpx_client(post_side_effect=Exception("net error"))
+        mock_client = mock_httpx_client(post_side_effect=Exception("net error"))
         with patch.object(api, "_get_client", AsyncMock(return_value=mock_client)):
             result = await api.revoke_token()
             assert result is True
@@ -397,8 +376,8 @@ class TestKiwoomRestRequest:
     async def test_success(self):
         api = _make_kiwoom_rest()
         api._token_info = _make_token_info()
-        mock_resp = _mock_httpx_response(200, {"acctNo": "12345"})
-        mock_client = _mock_httpx_client(post_return=mock_resp)
+        mock_resp = mock_httpx_response(200, {"acctNo": "12345"})
+        mock_client = mock_httpx_client(post_return=mock_resp)
         with patch.object(api, "_get_client", AsyncMock(return_value=mock_client)):
             data = await api._request("ka00001")
             assert data is not None
@@ -413,8 +392,8 @@ class TestKiwoomRestRequest:
     async def test_http_500(self):
         api = _make_kiwoom_rest()
         api._token_info = _make_token_info()
-        mock_resp = _mock_httpx_response(500)
-        mock_client = _mock_httpx_client(post_return=mock_resp)
+        mock_resp = mock_httpx_response(500)
+        mock_client = mock_httpx_client(post_return=mock_resp)
         with patch.object(api, "_get_client", AsyncMock(return_value=mock_client)):
             data = await api._request("ka00001")
             assert data is None
@@ -422,7 +401,7 @@ class TestKiwoomRestRequest:
     async def test_exception(self):
         api = _make_kiwoom_rest()
         api._token_info = _make_token_info()
-        mock_client = _mock_httpx_client(post_side_effect=Exception("err"))
+        mock_client = mock_httpx_client(post_side_effect=Exception("err"))
         with (
             patch.object(api, "_get_client", AsyncMock(return_value=mock_client)),
             patch.object(api, "_reset_client", AsyncMock()),
@@ -435,8 +414,8 @@ class TestKiwoomRestRequest:
         """B4-06-02: _request 예외 시 _call_api 패턴대로 재시도 후 성공 검증."""
         api = _make_kiwoom_rest()
         api._token_info = _make_token_info()
-        resp_200 = _mock_httpx_response(200, {"ok": True})
-        mock_client = _mock_httpx_client(post_side_effect=[Exception("first err"), resp_200])
+        resp_200 = mock_httpx_response(200, {"ok": True})
+        mock_client = mock_httpx_client(post_side_effect=[Exception("first err"), resp_200])
         with (
             patch.object(api, "_get_client", AsyncMock(return_value=mock_client)),
             patch.object(api, "_reset_client", AsyncMock()),
@@ -449,9 +428,9 @@ class TestKiwoomRestRequest:
     async def test_429_retry_then_success(self):
         api = _make_kiwoom_rest()
         api._token_info = _make_token_info()
-        resp_429 = _mock_httpx_response(429)
-        resp_200 = _mock_httpx_response(200, {"ok": True})
-        mock_client = _mock_httpx_client(post_side_effect=[resp_429, resp_200])
+        resp_429 = mock_httpx_response(429)
+        resp_200 = mock_httpx_response(200, {"ok": True})
+        mock_client = mock_httpx_client(post_side_effect=[resp_429, resp_200])
         with (
             patch.object(api, "_get_client", AsyncMock(return_value=mock_client)),
             patch("backend.app.core.kiwoom_rest.asyncio.sleep", new_callable=AsyncMock),
@@ -467,8 +446,8 @@ class TestKiwoomRestPaginatedRequest:
     async def test_single_page(self):
         api = _make_kiwoom_rest()
         api._token_info = _make_token_info()
-        mock_resp = _mock_httpx_response(200, {"body": {"acnt_evlt_remn_indv_tot": [{"item": 1}]}})
-        mock_client = _mock_httpx_client(post_return=mock_resp)
+        mock_resp = mock_httpx_response(200, {"body": {"acnt_evlt_remn_indv_tot": [{"item": 1}]}})
+        mock_client = mock_httpx_client(post_return=mock_resp)
         with patch.object(api, "_get_client", AsyncMock(return_value=mock_client)):
             data = await api._paginated_request("kt00018", body={"qry_tp": "1"})
             assert data is not None
@@ -483,9 +462,9 @@ class TestKiwoomRestPaginatedRequest:
     async def test_multi_page(self):
         api = _make_kiwoom_rest()
         api._token_info = _make_token_info()
-        resp1 = _mock_httpx_response(200, {"body": {"acnt_evlt_remn_indv_tot": [{"item": 1}]}}, headers={"cont-yn": "Y", "next-key": "key1"})
-        resp2 = _mock_httpx_response(200, {"body": {"acnt_evlt_remn_indv_tot": [{"item": 2}]}}, headers={"cont-yn": "N", "next-key": ""})
-        mock_client = _mock_httpx_client(post_side_effect=[resp1, resp2])
+        resp1 = mock_httpx_response(200, {"body": {"acnt_evlt_remn_indv_tot": [{"item": 1}]}}, headers={"cont-yn": "Y", "next-key": "key1"})
+        resp2 = mock_httpx_response(200, {"body": {"acnt_evlt_remn_indv_tot": [{"item": 2}]}}, headers={"cont-yn": "N", "next-key": ""})
+        mock_client = mock_httpx_client(post_side_effect=[resp1, resp2])
         with (
             patch.object(api, "_get_client", AsyncMock(return_value=mock_client)),
             patch("backend.app.core.kiwoom_rest.asyncio.sleep", new_callable=AsyncMock),
@@ -498,8 +477,8 @@ class TestKiwoomRestPaginatedRequest:
     async def test_http_failure(self):
         api = _make_kiwoom_rest()
         api._token_info = _make_token_info()
-        mock_resp = _mock_httpx_response(500)
-        mock_client = _mock_httpx_client(post_return=mock_resp)
+        mock_resp = mock_httpx_response(500)
+        mock_client = mock_httpx_client(post_return=mock_resp)
         with patch.object(api, "_get_client", AsyncMock(return_value=mock_client)):
             data = await api._paginated_request("kt00018")
             assert data is None
@@ -539,7 +518,7 @@ class TestKiwoomRestFetchMarketCode:
     async def test_success_numeric(self):
         api = _make_kiwoom_rest()
         api._token_info = _make_token_info()
-        mock_resp = _mock_httpx_response(200, {
+        mock_resp = mock_httpx_response(200, {
             "list": [
                 {"code": "005930", "nxtEnable": "Y", "marketCode": "0"},
                 {"code": "000660", "nxtEnable": "N", "marketCode": "0"},
@@ -554,7 +533,7 @@ class TestKiwoomRestFetchMarketCode:
     async def test_success_alpha_code(self):
         api = _make_kiwoom_rest()
         api._token_info = _make_token_info()
-        mock_resp = _mock_httpx_response(200, {
+        mock_resp = mock_httpx_response(200, {
             "list": [
                 {"code": "A0017J0", "nxtEnable": "Y", "marketCode": "10"},
             ]
@@ -574,7 +553,7 @@ class TestKiwoomRestFetchMarketCode:
     async def test_empty_list(self):
         api = _make_kiwoom_rest()
         api._token_info = _make_token_info()
-        mock_resp = _mock_httpx_response(200, {"list": []})
+        mock_resp = mock_httpx_response(200, {"list": []})
         with patch.object(api, "_call_api", AsyncMock(return_value=(mock_resp, False))):
             result = await api.fetch_ka10099_full("0")
             assert result == []
@@ -582,7 +561,7 @@ class TestKiwoomRestFetchMarketCode:
     async def test_no_list_key(self):
         api = _make_kiwoom_rest()
         api._token_info = _make_token_info()
-        mock_resp = _mock_httpx_response(200, {})
+        mock_resp = mock_httpx_response(200, {})
         with patch.object(api, "_call_api", AsyncMock(return_value=(mock_resp, False))):
             result = await api.fetch_ka10099_full("0")
             assert result == []
@@ -590,7 +569,7 @@ class TestKiwoomRestFetchMarketCode:
     async def test_short_code_padded(self):
         api = _make_kiwoom_rest()
         api._token_info = _make_token_info()
-        mock_resp = _mock_httpx_response(200, {
+        mock_resp = mock_httpx_response(200, {
             "list": [{"code": "5930", "nxtEnable": "N", "marketCode": "0"}]
         })
         with patch.object(api, "_call_api", AsyncMock(return_value=(mock_resp, False))):
@@ -613,7 +592,7 @@ class TestKiwoomRestFetchNxtEnable:
     async def test_success_direct(self):
         api = _make_kiwoom_rest()
         api._token_info = _make_token_info()
-        mock_resp = _mock_httpx_response(200, {"nxtEnable": "Y"})
+        mock_resp = mock_httpx_response(200, {"nxtEnable": "Y"})
         with patch.object(api, "_call_api", AsyncMock(return_value=(mock_resp, False))):
             result = await api.fetch_ka10001_nxt_enable("005930")
             assert result == "Y"
@@ -621,7 +600,7 @@ class TestKiwoomRestFetchNxtEnable:
     async def test_success_nested_output(self):
         api = _make_kiwoom_rest()
         api._token_info = _make_token_info()
-        mock_resp = _mock_httpx_response(200, {"output": {"nxtEnable": "N"}})
+        mock_resp = mock_httpx_response(200, {"output": {"nxtEnable": "N"}})
         with patch.object(api, "_call_api", AsyncMock(return_value=(mock_resp, False))):
             result = await api.fetch_ka10001_nxt_enable("005930")
             assert result == "N"
@@ -629,7 +608,7 @@ class TestKiwoomRestFetchNxtEnable:
     async def test_success_nested_output_list(self):
         api = _make_kiwoom_rest()
         api._token_info = _make_token_info()
-        mock_resp = _mock_httpx_response(200, {"output1": [{"nxtEnable": "Y"}]})
+        mock_resp = mock_httpx_response(200, {"output1": [{"nxtEnable": "Y"}]})
         with patch.object(api, "_call_api", AsyncMock(return_value=(mock_resp, False))):
             result = await api.fetch_ka10001_nxt_enable("005930")
             assert result == "Y"
@@ -653,7 +632,7 @@ class TestKiwoomRestFetchNxtEnable:
     async def test_no_nxt_enable_returns_N(self):
         api = _make_kiwoom_rest()
         api._token_info = _make_token_info()
-        mock_resp = _mock_httpx_response(200, {"other": "data"})
+        mock_resp = mock_httpx_response(200, {"other": "data"})
         with patch.object(api, "_call_api", AsyncMock(return_value=(mock_resp, False))):
             result = await api.fetch_ka10001_nxt_enable("005930")
             assert result == "N"

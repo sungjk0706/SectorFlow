@@ -18,34 +18,10 @@ import logging
 import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from backend.tests.httpx_mock_helpers import mock_httpx_client, mock_httpx_response
+
 
 # ── 헬퍼 ───────────────────────────────────────────────────────────────────────
-
-def _mock_httpx_response(status_code=200, json_data=None, text="", headers=None):
-    """httpx.Response mock 생성."""
-    resp = MagicMock()
-    resp.status_code = status_code
-    resp.json.return_value = json_data or {}
-    resp.text = text or ("{}" if json_data else "")
-    resp.headers = headers or {}
-    return resp
-
-
-def _mock_httpx_client(post_side_effect=None, post_return=None, get_side_effect=None, get_return=None):
-    """httpx.AsyncClient mock 생성."""
-    client = AsyncMock()
-    client.is_closed = False
-    if post_side_effect:
-        client.post = AsyncMock(side_effect=post_side_effect)
-    else:
-        client.post = AsyncMock(return_value=post_return)
-    if get_side_effect:
-        client.get = AsyncMock(side_effect=get_side_effect)
-    else:
-        client.get = AsyncMock(return_value=get_return)
-    client.aclose = AsyncMock()
-    return client
-
 
 def _make_ls_rest(app_key="key", app_secret="secret", base_url="https://api.ls.com"):
     """LsRestAPI 인스턴스 생성."""
@@ -108,7 +84,7 @@ class TestLsRestInit:
 
     async def test_async_context_manager(self):
         api = _make_ls_rest()
-        mock_client = _mock_httpx_client()
+        mock_client = mock_httpx_client()
         with patch("backend.app.core.ls_rest.httpx.AsyncClient", return_value=mock_client):
             async with api as ctx:
                 assert ctx is api
@@ -122,14 +98,14 @@ class TestLsRestEnsureClient:
     async def test_creates_new_client(self):
         api = _make_ls_rest()
         with patch("backend.app.core.ls_rest.httpx.AsyncClient") as mock_cls:
-            mock_client = _mock_httpx_client()
+            mock_client = mock_httpx_client()
             mock_cls.return_value = mock_client
             await api.ensure_client()
             assert api._client is mock_client
 
     async def test_reuses_existing_client(self):
         api = _make_ls_rest()
-        existing = _mock_httpx_client()
+        existing = mock_httpx_client()
         api._client = existing
         api._loop = asyncio.get_running_loop()
         with patch("backend.app.core.ls_rest.httpx.AsyncClient") as mock_cls:
@@ -139,11 +115,11 @@ class TestLsRestEnsureClient:
 
     async def test_creates_new_on_loop_change(self):
         api = _make_ls_rest()
-        old_client = _mock_httpx_client()
+        old_client = mock_httpx_client()
         api._client = old_client
         api._loop = "old_loop"
         with patch("backend.app.core.ls_rest.httpx.AsyncClient") as mock_cls:
-            mock_client = _mock_httpx_client()
+            mock_client = mock_httpx_client()
             mock_cls.return_value = mock_client
             await api.ensure_client()
             assert api._client is mock_client
@@ -193,8 +169,8 @@ class TestLsRestEnsureToken:
 class TestLsRestIssueToken:
     async def test_success(self):
         api = _make_ls_rest()
-        mock_resp = _mock_httpx_response(200, {"access_token": "new_tok", "expires_in": 86400})
-        mock_client = _mock_httpx_client(post_return=mock_resp)
+        mock_resp = mock_httpx_response(200, {"access_token": "new_tok", "expires_in": 86400})
+        mock_client = mock_httpx_client(post_return=mock_resp)
         api._client = mock_client
         with patch.object(api, "ensure_client", AsyncMock()):
             result = await api._issue_token()
@@ -209,8 +185,8 @@ class TestLsRestIssueToken:
 
     async def test_http_failure(self):
         api = _make_ls_rest()
-        mock_resp = _mock_httpx_response(500)
-        mock_client = _mock_httpx_client(post_return=mock_resp)
+        mock_resp = mock_httpx_response(500)
+        mock_client = mock_httpx_client(post_return=mock_resp)
         api._client = mock_client
         with patch.object(api, "ensure_client", AsyncMock()):
             result = await api._issue_token()
@@ -218,8 +194,8 @@ class TestLsRestIssueToken:
 
     async def test_token_field_missing(self):
         api = _make_ls_rest()
-        mock_resp = _mock_httpx_response(200, {"other": "data"})
-        mock_client = _mock_httpx_client(post_return=mock_resp)
+        mock_resp = mock_httpx_response(200, {"other": "data"})
+        mock_client = mock_httpx_client(post_return=mock_resp)
         api._client = mock_client
         with patch.object(api, "ensure_client", AsyncMock()):
             result = await api._issue_token()
@@ -228,9 +204,9 @@ class TestLsRestIssueToken:
 
     async def test_429_retry_then_success(self):
         api = _make_ls_rest()
-        resp_429 = _mock_httpx_response(429)
-        resp_200 = _mock_httpx_response(200, {"access_token": "tok", "expires_in": 3600})
-        mock_client = _mock_httpx_client(post_side_effect=[resp_429, resp_200])
+        resp_429 = mock_httpx_response(429)
+        resp_200 = mock_httpx_response(200, {"access_token": "tok", "expires_in": 3600})
+        mock_client = mock_httpx_client(post_side_effect=[resp_429, resp_200])
         api._client = mock_client
         with (
             patch.object(api, "ensure_client", AsyncMock()),
@@ -249,7 +225,7 @@ class TestLsRestIssueToken:
 
     async def test_exception_retry(self):
         api = _make_ls_rest()
-        mock_client = _mock_httpx_client(post_side_effect=[Exception("err"), Exception("err"), Exception("err")])
+        mock_client = mock_httpx_client(post_side_effect=[Exception("err"), Exception("err"), Exception("err")])
         api._client = mock_client
         with (
             patch.object(api, "ensure_client", AsyncMock()),
@@ -265,8 +241,8 @@ class TestLsRestRevokeToken:
     async def test_success(self):
         api = _make_ls_rest()
         api._token_info = _make_ls_token_info()
-        mock_resp = _mock_httpx_response(200)
-        mock_client = _mock_httpx_client(post_return=mock_resp)
+        mock_resp = mock_httpx_response(200)
+        mock_client = mock_httpx_client(post_return=mock_resp)
         api._client = mock_client
         with patch.object(api, "ensure_client", AsyncMock()):
             result = await api.revoke_token()
@@ -284,8 +260,8 @@ class TestLsRestRevokeToken:
     async def test_http_failure(self):
         api = _make_ls_rest()
         api._token_info = _make_ls_token_info()
-        mock_resp = _mock_httpx_response(500)
-        mock_client = _mock_httpx_client(post_return=mock_resp)
+        mock_resp = mock_httpx_response(500)
+        mock_client = mock_httpx_client(post_return=mock_resp)
         api._client = mock_client
         with patch.object(api, "ensure_client", AsyncMock()):
             result = await api.revoke_token()
@@ -295,7 +271,7 @@ class TestLsRestRevokeToken:
     async def test_exception(self):
         api = _make_ls_rest()
         api._token_info = _make_ls_token_info()
-        mock_client = _mock_httpx_client(post_side_effect=Exception("net error"))
+        mock_client = mock_httpx_client(post_side_effect=Exception("net error"))
         api._client = mock_client
         with patch.object(api, "ensure_client", AsyncMock()):
             result = await api.revoke_token()
@@ -320,8 +296,8 @@ class TestLsRestCallApi:
     async def test_get_success(self):
         api = _make_ls_rest()
         api._token_info = _make_ls_token_info()
-        mock_resp = _mock_httpx_response(200, {"data": "ok"})
-        mock_client = _mock_httpx_client(get_return=mock_resp)
+        mock_resp = mock_httpx_response(200, {"data": "ok"})
+        mock_client = mock_httpx_client(get_return=mock_resp)
         api._client = mock_client
         with (
             patch.object(api, "ensure_client", AsyncMock()),
@@ -333,8 +309,8 @@ class TestLsRestCallApi:
     async def test_post_success(self):
         api = _make_ls_rest()
         api._token_info = _make_ls_token_info()
-        mock_resp = _mock_httpx_response(200, {"data": "ok"})
-        mock_client = _mock_httpx_client(post_return=mock_resp)
+        mock_resp = mock_httpx_response(200, {"data": "ok"})
+        mock_client = mock_httpx_client(post_return=mock_resp)
         api._client = mock_client
         with (
             patch.object(api, "ensure_client", AsyncMock()),
@@ -346,9 +322,9 @@ class TestLsRestCallApi:
     async def test_429_retry_then_success(self):
         api = _make_ls_rest()
         api._token_info = _make_ls_token_info()
-        resp_429 = _mock_httpx_response(429)
-        resp_200 = _mock_httpx_response(200, {"ok": True})
-        mock_client = _mock_httpx_client(post_side_effect=[resp_429, resp_200])
+        resp_429 = mock_httpx_response(429)
+        resp_200 = mock_httpx_response(200, {"ok": True})
+        mock_client = mock_httpx_client(post_side_effect=[resp_429, resp_200])
         api._client = mock_client
         with (
             patch.object(api, "ensure_client", AsyncMock()),
@@ -361,8 +337,8 @@ class TestLsRestCallApi:
     async def test_http_500(self):
         api = _make_ls_rest()
         api._token_info = _make_ls_token_info()
-        mock_resp = _mock_httpx_response(500)
-        mock_client = _mock_httpx_client(post_return=mock_resp)
+        mock_resp = mock_httpx_response(500)
+        mock_client = mock_httpx_client(post_return=mock_resp)
         api._client = mock_client
         with (
             patch.object(api, "ensure_client", AsyncMock()),
@@ -374,7 +350,7 @@ class TestLsRestCallApi:
     async def test_exception(self):
         api = _make_ls_rest()
         api._token_info = _make_ls_token_info()
-        mock_client = _mock_httpx_client(post_side_effect=[Exception("err"), Exception("err"), Exception("err")])
+        mock_client = mock_httpx_client(post_side_effect=[Exception("err"), Exception("err"), Exception("err")])
         api._client = mock_client
         with (
             patch.object(api, "ensure_client", AsyncMock()),
@@ -386,7 +362,7 @@ class TestLsRestCallApi:
 
     async def test_no_token(self):
         api = _make_ls_rest()
-        api._client = _mock_httpx_client()
+        api._client = mock_httpx_client()
         with (
             patch.object(api, "ensure_client", AsyncMock()),
             patch.object(api, "ensure_token", AsyncMock(return_value=False)),
@@ -409,8 +385,8 @@ class TestLsRestBuyOrder:
     async def test_success(self):
         api = _make_ls_rest()
         api._token_info = _make_ls_token_info()
-        mock_resp = _mock_httpx_response(200, {"rsp_cd": "00000", "rsp_msg": "ok"})
-        mock_client = _mock_httpx_client(post_return=mock_resp)
+        mock_resp = mock_httpx_response(200, {"rsp_cd": "00000", "rsp_msg": "ok"})
+        mock_client = mock_httpx_client(post_return=mock_resp)
         api._client = mock_client
         with (
             patch.object(api, "ensure_client", AsyncMock()),
@@ -422,8 +398,8 @@ class TestLsRestBuyOrder:
     async def test_http_failure(self):
         api = _make_ls_rest()
         api._token_info = _make_ls_token_info()
-        mock_resp = _mock_httpx_response(500, {"rsp_cd": "error"})
-        mock_client = _mock_httpx_client(post_return=mock_resp)
+        mock_resp = mock_httpx_response(500, {"rsp_cd": "error"})
+        mock_client = mock_httpx_client(post_return=mock_resp)
         api._client = mock_client
         with (
             patch.object(api, "ensure_client", AsyncMock()),
@@ -435,9 +411,9 @@ class TestLsRestBuyOrder:
     async def test_429_retry(self):
         api = _make_ls_rest()
         api._token_info = _make_ls_token_info()
-        resp_429 = _mock_httpx_response(429)
-        resp_200 = _mock_httpx_response(200, {"rsp_cd": "00000"})
-        mock_client = _mock_httpx_client(post_side_effect=[resp_429, resp_200])
+        resp_429 = mock_httpx_response(429)
+        resp_200 = mock_httpx_response(200, {"rsp_cd": "00000"})
+        mock_client = mock_httpx_client(post_side_effect=[resp_429, resp_200])
         api._client = mock_client
         with (
             patch.object(api, "ensure_client", AsyncMock()),
@@ -450,7 +426,7 @@ class TestLsRestBuyOrder:
     async def test_exception(self):
         api = _make_ls_rest()
         api._token_info = _make_ls_token_info()
-        mock_client = _mock_httpx_client(post_side_effect=[Exception("err"), Exception("err"), Exception("err")])
+        mock_client = mock_httpx_client(post_side_effect=[Exception("err"), Exception("err"), Exception("err")])
         api._client = mock_client
         with (
             patch.object(api, "ensure_client", AsyncMock()),
@@ -462,7 +438,7 @@ class TestLsRestBuyOrder:
 
     async def test_no_token(self):
         api = _make_ls_rest()
-        api._client = _mock_httpx_client()
+        api._client = mock_httpx_client()
         with (
             patch.object(api, "ensure_client", AsyncMock()),
             patch.object(api, "ensure_token", AsyncMock(return_value=False)),
@@ -481,8 +457,8 @@ class TestLsRestBuyOrder:
     async def test_rsp_cd_failure(self):
         api = _make_ls_rest()
         api._token_info = _make_ls_token_info()
-        mock_resp = _mock_httpx_response(200, {"rsp_cd": "10001", "rsp_msg": "fail"})
-        mock_client = _mock_httpx_client(post_return=mock_resp)
+        mock_resp = mock_httpx_response(200, {"rsp_cd": "10001", "rsp_msg": "fail"})
+        mock_client = mock_httpx_client(post_return=mock_resp)
         api._client = mock_client
         with (
             patch.object(api, "ensure_client", AsyncMock()),
@@ -498,8 +474,8 @@ class TestLsRestSellOrder:
     async def test_success(self):
         api = _make_ls_rest()
         api._token_info = _make_ls_token_info()
-        mock_resp = _mock_httpx_response(200, {"rsp_cd": "00000", "rsp_msg": "ok"})
-        mock_client = _mock_httpx_client(post_return=mock_resp)
+        mock_resp = mock_httpx_response(200, {"rsp_cd": "00000", "rsp_msg": "ok"})
+        mock_client = mock_httpx_client(post_return=mock_resp)
         api._client = mock_client
         with (
             patch.object(api, "ensure_client", AsyncMock()),
@@ -511,8 +487,8 @@ class TestLsRestSellOrder:
     async def test_http_failure(self):
         api = _make_ls_rest()
         api._token_info = _make_ls_token_info()
-        mock_resp = _mock_httpx_response(500, {"rsp_cd": "error"})
-        mock_client = _mock_httpx_client(post_return=mock_resp)
+        mock_resp = mock_httpx_response(500, {"rsp_cd": "error"})
+        mock_client = mock_httpx_client(post_return=mock_resp)
         api._client = mock_client
         with (
             patch.object(api, "ensure_client", AsyncMock()),
@@ -524,7 +500,7 @@ class TestLsRestSellOrder:
     async def test_exception(self):
         api = _make_ls_rest()
         api._token_info = _make_ls_token_info()
-        mock_client = _mock_httpx_client(post_side_effect=[Exception("err"), Exception("err"), Exception("err")])
+        mock_client = mock_httpx_client(post_side_effect=[Exception("err"), Exception("err"), Exception("err")])
         api._client = mock_client
         with (
             patch.object(api, "ensure_client", AsyncMock()),
@@ -536,7 +512,7 @@ class TestLsRestSellOrder:
 
     async def test_no_token(self):
         api = _make_ls_rest()
-        api._client = _mock_httpx_client()
+        api._client = mock_httpx_client()
         with (
             patch.object(api, "ensure_client", AsyncMock()),
             patch.object(api, "ensure_token", AsyncMock(return_value=False)),

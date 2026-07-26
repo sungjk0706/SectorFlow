@@ -10,32 +10,9 @@ send_order: BUY/SELL 라우팅, 알 수 없는 주문 타입, NXT trde_tp 조정
 from __future__ import annotations
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
-
-# ── 헬퍼 ───────────────────────────────────────────────────────────────────────
-
-def _mock_httpx_response(status_code=200, json_data=None):
-    """httpx.Response mock 생성."""
-    resp = MagicMock()
-    resp.status_code = status_code
-    resp.json.return_value = json_data or {}
-    return resp
-
-
-def _mock_httpx_client(response=None, side_effect=None):
-    """httpx.AsyncClient 컨텍스트 매니저 mock 생성.
-
-    side_effect가 설정되면 post 호출 시 예외 발생.
-    """
-    mock_client = AsyncMock()
-    if side_effect:
-        mock_client.post = AsyncMock(side_effect=side_effect)
-    else:
-        mock_client.post = AsyncMock(return_value=response)
-    mock_client.__aexit__ = AsyncMock(return_value=None)
-    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-    return mock_client
+from backend.tests.httpx_mock_helpers import mock_httpx_client, mock_httpx_response
 
 
 # ── resolve_exchange ───────────────────────────────────────────────────────────
@@ -88,8 +65,8 @@ class TestSendRequest:
     @pytest.mark.asyncio
     async def test_success_returns_response(self):
         from backend.app.core.kiwoom_order import _send_request
-        mock_resp = _mock_httpx_response(200, {"rt_cd": "0"})
-        mock_client = _mock_httpx_client(response=mock_resp)
+        mock_resp = mock_httpx_response(200, {"rt_cd": "0"})
+        mock_client = mock_httpx_client(post_return=mock_resp, as_context_manager=True)
         with (
             patch("backend.app.core.kiwoom_order.httpx.AsyncClient", return_value=mock_client),
             patch("backend.app.core.kiwoom_order.asyncio.sleep", new_callable=AsyncMock),
@@ -100,8 +77,8 @@ class TestSendRequest:
     @pytest.mark.asyncio
     async def test_non_200_retries_then_fails(self):
         from backend.app.core.kiwoom_order import _send_request
-        mock_resp = _mock_httpx_response(500, {})
-        mock_client = _mock_httpx_client(response=mock_resp)
+        mock_resp = mock_httpx_response(500, {})
+        mock_client = mock_httpx_client(post_return=mock_resp, as_context_manager=True)
         with (
             patch("backend.app.core.kiwoom_order.httpx.AsyncClient", return_value=mock_client),
             patch("backend.app.core.kiwoom_order.asyncio.sleep", new_callable=AsyncMock),
@@ -112,7 +89,7 @@ class TestSendRequest:
     @pytest.mark.asyncio
     async def test_exception_retries_then_fails(self):
         from backend.app.core.kiwoom_order import _send_request
-        mock_client = _mock_httpx_client(side_effect=Exception("network error"))
+        mock_client = mock_httpx_client(post_side_effect=Exception("network error"), as_context_manager=True)
         with (
             patch("backend.app.core.kiwoom_order.httpx.AsyncClient", return_value=mock_client),
             patch("backend.app.core.kiwoom_order.asyncio.sleep", new_callable=AsyncMock),
@@ -123,12 +100,9 @@ class TestSendRequest:
     @pytest.mark.asyncio
     async def test_success_on_second_attempt(self):
         from backend.app.core.kiwoom_order import _send_request
-        mock_resp_ok = _mock_httpx_response(200, {"rt_cd": "0"})
-        mock_resp_fail = _mock_httpx_response(500, {})
-        mock_client = AsyncMock()
-        mock_client.post = AsyncMock(side_effect=[mock_resp_fail, mock_resp_ok])
-        mock_client.__aexit__ = AsyncMock(return_value=None)
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_resp_ok = mock_httpx_response(200, {"rt_cd": "0"})
+        mock_resp_fail = mock_httpx_response(500, {})
+        mock_client = mock_httpx_client(post_side_effect=[mock_resp_fail, mock_resp_ok], as_context_manager=True)
         with (
             patch("backend.app.core.kiwoom_order.httpx.AsyncClient", return_value=mock_client),
             patch("backend.app.core.kiwoom_order.asyncio.sleep", new_callable=AsyncMock),
@@ -139,8 +113,8 @@ class TestSendRequest:
     @pytest.mark.asyncio
     async def test_single_retry_success(self):
         from backend.app.core.kiwoom_order import _send_request
-        mock_resp = _mock_httpx_response(200, {"rt_cd": "0"})
-        mock_client = _mock_httpx_client(response=mock_resp)
+        mock_resp = mock_httpx_response(200, {"rt_cd": "0"})
+        mock_client = mock_httpx_client(post_return=mock_resp, as_context_manager=True)
         with (
             patch("backend.app.core.kiwoom_order.httpx.AsyncClient", return_value=mock_client),
             patch("backend.app.core.kiwoom_order.asyncio.sleep", new_callable=AsyncMock),
@@ -155,8 +129,8 @@ class TestSendOrder:
     @pytest.mark.asyncio
     async def test_buy_success(self):
         from backend.app.core.kiwoom_order import send_order
-        mock_resp = _mock_httpx_response(200, {"rt_cd": "0", "msg1": "OK"})
-        mock_client = _mock_httpx_client(response=mock_resp)
+        mock_resp = mock_httpx_response(200, {"rt_cd": "0", "msg1": "OK"})
+        mock_client = mock_httpx_client(post_return=mock_resp, as_context_manager=True)
         settings = {"kiwoom_account_no": "12345678"}
         with (
             patch("backend.app.core.kiwoom_order.build_broker_urls", return_value={"rest_base": "https://api.kiwoom.com"}),
@@ -170,8 +144,8 @@ class TestSendOrder:
     @pytest.mark.asyncio
     async def test_sell_success(self):
         from backend.app.core.kiwoom_order import send_order
-        mock_resp = _mock_httpx_response(200, {"rt_cd": "0", "msg1": "SELL OK"})
-        mock_client = _mock_httpx_client(response=mock_resp)
+        mock_resp = mock_httpx_response(200, {"rt_cd": "0", "msg1": "SELL OK"})
+        mock_client = mock_httpx_client(post_return=mock_resp, as_context_manager=True)
         settings = {"kiwoom_account_no": "12345678"}
         with (
             patch("backend.app.core.kiwoom_order.build_broker_urls", return_value={"rest_base": "https://api.kiwoom.com"}),
@@ -194,8 +168,8 @@ class TestSendOrder:
     @pytest.mark.asyncio
     async def test_rt_cd_non_zero_returns_failure(self):
         from backend.app.core.kiwoom_order import send_order
-        mock_resp = _mock_httpx_response(200, {"rt_cd": "1", "msg1": "잔액부족"})
-        mock_client = _mock_httpx_client(response=mock_resp)
+        mock_resp = mock_httpx_response(200, {"rt_cd": "1", "msg1": "잔액부족"})
+        mock_client = mock_httpx_client(post_return=mock_resp, as_context_manager=True)
         settings = {"kiwoom_account_no": "12345678"}
         with (
             patch("backend.app.core.kiwoom_order.build_broker_urls", return_value={"rest_base": "https://api.kiwoom.com"}),
@@ -209,7 +183,7 @@ class TestSendOrder:
     @pytest.mark.asyncio
     async def test_communication_failure_returns_failure(self):
         from backend.app.core.kiwoom_order import send_order
-        mock_client = _mock_httpx_client(side_effect=Exception("network error"))
+        mock_client = mock_httpx_client(post_side_effect=Exception("network error"), as_context_manager=True)
         settings = {"kiwoom_account_no": "12345678"}
         with (
             patch("backend.app.core.kiwoom_order.build_broker_urls", return_value={"rest_base": "https://api.kiwoom.com"}),
@@ -223,8 +197,8 @@ class TestSendOrder:
     @pytest.mark.asyncio
     async def test_nxt_trde_tp_adjusted(self):
         from backend.app.core.kiwoom_order import send_order
-        mock_resp = _mock_httpx_response(200, {"rt_cd": "0", "msg1": "OK"})
-        mock_client = _mock_httpx_client(response=mock_resp)
+        mock_resp = mock_httpx_response(200, {"rt_cd": "0", "msg1": "OK"})
+        mock_client = mock_httpx_client(post_return=mock_resp, as_context_manager=True)
         settings = {"kiwoom_account_no": "12345678", "exchange_mode": "NXT"}
         with (
             patch("backend.app.core.kiwoom_order.build_broker_urls", return_value={"rest_base": "https://api.kiwoom.com"}),
@@ -245,8 +219,8 @@ class TestSendOrder:
     @pytest.mark.asyncio
     async def test_nxt_trde_tp_u_clears_price(self):
         from backend.app.core.kiwoom_order import send_order
-        mock_resp = _mock_httpx_response(200, {"rt_cd": "0", "msg1": "OK"})
-        mock_client = _mock_httpx_client(response=mock_resp)
+        mock_resp = mock_httpx_response(200, {"rt_cd": "0", "msg1": "OK"})
+        mock_client = mock_httpx_client(post_return=mock_resp, as_context_manager=True)
         settings = {"kiwoom_account_no": "12345678", "exchange_mode": "NXT"}
         with (
             patch("backend.app.core.kiwoom_order.build_broker_urls", return_value={"rest_base": "https://api.kiwoom.com"}),
@@ -264,8 +238,8 @@ class TestSendOrder:
     @pytest.mark.asyncio
     async def test_sor_trde_tp_not_adjusted(self):
         from backend.app.core.kiwoom_order import send_order
-        mock_resp = _mock_httpx_response(200, {"rt_cd": "0", "msg1": "OK"})
-        mock_client = _mock_httpx_client(response=mock_resp)
+        mock_resp = mock_httpx_response(200, {"rt_cd": "0", "msg1": "OK"})
+        mock_client = mock_httpx_client(post_return=mock_resp, as_context_manager=True)
         settings = {"kiwoom_account_no": "12345678"}
         with (
             patch("backend.app.core.kiwoom_order.build_broker_urls", return_value={"rest_base": "https://api.kiwoom.com"}),
@@ -283,8 +257,8 @@ class TestSendOrder:
     @pytest.mark.asyncio
     async def test_order_type_case_insensitive(self):
         from backend.app.core.kiwoom_order import send_order
-        mock_resp = _mock_httpx_response(200, {"rt_cd": "0", "msg1": "OK"})
-        mock_client = _mock_httpx_client(response=mock_resp)
+        mock_resp = mock_httpx_response(200, {"rt_cd": "0", "msg1": "OK"})
+        mock_client = mock_httpx_client(post_return=mock_resp, as_context_manager=True)
         settings = {"kiwoom_account_no": "12345678"}
         with (
             patch("backend.app.core.kiwoom_order.build_broker_urls", return_value={"rest_base": "https://api.kiwoom.com"}),

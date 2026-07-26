@@ -32,7 +32,7 @@
 |---|---|---|---|---|
 | DUP-S1 | 높음 | D-01 암호화 키 파생 | ☑ | 암호화 상태별 테스트, 백엔드 전체 테스트, RuntimeWarning 승격 기동 |
 | DUP-S2 | 높음 | D-02 시간 기본값 | ☑ | 관련 프론트엔드 테스트, typecheck, build, 화면 대조 |
-| DUP-S3 | 중간 | D-03 HTTP Mock 헬퍼 | ☐ | 대상 테스트, 백엔드 전체 테스트 |
+| DUP-S3 | 중간 | D-03 HTTP Mock 헬퍼 | ☑ | 대상 테스트, 백엔드 전체 테스트 |
 | DUP-S4 | 중간 | D-04 금액 변환 표시 | ☐ | 관련 프론트엔드 테스트, typecheck, build, 화면 대조 |
 | DUP-S5 | 낮음~중간 | D-05 `CellWithPrevContent` 타입 | ☐ | typecheck, build |
 | DUP-S6 | 낮음 | D-06 색상값 반복 | ☐ | typecheck, build, 화면 색상 대조 |
@@ -121,8 +121,18 @@
 
 ### 세션 DUP-S3 — D-03 백엔드 HTTP Mock 헬퍼 통합 검토
 
-**상태:** ☐ 미시작
-**대상 원칙:** P23 공통 자산 재사용, P24 단순성, P25 테스트 격리
+**상태:** ☑ 완료 (2026-07-26)
+**대상 원칙:** P10 SSOT, P23 공통 자산 재사용, P24 단순성, P25 테스트 격리
+
+#### 완료 요약
+
+- 신규 공통 테스트 헬퍼 `backend/tests/httpx_mock_helpers.py` 추가: `mock_httpx_response()` (status_code/json_data/text/headers) + `mock_httpx_client(post_side_effect, post_return, get_side_effect, get_return, is_closed=False, as_context_manager=False)`.
+- `test_kiwoom_rest.py`/`test_ls_rest.py`/`test_kiwoom_order.py`의 파일별 `_mock_httpx_response()`/`_mock_httpx_client()` 중복 정의 제거 → 공통 헬퍼 import로 전환 (P10 SSOT, P23 일관성).
+- 시그니처 통합: kiwoom_order의 `response=`/`side_effect=` 매개변수명을 `post_return=`/`post_side_effect=`로 통일, 컨텍스트 매니저 인터페이스(`__aenter__`/`__aexit__`)는 `as_context_manager=True` 옵션으로 흡수. kiwoom_order line 128-131 직접 AsyncMock 생성부도 헬퍼 호출로 통합 (P24 단순성).
+- 기존 동작 보존: `or {}` 폴백 패턴·is_closed·get 설정·aclose 등 기존 3개 헬퍼의 모든 동작을 통합 헬퍼가 그대로 커버 (P20 폴백 금지 위반 없음, 회귀 0건).
+- 운영 코드·거래 실행 경로·DB 변경 없음. 공통 헬퍼는 테스트 전용(운영 import 0건, P16 준수).
+- test_kiwoom_order.py unused import `MagicMock` 1개 제거 (헬퍼 정의 제거로 미사용).
+- 검증: 대상 3개 테스트 134 passed, 백엔드 전체 2812 passed (회귀 0건, 이전과 동일), 잔존 프로세스 0건.
 
 #### 대상 코드
 
