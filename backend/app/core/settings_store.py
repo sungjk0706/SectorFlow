@@ -16,6 +16,7 @@ from backend.app.core.settings_file import (
     _encrypt_field_or_raise,
     classify_secret_fields,
 )
+from backend.app.core.trade_mode import normalize_trade_mode
 from backend.app.core import journal as _journal
 from backend.app.services.auto_trading_effective import auto_trading_effective
 logger = logging.getLogger(__name__)
@@ -53,11 +54,7 @@ def general_save_payload_from_flat(d: dict) -> dict[str, Any]:
     load_integrated_system_settings_for_editing() 스냅샷과 현재 위젯 payload를 비교할 때 사용.
     """
     legacy_a = str(d.get("kiwoom_account_no") or "")
-    mode = d.get("trade_mode")
-    if mode not in ("test", "mock", "real"):
-        mode = "test"
-    if mode == "mock":
-        mode = "test"
+    mode = normalize_trade_mode(d.get("trade_mode"))
     data: dict[str, Any] = {
         "timetable.confirmed_download": str(d["timetable.confirmed_download"]).strip(),
         "time_scheduler_on": bool(d["time_scheduler_on"]),

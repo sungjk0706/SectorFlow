@@ -10,6 +10,7 @@ from typing import Any
 
 import aiofiles
 from backend.app.core.broker_urls import BROKER_DISPLAY_NAMES
+from backend.app.core.trade_mode import normalize_trade_mode
 from backend.app.db.json_utils import encode_json_field, loads
 
 logger = logging.getLogger(__name__)
@@ -71,15 +72,10 @@ def _migrate_broker_config(merged: dict, raw_data: dict) -> tuple[dict, bool]:
 
 
 def _migrate_trade_mode(merged: dict) -> tuple[dict, bool]:
-    dirty = False
     tm = merged.get("trade_mode")
-    if tm == "mock":
-        merged["trade_mode"] = "test"
-        tm = "test"
-        dirty = True
-    if tm not in ("test", "real"):
-        merged["trade_mode"] = "test"
-        dirty = True
+    normalized = normalize_trade_mode(tm)
+    dirty = normalized != tm
+    merged["trade_mode"] = normalized
     # 레거시 파생 변수 제거 (단일 소스: trade_mode만 사용)
     for legacy_key in ("test_mode", "mock_mode", "mode_real"):
         if legacy_key in merged:

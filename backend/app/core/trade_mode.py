@@ -11,19 +11,20 @@ REAL 수신 시 type "0B"는 engine_service._normalize_real_type 에서 "01"과 
 """
 
 
+def normalize_trade_mode(value: object | None) -> str:
+    """투자모드 입력을 내부 표준값인 'test' 또는 'real'로 정규화한다."""
+    mode = str(value or "").strip().lower()
+    return "real" if mode == "real" else "test"
+
+
 def effective_trade_mode(settings: dict | None) -> str:
     """엔진 캐시 또는 DB에서 로드한 플랫 dict에서 'test' | 'real' 반환.
 
     단일 소스: trade_mode 문자열 값만 참조한다.
-    하위 호환: 기존 'mock' 값도 'test'로 매핑한다.
+    하위 호환: 기존 'mock' 값도 공통 정규화 규칙으로 'test'에 매핑한다.
     """
     s = settings or {}
-    tm = str(s.get("trade_mode") or "").strip().lower()
-    if tm == "real":
-        return "real"
-    if tm in ("test", "mock"):
-        return "test"
-    return "test"
+    return normalize_trade_mode(s.get("trade_mode"))
 
 
 def is_test_mode(settings: dict | None) -> bool:

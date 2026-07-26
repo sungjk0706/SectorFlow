@@ -9,6 +9,26 @@ from backend.app.core.engine_settings import (
     get_engine_settings,
     build_engine_settings_dict,
 )
+from backend.app.core.trade_mode import normalize_trade_mode
+
+
+# ── trade mode normalization ────────────────────────────────────────
+
+class TestNormalizeTradeMode:
+    def test_test_and_mock_map_to_test(self):
+        assert normalize_trade_mode("test") == "test"
+        assert normalize_trade_mode("mock") == "test"
+
+    def test_real_is_preserved(self):
+        assert normalize_trade_mode("real") == "real"
+
+    def test_normalizes_case_and_whitespace(self):
+        assert normalize_trade_mode(" REAL ") == "real"
+        assert normalize_trade_mode(" MOCK ") == "test"
+
+    def test_invalid_values_fail_closed_to_test(self):
+        assert normalize_trade_mode("invalid") == "test"
+        assert normalize_trade_mode(None) == "test"
 
 
 # ── build_engine_settings_dict ──────────────────────────────────────
