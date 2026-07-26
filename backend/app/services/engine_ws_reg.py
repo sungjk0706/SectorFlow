@@ -330,28 +330,32 @@ async def subscribe_sector_stocks_0b(*, nxt_only: bool = False) -> None:
         logger.warning("[구독] 필터 종목 구독 실패 — %d종목 롤백", len(filter_targets))
 
 
-async def subscribe_index_realtime() -> None:
+async def subscribe_index_realtime() -> bool:
     """코스피·코스닥 업종지수 실시간 구독 등록.
 
     커넥터의 subscribe_index() 메서드를 호출 (증권사별 내부 구현에 위임).
+    Returns: True if 구독 성공, False otherwise.
     """
     ws = engine_state.state.connector_manager
     if not ws or not ws.is_connected():
         logger.warning("[구독] 업종지수 구독 생략 — 연결 없음")
-        return
+        return False
 
     if not hasattr(ws, "subscribe_index"):
         logger.warning("[구독] 업종지수 구독 생략 — 커넥터 미지원")
-        return
+        return False
 
     try:
         ok = await ws.subscribe_index()
         if ok:
             logger.info("[구독] 업종지수 구독 완료")
+            return True
         else:
             logger.warning("[구독] 업종지수 구독 실패")
+            return False
     except Exception as e:
         logger.warning("[구독] 업종지수 구독 실패: %s", e, exc_info=True)
+        return False
 
 
 async def subscribe_account_realtime() -> None:

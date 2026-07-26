@@ -264,6 +264,7 @@ class TestHandleJif:
     async def test_cb_activation(self):
         with patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.services.engine_account_notify._broadcast", new_callable=AsyncMock) as mock_bc, \
+             patch("backend.app.services.daily_time_scheduler.get_market_phase", return_value={"krx": "정규장", "nxt": "정규장", "krx_alert": "서킷브레이커 1단계 발동"}), \
              patch("backend.app.services.engine_ws_dispatch._notify_krx_cb_telegram"):
             mock_state.market_phase = {"krx_alert": None}
             mock_state.krx_circuit_breaker_active = False
@@ -277,6 +278,7 @@ class TestHandleJif:
     async def test_cb_release(self):
         with patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.services.engine_account_notify._broadcast", new_callable=AsyncMock), \
+             patch("backend.app.services.daily_time_scheduler.get_market_phase", return_value={"krx": "정규장", "nxt": "정규장", "krx_alert": "서킷브레이커 1단계 동시호가 종료"}), \
              patch("backend.app.services.engine_ws_dispatch._notify_krx_cb_telegram"):
             mock_state.market_phase = {"krx_alert": "서킷브레이커 1단계 발동"}
             mock_state.krx_circuit_breaker_active = True
@@ -372,6 +374,7 @@ class TestHandleJif:
         with patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.services.engine_ws_dispatch._apply_jif_phase") as mock_apply, \
              patch("backend.app.services.engine_account_notify._broadcast", new_callable=AsyncMock), \
+             patch("backend.app.services.daily_time_scheduler.get_market_phase", return_value={"krx": "정규장", "nxt": "정규장", "krx_alert": "서킷브레이커 1단계 발동"}), \
              patch("backend.app.services.engine_ws_dispatch._notify_krx_cb_telegram"):
             mock_state.market_phase = {"krx_alert": None}
             mock_state.krx_circuit_breaker_active = False

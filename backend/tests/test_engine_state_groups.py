@@ -1,6 +1,6 @@
 """engine_state.py 속성 그룹 분류 회귀 테스트 — 세션 10 + 세션 11 + 세션 12.
 
-엔진 전역 상태 66개 속성을 6개 그룹(A~F)으로 분류하고, 분류 계약을 회귀 테스트로 고정.
+엔진 전역 상태 67개 속성을 6개 그룹(A~F)으로 분류하고, 분류 계약을 회귀 테스트로 고정.
 세션 10: 분류 주석 + 매핑 테이블 일치성 + fallback/산재/dead code 인벤토리.
 세션 11: D/E/F 비거래 상태 소유권 계약 — 3종 단일화 + 자연스러운 산재 문서화 + dead code 3종.
 세션 12: A 그룹 소유권 계약 — active_connector 제거 + connector_manager 단일 소유자 + fallback 22곳 제거.
@@ -38,6 +38,7 @@ GROUP_B_ACCOUNT = {
     "ws_account_subscribed",
     "ws_connection_status",
     "quote_subscribed",
+    "index_subscribed",
     "account_rest_bootstrapped",
     "broker_rest_totals",
     "auto_trade",
@@ -121,18 +122,18 @@ class TestGroupClassification:
 
     def test_group_sizes_match_docstring(self):
         """docstring에 명시된 그룹별 속성 수와 일치."""
-        expected_sizes = {"A": 5, "B": 11, "C": 9, "D": 13, "E": 17, "F": 11}
+        expected_sizes = {"A": 5, "B": 12, "C": 9, "D": 13, "E": 17, "F": 11}
         for name, group in ALL_GROUPS.items():
             assert len(group) == expected_sizes[name], (
                 f"그룹 {name} 속성 수 불일치: 예상 {expected_sizes[name]}, 실제 {len(group)}"
             )
 
-    def test_total_attribute_count_is_66(self):
-        """6개 그룹 합계 = 66 (누락/중복 없음)."""
+    def test_total_attribute_count_is_67(self):
+        """6개 그룹 합계 = 67 (누락/중복 없음)."""
         all_attrs = set()
         for group in ALL_GROUPS.values():
             all_attrs |= group
-        assert len(all_attrs) == 66, f"전체 속성 수: {len(all_attrs)} (예상 66)"
+        assert len(all_attrs) == 67, f"전체 속성 수: {len(all_attrs)} (예상 67)"
 
     def test_no_overlap_between_groups(self):
         """어떤 속성도 두 그룹에 중복 분류되지 않음."""

@@ -4,7 +4,7 @@
 > 세션: COUPLING-S3 (C-03)
 > 기준 파일: `backend/app/web/ws_manager.py`, `backend/app/services/engine_account_notify.py`, `frontend/src/binding.ts`, `frontend/src/stores/hotStore.ts`, `frontend/src/stores/uiStore.ts`, `frontend/src/stores/stockClassificationStore.ts`
 > 원칙: P5 직접 호출·Queue 경계 유지, P10 SSOT, P16 살아있는 경로, P21 사용자 투명성, P23 일관성, P24 단순성, P25 격리된 실패
-> 상태: 조사 전수 완료 + 후속 dead subscription 4건 정리 완료 (2026-07-27)
+> 상태: 조사 전수 완료 + 후속 dead subscription 4건 정리 완료 (2026-07-27) + 잔여 3건 근본 해결 완료 (2026-07-27, 항목2/5는 다음 세션)
 
 ---
 
@@ -63,7 +63,7 @@ WebSocket 이벤트의 **이름 · 채널 · producer · payload 필드 · Store
 | 분류 | 이벤트 수 | 비고 |
 |------|----------|------|
 | **정상 계약 (producer + consumer 일치)** | 30 | payload 필드 일치 또는 부분 일치 |
-| **payload 필드 불일치** | 2 | `ws-subscribe-status`(`index_subscribed` 누락), `account-update`(경량화/전체 분기) |
+| **payload 필드 불일치** | ~~2~~ 1 | ~~`ws-subscribe-status`(`index_subscribed` 누락)~~ — ☑ 2026-07-27 해결 완료. `account-update`(경량화/전체 분기) 잔존 |
 | **다중 producer (동일 이벤트 다른 파일)** | 6 | `index-data`(4곳), `market-phase`(3곳), `stock-classification-changed`(3곳), `buy-targets-update`(2곳), `sector-stocks-refresh`(2곳), `engine-ready`(2곳), `circuit_breaker_open`(2곳) |
 | **프론트엔드 구독 + 백엔드 producer 누락 (P16/P21 위반)** | ~~4~~ 0 | ~~`engine-reload-complete`, `bootstrap-stage`, `avg-amt-progress`, `order-filled`~~ — 2026-07-27 후속 세션에서 4건 전수 정리 완료 |
 | **네이밍 컨벤션 불일치 (P23)** | 6 | `circuit_breaker_open`, `order_time_blocked`, `risk_block_status`, `realtime_latency_status`, `daily_buy_state_status`, `test_cash_failed` (나머지 34개는 hyphen) |
@@ -230,8 +230,8 @@ WebSocket 이벤트의 **이름 · 채널 · producer · payload 필드 · Store
 - **계약 상태**: ✅ 단일 producer
 
 #### `market-phase` (장 상태/카운트다운)
-- **Producer**: `daily_time_scheduler.py:761,1137` (broadcast), `engine_ws_dispatch.py:343,372` (broadcast)
-- **Payload**: `{"krx": str, "nxt": str, "krx_alert": str|null, "is_nxt_only": bool, "krx_countdown": {label, remaining_sec}|null, "nxt_countdown": {label, remaining_sec}|null}` (전체) 또는 `{"krx_alert": str}` (부분, engine_ws_dispatch.py:372)
+- **Producer**: `daily_time_scheduler.py:761,1137` (broadcast), `engine_ws_dispatch.py:343,372` (broadcast) — ~~372 부분 payload~~ → ☑ 2026-07-27 전체 payload 통일 완료
+- **Payload**: `{"krx": str, "nxt": str, "krx_alert": str|null, "is_nxt_only": bool, "krx_countdown": {label, remaining_sec}|null, "nxt_countdown": {label, remaining_sec}|null}` (전체 — 모든 producer 통일)
 - **Consumer**: binding.ts:252 → `applyMarketPhase(data as Partial<{krx, nxt, krx_alert, is_nxt_only, krx_countdown, nxt_countdown}>)`
 - **수정 상태**: uiStore(`marketPhase`)
 - **계약 상태**: ⚠️ 다중 producer (3곳), 부분 payload 전송 존재. 프론트엔드가 `Partial<>`로 수용.
@@ -394,7 +394,7 @@ WebSocket 이벤트의 **이름 · 채널 · producer · payload 필드 · Store
 | 이벤트 | Producer 수 | Producer 위치 | payload 일치 여부 | 비고 |
 |--------|------------|--------------|------------------|------|
 | `index-data` | 4 | `engine_account_notify.py:195,215`, `ws.py:146,155` | ⚠️ 두 가지 형태 (엔진 상태/업종지수) | 단일화 후보 — `notify_index_data`와 `broadcast_engine_status_ws`가 동일 이벤트로 혼용 |
-| `market-phase` | 3 | `daily_time_scheduler.py:761,1137`, `engine_ws_dispatch.py:343,372` | ⚠️ 부분 payload 존재 (`{krx_alert}`만 전송) | 단일화 후보 — 부분 payload 전송을 전체 payload로 통일 검토 |
+| `market-phase` | 3 | `daily_time_scheduler.py:761,1137`, `engine_ws_dispatch.py:343,372` | ~~⚠️ 부분 payload 존재 (`{krx_alert}`만 전송)~~ → ☑ 2026-07-27 전체 payload 통일 완료 | ~~단일화 후보~~ → ☑ 완료 |
 | `stock-classification-changed` | 3 | `ws.py:76`, `stock_classification.py:130,132` | ✅ 일치 | 자연스러운 다중 producer (연결 시 유니캐스트 + 변경 시 브로드캐스트) |
 | `buy-targets-update` | 2 | `ws.py:138`, `engine_account_notify.py:418` | ✅ 일치 | 자연스러운 다중 producer (연결 시 + 초기 상태) |
 | `sector-stocks-refresh` | 2 | `ws.py:91`, `engine_account_notify.py:349` | ✅ 일치 | 자연스러운 다중 producer (연결 시 + 변경 시) |
@@ -407,7 +407,7 @@ WebSocket 이벤트의 **이름 · 채널 · producer · payload 필드 · Store
 | 순위 | 이벤트 | 이유 |
 |------|--------|------|
 | 1 | `index-data` | 4곳 producer, 두 가지 payload 형태 (엔진 상태/업종지수) 혼용 — 의미 분리 또는 단일 producer 허브 검토 |
-| 2 | `market-phase` | 3곳 producer, 부분 payload 전송 존재 — 전체 payload 통일 검토 |
+| 2 | `market-phase` | ~~3곳 producer, 부분 payload 전송 존재~~ → ☑ 2026-07-27 전체 payload 통일 완료 |
 
 ---
 
@@ -474,13 +474,12 @@ WS 이벤트 (real-data / orderbook-update / program-update)
 
 ## 8. payload 필드 불일치 상세
 
-### 8.1 `ws-subscribe-status` — `index_subscribed` 필드 누락
+### 8.1 `ws-subscribe-status` — `index_subscribed` 필드 누락 — ☑ 2026-07-27 해결 완료
 
-- **백엔드 payload**: `{"_v": 1, "quote_subscribed": bool}` (`ws_subscribe_control.py:62`)
-- **프론트엔드 기대**: `{index_subscribed: boolean; quote_subscribed: boolean}` (binding.ts:300)
-- **영향**: `applyWsSubscribeStatus`가 `index_subscribed`를 `undefined`로 처리. uiStore `wsSubscribeStatus.index_subscribed`가 항상 falsy.
-- **위반 원칙**: P21 (사용자 투명성 — 업종지수 구독 상태가 화면에 반영되지 않음), P23 (일관성 — payload 계약 불일치)
-- **조치**: 백엔드에 `index_subscribed` 필드 추가 또는 프론트엔드 기대 타입에서 제거. 백엔드가 `index_subscribed`를 추적하지 않는다면 프론트엔드 타입에서 제거가 단순.
+- **백엔드 payload**: `{"_v": 1, "quote_subscribed": bool, "index_subscribed": bool}` (`ws_subscribe_control.py`) — `index_subscribed` 필드 추가
+- **프론트엔드 기대**: `{index_subscribed: boolean; quote_subscribed: boolean}` (binding.ts) — 기존과 동일
+- **해결**: `engine_state.py`에 `index_subscribed: bool = False` 필드 추가 (그룹 B, 67개 속성), `ws_subscribe_control.py`의 `get_subscribe_status()` + `_set_status()` + payload에 `index_subscribed` 포함, `run_conditional_reg_pipeline()`에서 `subscribe_index_realtime()` 성공 시 `_set_status(index=True)` 호출, `cleanup_stale_subscriptions()`에서 `_set_status(quote=False, index=False)` 호출, `engine_ws_reg.subscribe_index_realtime()`이 `bool` 반환하도록 수정.
+- **위반 원칙**: ~~P21, P23~~ → ☑ 해결 (payload 계약 일치, 업종지수 구독 상태 화면 반영)
 
 ### 8.2 `account-update` — 경량화/전체 payload 분기
 
@@ -510,13 +509,13 @@ WS 이벤트 (real-data / orderbook-update / program-update)
 
 ## 9. 중복 데이터 전송 경로 (P24 단순성)
 
-### 9.1 `receive-rate` vs `sector-scores.status.receive_rate`
+### 9.1 `receive-rate` vs `sector-scores.status.receive_rate` — ☑ 2026-07-27 해결 완료
 
-- `receive-rate` 이벤트: `pipeline_compute.py:97` → `{"krx": {...}, "nxt": {...}}`
-- `sector-scores` 이벤트: `engine_account_notify.py:267` → `status.receive_rate` 필드에 동일 데이터 포함
-- 프론트엔드 binding.ts:265 (`receive-rate`)와 binding.ts:290 (`sector-scores`의 `status.receive_rate`)가 모두 `uiStore.receiveRate`를 갱신
-- **영향**: 동일 데이터가 두 경로로 전송되어 `receiveRate` 상태가 이벤트 순서에 따라 덮어쓰기됨. P10(SSOT) 관점에서 단일 경로 권장.
-- **조치**: `sector-scores`의 `status.receive_rate` 제거 또는 `receive-rate` 이벤트 제거 검토. 단, `sector-scores`가 delta 전송 시 `status` 블록이 항상 포함되므로 `receive-rate` 단독 이벤트가 더 적합할 수 있음.
+- `receive-rate` 이벤트: `pipeline_compute.py` → `{"krx": {...}, "nxt": {...}}` — 단일 소스 유지
+- ~~`sector-scores` 이벤트: `engine_account_notify.py` → `status.receive_rate` 필드에 동일 데이터 포함~~ — 제거 완료
+- ~~프론트엔드 binding.ts sector-scores 핸들러에서 `uiStore.receiveRate` 갱신~~ — 제거 완료
+- **해결**: `engine_account_notify.py`의 `_build_sector_score_status`에서 `receive_rate` 필드 제거, `_build_sector_score_delta_payload`/`_build_sector_score_full_payload`에서 `receive_rate` 파라미터 제거, `notify_desktop_sector_scores`에서 `receive_rate` 조회/추적 제거, `_get_current_receive_rate` 함수 제거, `notify_cache.prev_receive_rate` 제거. 프론트엔드 `binding.ts` sector-scores 핸들러에서 receiveRate 갱신 로직 제거.
+- **위반 원칙**: ~~P10, P24~~ → ☑ 해결 (`receive-rate` 단일 경로, 중복 전송 제거)
 
 ### 9.2 `engine-ready` vs `engine-reload-complete` (동일 액션) — ☑ 2026-07-27 정리 완료
 
@@ -539,12 +538,12 @@ WS 이벤트 (real-data / orderbook-update / program-update)
 | 순위 | 항목 | 조치 | 위험도 | 관련 원칙 | 상태 |
 |------|------|------|--------|----------|------|
 | 1 | `bootstrap-stage` dead subscription | 구독 + state + action + chip + test fixture 완전 제거 | 높음 | P21, P16 | ☑ 완료 |
-| 2 | `ws-subscribe-status` payload 불일치 | `index_subscribed` 필드 추가 또는 프론트엔드 타입 제거 | 중간 | P21, P23 | ☐ |
+| 2 | `ws-subscribe-status` payload 불일치 | `index_subscribed` 필드 추가 또는 프론트엔드 타입 제거 | 중간 | P21, P23 | ☑ 완료 |
 | 3 | `order-filled` dead subscription + orders 채널 검토 | 구독 + `applyOrderFilled` 함수 제거 (orders 채널은 `test-data-reset-completed`로 유지) | 중간 | P16, P24 | ☑ 완료 |
 | 4 | `index-data` 다중 producer + payload 혼용 | 엔진 상태/업종지수 이벤트 분리 검토 | 중간 | P10, P23, P24 | ☐ |
 | 5 | `engine-reload-complete` / `avg-amt-progress` 중복 구독 제거 | 구독 제거 (동일 액션 대체 이벤트 존재, 공유 함수는 유지) | 낮음 | P16, P24 | ☑ 완료 |
-| 6 | `receive-rate` / `sector-scores.status.receive_rate` 중복 경로 | 단일 경로로 통일 | 낮음 | P10, P24 | ☐ |
-| 7 | `market-phase` 부분 payload 통일 | 부분 payload 전송을 전체 payload로 통일 | 낮음 | P23 | ☐ |
+| 6 | `receive-rate` / `sector-scores.status.receive_rate` 중복 경로 | 단일 경로로 통일 | 낮음 | P10, P24 | ☑ 완료 |
+| 7 | `market-phase` 부분 payload 통일 | 부분 payload 전송을 전체 payload로 통일 | 낮음 | P23 | ☑ 완료 |
 | 8 | 6개 underscore 이벤트 hyphen 통일 | 네이밍 컨벤션 통일 (producer 6곳 + binding 6곳 + 테스트) | 낮음 | P23 | ☐ |
 | 9 | `account-update` / `settings-changed` payload 분기 정리 | 분기를 별도 이벤트로 분리 또는 optional 필드 명시 | 낮음 | P23 | ☐ |
 

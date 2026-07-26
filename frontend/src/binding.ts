@@ -266,13 +266,7 @@ export function bindWSToStore(
         ? { delta: true, changed_sectors: d.changed_sectors ?? [], removed_sectors: d.removed_sectors ?? [] }
         : null,
     })
-    // receiveRate (uiStore) 갱신 — 3단계: KRX/NXT 분리 수신률 매핑
-    const rawRate = (d.status as Record<string, unknown>)?.receive_rate as { krx: ReceiveRateEntry; nxt: ReceiveRateEntry } | undefined
-    if (rawRate) {
-      uiStore.setState({ receiveRate: { krx: rawRate.krx, nxt: rawRate.nxt } })
-    } else {
-      uiStore.setState({ receiveRate: null })
-    }
+    // receiveRate는 receive-rate 이벤트가 단일 소스(P10 SSOT) — sector-scores에서 중복 갱신 제거
   })
 
   /* ── ws-subscribe-status: 구독 상태 실시간 갱신 ── */

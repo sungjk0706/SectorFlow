@@ -5,11 +5,11 @@
 모든 engine_*.py 모듈은 이 파일에서 전역 상태를 직접 import한다.
 순환 import 방지: 이 모듈은 다른 engine_*.py를 import하지 않는다.
 
-속성 그룹 분류 (세션 10 — CACHE-STATE-IMPL-10, 66개 속성):
+속성 그룹 분류 (세션 10 — CACHE-STATE-IMPL-10, 67개 속성):
   A. 브로커 연결 (5)   — connector_manager, broker_tokens,
                          access_token, login_ok, broker_spec
-  B. 계좌 (11)          — engine_user_id, ws_account_subscribed, ws_connection_status,
-                         quote_subscribed, account_rest_bootstrapped, broker_rest_totals,
+  B. 계좌 (12)          — engine_user_id, ws_account_subscribed, ws_connection_status,
+                         quote_subscribed, index_subscribed, account_rest_bootstrapped, broker_rest_totals,
                          auto_trade, broker_rest_apis, account_rest_lock,
                          account_snapshot, positions
   C. 업종 분석 (9)      — sector_summary_cache, master_stocks_cache, index_data_cache,
@@ -164,6 +164,7 @@ class EngineState:
         self.ws_account_subscribed: bool = False
         self.ws_connection_status: bool = False
         self.quote_subscribed: bool = False
+        self.index_subscribed: bool = False  # 업종지수(0J, grp 2) 구독 상태 — ws-subscribe-status payload SSOT (P10/P21)
         self.account_rest_bootstrapped: bool = False
         self.broker_rest_totals: dict = {
             "total_eval": 0, "total_pnl": 0, "total_buy": 0, "total_rate": 0.0,

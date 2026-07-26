@@ -1516,10 +1516,6 @@ class TestNotifySectorScoresGate:
 
         mock_scores = [{"sector": "반도체", "rank": 1, "final_score": 90.0}]
         with patch("backend.app.services.sector_data_provider.get_sector_scores_snapshot", return_value=(mock_scores, 1)), \
-             patch("backend.app.services.engine_account_notify._safe_broadcast", new_callable=AsyncMock) as mock_broadcast, \
-             patch("backend.app.pipelines.pipeline_compute.get_current_receive_rate", return_value={
-                 "krx": {"received": 8, "total": 10, "pct": 80.0},
-                 "nxt": {"received": 4, "total": 5, "pct": 80.0},
-             }):
+             patch("backend.app.services.engine_account_notify._safe_broadcast", new_callable=AsyncMock) as mock_broadcast:
             await notify_desktop_sector_scores(force=True)
             mock_broadcast.assert_awaited_once()

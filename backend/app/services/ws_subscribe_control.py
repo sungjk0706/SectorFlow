@@ -41,6 +41,7 @@ def get_subscribe_status() -> dict[str, bool]:
     """현재 구독 상태 반환."""
     return {
         "quote_subscribed": engine_state.state.quote_subscribed,
+        "index_subscribed": engine_state.state.index_subscribed,
     }
 
 
@@ -50,11 +51,15 @@ def get_subscribe_status() -> dict[str, bool]:
 
 def _set_status(
     quote: bool | None = None,
+    index: bool | None = None,
 ) -> None:
     """상태 변경 시에만 실시간 통신 ws-subscribe-status 전송."""
     changed = False
     if quote is not None and quote != engine_state.state.quote_subscribed:
         engine_state.state.quote_subscribed = quote
+        changed = True
+    if index is not None and index != engine_state.state.index_subscribed:
+        engine_state.state.index_subscribed = index
         changed = True
 
     if changed:
@@ -62,6 +67,7 @@ def _set_status(
         schedule_engine_task(_broadcast("ws-subscribe-status", {
             "_v": 1,
             "quote_subscribed": engine_state.state.quote_subscribed,
+            "index_subscribed": engine_state.state.index_subscribed,
         }), context="ws-subscribe-status 전송")
 
 
@@ -185,8 +191,10 @@ async def run_conditional_reg_pipeline() -> None:
             logger.warning("[구독] 실시간시세 자동 구독 실패: %s", e, exc_info=True)
 
         try:
-            await engine_ws_reg.subscribe_index_realtime()
-            logger.info("[구독] 업종지수(0J) 자동 구독 완료")
+            index_ok = await engine_ws_reg.subscribe_index_realtime()
+            if index_ok:
+                _set_status(index=True)
+                logger.info("[구독] 업종지수(0J) 자동 구독 완료")
         except Exception as e:
             logger.warning("[구독] 업종지수 자동 구독 실패: %s", e, exc_info=True)
 
@@ -212,7 +220,7 @@ async def cleanup_stale_subscriptions() -> None:
     # REMOVE ACK 대기 없이 인메모리 상태만 초기화 — 장외 시간 90초 지연 응답으로 인한 이벤트 오염 방지.
     for entry in engine_state.state.master_stocks_cache.values():
         entry.pop("_subscribed", None)
-    _set_status(quote=False)
+    _set_status(quote=False, index=False)
     logger.debug("[구독] 잔존 구독 정리 완료 — 전체 끄기 (인메모리 초기화, 서버 측은 다음 구독 등록 갱신=0으로 덮어씀)")
 
 

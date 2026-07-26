@@ -50,7 +50,6 @@ class NotificationCache:
         self.positions_code_set = set()
         self.layout_code_set = set()
         self.buy_targets_code_set = set()
-        self.prev_receive_rate = None
         self._initialized = False
 
     def clear_all(self):
@@ -68,7 +67,6 @@ class NotificationCache:
         self.positions_code_set.clear()
         self.layout_code_set.clear()
         self.buy_targets_code_set.clear()
-        self.prev_receive_rate = None
         self._initialized = False
 
 
@@ -238,7 +236,10 @@ async def notify_desktop_settings_toggled(changed_keys_dict: dict | None = None)
 
 
 async def notify_desktop_sector_scores(*, force: bool = False) -> None:
-    """업종 순위 + 상태 + 수신율 전송 → WS sector-scores. delta 전송."""
+    """업종 순위 + 상태 전송 → WS sector-scores. delta 전송.
+
+    수신율은 receive-rate 이벤트가 단일 소스(P10 SSOT) — sector-scores에서 중복 전송 제거.
+    """
     # ── 수신율 임계값 게이트 — WS 구독 구간 내 임계값 미달 시 sector-scores 전송 차단 ──
     # 임계값 통과 후 첫 전송이 전체 스냅샷이 되도록 delta 비교 캐시 클리어.
     try:
@@ -252,34 +253,20 @@ async def notify_desktop_sector_scores(*, force: bool = False) -> None:
     from backend.app.services.sector_data_provider import get_sector_scores_snapshot
     scores, ranked_count = get_sector_scores_snapshot()
 
-    # 수신율 가져오기 (pipeline_compute.py에서 이벤트 기반으로 갱신)
-    receive_rate = _get_current_receive_rate()
-
     # delta 계산: 변경된 업종만 전송
     if not force and notify_cache.prev_scores:
-        payload = _build_sector_score_delta_payload(scores, receive_rate, ranked_count)
+        payload = _build_sector_score_delta_payload(scores, ranked_count)
         if payload is None:
             return  # 변경 없음 → 전송 생략
     else:
         # 최초 전송 또는 force → 전체 스냅샷
-        payload = _build_sector_score_full_payload(scores, receive_rate, ranked_count)
+        payload = _build_sector_score_full_payload(scores, ranked_count)
 
     await _safe_broadcast("sector-scores", payload)
     notify_cache.prev_scores = scores
-    notify_cache.prev_receive_rate = receive_rate
 
 
-def _get_current_receive_rate():
-    """pipeline_compute에서 수신율 조회. 실패 시 None."""
-    try:
-        from backend.app.pipelines.pipeline_compute import get_current_receive_rate
-        return get_current_receive_rate()
-    except Exception as e:
-        logger.warning("[시스템] 수신율 조회 실패 (빈 값으로 진행): %s", e)
-        return None
-
-
-def _build_sector_score_delta_payload(scores: list, receive_rate, ranked_count: int) -> dict | None:
+def _build_sector_score_delta_payload(scores: list, ranked_count: int) -> dict | None:
     """delta 페이로드 조립. 변경 없으면 None 반환."""
     prev_map = {s["sector"]: s for s in notify_cache.prev_scores}
     changed = []
@@ -290,36 +277,34 @@ def _build_sector_score_delta_payload(scores: list, receive_rate, ranked_count: 
     # 삭제된 업종 감지 (이전에 있었는데 지금 없는 경우)
     cur_sectors = {s["sector"] for s in scores}
     removed = [s["sector"] for s in notify_cache.prev_scores if s["sector"] not in cur_sectors]
-    receive_rate_changed = receive_rate != notify_cache.prev_receive_rate
 
-    if not changed and not removed and not receive_rate_changed:
+    if not changed and not removed:
         return None  # 변경 없음 → 전송 생략
 
     return {
         "changed_scores": changed,
-        "status": _build_sector_score_status(scores, ranked_count, receive_rate),
+        "status": _build_sector_score_status(scores, ranked_count),
         "delta": True,
         "changed_sectors": [s["sector"] for s in changed],
         "removed_sectors": removed,
     }
 
 
-def _build_sector_score_full_payload(scores: list, receive_rate, ranked_count: int) -> dict:
+def _build_sector_score_full_payload(scores: list, ranked_count: int) -> dict:
     """전체 스냅샷 페이로드 조립 (최초 전송 또는 force)."""
     return {
         "scores": scores,
-        "status": _build_sector_score_status(scores, ranked_count, receive_rate),
+        "status": _build_sector_score_status(scores, ranked_count),
     }
 
 
-def _build_sector_score_status(scores: list, ranked_count: int, receive_rate) -> dict:
+def _build_sector_score_status(scores: list, ranked_count: int) -> dict:
     """sector-scores 공통 status 블록 조립."""
     from backend.app.services.engine_state import state
     return {
         "total_stocks": len(scores),
         "max_targets": int(state.integrated_system_settings_cache.get("sector_max_targets", 3)),
         "ranked_sectors_count": ranked_count,
-        "receive_rate": receive_rate,
     }
 
 

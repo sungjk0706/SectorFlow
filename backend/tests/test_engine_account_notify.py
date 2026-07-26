@@ -43,7 +43,6 @@ class TestNotificationCache:
         assert c.positions_code_set == set()
         assert c.layout_code_set == set()
         assert c.buy_targets_code_set == set()
-        assert c.prev_receive_rate is None
 
     def test_clear_all(self):
         c = NotificationCache()
@@ -56,7 +55,6 @@ class TestNotificationCache:
         c.positions_code_set = {"005930"}
         c.layout_code_set = {"005930"}
         c.buy_targets_code_set = {"005930"}
-        c.prev_receive_rate = 0.95
         c.clear_all()
         assert c.position_sent == {}
         assert c.snapshot_sent == {}
@@ -67,7 +65,6 @@ class TestNotificationCache:
         assert c.positions_code_set == set()
         assert c.layout_code_set == set()
         assert c.buy_targets_code_set == set()
-        assert c.prev_receive_rate is None
 
 
 # ── _pos_equal ────────────────────────────────────────────────────────────────────
@@ -454,7 +451,6 @@ class TestNotifyCacheConcurrencyScenarios:
         assert notify_cache.positions_code_set == set()
         assert notify_cache.layout_code_set == set()
         assert notify_cache.buy_targets_code_set == set()
-        assert notify_cache.prev_receive_rate is None
         # 세션 6 해소: _initialized=False 리셋 → 다음 init이 정상 재설정 가능
         assert notify_cache._initialized is False
 

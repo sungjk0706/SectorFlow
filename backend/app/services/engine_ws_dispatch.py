@@ -358,6 +358,7 @@ async def _handle_jif(data: dict) -> None:
             _apply_jif_phase(nxt=new_nxt)
 
     # ── 서킷브레이커/사이드카 처리 (기존 로직 유지) ──
+    from backend.app.services.daily_time_scheduler import get_market_phase
     from backend.app.services.engine_account_notify import _broadcast
 
     if jangubun in ("1", "2"):
@@ -369,7 +370,7 @@ async def _handle_jif(data: dict) -> None:
         if mp.get("krx_alert") == alert:
             return
         mp["krx_alert"] = alert
-        await _broadcast("market-phase", {"krx_alert": alert})
+        await _broadcast("market-phase", get_market_phase())
         logger.info("[연결] 서킷브레이커/사이드카 알림 갱신: 장상태=%s → %s", jstatus, alert)
 
         if jstatus in _KRX_CB_ACTIVATION_CODES:
