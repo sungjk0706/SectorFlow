@@ -13,8 +13,6 @@ from backend.app.services.engine_ws_parsing import (
     _rest_row_int,
     _rest_row_float,
     parse_change_rate_to_percent,
-    parse_fid9081_exchange,
-    parse_fid290_session,
 )
 
 
@@ -257,38 +255,3 @@ class TestParseChangeRateToPercent:
 
     def test_above_1000_returns_zero(self):
         assert parse_change_rate_to_percent("1500.5") == 0.0
-
-
-# ── parse_fid9081_exchange ──────────────────────────────────────────────────────
-
-class TestParseFid9081Exchange:
-    def test_krx(self):
-        assert parse_fid9081_exchange({"9081": "1"}) == "1"
-
-    def test_nxt(self):
-        assert parse_fid9081_exchange({"9081": "2"}) == "2"
-
-    def test_missing(self):
-        assert parse_fid9081_exchange({}) == ""
-
-    def test_int_key(self):
-        assert parse_fid9081_exchange({9081: "1"}) == "1"
-
-
-# ── parse_fid290_session ────────────────────────────────────────────────────────
-
-class TestParseFid290Session:
-    def test_krx_regular(self):
-        assert parse_fid290_session({"290": "2"}) == "2"
-
-    def test_nxt_premarket(self):
-        assert parse_fid290_session({"290": "P"}) == "P"
-
-    def test_nxt_aftermarket(self):
-        assert parse_fid290_session({"290": "U"}) == "U"
-
-    def test_missing(self):
-        assert parse_fid290_session({}) == ""
-
-    def test_int_key(self):
-        assert parse_fid290_session({290: "2"}) == "2"

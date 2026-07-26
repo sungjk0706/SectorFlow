@@ -92,17 +92,9 @@ from backend.app.services.daily_time_scheduler import (  # noqa: E402
     KRX_OPEN_COUNTDOWN_5M,
     KRX_OPEN_COUNTDOWN_1M,
     KRX_OPEN_COUNTDOWN_10S,
-    NXT_PRE_OPEN_COUNTDOWN_10M,
-    NXT_PRE_OPEN_COUNTDOWN_5M,
-    NXT_PRE_OPEN_COUNTDOWN_1M,
-    NXT_PRE_OPEN_COUNTDOWN_10S,
     NXT_PRE_CLOSE_COUNTDOWN_5M,
     NXT_PRE_CLOSE_COUNTDOWN_1M,
     NXT_PRE_CLOSE_COUNTDOWN_10S,
-    NXT_AFT_OPEN_COUNTDOWN_10M,
-    NXT_AFT_OPEN_COUNTDOWN_5M,
-    NXT_AFT_OPEN_COUNTDOWN_1M,
-    NXT_AFT_OPEN_COUNTDOWN_10S,
     NXT_AFT_CLOSE_COUNTDOWN_5M,
     NXT_AFT_CLOSE_COUNTDOWN_1M,
     NXT_AFT_CLOSE_COUNTDOWN_10S,
@@ -2107,8 +2099,6 @@ class TestTimetableScheduler:
             delay = mock_loop.call_later.call_args.args[0]
             # 09:00:30 - 09:00:00 = 30초
             assert delay == 30
-            # 예약된 콜백의 ctx에 09:00:30 메인마켓 진입 포함 확인
-            sched_ctx = mock_state.timetable_timer_handle  # call_later 반환값 (사용되지 않음)
             # call_later 두 번째 인자(콜백)는 lambda이므로 ctx는 로그로만 검증 가능 — delay로 충분
 
     def test_schedule_next_event_at_090015_reserves_090030(self):

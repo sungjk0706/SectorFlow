@@ -19,7 +19,6 @@ from backend.app.services.settlement_engine import (
     get_available_cash,
     get_accumulated_investment,
     get_orderable,
-    check_buy_power,
     reserve_buy_power,
     release_buy_power,
     on_buy_fill,
@@ -128,54 +127,6 @@ class TestGetters:
         assert get_orderable() == 3_000_000
 
 
-# ── check_buy_power ────────────────────────────────────────────────────────────
-
-class TestCheckBuyPower:
-    def test_sufficient_cash_passes(self, fresh_engine):
-        settlement_engine._orderable = 10_000_000
-        ok, reason = check_buy_power(5_000_000)
-        assert ok is True
-        assert reason == ""
-
-    def test_insufficient_cash_fails(self, fresh_engine):
-        settlement_engine._orderable = 1_000_000
-        ok, reason = check_buy_power(5_000_000)
-        assert ok is False
-        assert "주문가능금액 부족" in reason
-
-    def test_exact_amount_with_commission_fails(self, fresh_engine):
-        settlement_engine._orderable = 5_000_000
-        # cost = 5_000_000 + round(5_000_000 * 0.00015) = 5_000_000 + 750 = 5_000_750
-        ok, reason = check_buy_power(5_000_000)
-        assert ok is False
-
-    def test_amount_plus_commission_within_limit_passes(self, fresh_engine):
-        settlement_engine._orderable = 5_001_000
-        ok, reason = check_buy_power(5_000_000)
-        assert ok is True
-
-    def test_daily_limit_reduces_effective_power(self, fresh_engine):
-        settlement_engine._orderable = 10_000_000
-        ok, reason = check_buy_power(3_000_000, daily_limit=5_000_000, daily_spent=3_000_000)
-        # effective = min(10_000_000, 5_000_000 - 3_000_000) = 2_000_000
-        # cost = 3_000_000 + 450 = 3_000_450 > 2_000_000
-        assert ok is False
-
-    def test_daily_limit_zero_means_unlimited(self, fresh_engine):
-        settlement_engine._orderable = 10_000_000
-        ok, reason = check_buy_power(5_000_000, daily_limit=0, daily_spent=0)
-        assert ok is True
-
-    def test_commission_calculation(self, fresh_engine):
-        settlement_engine._orderable = 100_000
-        # 50_000 + round(50_000 * 0.00015) = 50_000 + 8 = 50_008
-        ok, _ = check_buy_power(50_000)
-        assert ok is True
-        # 99_999 + round(99_999 * 0.00015) = 99_999 + 15 = 100_014 > 100_000
-        ok, _ = check_buy_power(99_999)
-        assert ok is False
-
-
 # ── reserve_buy_power (TOCTOU 경쟁 상태 방지) ──────────────────────────────────
 
 class TestReserveBuyPower:
@@ -248,7 +199,7 @@ class TestReserveBuyPower:
         ok1, _, cost1 = await reserve_buy_power(4_000_000)
         assert ok1 is True
         after_first = settlement_engine._orderable
-        # 두 번째 매수: 남은 잔액으로 검증 (check_buy_power였다면 원래 잔액으로 검증했을 것)
+        # 두 번째 매수: 남은 잔액으로 검증 (비원자적 check였다면 원래 잔액으로 검증했을 것)
         ok2, _, cost2 = await reserve_buy_power(4_000_000)
         # 남은 잔액 ≈ 994_000원으로는 4_000_000원 매수 불가
         assert ok2 is False

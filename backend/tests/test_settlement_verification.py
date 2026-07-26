@@ -271,7 +271,7 @@ class TestSyncVsAsyncEquivalence:
         fill_price = dry_run.estimate_fill_price(price, "BUY")
 
         # (a) 비동기: fake_fill_event 태스크 실행 후 대기
-        task = asyncio.create_task(
+        asyncio.create_task(
             dry_run.fake_fill_event("BUY", _TEST_CODE, qty, price, _TEST_NM)
         )
         await asyncio.sleep(0.3)  # FAKE_FILL_DELAY(0.1s) + 여유

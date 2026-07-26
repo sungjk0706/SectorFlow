@@ -113,7 +113,3 @@ def get_circuit_breaker() -> CircuitBreaker:
     return _circuit_breaker
 
 
-def reset_circuit_breaker() -> None:
-    """서킷브레이커 초기화."""
-    if _circuit_breaker is not None:
-        _circuit_breaker.reset()

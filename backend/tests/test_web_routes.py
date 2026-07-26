@@ -210,7 +210,8 @@ class TestHealthCheck:
             mock_state.engine_ready_event.is_set.return_value = True
             mock_state.bootstrap_event.is_set.return_value = True
             mock_state.running = True
-            mock_state.confirmed_refresh_running = False
+            mock_state.confirmed_refresh_running_confirmed = False
+            mock_state.confirmed_refresh_running_5d = False
             mock_state.access_token = "token123"
             mock_state.account_snapshot = {"timestamp": "2026-07-10T09:00:00"}
             result = await health_check()
@@ -229,7 +230,8 @@ class TestHealthCheck:
             mock_state.engine_ready_event.is_set.return_value = False
             mock_state.bootstrap_event.is_set.return_value = False
             mock_state.running = True
-            mock_state.confirmed_refresh_running = True
+            mock_state.confirmed_refresh_running_confirmed = True
+            mock_state.confirmed_refresh_running_5d = False
             mock_state.access_token = None
             mock_state.account_snapshot = None
             result = await health_check()
@@ -246,7 +248,8 @@ class TestHealthCheck:
             mock_state.engine_ready_event.is_set.return_value = False
             mock_state.bootstrap_event.is_set.return_value = False
             mock_state.running = True
-            mock_state.confirmed_refresh_running = False
+            mock_state.confirmed_refresh_running_confirmed = False
+            mock_state.confirmed_refresh_running_5d = False
             mock_state.access_token = None
             mock_state.account_snapshot = None
             result = await health_check()
@@ -262,7 +265,8 @@ class TestHealthCheck:
             mock_state.engine_ready_event.is_set.return_value = False
             mock_state.bootstrap_event.is_set.return_value = False
             mock_state.running = False
-            mock_state.confirmed_refresh_running = False
+            mock_state.confirmed_refresh_running_confirmed = False
+            mock_state.confirmed_refresh_running_5d = False
             mock_state.access_token = None
             mock_state.account_snapshot = None
             result = await health_check()

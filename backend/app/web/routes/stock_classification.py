@@ -287,7 +287,7 @@ async def trigger_confirmed_download(_: str = Depends(get_current_user)):
     """수동 일봉 차트 시세 다운로드 실행"""
     try:
         from backend.app.services.engine_state import state
-        if state.confirmed_refresh_running:
+        if state.confirmed_refresh_running_confirmed:
             return {"ok": False, "error": "일봉 차트 시세 다운로드가 이미 진행 중입니다."}
 
         state.integrated_system_settings_cache["sector_stock_layout"] = []

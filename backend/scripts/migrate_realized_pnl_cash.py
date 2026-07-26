@@ -19,7 +19,6 @@ trades 테이블 SELL 레코드 realized_pnl/pnl_rate 현금 기준 마이그레
 실행 전 백업 필수 (stocks.db.{timestamp}.backup).
 """
 import sqlite3
-import sys
 
 DB_PATH = "backend/data/stocks.db"
 

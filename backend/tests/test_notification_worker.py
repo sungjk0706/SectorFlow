@@ -47,7 +47,7 @@ class TestInit:
 class TestStart:
     def test_start_sets_running(self):
         w = _make_worker()
-        with patch("backend.app.services.notification_worker.asyncio.create_task", side_effect=swallow_coro_returning(MagicMock(done=MagicMock(return_value=False)))) as mock_task:
+        with patch("backend.app.services.notification_worker.asyncio.create_task", side_effect=swallow_coro_returning(MagicMock(done=MagicMock(return_value=False)))):
             w.start()
         assert w._running is True
 
@@ -197,7 +197,7 @@ class TestShutdown:
                 self.cancel_called = True
             def __await__(self):
                 raise asyncio.CancelledError()
-                yield  # pragma: no cover
+                yield  # pragma: no cover — __await__를 제너레이터로 만들기 위해 필요 (raise만으로는 일반 함수가 됨)
 
         fake_task = _FakeTask()
         w._task = fake_task

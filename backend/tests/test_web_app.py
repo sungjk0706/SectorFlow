@@ -63,7 +63,6 @@ def _lifespan_patches(start_engine_return=True):
     mock_state.integrated_system_settings_cache = {}
     mock_state.server_ready_event = MagicMock()
     mock_state.engine_ready_event = MagicMock()
-    mock_state.shutdown_requested = False
     mock_state.connector_manager = None
     patches.append(patch("backend.app.services.engine_state.state", mock_state))
 

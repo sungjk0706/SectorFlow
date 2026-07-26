@@ -16,7 +16,6 @@ import pytest
 from backend.app.services import engine_loop, engine_state
 from backend.app.core.broker_providers import AuthProvider
 from backend.tests._mock_helpers import (
-    AwaitableMock,
     swallow_coro_side_effect,
     swallow_gather_side_effect,
     swallow_gather_then_raise,
@@ -822,7 +821,7 @@ class TestRunEngineLoopInit:
                          return_value=(set(), set())),
             patch.object(engine_loop.asyncio, "sleep", new_callable=AsyncMock),
             patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window",
-                  new_callable=AsyncMock, side_effect=RuntimeError("subscribe window check failed")) as mock_sw,
+                  new_callable=AsyncMock, side_effect=RuntimeError("subscribe window check failed")),
             patch("backend.app.services.engine_state._notify_reg_ack"),
             patch("backend.app.services.engine_account_notify._rebuild_layout_cache"),
             patch("backend.app.services.engine_lifecycle.log_message"),

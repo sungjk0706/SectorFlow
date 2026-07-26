@@ -495,7 +495,7 @@ class TestTriggerConfirmedDownload:
         mock_task = MagicMock()
         mock_task.add_done_callback = MagicMock()
         with patch("backend.app.services.engine_state.state") as mock_state:
-            mock_state.confirmed_refresh_running = False
+            mock_state.confirmed_refresh_running_confirmed = False
             mock_state.integrated_system_settings_cache = {}
             with patch("backend.app.services.engine_account_notify._rebuild_layout_cache"):
                 with patch("backend.app.services.market_close_pipeline.fetch_confirmed_data_only",
@@ -507,7 +507,7 @@ class TestTriggerConfirmedDownload:
     async def test_already_running(self):
         from backend.app.web.routes.stock_classification import trigger_confirmed_download
         with patch("backend.app.services.engine_state.state") as mock_state:
-            mock_state.confirmed_refresh_running = True
+            mock_state.confirmed_refresh_running_confirmed = True
             result = await trigger_confirmed_download(_="dev")
         assert result["ok"] is False
         assert "진행 중" in result["error"]

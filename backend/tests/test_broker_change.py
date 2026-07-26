@@ -14,6 +14,7 @@ from __future__ import annotations
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from backend.app.services import engine_sector_confirm
 from backend.app.services.engine_sector_confirm import (
     cancel_all_dynamic_unreg_timers,
     _PENDING_UNREG_TIMERS,
@@ -28,10 +29,11 @@ def _reset_unreg_timers():
     """각 테스트 전후 _PENDING_UNREG_TIMERS / _UNREG_READY_CODES / _UNREG_BATCH_PENDING 초기화."""
     _PENDING_UNREG_TIMERS.clear()
     _UNREG_READY_CODES.clear()
-    _UNREG_BATCH_PENDING = False  # _UNREG_BATCH_PENDING은 모듈 레벨 bool — 직접 할당 불가
+    engine_sector_confirm._UNREG_BATCH_PENDING = False
     yield
     _PENDING_UNREG_TIMERS.clear()
     _UNREG_READY_CODES.clear()
+    engine_sector_confirm._UNREG_BATCH_PENDING = False
 
 
 @pytest.fixture(autouse=True)

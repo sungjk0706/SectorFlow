@@ -12,8 +12,6 @@ from backend.app.services.engine_account import (
     get_account_snapshot,
     get_trade_mode,
     get_positions,
-    get_total_buy_amount,
-    get_total_pnl,
     get_buy_limit_status,
     _merge_positions_from_rest,
     _apply_broker_totals_from_summary,
@@ -86,44 +84,6 @@ class TestGetPositions:
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock, return_value=[{"stk_cd": "005930", "qty": 5}]):
             result = await get_positions()
             assert result == [{"stk_cd": "005930", "qty": 5}]
-
-
-# ── get_total_buy_amount ────────────────────────────────────────────────────────────
-
-class TestGetTotalBuyAmount:
-    @pytest.mark.asyncio
-    async def test_real_mode(self):
-        with patch("backend.app.services.engine_account.state") as mock_state, \
-             patch("backend.app.services.engine_account.is_test_mode", return_value=False):
-            mock_state.broker_rest_totals = {"total_buy": 7000000}
-            result = await get_total_buy_amount()
-            assert result == 7000000
-
-    @pytest.mark.asyncio
-    async def test_test_mode(self):
-        with patch("backend.app.services.engine_account.is_test_mode", return_value=True), \
-             patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock, return_value=[{"buy_amt": 3000000}, {"buy_amt": 2000000}]):
-            result = await get_total_buy_amount()
-            assert result == 5000000
-
-
-# ── get_total_pnl ────────────────────────────────────────────────────────────────────
-
-class TestGetTotalPnl:
-    @pytest.mark.asyncio
-    async def test_real_mode(self):
-        with patch("backend.app.services.engine_account.state") as mock_state, \
-             patch("backend.app.services.engine_account.is_test_mode", return_value=False):
-            mock_state.broker_rest_totals = {"total_pnl": 1000000}
-            result = await get_total_pnl()
-            assert result == 1000000
-
-    @pytest.mark.asyncio
-    async def test_test_mode(self):
-        with patch("backend.app.services.engine_account.is_test_mode", return_value=True), \
-             patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock, return_value=[{"pnl_amount": 500000}, {"pnl_amount": 300000}]):
-            result = await get_total_pnl()
-            assert result == 800000
 
 
 # ── get_buy_limit_status ──────────────────────────────────────────────────────────────

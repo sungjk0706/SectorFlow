@@ -145,28 +145,3 @@ def parse_change_rate_to_percent(v) -> float:
     return -result if is_neg else result
 
 
-# ── NXT 관련 FID 파서 ─────────────────────────────────────────────────────────
-
-def parse_fid9081_exchange(vals: dict) -> str:
-    """
-    FID 9081 -- 거래소 구분.
-    '1' = KRX, '2' = NXT, '' = 미수신(구독 방식에 따라 없을 수 있음)
-    """
-    v = _ws_fid_raw(vals, "9081")
-    if v is None:
-        return ""
-    s = str(v).strip()
-    return s  # '1'=KRX, '2'=NXT
-
-
-def parse_fid290_session(vals: dict) -> str:
-    """
-    FID 290 -- 장 구분(세션).
-    KRX 정규장: '2'
-    NXT 프리마켓: 'P' (08:00~09:00)
-    NXT 애프터마켓: 'U' (15:30~18:00)
-    """
-    v = _ws_fid_raw(vals, "290")
-    if v is None:
-        return ""
-    return str(v).strip()

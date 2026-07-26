@@ -5,8 +5,7 @@ hang 방지 원칙:
 """
 from __future__ import annotations
 
-import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from backend.app.services.data_manager import (
     _norm_stk_cd,

@@ -5,7 +5,7 @@
 모든 engine_*.py 모듈은 이 파일에서 전역 상태를 직접 import한다.
 순환 import 방지: 이 모듈은 다른 engine_*.py를 import하지 않는다.
 
-속성 그룹 분류 (세션 10 — CACHE-STATE-IMPL-10, 69개 속성):
+속성 그룹 분류 (세션 10 — CACHE-STATE-IMPL-10, 66개 속성):
   A. 브로커 연결 (5)   — connector_manager, broker_tokens,
                          access_token, login_ok, broker_spec
   B. 계좌 (11)          — engine_user_id, ws_account_subscribed, ws_connection_status,
@@ -21,18 +21,18 @@
                          krx_countdown_override, nxt_countdown_override,
                          last_realtime_reset_date, last_ws_subscribe_start_date,
                          last_krx_pre_subscribe_date, last_confirmed_download_date
-  E. 이벤트/락/상수 (18) — data_ready_event, token_ready_event, ws_reg_pipeline_done,
+  E. 이벤트/락/상수 (17) — data_ready_event, token_ready_event, ws_reg_pipeline_done,
                          bootstrap_event, sector_summary_ready_event, engine_ready_event,
                          server_ready_event, preboot_ready_event, engine_stop_event,
                          ws_window_changed_event, reg_seq_lock, reg_ack_event,
                          reg_ack_return_code, rest_api_thread_sem,
                          _last_global_buy_ts, _last_global_sell_ts,
-                         MIN_CACHE_LIFETIME_SEC, REG_POST_ACK_GAP_SEC
-  F. 안전/기동 플래그 (13) — running, shutdown_requested, engine_task, engine_loop_ref,
+                         REG_POST_ACK_GAP_SEC
+  F. 안전/기동 플래그 (11) — running, engine_task, engine_loop_ref,
                          realtime_latency_exceeded, position_build_failed, degraded_mode,
-                         preboot_cache_loaded, confirmed_refresh_running,
-                         confirmed_refresh_running_confirmed, confirmed_refresh_running_5d,
-                         latest_filter_summary_meta, integrated_system_settings_cache
+                         preboot_cache_loaded, confirmed_refresh_running_confirmed,
+                         confirmed_refresh_running_5d, latest_filter_summary_meta,
+                         integrated_system_settings_cache
 
 갱신 분산 주의 속성 (여러 파일에서 쓰기 — 향후 단일화 후보, 세션 10 조사 결과):
   - login_ok: 5곳 (kiwoom_connector, ls_connector ×2, engine_lifecycle, engine_loop,
@@ -67,12 +67,7 @@ D/E/F 소유권 계약 (세션 11 — CACHE-STATE-IMPL-11, 비거래 상태 단�
     - _last_global_buy_ts / _last_global_sell_ts (E): order_interval + web/routes/settings
 
   상수 (쓰기 없음, 선언만):
-    - MIN_CACHE_LIFETIME_SEC (E): 읽기 참조 0건 (사용 안 함 — 별도 승인 시 제거 검토)
     - REG_POST_ACK_GAP_SEC (E): 읽기만 존재 (engine_ws)
-
-  미사용 / Dead code (별도 승인 시 제거 검토):
-    - shutdown_requested (F): 선언만, 읽기/쓰기 0건
-    - confirmed_refresh_running (F): 쓰기 0건, 읽기만 2건 (미구현 플래그)
 
 A 그룹 소유권 계약 (세션 12 — CACHE-STATE-IMPL-12, active_connector 제거):
   단일 연결 소유자: connector_manager (ConnectorManager | None)
@@ -86,10 +81,6 @@ A 그룹 소유권 계약 (세션 12 — CACHE-STATE-IMPL-12, active_connector �
     - 22곳 fallback 패턴 제거 (P20 폴백 금지, P16 살아있는 경로)
   불변조건: connector_manager is None ⟺ WS 연결 없음 (engine_loop에서 보장)
 
-Dead code 후보 (참조 0건 — 별도 승인 시 제거 검토):
-  - shutdown_requested: 선언만 존재, 읽기/쓰기 참조 0건
-  - confirmed_refresh_running: 쓰기 0건, 읽기만 2건 (미구현 플래그)
-  - MIN_CACHE_LIFETIME_SEC: 읽기 참조 0건 (사용 안 함)
 """
 import asyncio
 from datetime import datetime
@@ -108,7 +99,6 @@ class EngineState:
     def __init__(self):
         # ── 엔진 상태 (그룹 F 안전/기동 + A 브로커 연결 + B engine_user_id) ──────
         self.running = False
-        self.shutdown_requested: bool = False
         self.connector_manager: "ConnectorManager | None" = None  # type: ignore[name-defined]
         self.broker_tokens: dict[str, str] = {}  # {broker_id: access_token}
         self.engine_task: asyncio.Task | None = None
@@ -142,10 +132,8 @@ class EngineState:
         self.rest_api_thread_sem: asyncio.Semaphore | None = None
         self.account_rest_lock: asyncio.Lock | None = None
 
-        # ── 데이터 캐시 (그룹 C + E MIN_CACHE_LIFETIME_SEC + F confirmed_refresh_running*) ──
-        self.MIN_CACHE_LIFETIME_SEC: float = 1.0
+        # ── 데이터 캐시 (그룹 C + F confirmed_refresh_running*) ──
         self.sector_summary_cache: "SectorSummary | None" = None  # type: ignore[name-defined]
-        self.confirmed_refresh_running: bool = False
         self.confirmed_refresh_running_confirmed: bool = False  # 확정시세 다운로드 전용
         self.confirmed_refresh_running_5d: bool = False         # 5거래일 일봉 다운로드 전용
         self.latest_filter_summary_meta: str = ""

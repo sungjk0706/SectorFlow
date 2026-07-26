@@ -16,7 +16,6 @@ KiwoomRestAPI: __init__, __aenter__/__aexit__, _get_client, _reset_client,
 from __future__ import annotations
 
 import logging
-import pytest
 from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 

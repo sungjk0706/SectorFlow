@@ -47,9 +47,9 @@
 | ID | 우선순위 | 위치 | 후보 | 확인 결과 | 관련 원칙 |
 |---|---|---|---|---|---|
 | DC-01 | 중간 | `backend/app/core/settings_defaults.py:178` | `DEFAULT_BROKER_CREDENTIALS` | ☑ 제거 — 정의 1건만 확인. 전체 코드·테스트 참조 0건. `coupling-settings-impact-matrix.md` 문서 참조 정리 | P16, P24 |
-| DC-02 | 중간 | `backend/app/services/engine_state.py:111` | `EngineState.shutdown_requested` | 운영 코드의 읽기·쓰기 참조 0건. 테스트는 dead 상태를 확인하는 메타 테스트만 존재 | P16, P24 |
-| DC-03 | 중간 | `backend/app/services/engine_state.py:146` | `EngineState.MIN_CACHE_LIFETIME_SEC` | 운영 읽기 참조 0건. 선언·설명·메타 테스트만 존재 | P16, P24 |
-| DC-04 | 낮음 | `backend/app/services/engine_state.py:148` | `EngineState.confirmed_refresh_running` | 쓰기 0건, 읽기 2건. 미구현 플래그로 확인되며 단순 삭제 전 사용 의도 확인 필요 | P16, P24 |
+| DC-02 | 중간 | `backend/app/services/engine_state.py:111` | `EngineState.shutdown_requested` | ☑ 제거 — 운영 코드 읽기·쓰기 참조 0건. dead code 메타 테스트·mock 정리 | P16, P24 |
+| DC-03 | 중간 | `backend/app/services/engine_state.py:146` | `EngineState.MIN_CACHE_LIFETIME_SEC` | ☑ 제거 — 운영 읽기 참조 0건. 선언·메타 테스트 정리 | P16, P24 |
+| DC-04 | 낮음 | `backend/app/services/engine_state.py:148` | `EngineState.confirmed_refresh_running` | ☑ 제거 — 쓰기 0건, 읽기 2건을 `confirmed_refresh_running_confirmed`/`_5d` 실제 플래그로 전환 후 제거. P21 사용자 투명성 복원 (다운로드 중 상태 표시), P16 중복 다운로드 차단 복원 | P16, P21, P24 |
 | DC-05 | 낮음 | `backend/app/core/ls_rest.py:212` | `LsRestAPI.call_api` | ⊘ 보류 — 운영 코드 참조 0건이나 테스트 7개 메서드(`TestLsRestCallApi`) 존재. 테스트 계약 확인 필요 | P16, P24 |
 | DC-06 | 낮음 | `backend/app/web/ws_manager.py:8` | `asyncio` import | ☑ 제거 — 파일 내 사용 0건으로 pyflakes가 확정 보고. import 제거 완료 | P16, P24 |
 
@@ -61,12 +61,12 @@
 
 | ID | 위치 | 함수/상수 | 현재 사용 | 후속 검토 |
 |---|---|---|---|---|
-| DC-07 | `backend/app/core/kiwoom_stock_rest.py:282` | `fetch_ka10081_all_stocks_5day` | 백엔드 테스트에서만 호출 | 장마감 파이프라인이 다른 경로를 사용하는지 확인 후 테스트 전용 API 여부 결정 |
-| DC-08 | `backend/app/services/circuit_breaker.py:116` | `reset_circuit_breaker` | 백엔드 테스트에서만 호출 | 운영에서 필요한 수동 reset 진입점인지 확인. 주문 안전성과 관련되어 임의 삭제 금지 |
-| DC-09 | `backend/app/services/engine_account.py:56,65` | `get_total_buy_amount`, `get_total_pnl` | 백엔드 테스트에서만 호출 | API/알림의 과거 계약인지 확인 후 삭제 또는 실제 호출 경로 연결 |
-| DC-10 | `backend/app/services/engine_ws_parsing.py:150,162` | `parse_fid9081_exchange`, `parse_fid290_session` | 백엔드 테스트에서만 호출 | 현재 WS 파서에서 사용하지 않는 구형 FID인지 확인. 테스트 제거 전 수신 계약 확인 |
-| DC-11 | `backend/app/services/settlement_engine.py:55` | `check_buy_power` | 백엔드 테스트에서만 호출. 현재 매수 경로는 `reserve_buy_power` 중심 | 주문 단일 경로(P15) 관점에서 테스트용 검증 함수 유지 여부를 별도 판단 |
-| DC-12 | `backend/app/core/settings_store.py:112,431` | `changed_keys_general_save`, `load_integrated_system_settings_for_editing` | 백엔드 테스트에서만 호출 | 프론트 설정 저장의 과거 계약인지 확인. 테스트가 의도한 공개 서비스면 유지, 아니면 테스트와 함께 정리 |
+| DC-07 | `backend/app/core/kiwoom_stock_rest.py:282` | `fetch_ka10081_all_stocks_5day` | ☑ 제거 — 운영 경로 `fetch_ka10081_daily_5d_data`(단건) 사용, batch wrapper는 테스트 전용 | 제거 완료 (DC-S3) |
+| DC-08 | `backend/app/services/circuit_breaker.py:116` | `reset_circuit_breaker` | ☑ 제거 — 운영 경로 0건, `CircuitBreaker.reset()` 메서드가 실제 reset 담당, 모듈 래퍼는 테스트 전용 (P16) | 제거 완료 (DC-S4) |
+| DC-09 | `backend/app/services/engine_account.py:56,65` | `get_total_buy_amount`, `get_total_pnl` | ☑ 제거 — 운영 경로 0건, 테스트 전용 (P16). `_refresh_account_snapshot_meta`가 인라인 합산으로 동일 기능 수행 | 제거 완료 (DC-S5) |
+| DC-10 | `backend/app/services/engine_ws_parsing.py:150,162` | `parse_fid9081_exchange`, `parse_fid290_session` | ☑ 제거 — FID 9081/290 운영 코드 참조 0건, NXT 준비용 미사용 파서 | 제거 완료 (DC-S3) |
+| DC-11 | `backend/app/services/settlement_engine.py:55` | `check_buy_power` | ☑ 제거 — 운영 경로 0건, `reserve_buy_power`가 동일 검증+즉시 차감으로 대체 (P15/P16) | 제거 완료 (DC-S4) |
+| DC-12 | `backend/app/core/settings_store.py:112,431` | `changed_keys_general_save`, `load_integrated_system_settings_for_editing` | ☑ 제거 — 운영 경로 0건, 테스트 전용 (P16). `changed_keys_general_save` 제거 시 cascading dead code 3개(`general_save_payload_from_flat`, `_payload_values_equal`, `_account_field_or_legacy_flat`) 함께 제거. `apply_settings_updates`는 `_compute_changed_keys`로 독립적 변경 추적 수행 | 제거 완료 (DC-S5) |
 
 ### 3.3 정적 분석에서 발견된 미사용 변수·매개변수
 

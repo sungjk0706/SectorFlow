@@ -35,7 +35,7 @@
 
 ---
 
-## 2. 전체 요약 (69개 속성)
+## 2. 전체 요약 (66개 속성)
 
 ### 2.1 소유권 패턴별 분류
 
@@ -44,11 +44,11 @@
 | **단일 writer (소유권 명확)** | 36 | connector_manager, broker_spec, engine_user_id, ws_connection_status, quote_subscribed, account_rest_lock, account_snapshot, index_data_cache, market_phase, krx_circuit_breaker_active, news_boost_cache, news_keywords_cache, news_boost_score, news_boost_ttl_sec, last_reset_date, krx_remove_done, confirmed_done, auto_trade_timer_handles, midnight_timer_handle, timetable_timer_handle, last_ws_subscribe_start_date, last_krx_pre_subscribe_date, last_confirmed_download_date, last_jif_received_at, krx_countdown_override, nxt_countdown_override, engine_task, engine_loop_ref, realtime_latency_exceeded, data_ready_event, token_ready_event, bootstrap_event, engine_ready_event, server_ready_event, preboot_ready_event, confirmed_refresh_running_5d |
 | **helper 경유 단일화 완료** | 4 | last_realtime_reset_date, confirmed_refresh_running_confirmed, latest_filter_summary_meta, reg_ack_event |
 | **헬퍼 단일 writer (lazy init)** | 3 | rest_api_thread_sem, reg_seq_lock, account_rest_lock(단일 writer에도 포함) |
-| **자연스러운 산재 (라이프사이클/이벤트 협업)** | 13 | running, shutdown_requested(사실상 dead), degraded_mode, preboot_cache_loaded, position_build_failed, ws_reg_pipeline_done, sector_summary_ready_event, engine_stop_event, ws_window_changed_event, reg_ack_return_code, ws_account_subscribed, account_rest_bootstrapped, auto_trade |
+| **자연스러운 산재 (라이프사이클/이벤트 협업)** | 12 | running, degraded_mode, preboot_cache_loaded, position_build_failed, ws_reg_pipeline_done, sector_summary_ready_event, engine_stop_event, ws_window_changed_event, reg_ack_return_code, ws_account_subscribed, account_rest_bootstrapped, auto_trade |
 | **다중 writer (단일화 후보)** | 9 | login_ok, access_token, broker_tokens, broker_rest_totals, broker_rest_apis, positions, sector_summary_cache, master_stocks_cache(전체 재할당은 단일, 항목 쓰기 다중), sector_summary_ready_event(자연스러운 산재로 재분류됨) |
 | **거래 관련 산재 (변경 금지)** | 3 | integrated_system_settings_cache, _last_global_buy_ts, _last_global_sell_ts |
-| **상수 (쓰기 없음)** | 2 | MIN_CACHE_LIFETIME_SEC, REG_POST_ACK_GAP_SEC |
-| **Dead code (참조 0건 또는 읽기만)** | 3 | shutdown_requested, confirmed_refresh_running, MIN_CACHE_LIFETIME_SEC |
+| **상수 (쓰기 없음)** | 1 | REG_POST_ACK_GAP_SEC |
+| **Dead code (DC-S2 제거 완료)** | 0 | shutdown_requested, confirmed_refresh_running, MIN_CACHE_LIFETIME_SEC — 모두 제거됨 |
 
 > 합산 중복: 일부 속성은 여러 패턴에 걼. helper 경유 단일화 4개는 단일 writer로도 집계 가능. 최종 유효 단일 writer 수는 약 40개.
 
@@ -67,13 +67,13 @@
 | 9 | `broker_tokens` | 2 (engine_loop + market_close_pipeline 임시) | 임시 토큰 등록/제거 패턴 |
 | 10 | `_last_global_buy_ts` / `_last_global_sell_ts` | 2 | 거래 관련 산재 (변경 금지) |
 
-### 2.3 Dead code 후보 (별도 승인 시 제거 검토)
+### 2.3 Dead code (DC-S2 제거 완료)
 
 | 속성 | 상태 | 비고 |
 |------|------|------|
-| `shutdown_requested` | 선언만, 읽기/쓰기 0건 | test_web_app.py:66 mock 1건 존재 (테스트용) |
-| `confirmed_refresh_running` | 쓰기 0건, 읽기만 2건 (web/routes/status.py:25, web/routes/stock_classification.py:290) | 미구현 플래그 |
-| `MIN_CACHE_LIFETIME_SEC` | 읽기/쓰기 0건 (상수) | test_engine_state_groups.py:449-458에 참조 0건 검증 테스트 존재 |
+| `shutdown_requested` | ☑ 제거됨 | DC-S2: 선언만, 읽기/쓰기 0건. test mock 정리 |
+| `confirmed_refresh_running` | ☑ 제거됨 | DC-S2: 쓰기 0건, 읽기 2건 → `confirmed_refresh_running_confirmed`/`_5d`로 전환 후 제거 |
+| `MIN_CACHE_LIFETIME_SEC` | ☑ 제거됨 | DC-S2: 읽기/쓰기 0건 (상수). 메타 테스트 정리 |
 
 ---
 
@@ -425,7 +425,7 @@
 
 ---
 
-### 3.5 E 그룹 — 이벤트/락/상수 (18개)
+### 3.5 E 그룹 — 이벤트/락/상수 (17개)
 
 #### E1. `data_ready_event` (LazyEvent)
 - **초기값**: `LazyEvent()` (line 128)
@@ -558,14 +558,9 @@
 - **생명주기**: 주문 간격 (매도 타이머)
 - **비고**: E15와 동일 패턴. 거래 관련 산재, 변경 금지.
 
-#### E17. `MIN_CACHE_LIFETIME_SEC` (float) — 상수
-- **초기값**: `1.0` (line 146)
-- **owner**: 상수 (쓰기 없음) — **Dead code 후보**
-- **writers (운영)**: 없음
-- **readers (운영)**: 없음
-- **readers (테스트)**: `test_engine_state_groups.py:449-458` (참조 0건 검증 테스트)
-- **생명주기**: 상수
-- **비고**: docstring(세션 11) "읽기 참조 0건 (사용 안 함 — 별도 승인 시 제거 검토)" 일치. Dead code 후보.
+#### E17. `MIN_CACHE_LIFETIME_SEC` (float) — **DC-S2 제거됨**
+- **상태**: 제거 완료 (세션 DC-S2)
+- **비고**: 상수 선언만, 읽기/쓰기 0건. 메타 테스트 정리.
 
 #### E18. `REG_POST_ACK_GAP_SEC` (float) — 상수
 - **초기값**: `0.35` (line 191)
@@ -577,7 +572,7 @@
 
 ---
 
-### 3.6 F 그룹 — 안전/기동 플래그 (13개)
+### 3.6 F 그룹 — 안전/기동 플래그 (11개)
 
 #### F1. `running` (bool)
 - **초기값**: `False` (line 110)
@@ -587,14 +582,9 @@
 - **생명주기**: 기동 시 / 종료 시
 - **비고**: docstring(세션 11) "자연스러운 산재 — 라이프사이클 협업" 일치. engine_lifecycle(start/stop) + engine_loop(run/exit).
 
-#### F2. `shutdown_requested` (bool) — **Dead code 후보**
-- **초기값**: `False` (line 111)
-- **owner**: Dead code (참조 0건)
-- **writers (운영)**: 없음
-- **readers (운영)**: 없음
-- **writers (테스트)**: `test_web_app.py:66` (mock 1건)
-- **생명주기**: 미사용
-- **비고**: docstring(세션 11) "미사용 / Dead code" 일치. 선언만 존재. 별도 승인 시 제거 검토.
+#### F2. `shutdown_requested` (bool) — **DC-S2 제거됨**
+- **상태**: 제거 완료 (세션 DC-S2)
+- **비고**: 선언만 존재, 운영 읽기/쓰기 0건. test mock 1건 정리.
 
 #### F3. `engine_task` (asyncio.Task | None)
 - **초기값**: `None` (line 114)
@@ -644,13 +634,9 @@
 - **생명주기**: 기동 시 / 캐시 로드 성공 시
 - **비고**: docstring(세션 11) "자연스러운 산재" 일치. 실시간 필드 초기화 타이밍 조절에 사용.
 
-#### F9. `confirmed_refresh_running` (bool) — **Dead code 후보**
-- **초기값**: `False` (line 148)
-- **owner**: Dead code (쓰기 0건, 읽기만 2건)
-- **writers (운영)**: 없음
-- **readers (운영)**: `web/routes/status.py:25`, `web/routes/stock_classification.py:290`
-- **생명주기**: 미사용 (미구현 플래그)
-- **비고**: docstring(세션 11) "미구현 플래그" 일치. 별도 승인 시 제거 검토. 단, 읽기 2건이 UI에 영향을 주므로 제거 시 읽기 경로도 함께 정리 필요.
+#### F9. `confirmed_refresh_running` (bool) — **DC-S2 제거됨**
+- **상태**: 제거 완료 (세션 DC-S2)
+- **비고**: 쓰기 0건, 읽기 2건을 `confirmed_refresh_running_confirmed`/`_5d` 실제 플래그로 전환 후 제거. P21 사용자 투명성 복원 (다운로드 중 상태 표시), P16 중복 다운로드 차단 복원.
 
 #### F10. `confirmed_refresh_running_confirmed` (bool)
 - **초기값**: `False` (line 149)
@@ -712,11 +698,11 @@
 
 이 속성들은 거래 안전성과 직결되므로 COUPLING 세션 범위 외. 별도 승인 시 safe-trade 절차 적용.
 
-### 4.4 Dead code 후보 (별도 승인 시 제거 검토)
+### 4.4 Dead code (DC-S2 제거 완료)
 
-- `shutdown_requested`: 선언만, 참조 0건.
-- `confirmed_refresh_running`: 쓰기 0건, 읽기만 2건 (UI 영향 — 제거 시 읽기 경로도 정리).
-- `MIN_CACHE_LIFETIME_SEC`: 상수, 읽기 0건.
+- `shutdown_requested`: ☑ 제거 — 선언만, 참조 0건.
+- `confirmed_refresh_running`: ☑ 제거 — 쓰기 0건, 읽기 2건 → 실제 플래그로 전환 후 제거.
+- `MIN_CACHE_LIFETIME_SEC`: ☑ 제거 — 상수, 읽기 0건.
 
 ---
 
@@ -736,10 +722,10 @@
 | `connector_manager` 단일 소유자 | engine_loop에서만 생성·해제·None | 동일 | 일치 |
 | `integrated_system_settings_cache` 10+ 파일 | 거래 관련 산재, 변경 금지 | 동일 (20+ readers, 6 writer 모듈) | 일치 |
 | `_last_global_buy_ts` / `_last_global_sell_ts` | order_interval + web/routes/settings | 동일 | 일치 |
-| `MIN_CACHE_LIFETIME_SEC` 읽기 0건 | 사용 안 함 | 동일 | 일치 |
+| `MIN_CACHE_LIFETIME_SEC` 읽기 0건 | DC-S2 제거됨 | 제거 완료 | 일치 |
 | `REG_POST_ACK_GAP_SEC` 읽기만 | engine_ws | 동일 | 일치 |
-| `shutdown_requested` 참조 0건 | Dead code | 동일 | 일치 |
-| `confirmed_refresh_running` 쓰기 0건, 읽기만 2건 | 미구현 플래그 | 동일 | 일치 |
+| `shutdown_requested` 참조 0건 | DC-S2 제거됨 | 제거 완료 | 일치 |
+| `confirmed_refresh_running` 쓰기 0건, 읽기만 2건 | DC-S2 제거됨 | 제거 완료 | 일치 |
 
 ### 불일치 1건
 
@@ -749,10 +735,10 @@
 
 ## 6. 결론
 
-- 69개 속성 중 약 40개가 단일 writer(또는 helper 경유 단일화)로 소유권이 명확.
-- 13개는 "자연스러운 산재"(init/오류/성공 라이프사이클 협업)로 단일화 대상 아님.
+- 66개 속성 중 약 40개가 단일 writer(또는 helper 경유 단일화)로 소유권이 명확.
+- 12개는 "자연스러운 산재"(init/오류/성공 라이프사이클 협업)로 단일화 대상 아님.
 - 9개는 다중 writer(단일화 후보). 그중 `sector_summary_cache`(7곳)가 가장 분산도 높음.
 - 3개는 거래 관련 산재로 본 세션 범위 외(별도 승인 필요).
-- 3개는 dead code 후보.
+- 3개 dead code는 DC-S2에서 제거 완료.
 - docstring과의 대조에서 1건 불일치(`positions`의 `kiwoom_account_parsing` 누락).
 - 본 세션은 매트릭스 작성까지 완료. 후속 세션에서 `sector_summary_cache` 1개 속성만 별도 승인 후 단일화 진행 권장.

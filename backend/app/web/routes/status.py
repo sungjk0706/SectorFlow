@@ -22,7 +22,7 @@ async def health_check():
     if is_server_ready and is_engine_ready:
         status = "ready"
         message = "엔진 준비 완료"
-    elif state.confirmed_refresh_running:
+    elif state.confirmed_refresh_running_confirmed or state.confirmed_refresh_running_5d:
         status = "downloading"
         message = "확정 데이터 다운로드 중"
     elif is_running:

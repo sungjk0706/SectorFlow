@@ -10,7 +10,6 @@ from unittest.mock import patch
 from backend.app.services.circuit_breaker import (
     CircuitBreaker,
     get_circuit_breaker,
-    reset_circuit_breaker,
 )
 
 
@@ -182,15 +181,6 @@ class TestSingleton:
         cb1 = get_circuit_breaker()
         cb2 = get_circuit_breaker()
         assert cb1 is cb2
-
-    def test_reset_circuit_breaker_resets_global(self):
-        cb = get_circuit_breaker()
-        cb.record_failure()
-        cb.record_failure()
-        reset_circuit_breaker()
-        assert cb.state == "CLOSED"
-        assert cb.failure_count == 0
-
 
 # ── 통합 시나리오 ──────────────────────────────────────────────────────────────
 

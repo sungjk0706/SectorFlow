@@ -52,23 +52,10 @@ def get_orderable() -> int:
 
 # ── 매수 관련 ───────────────────────────────────────────────────────────────
 
-def check_buy_power(order_amount: int, daily_limit: int = 0, daily_spent: int = 0) -> tuple[bool, str]:
-    """
-    매수 가능 여부 확인 (테스트모드 전용 — P18).
-    order_amount + 수수료가 주문가능금액(Effective_Buy_Power) 이내인지 검사.
-    실전은 증권사 서버가 SSOT이므로 이 함수 미호출 (실전 예수금은 account_snapshot['orderable'] 사용).
-    """
-    cost = order_amount + round(order_amount * BUY_COMMISSION)
-    effective = get_effective_buy_power(daily_limit, daily_spent)
-    if cost > effective:
-        return (False, f"주문가능금액 부족 (필요: {cost:,}원, 가용: {effective:,}원)")
-    return (True, "")
-
-
 async def reserve_buy_power(order_amount: int, daily_limit: int = 0, daily_spent: int = 0) -> tuple[bool, str, int]:
     """
     매수 가능 여부 확인 + 즉시 차감 (원자적). TOCTOU 경쟁 상태 방지 (테스트모드 전용 — P18).
-    check_buy_power 검증 통과 시 _orderable에서 즉시 차감하고 영속화.
+    검증 통과 시 _orderable에서 즉시 차감하고 영속화.
     반환: (ok, reason, cost) — cost는 차감된 금액 (롤백 시 release_buy_power에 전달).
     실전은 증권사 서버가 SSOT이므로 이 함수 미호출 (engine_strategy_core.reserve_test_buy_power 경유, trading.py에서 is_test_mode 게이트).
     """
@@ -163,7 +150,7 @@ def get_effective_buy_power(daily_limit: int = 0, daily_spent: int = 0) -> int:
     """
     실제 매수 가능 금액 계산 (주문가능금액 기준). 테스트모드 전용 (P18).
     daily_limit == 0이면 무제한 (주문가능금액만 사용).
-    check_buy_power/reserve_buy_power에서만 호출 → 실전 미호출.
+    reserve_buy_power에서만 호출 → 실전 미호출.
     """
     if daily_limit > 0:
         return min(_orderable, max(0, daily_limit - daily_spent))

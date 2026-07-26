@@ -1079,7 +1079,7 @@ class TestSectorRecomputeLoopImpl:
         mock_state.integrated_system_settings_cache = {"sector_start_threshold_pct": 50.0}
 
         sleep_count = 0
-        async def _sleep_mock(seconds):
+        async def _sleep_mock(_seconds):
             nonlocal sleep_count
             sleep_count += 1
             if sleep_count >= 3:
@@ -1220,7 +1220,7 @@ class TestSectorRecomputeLoopImpl:
         mock_state.integrated_system_settings_cache = {"sector_start_threshold_pct": 50.0}
 
         sleep_count = 0
-        async def _sleep_mock(seconds):
+        async def _sleep_mock(_seconds):
             nonlocal sleep_count
             sleep_count += 1
             if sleep_count >= 3:
@@ -1388,7 +1388,7 @@ class TestSectorThresholdGate:
         mock_state.integrated_system_settings_cache = {"sector_start_threshold_pct": 50.0}
 
         sleep_count = 0
-        async def _sleep_mock(seconds):
+        async def _sleep_mock(_seconds):
             nonlocal sleep_count
             sleep_count += 1
             if sleep_count >= 3:

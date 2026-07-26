@@ -279,21 +279,6 @@ async def fetch_ka10081_all_stocks_daily_confirmed(
     )
 
 
-async def fetch_ka10081_all_stocks_5day(
-    api: "KiwoomRestAPI",
-    krx_codes: list[str],
-    qry_dt: str,
-    *,
-    interval_sec: float = 0.3,
-    on_progress: "Callable[[int, int], None] | None" = None,
-) -> dict[str, dict]:
-    """전체 종목 ka10081 순차 조회 — 5거래일 일봉 전용."""
-    return await _fetch_all_stocks_ka10081(
-        api, krx_codes, qry_dt, fetch_ka10081_daily_5d_data,
-        interval_sec=interval_sec, on_progress=on_progress,
-    )
-
-
 async def fetch_ka10099_unified(
     api: "KiwoomRestAPI",
     *,

@@ -53,24 +53,6 @@ async def get_positions() -> list:
     return list(state.positions)
 
 
-async def get_total_buy_amount() -> int:
-    """총 매입금액 반환."""
-    from backend.app.services import dry_run
-
-    if is_test_mode(state.integrated_system_settings_cache):
-        return sum(int(p.get("buy_amt", 0) or 0) for p in await dry_run.get_positions())
-    return int(state.broker_rest_totals.get("total_buy", 0) or 0)
-
-
-async def get_total_pnl() -> int:
-    """총 손익 반환."""
-    from backend.app.services import dry_run
-
-    if is_test_mode(state.integrated_system_settings_cache):
-        return sum(int(p.get("pnl_amount", 0) or 0) for p in await dry_run.get_positions())
-    return int(state.broker_rest_totals.get("total_pnl", 0) or 0)
-
-
 async def get_buy_limit_status() -> dict:
     """매수 한도 상태를 dict로 반환 (프론트 배지용)."""
     daily_buy_spent = 0

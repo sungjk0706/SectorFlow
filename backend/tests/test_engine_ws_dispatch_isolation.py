@@ -11,7 +11,6 @@ hang 방지 원칙 (test_pipeline_compute.py와 동일):
 """
 from __future__ import annotations
 
-import asyncio
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 

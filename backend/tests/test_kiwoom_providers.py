@@ -173,11 +173,11 @@ class TestKiwoomOrderProvider:
     def test_init_with_auth(self):
         auth = MagicMock()
         from backend.app.core.kiwoom_providers import KiwoomOrderProvider
-        provider = KiwoomOrderProvider(auth)
+        KiwoomOrderProvider(auth)
 
     def test_init_no_auth(self):
         from backend.app.core.kiwoom_providers import KiwoomOrderProvider
-        provider = KiwoomOrderProvider(None)
+        KiwoomOrderProvider(None)
 
     async def test_send_order_delegates_to_kiwoom_order(self):
         from backend.app.core.kiwoom_providers import KiwoomOrderProvider
@@ -284,8 +284,8 @@ class TestKiwoomWebSocketProvider:
     def test_init_with_auth(self):
         auth = MagicMock()
         from backend.app.core.kiwoom_providers import KiwoomWebSocketProvider
-        provider = KiwoomWebSocketProvider(auth)
+        KiwoomWebSocketProvider(auth)
 
     def test_init_no_auth(self):
         from backend.app.core.kiwoom_providers import KiwoomWebSocketProvider
-        provider = KiwoomWebSocketProvider(None)
+        KiwoomWebSocketProvider(None)

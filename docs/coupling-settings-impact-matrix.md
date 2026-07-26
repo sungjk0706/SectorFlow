@@ -453,7 +453,7 @@ export const MASKED_FIELDS = new Set([
 
 | 파일 | 클래스 | 커버 범위 |
 |------|--------|-----------|
-| `test_settings_store.py` | 13 클래스 | `normalize_stk_cd_key`, `normalize_symbol_override_map`, `_account_field_or_legacy_flat`, `general_save_payload_from_flat`, `_payload_values_equal`, `changed_keys_general_save`, `_validate_timetable_order` (2그룹), `apply_settings_updates` (증분 저장), `subscribe.max_0b_count` 검증, 리스크 매니저 검증, `build_masked_settings_dict`, `load_integrated_system_settings_for_editing`, `daily_summary_days` 검증 |
+| `test_settings_store.py` | 8 클래스 | `normalize_stk_cd_key`, `normalize_symbol_override_map`, `_validate_timetable_order` (2그룹), `apply_settings_updates` (증분 저장), `subscribe.max_0b_count` 검증, 리스크 매니저 검증, `build_masked_settings_dict`, `daily_summary_days` 검증 |
 | `test_settings_file_integration.py` | 6 클래스 | DB 로드/저장, P20 전파, `classify_secret_fields`, 암호화 정책 |
 | `test_settings_boost_order_ratio.py` | 5 테스트 | `boost_order_ratio_*` 저장/정규화 |
 

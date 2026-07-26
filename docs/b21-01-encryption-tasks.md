@@ -18,7 +18,7 @@
 |---|---|---:|
 | `backend/app/core/encryption.py` | 현재 `_get_fernet()`→`encrypt_value()`/`decrypt_value()`가 `str \| None` 반환. Fernet 미가용 시 평문/암호문 그대로 반환(폴백). 6개 호출부가 이 계약에 의존. | 12-57 |
 | `backend/app/core/settings_file.py` | `_ENCRYPT_FIELDS`(단일 SSOT, 6필드). 전체 저장 `_collect_save_params()`→`_encrypt_field_or_raise()`(이미 fail-closed). 증분 저장 `save_selected_settings()`→`encrypt_value()` 직접 호출(폴백 허용 — 불일치). `_decrypt_encrypt_fields()`→`decrypt_value()`(None 시 빈문자열 폴백+경고 로그). | 204-208, 241-291, 348-363, 430-484 |
-| `backend/app/core/settings_store.py` | `apply_settings_updates()`→`_prepare_save_payload()`→`_encrypt_field_or_raise()`(이미 fail-closed). `build_masked_settings_dict()`→`load_integrated_system_settings()`(복호화 포함). `load_integrated_system_settings_for_editing()`→`_decrypt_encrypt_fields()`. | 255-304, 377-430 |
+| `backend/app/core/settings_store.py` | `apply_settings_updates()`→`_prepare_save_payload()`→`_encrypt_field_or_raise()`(이미 fail-closed). `build_masked_settings_dict()`→`load_integrated_system_settings()`(복호화 포함). | 255-304, 377-430 |
 | `backend/app/web/routes/settings.py` | `patch_setting_field()` — 예외 발생 시 `HTTPException(422, detail=f"유효하지 않은 설정값: {e}")` 문자열 detail. 구조화된 오류 코드 미지원. | 26-86 |
 | `backend/app/core/engine_settings.py` | `_dec()` 헬퍼 — `decrypt_value()` 반환 None 시 빈문자열 폴백+경고 로그. `_pick_broker_credentials()`가 `_dec()`로 모든 증권사 자격 복호화. `build_engine_settings_dict()` 결과가 엔진 캐시·커넥터 생성 인자로 사용. | 24-53, 246-277 |
 | `backend/app/services/telegram_bot.py` | `_fetch_enabled_settings()` — `gAAAA` 접두 시 `decrypt_value()` 호출, `(decrypt_value(raw_token) or "").strip()` 폴백. 평문 토큰도 허용. | 111-140 |
@@ -32,7 +32,7 @@
 | `frontend/src/pages/general-settings-telegram-tab.ts` | 텔레그램 토큰 입력·저장. 동일 패턴. | 53-76 |
 | `backend/tests/test_encryption.py` | 현재 폴백 동작(평문 반환) 검증 — 신규 상태 모델로 전환 시 전면 수정. | 1-144 |
 | `backend/tests/test_settings_file_integration.py` | `_encrypt_field_or_raise`/`_decrypt_encrypt_fields` 테스트. `encrypt_value`/`decrypt_value` mock 패턴 사용. | 340-385 |
-| `backend/tests/test_settings_store.py` | `apply_settings_updates`/`build_masked_settings_dict`/`load_integrated_system_settings_for_editing` 테스트. `decrypt_value` mock 패턴. | 810-849 |
+| `backend/tests/test_settings_store.py` | `apply_settings_updates`/`build_masked_settings_dict` 테스트. `decrypt_value` mock 패턴. | 810-849 |
 | `backend/tests/test_engine_settings.py` | `_dec()` 복호화 성공/실패(None) 테스트. `decrypt_value` mock 패턴. | 210-238 |
 | `backend/tests/test_telegram_bot.py` | `_fetch_enabled_settings()` 암호문/평문 토큰 처리 테스트. `decrypt_value` mock 패턴. | 240-339 |
 | `frontend/tests/api/client.test.ts` | 422 응답 detail 문자열 추출 테스트. 구조화 detail 미테스트. | 1-81 |

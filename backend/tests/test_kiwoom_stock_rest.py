@@ -5,7 +5,6 @@ _si_signed (정상/음수부호보존/콤마/플러스/빈값/대시/예외)
 fetch_ka10081_daily_price (정상/오름차순정렬/resp None/빈rows/비list/종가0/등락률계산/prev_close 0/파싱예외/숫자코드/알파벳코드/_raw_cd/sign기본값)
 fetch_ka10081_daily_5d_data (정상5개/오름차순정렬/신규상장3개/resp None/빈rows/비list/파싱예외/연속조회2페이지/연속조회중단/정확히5개)
 fetch_ka10081_all_stocks_daily_confirmed (정상/빈리스트/일부실패/on_progress/예외처리)
-fetch_ka10081_all_stocks_5day (정상/빈리스트/일부실패/on_progress/예외처리)
 fetch_ka10099_unified (정상/연속조회/재시도3회/빈list/비dict항목/코드없음/알파벳코드/종목명파싱/nxtEnable/코스닥)
 
 의존성: KiwoomRestAPI._call_api, UnifiedStockRecord, asyncio.sleep
@@ -469,73 +468,6 @@ class TestFetchAllStocksDailyConfirmed:
         ]
         with patch("backend.app.core.kiwoom_stock_rest.asyncio.sleep", new=AsyncMock()):
             result = await fetch_ka10081_all_stocks_daily_confirmed(api, ["FAIL01", "005930"], "20260710")
-        assert len(result) == 1
-        assert "005930" in result
-
-
-# ── fetch_ka10081_all_stocks_5day ───────────────────────────────────────────────
-
-class TestFetchAllStocks5day:
-    @pytest.mark.asyncio
-    async def test_normal(self):
-        from backend.app.core.kiwoom_stock_rest import fetch_ka10081_all_stocks_5day
-        api = _mock_api()
-        rows = [_make_daily_row(dt=f"2026070{i}") for i in range(1, 6)]
-        api._call_api.return_value = (_mock_resp({"stk_dt_pole_chart_qry": rows}), False)
-        with patch("backend.app.core.kiwoom_stock_rest.asyncio.sleep", new=AsyncMock()):
-            result = await fetch_ka10081_all_stocks_5day(api, ["005930", "005940"], "20260710")
-        assert len(result) == 2
-        assert "005930" in result
-        assert "005940" in result
-
-    @pytest.mark.asyncio
-    async def test_empty_list(self):
-        from backend.app.core.kiwoom_stock_rest import fetch_ka10081_all_stocks_5day
-        api = _mock_api()
-        with patch("backend.app.core.kiwoom_stock_rest.asyncio.sleep", new=AsyncMock()):
-            result = await fetch_ka10081_all_stocks_5day(api, [], "20260710")
-        assert result == {}
-
-    @pytest.mark.asyncio
-    async def test_partial_failure(self):
-        from backend.app.core.kiwoom_stock_rest import fetch_ka10081_all_stocks_5day
-        api = _mock_api()
-        rows = [_make_daily_row(dt=f"2026070{i}") for i in range(1, 6)]
-        api._call_api.side_effect = [
-            (_mock_resp({"stk_dt_pole_chart_qry": rows}), False),
-            (None, False),
-        ]
-        with patch("backend.app.core.kiwoom_stock_rest.asyncio.sleep", new=AsyncMock()):
-            result = await fetch_ka10081_all_stocks_5day(api, ["005930", "FAIL01"], "20260710")
-        assert len(result) == 1
-        assert "005930" in result
-
-    @pytest.mark.asyncio
-    async def test_on_progress_called(self):
-        from backend.app.core.kiwoom_stock_rest import fetch_ka10081_all_stocks_5day
-        api = _mock_api()
-        rows = [_make_daily_row(dt=f"2026070{i}") for i in range(1, 6)]
-        api._call_api.return_value = (_mock_resp({"stk_dt_pole_chart_qry": rows}), False)
-        progress_calls = []
-        with patch("backend.app.core.kiwoom_stock_rest.asyncio.sleep", new=AsyncMock()):
-            await fetch_ka10081_all_stocks_5day(
-                api, ["005930"], "20260710",
-                on_progress=lambda done, total: progress_calls.append((done, total))
-            )
-        assert (0, 1) in progress_calls
-        assert (1, 1) in progress_calls
-
-    @pytest.mark.asyncio
-    async def test_exception_continues(self):
-        from backend.app.core.kiwoom_stock_rest import fetch_ka10081_all_stocks_5day
-        api = _mock_api()
-        rows = [_make_daily_row(dt=f"2026070{i}") for i in range(1, 6)]
-        api._call_api.side_effect = [
-            Exception("network error"),
-            (_mock_resp({"stk_dt_pole_chart_qry": rows}), False),
-        ]
-        with patch("backend.app.core.kiwoom_stock_rest.asyncio.sleep", new=AsyncMock()):
-            result = await fetch_ka10081_all_stocks_5day(api, ["FAIL01", "005930"], "20260710")
         assert len(result) == 1
         assert "005930" in result
 

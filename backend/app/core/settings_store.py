@@ -12,11 +12,9 @@ from backend.app.core.settings_file import (
     load_selected_settings,
     save_selected_settings,
     _ENCRYPT_FIELDS as ENCRYPT_FIELDS,
-    _decrypt_encrypt_fields,
     _encrypt_field_or_raise,
     classify_secret_fields,
 )
-from backend.app.core.trade_mode import normalize_trade_mode
 from backend.app.core import journal as _journal
 from backend.app.services.auto_trading_effective import auto_trading_effective
 logger = logging.getLogger(__name__)
@@ -36,87 +34,6 @@ def normalize_symbol_override_map(v: dict) -> dict:
             continue
         out[normalize_stk_cd_key(str(k))] = row
     return out
-
-
-def _account_field_or_legacy_flat(d: dict, key: str, legacy: str) -> str:
-    """모드별 계좌번호: SettingsWidget.load / _save 와 동일 규칙."""
-    if key not in d:
-        return legacy
-    v = d.get(key)
-    if v is None:
-        return ""
-    return str(v)
-
-
-def general_save_payload_from_flat(d: dict) -> dict[str, Any]:
-    """
-    일반설정 저장 버튼이 보내는 payload와 동일한 규칙으로 dict를 구성한다.
-    load_integrated_system_settings_for_editing() 스냅샷과 현재 위젯 payload를 비교할 때 사용.
-    """
-    legacy_a = str(d.get("kiwoom_account_no") or "")
-    mode = normalize_trade_mode(d.get("trade_mode"))
-    data: dict[str, Any] = {
-        "timetable.confirmed_download": str(d["timetable.confirmed_download"]).strip(),
-        "time_scheduler_on": bool(d["time_scheduler_on"]),
-        "auto_buy_on": bool(d["auto_buy_on"]),
-        "auto_sell_on": bool(d["auto_sell_on"]),
-        "buy_time_start": str(d["buy_time_start"]).strip(),
-        "buy_time_end": str(d["buy_time_end"]).strip(),
-        "sell_time_start": str(d["sell_time_start"]).strip(),
-        "sell_time_end": str(d["sell_time_end"]).strip(),
-        "telegram_chat_id": str(d.get("telegram_chat_id") or "").strip(),
-        "tele_on": bool(d["tele_on"]),
-        "trade_mode": mode,
-        "kiwoom_account_no": _account_field_or_legacy_flat(
-            d, "kiwoom_account_no", legacy_a
-        ).strip(),
-        "broker": str(d["broker"]).strip(),
-    }
-    for tok_field in ("telegram_bot_token_test", "telegram_bot_token_real"):
-        tok = str(d.get(tok_field) or "").strip()
-        if tok:
-            data[tok_field] = tok
-    # 키움 레거시 호환 제거 (단일 소스 진리 준수)
-    rk = str(d.get("kiwoom_app_key") or "")
-    rs = str(d.get("kiwoom_app_secret") or "")
-    for field, val in (
-        ("kiwoom_app_key", rk),
-        ("kiwoom_app_secret", rs),
-    ):
-        s = val.strip()
-        if s:
-            data[field] = s
-    # 모든 증권사 API 키/시크릿/계좌번호 동적 수집 (증권사 추가 시 코드 수정 불필요)
-    for key in d:
-        if key.startswith("kiwoom_"):
-            continue  # 키움은 위에서 레거시 호환 처리 완료
-        if key.endswith(("_app_key", "_app_secret", "_account_no")):
-            val = str(d.get(key) or "").strip()
-            if val:
-                data[key] = val
-    return data
-
-
-def _payload_values_equal(a: Any, b: Any) -> bool:
-    if isinstance(a, bool) or isinstance(b, bool):
-        return bool(a) == bool(b)
-    if a == b:
-        return True
-    if a is None and b is None:
-        return True
-    if a is None or b is None:
-        return False
-    return str(a).strip() == str(b).strip()
-
-
-def changed_keys_general_save(before_editing: dict, new_payload: dict) -> set[str]:
-    """일반설정 저장 직전 스냅샷과 비교해 실제로 값이 달라진 키만 반환."""
-    prev = general_save_payload_from_flat(before_editing)
-    return {
-        k
-        for k in new_payload
-        if not _payload_values_equal(prev.get(k), new_payload[k])
-    }
 
 
 # 타임테이블 시간 순서 검증 대상 키 (P20/P22) — 2그룹 분리
@@ -426,14 +343,3 @@ async def build_masked_settings_dict(username: str = "admin", profile: str | Non
     masked["encryption_key_state"] = get_key_state().name
     masked["secret_field_states"] = secret_field_states
     return masked
-
-
-async def load_integrated_system_settings_for_editing() -> dict:
-    """
-    로컬 편집용: 암호화 필드를 복호화한 dict.
-    데스크톱 단일 사용자 전용 -- 메모리에 평문이 올라감.
-    """
-    flat = await load_integrated_system_settings()
-    out = dict(flat)
-    _decrypt_encrypt_fields(out)
-    return out

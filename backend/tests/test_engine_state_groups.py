@@ -1,24 +1,23 @@
 """engine_state.py 속성 그룹 분류 회귀 테스트 — 세션 10 + 세션 11 + 세션 12.
 
-엔진 전역 상태 69개 속성을 6개 그룹(A~F)으로 분류하고, 분류 계약을 회귀 테스트로 고정.
+엔진 전역 상태 66개 속성을 6개 그룹(A~F)으로 분류하고, 분류 계약을 회귀 테스트로 고정.
 세션 10: 분류 주석 + 매핑 테이블 일치성 + fallback/산재/dead code 인벤토리.
 세션 11: D/E/F 비거래 상태 소유권 계약 — 3종 단일화 + 자연스러운 산재 문서화 + dead code 3종.
 세션 12: A 그룹 소유권 계약 — active_connector 제거 + connector_manager 단일 소유자 + fallback 22곳 제거.
 
 검증 항목:
-  1. 속성 → 그룹 매핑 (69개 전부, 누락/중복 없음)
+  1. 속성 → 그룹 매핑 (66개 전부, 누락/중복 없음)
   2. 6개 그룹 속성 수 합계 = 전체 속성 수
   3. 실제 EngineState 인스턴스 속성과 매핑 테이블 일치
   4. fallback 패턴 인벤토리 (세션 12 — 0곳, 제거 완료)
   5. 갱신 분산 주의 속성 명시 (향후 단일화 후보)
-  6. dead code 후보 (shutdown_requested — 참조 0건, MIN_CACHE_LIFETIME_SEC — 읽기 0건)
-  7. D/E/F 소유권 계약 (세션 11 — 3종 단일화 + 자연스러운 산재 + confirmed_refresh_running 미구현)
-  8. A 그룹 소유권 계약 (세션 12 — active_connector 제거 + connector_manager 단일 소유자)
+  6. D/E/F 소유권 계약 (세션 11 — 3종 단일화 + 자연스러운 산재)
+  7. A 그룹 소유권 계약 (세션 12 — active_connector 제거 + connector_manager 단일 소유자)
+  8. DC-S2 제거: shutdown_requested, MIN_CACHE_LIFETIME_SEC, confirmed_refresh_running (dead code 제거 완료)
 """
 from __future__ import annotations
 
 import re
-import subprocess
 from pathlib import Path
 
 import pytest
@@ -90,19 +89,16 @@ GROUP_E_EVENT_LOCK = {
     "rest_api_thread_sem",
     "_last_global_buy_ts",
     "_last_global_sell_ts",
-    "MIN_CACHE_LIFETIME_SEC",
     "REG_POST_ACK_GAP_SEC",
 }
 GROUP_F_SAFETY = {
     "running",
-    "shutdown_requested",
     "engine_task",
     "engine_loop_ref",
     "realtime_latency_exceeded",
     "position_build_failed",
     "degraded_mode",
     "preboot_cache_loaded",
-    "confirmed_refresh_running",
     "confirmed_refresh_running_confirmed",
     "confirmed_refresh_running_5d",
     "latest_filter_summary_meta",
@@ -121,22 +117,22 @@ ALL_GROUPS = {
 
 # ── 1. 그룹 분류 계약 ──────────────────────────────────────────────────────────
 class TestGroupClassification:
-    """69개 속성이 6개 그룹으로 정확히 분류되었는지 검증."""
+    """66개 속성이 6개 그룹으로 정확히 분류되었는지 검증."""
 
     def test_group_sizes_match_docstring(self):
         """docstring에 명시된 그룹별 속성 수와 일치."""
-        expected_sizes = {"A": 5, "B": 11, "C": 9, "D": 13, "E": 18, "F": 13}
+        expected_sizes = {"A": 5, "B": 11, "C": 9, "D": 13, "E": 17, "F": 11}
         for name, group in ALL_GROUPS.items():
             assert len(group) == expected_sizes[name], (
                 f"그룹 {name} 속성 수 불일치: 예상 {expected_sizes[name]}, 실제 {len(group)}"
             )
 
-    def test_total_attribute_count_is_69(self):
-        """6개 그룹 합계 = 69 (누락/중복 없음)."""
+    def test_total_attribute_count_is_66(self):
+        """6개 그룹 합계 = 66 (누락/중복 없음)."""
         all_attrs = set()
         for group in ALL_GROUPS.values():
             all_attrs |= group
-        assert len(all_attrs) == 69, f"전체 속성 수: {len(all_attrs)} (예상 69)"
+        assert len(all_attrs) == 66, f"전체 속성 수: {len(all_attrs)} (예상 66)"
 
     def test_no_overlap_between_groups(self):
         """어떤 속성도 두 그룹에 중복 분류되지 않음."""
@@ -412,53 +408,7 @@ class TestUpdateScatterInventory:
         )
 
 
-# ── 5. Dead code 후보 ──────────────────────────────────────────────────────────
-class TestDeadCodeCandidate:
-    """참조 0건 속성 명시 — 별도 승인 시 제거 검토 대상."""
-
-    @pytest.fixture(scope="class")
-    def all_state_refs(self):
-        """backend/app + backend/tests의 state.<attr> 참조 전수 추출 (읽기+쓰기)."""
-        repo_root = Path(__file__).resolve().parents[2]
-        app_dir = repo_root / "backend" / "app"
-        tests_dir = repo_root / "backend" / "tests"
-        pattern = re.compile(r"\bstate\.([a-zA-Z_][a-zA-Z0-9_]*)\b")
-        refs: set[str] = set()
-        for base in (app_dir, tests_dir):
-            for py_file in base.rglob("*.py"):
-                if "__pycache__" in py_file.parts:
-                    continue
-                try:
-                    text = py_file.read_text(encoding="utf-8")
-                except (OSError, UnicodeDecodeError):
-                    continue
-                refs |= set(pattern.findall(text))
-        return refs
-
-    def test_shutdown_requested_is_dead_code(self, all_state_refs):
-        """shutdown_requested: 선언만 존재, 외부 참조 0건 (dead code 후보).
-
-        본 테스트는 dead code 상태를 고정 — 향후 참조가 추가되면 회귀 감지.
-        제거는 별도 승인 필요 (AGENTS.md 규칙 0 — 승인 전 수정 금지).
-        """
-        assert "shutdown_requested" not in all_state_refs, (
-            "shutdown_requested 참조가 발견됨 — dead code 상태에서 변경됨. "
-            "본 테스트를 갱신하거나 속성 제거 검토 필요."
-        )
-
-    def test_min_cache_lifetime_sec_has_no_refs(self, all_state_refs):
-        """MIN_CACHE_LIFETIME_SEC: 읽기 참조 0건 (사용 안 함 — 세션 11 조사).
-
-        상수 선언만 존재. 참조가 추가되면 사용 안 함 상태에서 변경됨을 감지.
-        제거는 별도 승인 필요.
-        """
-        assert "MIN_CACHE_LIFETIME_SEC" not in all_state_refs, (
-            "MIN_CACHE_LIFETIME_SEC 참조가 발견됨 — 사용 안 함 상태에서 변경됨. "
-            "본 테스트를 갱신하거나 속성 제거 검토 필요."
-        )
-
-
-# ── 6. D/E/F 소유권 계약 (세션 11 — 비거래 상태 단일화) ──────────────────────────
+# ── 5. D/E/F 소유권 계약 (세션 11 — 비거래 상태 단일화) ──────────────────────────
 class TestOwnershipContractSession11:
     """세션 11에서 단일화한 3종 속성의 소유권 계약 회귀 테스트.
 
@@ -582,14 +532,3 @@ class TestOwnershipContractSession11:
             f"자연스러운 산재 패턴에서 변경됨 — 문서화 갱신 또는 단일화 검토 필요."
         )
 
-    def test_confirmed_refresh_running_has_no_writes(self, write_locations_by_attr_v2):
-        """confirmed_refresh_running (F): 쓰기 0건 (미구현 플래그 — 세션 11 조사).
-
-        읽기만 2건 존재. 쓰기가 추가되면 미구현 상태에서 변경됨을 감지.
-        제거는 별도 승인 필요.
-        """
-        locs = write_locations_by_attr_v2.get("confirmed_refresh_running", set())
-        assert not locs, (
-            f"confirmed_refresh_running 쓰기 발견: {locs} — "
-            "미구현 플래그 상태에서 변경됨. 본 테스트 갱신 또는 구현 검토 필요."
-        )
