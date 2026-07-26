@@ -40,7 +40,7 @@
 | COUPLING-S5 | P1 | C-05 파이프라인 경계 | ☑ | `docs/coupling-pipeline-boundary.md` 작성 (608줄). scheduler→pipeline→compute→candidate→notification 단계별 호출 그래프 + 소유 캐시·DB 저장·WS 진행률·주문 후보 side effect 매트릭스. 코드 수정 없음(조사·문서만). P8/P9/P10/P11/P16/P20/P24/P25 점검 완료. 개선 후보 4건 식별(후처리 헬퍼 추출 1순위, 낮은 위험). |
 | COUPLING-S6 | 중간 | C-06 브로커 core 역참조 | ☑ | `docs/coupling-broker-core-backref.md` 작성 (436줄). core→services 역참조 33건(키움 19 + LS 14) + 부수 17건 전수 매트릭스화. 8개 유형 분류(A 상태동기화/B 설정읽기/C 토큰재사용/D ACK전송/E 키움REG빌더/F 순수함수/G WS상태브로드캐스트/H LS전용후처리). P4/P10/P16/P20/P23/P24/P25 점검 완료. 개선 후보 5건 식별(1순위: 키움 REG 빌더 이동, 낮은 위험, P4/P23 동시 개선). 코드 수정 없음(조사·문서만). |
 | COUPLING-S7 | 중간 | C-07 종목코드 정규화 표현 | ☑ | `docs/coupling-stock-code-normalization.md` 작성 (422줄). 종목코드 정규화 4함수(normalize_stk_cd_key/_base_stk_cd/_norm_stk_cd/normalizeStockCode) 입력·출력·용도·계층 매트릭스 + 호출부 전수 조사(25+/1/30+) + 테스트 커버리지 + 통합 가능성 판정. 코드 수정 없음(조사·문서만). 4개 함수 모두 ⊘ 통합 금지 판정 (입력 도메인·출력 계약 다름). 개선 후보 4건 식별(1순위: _base_stk_cd core 이동 + _norm_stk_cd 통합 검토, C-06 후보 2와 중복, 낮음). |
-| COUPLING-S8 | 중간 | C-08 Store·페이지 직접 결합 | ☐ | producer/consumer 대조, 프론트 테스트, typecheck/build·브라우저 |
+| COUPLING-S8 | 중간 | C-08 Store·페이지 직접 결합 | ☑ | producer/consumer 대조, 프론트 테스트, typecheck/build·브라우저 |
 | COUPLING-S9 | 낮음~중간 | C-09 대형 프론트엔드 파일 | ☐ | fan-in/fan-out 검토, 관련 테스트, typecheck/build·브라우저 |
 
 ---
@@ -334,7 +334,7 @@
 
 ### 세션 COUPLING-S8 — C-08 프론트엔드 Store와 페이지 직접 결합
 
-**상태:** ☐ 미시작
+**상태:** ☑ 완료 (조사·매트릭스 문서만 작성, 코드 수정 없음) — `docs/coupling-frontend-store-page-direct.md` (568줄) 참조
 **대상 원칙:** P10 SSOT, P16 살아있는 경로, P21 사용자 투명성, P23 공통 자산 재사용, P24 단순성, P25 격리된 실패
 
 #### 대상 코드
