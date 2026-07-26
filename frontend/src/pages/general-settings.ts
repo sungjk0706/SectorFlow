@@ -28,14 +28,57 @@ import {
   state,
   updateHolidayBadges,
   resetState,
+  ENCRYPTION_KEY_STATE_MESSAGES,
+  ENCRYPTION_KEY_BACKUP_GUIDE,
+  currentEncryptionKeyState,
 } from './general-settings-shared'
 import { renderTimeSettingsTab, syncTimeSettingsTab } from './general-settings-time-settings-tab'
 import { renderAutoTradeTab, syncAutoTradeTab } from './general-settings-auto-trade-tab'
 import { renderNewsSettingsTab, syncNewsSettingsTab } from './general-settings-news-settings-tab'
 import { renderDisplaySettingsTab, syncDisplaySettingsTab } from './general-settings-display-settings-tab'
-import { renderTelegramTab } from './general-settings-telegram-tab'
+import { renderTelegramTab, syncTelegramEncryptionStatus } from './general-settings-telegram-tab'
 import { renderAccountTab, syncTradeMode } from './general-settings-account-tab'
-import { renderApiSettingsTab, syncBrokerRadios } from './general-settings-api-settings-tab'
+import { renderApiSettingsTab, syncBrokerRadios, syncApiEncryptionStatus } from './general-settings-api-settings-tab'
+
+/* ── B21-01 세션7: 암호화 상태 배너 (설계 7.1/9.2) ── */
+function renderEncryptionBanner(): HTMLElement {
+  const wrap = document.createElement('div')
+  Object.assign(wrap.style, { marginBottom: '12px' })
+
+  // 상태 라인 (키 상태별 색상·문구 — 설계 7.2)
+  const statusLine = document.createElement('div')
+  Object.assign(statusLine.style, {
+    padding: '8px 12px', borderRadius: '6px', fontSize: FONT_SIZE.desc, fontWeight: '500',
+  })
+  wrap.appendChild(statusLine)
+
+  // 키 백업 안내 (설계 9.2 — 항상 표시, 상태와 무관)
+  const guide = document.createElement('div')
+  Object.assign(guide.style, {
+    padding: '6px 12px', fontSize: FONT_SIZE.desc, color: COLOR.tertiary,
+    background: COLOR.neutralBg, borderRadius: '6px', marginTop: '6px',
+  })
+  guide.textContent = ENCRYPTION_KEY_BACKUP_GUIDE
+  wrap.appendChild(guide)
+
+  state.encryptionBanner = statusLine
+  return wrap
+}
+
+function syncEncryptionBanner(): void {
+  if (!state.encryptionBanner) return
+  const ks = currentEncryptionKeyState()
+  if (ks === null) {
+    // 백엔드가 상태를 내려주지 않은 경우 (구형 응답) — 배너 숨김 (P25 격리)
+    state.encryptionBanner.style.display = 'none'
+    return
+  }
+  const msg = ENCRYPTION_KEY_STATE_MESSAGES[ks]
+  state.encryptionBanner.style.display = ''
+  state.encryptionBanner.style.color = msg.color
+  state.encryptionBanner.style.background = msg.bg
+  state.encryptionBanner.textContent = msg.text
+}
 
 /* ── 탭 렌더링 ── */
 function renderTabBar(): HTMLElement {
@@ -90,6 +133,7 @@ function syncTelegramTab(r: Record<string, unknown>): void {
       state.teleInputs[k].value = String(r[k] || '')
     }
   }
+  syncTelegramEncryptionStatus(state)
 }
 
 function syncAccountTab(r: Record<string, unknown>): void {
@@ -109,6 +153,7 @@ function syncApiSettingsTab(r: Record<string, unknown>): void {
     state.vals.broker = r.broker
   }
   syncBrokerRadios(state)
+  syncApiEncryptionStatus(state)
 }
 
 function syncFromSettings(s: AppSettings): void {
@@ -120,6 +165,7 @@ function syncFromSettings(s: AppSettings): void {
     }
   }
 
+  syncEncryptionBanner()
   syncAutoTradeTab(r)
   syncTimeSettingsTab(r)
   syncNewsSettingsTab(r)
@@ -181,6 +227,9 @@ function mount(container: HTMLElement): void {
 
   state.rootEl = document.createElement('div')
   state.rootEl.appendChild(createCardTitle('일반설정'))
+
+  // B21-01 세션7: 암호화 상태 배너 (탭 바 상단 — 설계 7.1)
+  state.rootEl.appendChild(renderEncryptionBanner())
 
   // 탭 바
   state.tabBar = renderTabBar()

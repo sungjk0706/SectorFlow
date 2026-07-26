@@ -342,6 +342,23 @@ async def _ensure_broker_specs(db_data: dict) -> None:
             logger.warning("[설정] 증권사 명세 로드 실패 (%s): %s", spec_file, e, exc_info=True)
 
 
+def _classify_secret(value: object) -> "SecretValueState":
+    """단일 민감값의 상태를 분류 (읽기 전용 — 값 변경 없음).
+
+    B21-01 세션7: _decrypt_encrypt_fields와 classify_secret_fields가 공유하는 분류 SSOT.
+    - 빈 값 → EMPTY
+    - gAAAA 접두 아님 → PLAINTEXT_LEGACY (설계 6.2 — 자동 마이그레이션 금지)
+    - gAAAA 접두 → decrypt_secret() 결과 상태 (ENCRYPTED/KEY_UNAVAILABLE/DECRYPT_FAILED)
+    """
+    from backend.app.core.encryption import decrypt_secret, SecretValueState
+    v_str = str(value) if value else ""
+    if not v_str:
+        return SecretValueState.EMPTY
+    if not v_str.startswith("gAAAA"):
+        return SecretValueState.PLAINTEXT_LEGACY
+    return decrypt_secret(v_str).state
+
+
 def _decrypt_encrypt_fields(merged: dict) -> None:
     """_ENCRYPT_FIELDS의 민감값을 상태 기반으로 처리하여 in-place 치환 (B21-01 세션2).
 
@@ -354,33 +371,48 @@ def _decrypt_encrypt_fields(merged: dict) -> None:
 
     평문 값은 로그에 노출하지 않음 (설계 6.2 — 평문 값 UI/로그/저널 새 노출 금지).
     사용 경로(엔진 설정·텔레그램)의 상태 기반 차단은 세션 4-5에서 연계.
+    B21-01 세션7: 분류 로직은 _classify_secret() 공유 헬퍼로 추출 (P24 중복 제거).
     """
-    from backend.app.core.encryption import decrypt_secret, SecretValueState
+    from backend.app.core.encryption import SecretValueState
     for enc_field in _ENCRYPT_FIELDS:
         v = merged.get(enc_field)
         if not v:
             continue
-        v_str = str(v)
-        if not v_str.startswith("gAAAA"):
+        state = _classify_secret(v)
+        if state is SecretValueState.EMPTY:
+            continue
+        if state is SecretValueState.PLAINTEXT_LEGACY:
             # 평문 레거시 — 자동 마이그레이션·삭제 금지 (설계 6.2). 평문 값은 로그에 노출하지 않음.
             logger.warning(
                 "[설정] %s 평문 레거시 감지 — 재저장 시 암호화 필요 (PLAINTEXT_LEGACY). 자동 마이그레이션 금지.",
                 enc_field,
             )
             continue
-        result = decrypt_secret(v_str)
-        if result.state is SecretValueState.ENCRYPTED and result.plaintext is not None:
-            merged[enc_field] = result.plaintext
-        elif result.state is SecretValueState.KEY_UNAVAILABLE:
+        if state is SecretValueState.ENCRYPTED:
+            # 평문 치환은 decrypt_secret()에서 평문을 받아와야 하므로 별도 호출.
+            from backend.app.core.encryption import decrypt_secret
+            result = decrypt_secret(str(v))
+            if result.plaintext is not None:
+                merged[enc_field] = result.plaintext
+        elif state is SecretValueState.KEY_UNAVAILABLE:
             logger.warning(
                 "[설정] %s 복호화 불가 — 암호화 키 없음/오류 (KEY_UNAVAILABLE). 암호문 유지, 사용 경로 차단 필요.",
                 enc_field,
             )
-        elif result.state is SecretValueState.DECRYPT_FAILED:
+        elif state is SecretValueState.DECRYPT_FAILED:
             logger.warning(
                 "[설정] %s 복호화 실패 — 암호문 손상/다른 키 (DECRYPT_FAILED). 암호문 유지, 재입력 필요.",
                 enc_field,
             )
+
+
+def classify_secret_fields(merged: dict) -> dict[str, str]:
+    """_ENCRYPT_FIELDS 각 필드의 상태를 분류하여 {field: state_name} 반환 (B21-01 세션7).
+
+    읽기 전용 — merged를 변경하지 않음. GET /api/settings 응답의 secret_field_states
+    구성에 사용 (설계 7.1/7.2 — UI 상태 표시). _classify_secret() 공유 헬퍼 기반 (P24).
+    """
+    return {f: _classify_secret(merged.get(f, "")).name for f in _ENCRYPT_FIELDS}
 
 
 async def _apply_all_migrations(merged: dict, db_data: dict) -> None:

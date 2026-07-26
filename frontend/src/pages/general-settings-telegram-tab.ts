@@ -7,11 +7,17 @@ import { createActionButton } from '../components/common/button'
 import { createDataTable, type ColumnDef } from '../components/common/data-table'
 import { extractDirty, MASKED_FIELDS } from '../settings'
 import { toastResult, showSaveToast } from '../components/common/toast'
-import { FONT_WEIGHT } from '../components/common/ui-styles'
-import { type GeneralSettingsState, GS } from './general-settings-shared'
+import { FONT_WEIGHT, COLOR } from '../components/common/ui-styles'
+import {
+  type GeneralSettingsState, GS,
+  SECRET_FIELD_STATUS_MESSAGES, mapEncryptionErrorMessage,
+  currentSecretFieldStatus, isEncryptionBlockingSave,
+} from './general-settings-shared'
 
 const TELE_STR_KEYS = ['telegram_chat_id', 'telegram_bot_token_test', 'telegram_bot_token_real'] as const
 const TELE_LABELS: Record<string, string> = { telegram_chat_id: '채팅 ID', telegram_bot_token_test: '테스트 봇 토큰', telegram_bot_token_real: '실전 봇 토큰' }
+// B21-01 세션7: 텔레그램 민감 필드 (상태 배지 표시 대상 — chat_id는 비민감이므로 제외)
+const TELE_SECRET_KEYS = ['telegram_bot_token_test', 'telegram_bot_token_real'] as const
 
 function buildTeleToggleRow(state: GeneralSettingsState): HTMLElement {
   const row = document.createElement('div')
@@ -47,7 +53,29 @@ function buildTeleInputRows(state: GeneralSettingsState, container: HTMLElement)
     state.teleInputs[k] = input
     row.appendChild(input)
     container.appendChild(row)
+
+    // B21-01 세션7: 민감 필드 상태 배지 (설계 7.2 — chat_id는 비민속이므로 제외)
+    if (TELE_SECRET_KEYS.includes(k as typeof TELE_SECRET_KEYS[number])) {
+      const status = currentSecretFieldStatus(k)
+      if (status && status !== 'EMPTY' && status !== 'ENCRYPTED') {
+        const badge = createTeleStatusBadge(status)
+        state.teleStatusBadges[k] = badge
+        container.appendChild(badge)
+      }
+    }
   }
+}
+
+function createTeleStatusBadge(status: string): HTMLElement {
+  const badge = document.createElement('div')
+  const msg = SECRET_FIELD_STATUS_MESSAGES[status as keyof typeof SECRET_FIELD_STATUS_MESSAGES]
+  Object.assign(badge.style, {
+    padding: '4px 10px', fontSize: '11px', color: msg?.color ?? COLOR.tertiary,
+    background: msg?.bg ?? 'transparent', borderRadius: '4px', marginBottom: '4px',
+  })
+  badge.textContent = msg?.text ?? ''
+  badge.dataset.status = status
+  return badge
 }
 
 function buildTeleSaveRow(state: GeneralSettingsState): HTMLElement {
@@ -66,11 +94,19 @@ function buildTeleSaveRow(state: GeneralSettingsState): HTMLElement {
       saveBtn.textContent = '저장 중...'
       saveBtn.disabled = true
       const res = await state.settingsMgr!.saveSection(dirty)
-      showSaveToast(res.ok ? 'saved' : 'error')
+      // B21-01 세션7: 구조화 오류 코드 매핑 (설계 7.3)
+      if (res.ok) {
+        showSaveToast('saved')
+      } else {
+        showSaveToast('error', mapEncryptionErrorMessage(res.errorCode, res.error))
+      }
       saveBtn.textContent = '저장'
-      saveBtn.disabled = false
+      saveBtn.disabled = isEncryptionBlockingSave()
     },
   })
+  // B21-01 세션7: 키 없음 상태 시 저장 버튼 사전 비활성화 (설계 7.3)
+  saveBtn.disabled = isEncryptionBlockingSave()
+  state.teleSaveBtn = saveBtn
   saveRow.appendChild(saveBtn)
   return saveRow
 }
@@ -101,4 +137,26 @@ export function renderTelegramTab(state: GeneralSettingsState, container: HTMLEl
   buildTeleInputRows(state, container)
   container.appendChild(buildTeleSaveRow(state))
   container.appendChild(buildTeleCommandTable())
+}
+
+/** B21-01 세션7: 텔레그램 탭 암호화 상태 동기화 — 저장 버튼 활성화/비활성화 + 배지 업데이트. */
+export function syncTelegramEncryptionStatus(state: GeneralSettingsState): void {
+  if (state.teleSaveBtn) {
+    state.teleSaveBtn.disabled = isEncryptionBlockingSave()
+  }
+  for (const k of TELE_SECRET_KEYS) {
+    const status = currentSecretFieldStatus(k)
+    const existing = state.teleStatusBadges[k]
+    if (status && status !== 'EMPTY' && status !== 'ENCRYPTED') {
+      if (existing) {
+        const msg = SECRET_FIELD_STATUS_MESSAGES[status]
+        existing.style.color = msg.color
+        existing.style.background = msg.bg
+        existing.textContent = msg.text
+        existing.dataset.status = status
+      }
+    } else if (existing) {
+      existing.style.display = 'none'
+    }
+  }
 }

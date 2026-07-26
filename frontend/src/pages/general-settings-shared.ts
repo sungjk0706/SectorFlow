@@ -115,10 +115,18 @@ export interface GeneralSettingsState {
 
   // API 설정 탭 참조
   apiKeyInputs: Record<string, HTMLInputElement>
+  apiStatusBadges: Record<string, HTMLElement>
+  apiSaveBtn: HTMLButtonElement | null
   brokerRadioGroup: ReturnType<typeof createRadioGroup> | null
   activeApiTab: 'kiwoom' | 'ls'
   apiTabButtons: Record<string, HTMLElement>
   brokerSaving: boolean
+
+  // B21-01 세션7: 암호화 상태 배너 참조 (일반설정 상단 — 설계 7.1).
+  encryptionBanner: HTMLElement | null
+  // B21-01 세션7: 텔레그램 탭 필드 상태 배지 + 저장 버튼 참조.
+  teleStatusBadges: Record<string, HTMLElement>
+  teleSaveBtn: HTMLButtonElement | null
 }
 
 function createState(): GeneralSettingsState {
@@ -184,10 +192,16 @@ function createState(): GeneralSettingsState {
     depositDisplay: null,
 
     apiKeyInputs: {},
+    apiStatusBadges: {},
+    apiSaveBtn: null,
     brokerRadioGroup: null,
     activeApiTab: 'kiwoom',
     apiTabButtons: {},
     brokerSaving: false,
+
+    encryptionBanner: null,
+    teleStatusBadges: {},
+    teleSaveBtn: null,
   }
 }
 
@@ -241,4 +255,100 @@ export function scheduleTimetableSave(
 export function resetState(): void {
   const fresh = createState()
   Object.assign(state, fresh)
+}
+
+/* ── B21-01 세션7: 암호화 상태 표시 헬퍼 (설계 7.2/9.2 — P24 중복 제거) ──
+ * 배너·필드별 배지·오류 코드 매핑이 공유하는 메시지 SSOT.
+ * 색상은 기존 COLOR 재사용 (신규 색상 체계 미생성 — P23). */
+
+import type { EncryptionKeyState, SecretFieldStatus } from '../types'
+
+export interface EncryptionStatusMessage {
+  text: string
+  color: string
+  bg: string
+}
+
+// 암호화 키 상태별 메시지 (설계 7.2) — 일반설정 상단 배너에 사용.
+export const ENCRYPTION_KEY_STATE_MESSAGES: Record<EncryptionKeyState, EncryptionStatusMessage> = {
+  AVAILABLE: {
+    text: '민감정보 암호화 정상',
+    color: COLOR.success,
+    bg: COLOR.successBg,
+  },
+  MISSING: {
+    text: '암호화 키가 설정되지 않았습니다. API 키와 토큰을 저장할 수 없습니다.',
+    color: COLOR.warning,
+    bg: COLOR.warningBg,
+  },
+  INVALID: {
+    text: '암호화 키를 사용할 수 없습니다. 키 설정을 확인한 뒤 다시 저장하세요.',
+    color: COLOR.up,
+    bg: COLOR.upBg,
+  },
+}
+
+// 필드별 민감값 상태 메시지 (설계 7.2) — API/텔레그램 탭 필드 영역에 사용.
+export const SECRET_FIELD_STATUS_MESSAGES: Record<SecretFieldStatus, EncryptionStatusMessage> = {
+  EMPTY: { text: '', color: COLOR.tertiary, bg: 'transparent' },
+  ENCRYPTED: { text: '암호화 저장됨', color: COLOR.success, bg: COLOR.successBg },
+  PLAINTEXT_LEGACY: {
+    text: '기존 인증정보가 안전하게 암호화되지 않았습니다. 인증정보를 다시 입력해 저장하세요.',
+    color: COLOR.warning,
+    bg: COLOR.warningBg,
+  },
+  KEY_UNAVAILABLE: {
+    text: '암호화 키가 없어 저장된 인증정보를 읽을 수 없습니다.',
+    color: COLOR.warning,
+    bg: COLOR.warningBg,
+  },
+  DECRYPT_FAILED: {
+    text: '저장된 인증정보를 복호화할 수 없습니다. 인증정보를 다시 입력하세요.',
+    color: COLOR.up,
+    bg: COLOR.upBg,
+  },
+}
+
+// 저장 실패 오류 코드 → 사용자용 메시지 매핑 (설계 5 + 7.3).
+// SaveResult.errorCode 기반 — 세션6가 ApiError에서 전달.
+export const ENCRYPTION_ERROR_CODE_MESSAGES: Record<string, string> = {
+  ENCRYPTION_KEY_MISSING: '암호화 키가 설정되지 않아 저장할 수 없습니다.',
+  ENCRYPTION_KEY_INVALID: '암호화 키를 사용할 수 없어 저장할 수 없습니다. 키 설정을 확인하세요.',
+  ENCRYPTION_FAILED: '인증정보 암호화에 실패해 저장할 수 없습니다.',
+}
+
+/** 오류 코드에 대응하는 사용자용 메시지 반환 (코드 없으면 기존 error 메시지 사용 — 하위 호환). */
+export function mapEncryptionErrorMessage(errorCode?: string, fallback?: string): string {
+  if (errorCode && ENCRYPTION_ERROR_CODE_MESSAGES[errorCode]) {
+    return ENCRYPTION_ERROR_CODE_MESSAGES[errorCode]
+  }
+  return fallback ?? '저장 실패'
+}
+
+/** 암호화 키 백업 안내 문구 (설계 9.2). */
+export const ENCRYPTION_KEY_BACKUP_GUIDE =
+  'API 키와 텔레그램 토큰은 암호화하여 저장합니다. 암호화 키를 잃어버리면 저장된 인증정보를 복구할 수 없습니다. ' +
+  '앱 데이터 백업과 암호화 키 백업을 서로 다른 안전한 장소에 보관하세요. 암호화 키를 화면이나 로그에 입력·기록하지 마세요.'
+
+/** 현재 암호화 키 상태 조회 (vals에서 읽기 — 백엔드 GET /api/settings 응답 필드). */
+export function currentEncryptionKeyState(): EncryptionKeyState | null {
+  const v = state.vals.encryption_key_state
+  if (v === 'AVAILABLE' || v === 'MISSING' || v === 'INVALID') return v
+  return null
+}
+
+/** 지정 필드의 민감값 상태 조회 (vals.secret_field_states에서 읽기). */
+export function currentSecretFieldStatus(field: string): SecretFieldStatus | null {
+  const states = state.vals.secret_field_states
+  if (states && typeof states === 'object') {
+    const s = (states as Record<string, unknown>)[field]
+    if (typeof s === 'string') return s as SecretFieldStatus
+  }
+  return null
+}
+
+/** 암호화 키가 없어(MISSING/INVALID) 민감정보 저장이 불가능한 상태인지 판정. */
+export function isEncryptionBlockingSave(): boolean {
+  const ks = currentEncryptionKeyState()
+  return ks === 'MISSING' || ks === 'INVALID'
 }

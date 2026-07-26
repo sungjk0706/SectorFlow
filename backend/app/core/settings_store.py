@@ -14,6 +14,7 @@ from backend.app.core.settings_file import (
     _ENCRYPT_FIELDS as ENCRYPT_FIELDS,
     _decrypt_encrypt_fields,
     _encrypt_field_or_raise,
+    classify_secret_fields,
 )
 from backend.app.core import journal as _journal
 from backend.app.services.auto_trading_effective import auto_trading_effective
@@ -402,10 +403,19 @@ async def apply_settings_updates(data: dict, username: str = "admin", profile: s
 
 
 async def build_masked_settings_dict(username: str = "admin", profile: str | None = None) -> dict[str, Any]:
-    """민감 필드 마스킹된 설정 dict (UI 표시용)."""
+    """민감 필드 마스킹된 설정 dict (UI 표시용).
+
+    B21-01 세션7: 암호화 키 상태(encryption_key_state)와 필드별 민감값 상태
+    (secret_field_states)를 추가로 내려줌 (설계 7.1/7.2 — UI 사전 상태 표시).
+    마스킹은 평문 값을 가리는 용도로 유지, 상태는 별도 필드로 전달 (P10 SSOT).
+    """
+    from backend.app.core.encryption import get_key_state
     flat = await load_integrated_system_settings()
     display_id = "root"
     masked = dict(flat)
+
+    # 필드별 상태 분류는 마스킹 전 원본 값 기준 (P22 — 마스킹 후 ***는 상태 분류 불가)
+    secret_field_states = classify_secret_fields(masked)
 
     for f in ENCRYPT_FIELDS:
         v = masked.get(f)
@@ -416,6 +426,8 @@ async def build_masked_settings_dict(username: str = "admin", profile: str | Non
     masked["profile_name"] = display_id
 
     masked["auto_trading_effective"] = auto_trading_effective(masked)
+    masked["encryption_key_state"] = get_key_state().name
+    masked["secret_field_states"] = secret_field_states
     return masked
 
 

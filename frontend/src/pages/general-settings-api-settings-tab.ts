@@ -10,7 +10,11 @@ import { showSaveToast } from '../components/common/toast'
 import { FONT_WEIGHT, COLOR, createDarkInput } from '../components/common/ui-styles'
 import { extractDirty } from '../settings'
 import { focusNext } from '../components/common/setting-row'
-import { type GeneralSettingsState, GS, BROKER_NAMES } from './general-settings-shared'
+import {
+  type GeneralSettingsState, GS, BROKER_NAMES,
+  SECRET_FIELD_STATUS_MESSAGES, mapEncryptionErrorMessage,
+  currentSecretFieldStatus, isEncryptionBlockingSave,
+} from './general-settings-shared'
 
 export function renderApiSettingsTab(state: GeneralSettingsState, container: HTMLElement): void {
   // Step 2A: 주 사용 증권사 선택 (통신망 전환)
@@ -92,7 +96,27 @@ function buildApiInputRows(state: GeneralSettingsState, container: HTMLElement, 
     state.apiKeyInputs[field.key] = input
     row.appendChild(input)
     container.appendChild(row)
+
+    // B21-01 세션7: 민감 필드 상태 배지 (설계 7.2 — 필드 영역 구체적 상태 안내)
+    const status = currentSecretFieldStatus(field.key)
+    if (status && status !== 'EMPTY' && status !== 'ENCRYPTED') {
+      const badge = createSecretStatusBadge(status)
+      state.apiStatusBadges[field.key] = badge
+      container.appendChild(badge)
+    }
   }
+}
+
+function createSecretStatusBadge(status: string): HTMLElement {
+  const badge = document.createElement('div')
+  const msg = SECRET_FIELD_STATUS_MESSAGES[status as keyof typeof SECRET_FIELD_STATUS_MESSAGES]
+  Object.assign(badge.style, {
+    padding: '4px 10px', fontSize: '11px', color: msg?.color ?? COLOR.tertiary,
+    background: msg?.bg ?? 'transparent', borderRadius: '4px', marginBottom: '4px',
+  })
+  badge.textContent = msg?.text ?? ''
+  badge.dataset.status = status
+  return badge
 }
 
 function buildApiSaveRow(state: GeneralSettingsState, fields: { key: string }[]): HTMLElement {
@@ -113,11 +137,19 @@ function buildApiSaveRow(state: GeneralSettingsState, fields: { key: string }[])
       saveBtn.textContent = '저장 중...'
       saveBtn.disabled = true
       const res = await state.settingsMgr!.saveSection(dirty)
-      showSaveToast(res.ok ? 'saved' : 'error')
+      // B21-01 세션7: 구조화 오류 코드 매핑 (설계 7.3 — 코드 기반 사용자용 메시지)
+      if (res.ok) {
+        showSaveToast('saved')
+      } else {
+        showSaveToast('error', mapEncryptionErrorMessage(res.errorCode, res.error))
+      }
       saveBtn.textContent = '저장'
-      saveBtn.disabled = false
+      saveBtn.disabled = isEncryptionBlockingSave()
     },
   })
+  // B21-01 세션7: 키 없음 상태 시 저장 버튼 사전 비활성화 (설계 7.3 — 서버 검증이 최종 방어선)
+  saveBtn.disabled = isEncryptionBlockingSave()
+  state.apiSaveBtn = saveBtn
   btnRow.appendChild(saveBtn)
   return btnRow
 }
@@ -192,4 +224,30 @@ async function handleBrokerChange(state: GeneralSettingsState, val: 'kiwoom' | '
 export function syncBrokerRadios(state: GeneralSettingsState): void {
   state.brokerRadioGroup?.setValue(String(state.vals.broker ?? 'kiwoom'))
   state.brokerRadioGroup?.setDisabled(state.brokerSaving)
+}
+
+/** B21-01 세션7: API 탭 암호화 상태 동기화 — 저장 버튼 활성화/비활성화 + 배지 업데이트. */
+export function syncApiEncryptionStatus(state: GeneralSettingsState): void {
+  // 저장 버튼 — 키 없음 상태 시 비활성화 (설계 7.3)
+  if (state.apiSaveBtn) {
+    state.apiSaveBtn.disabled = isEncryptionBlockingSave()
+  }
+  // 필드별 배지 — 현재 활성 서브탭 필드에 한해 업데이트
+  const fields = API_FIELDS_CONFIG[state.activeApiTab] || []
+  for (const field of fields) {
+    const status = currentSecretFieldStatus(field.key)
+    const existing = state.apiStatusBadges[field.key]
+    if (status && status !== 'EMPTY' && status !== 'ENCRYPTED') {
+      if (existing) {
+        const msg = SECRET_FIELD_STATUS_MESSAGES[status]
+        existing.style.color = msg.color
+        existing.style.background = msg.bg
+        existing.textContent = msg.text
+        existing.dataset.status = status
+      }
+    } else if (existing) {
+      // 상태가 해제됨(정상 저장 후 ENCRYPTED/EMPTY) — 배지 숨김
+      existing.style.display = 'none'
+    }
+  }
 }

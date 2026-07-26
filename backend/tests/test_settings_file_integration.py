@@ -27,6 +27,7 @@ from backend.app.core.settings_file import (
     save_selected_settings,
     _decrypt_encrypt_fields,
     _encrypt_field_or_raise,
+    classify_secret_fields,
 )
 
 
@@ -417,6 +418,74 @@ class TestSettingsFileP20Propagation:
             _decrypt_encrypt_fields(merged)
             assert merged["kiwoom_app_key"] == ""
             mock_logger.warning.assert_not_called()
+
+
+class TestClassifySecretFields:
+    """B21-01 세션7: classify_secret_fields — 읽기 전용 상태 분류 (UI 상태 표시용)."""
+
+    def test_empty_value_classified_as_empty(self):
+        """빈 값 → EMPTY."""
+        merged = {"kiwoom_app_key": "", "kiwoom_app_secret": None}
+        result = classify_secret_fields(merged)
+        assert result["kiwoom_app_key"] == "EMPTY"
+        assert result["kiwoom_app_secret"] == "EMPTY"
+
+    def test_plaintext_legacy_classified(self):
+        """gAAAA 접두 아닌 평문 → PLAINTEXT_LEGACY (자동 마이그레이션 금지 — 설계 6.2)."""
+        merged = {"kiwoom_app_key": "plaintext_key"}
+        result = classify_secret_fields(merged)
+        assert result["kiwoom_app_key"] == "PLAINTEXT_LEGACY"
+
+    def test_encrypted_classified(self):
+        """gAAAA 접두 + 복호화 성공 → ENCRYPTED."""
+        with patch(
+            "backend.app.core.encryption.decrypt_secret",
+            return_value=DecryptResult(state=SecretValueState.ENCRYPTED, plaintext="secret"),
+        ):
+            merged = {"kiwoom_app_key": "gAAAAencryptedcipher"}
+            result = classify_secret_fields(merged)
+            assert result["kiwoom_app_key"] == "ENCRYPTED"
+
+    def test_key_unavailable_classified(self):
+        """gAAAA 접두 + 키 없음 → KEY_UNAVAILABLE."""
+        with patch(
+            "backend.app.core.encryption.decrypt_secret",
+            return_value=DecryptResult(state=SecretValueState.KEY_UNAVAILABLE),
+        ):
+            merged = {"kiwoom_app_key": "gAAAAencryptedcipher"}
+            result = classify_secret_fields(merged)
+            assert result["kiwoom_app_key"] == "KEY_UNAVAILABLE"
+
+    def test_decrypt_failed_classified(self):
+        """gAAAA 접두 + 복호화 실패 → DECRYPT_FAILED."""
+        with patch(
+            "backend.app.core.encryption.decrypt_secret",
+            return_value=DecryptResult(state=SecretValueState.DECRYPT_FAILED),
+        ):
+            merged = {"kiwoom_app_key": "gAAAAencryptedcipher"}
+            result = classify_secret_fields(merged)
+            assert result["kiwoom_app_key"] == "DECRYPT_FAILED"
+
+    def test_read_only_does_not_modify_merged(self):
+        """분류 후 merged 원본 변경 없음 (읽기 전용 — 마스킹 경로에서 안전)."""
+        with patch(
+            "backend.app.core.encryption.decrypt_secret",
+            return_value=DecryptResult(state=SecretValueState.ENCRYPTED, plaintext="secret"),
+        ):
+            merged = {"kiwoom_app_key": "gAAAAencryptedcipher", "kiwoom_app_secret": "plaintext"}
+            snapshot = dict(merged)
+            classify_secret_fields(merged)
+            assert merged == snapshot
+
+    def test_all_encrypt_fields_covered(self):
+        """_ENCRYPT_FIELDS 6개 필드 모두 분류 결과에 포함 (P10 SSOT)."""
+        merged = {f: "" for f in [
+            "kiwoom_app_key", "kiwoom_app_secret",
+            "ls_app_key", "ls_app_secret",
+            "telegram_bot_token_test", "telegram_bot_token_real",
+        ]}
+        result = classify_secret_fields(merged)
+        assert set(result.keys()) == set(merged.keys())
 
     def test_encrypt_field_or_raise_blocks_key_unavailable(self):
         """B21-01 세션3: KEY_UNAVAILABLE 상태 → EncryptionError(ENCRYPTION_KEY_MISSING) (평문 저장 차단 — P20/보안)."""

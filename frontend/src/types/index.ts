@@ -228,12 +228,28 @@ export interface AppSettings {
   auto_trading_effective: boolean;
   auto_buy_effective: boolean;
   auto_sell_effective: boolean;
+
+  // B21-01 세션7: 암호화 상태 — 백엔드 GET /api/settings 응답에 포함 (설계 7.1/7.2).
+  // 옵션 필드 — 구형 백엔드 응답에 없을 수 있음 (하위 호환).
+  encryption_key_state?: EncryptionKeyState;
+  secret_field_states?: Record<string, SecretFieldStatus>;
+
   [key: string]: unknown;
 }
 
 // sector_max_targets 프론트엔드 fallback 기본값
 // 백엔드 settings_defaults.py의 기본값(3)과 동일 — SSOT
 export const DEFAULT_SECTOR_MAX_TARGETS = 3;
+
+// B21-01 세션7: 암호화 상태 타입 — 백엔드 encryption.py KeyState/SecretValueState와 1:1 대응 (P10 SSOT).
+// 백엔드가 enum.name 문자열로 내려주므로 프론트엔드는 문자열 리터럴 유니온으로 수신.
+export type EncryptionKeyState = 'AVAILABLE' | 'MISSING' | 'INVALID';
+export type SecretFieldStatus =
+  | 'EMPTY'
+  | 'ENCRYPTED'
+  | 'PLAINTEXT_LEGACY'
+  | 'KEY_UNAVAILABLE'
+  | 'DECRYPT_FAILED';
 
 export interface SaveResult {
   ok: boolean;

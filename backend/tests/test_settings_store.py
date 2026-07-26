@@ -827,6 +827,47 @@ class TestBuildMaskedSettingsDict:
             result = await build_masked_settings_dict()
             assert "auto_trading_effective" in result
 
+    @pytest.mark.asyncio
+    async def test_encryption_key_state_included(self):
+        """B21-01 세션7: encryption_key_state 포함 (UI 상태 배너 — 설계 7.1)."""
+        from backend.app.core.encryption import KeyState
+        with patch("backend.app.core.settings_store.load_integrated_system_settings", new=AsyncMock(return_value={})), \
+             patch("backend.app.core.settings_store.auto_trading_effective", return_value=False), \
+             patch("backend.app.core.encryption.get_key_state", return_value=KeyState.AVAILABLE):
+            result = await build_masked_settings_dict()
+            assert result["encryption_key_state"] == "AVAILABLE"
+
+    @pytest.mark.asyncio
+    async def test_secret_field_states_included(self):
+        """B21-01 세션7: secret_field_states 포함 (UI 필드별 상태 — 설계 7.2)."""
+        flat = {"kiwoom_app_key": "gAAAAencrypted", "kiwoom_app_secret": "plaintext_legacy"}
+        with patch("backend.app.core.settings_store.load_integrated_system_settings", new=AsyncMock(return_value=flat)), \
+             patch("backend.app.core.settings_store.auto_trading_effective", return_value=False), \
+             patch(
+                 "backend.app.core.encryption.decrypt_secret",
+                 return_value=DecryptResult(state=SecretValueState.ENCRYPTED, plaintext="secret"),
+             ):
+            result = await build_masked_settings_dict()
+            states = result["secret_field_states"]
+            assert states["kiwoom_app_key"] == "ENCRYPTED"
+            assert states["kiwoom_app_secret"] == "PLAINTEXT_LEGACY"
+
+    @pytest.mark.asyncio
+    async def test_secret_field_states_classified_before_masking(self):
+        """B21-01 세션7: 상태 분류는 마스킹 전 원본 값 기준 (P22 — 마스킹 후 ***는 분류 불가)."""
+        flat = {"kiwoom_app_key": "gAAAAencrypted"}
+        with patch("backend.app.core.settings_store.load_integrated_system_settings", new=AsyncMock(return_value=flat)), \
+             patch("backend.app.core.settings_store.auto_trading_effective", return_value=False), \
+             patch(
+                 "backend.app.core.encryption.decrypt_secret",
+                 return_value=DecryptResult(state=SecretValueState.ENCRYPTED, plaintext="secret"),
+             ) as mock_decrypt:
+            result = await build_masked_settings_dict()
+            # 마스킹 전 원본 gAAAA 값으로 분류 호출됨 (*** 가 아닌 gAAAAencrypted)
+            mock_decrypt.assert_called_once_with("gAAAAencrypted")
+            assert result["kiwoom_app_key"] == "***"
+            assert result["secret_field_states"]["kiwoom_app_key"] == "ENCRYPTED"
+
 
 # ── load_integrated_system_settings_for_editing (async) ─────────────
 
