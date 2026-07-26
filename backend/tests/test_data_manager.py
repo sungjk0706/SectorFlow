@@ -2,37 +2,17 @@
 
 hang 방지 원칙:
 - engine_state.state를 mock으로 대체
+
+참고: 종목코드 정규화(_norm_stk_cd)는 core/symbol_utils._base_stk_cd로 통합됨 (P10 SSOT).
+_base_stk_cd 직접 단위 테스트는 test_engine_symbol_utils.py::TestBaseStkCd 참조.
 """
 from __future__ import annotations
 
 from unittest.mock import patch
 
 from backend.app.services.data_manager import (
-    _norm_stk_cd,
     get_stock_name,
 )
-
-
-# ── _norm_stk_cd ──────────────────────────────────────────────────────────────
-
-class TestNormStkCd:
-    def test_empty_string(self):
-        assert _norm_stk_cd("") == ""
-
-    def test_pure_digit_short(self):
-        assert _norm_stk_cd("123") == "000123"
-
-    def test_pure_digit_exact(self):
-        assert _norm_stk_cd("005930") == "005930"
-
-    def test_pure_digit_long_truncates(self):
-        assert _norm_stk_cd("00005930") == "005930"
-
-    def test_non_digit_uppercased(self):
-        assert _norm_stk_cd("0120g0") == "0120G0"
-
-    def test_strips_whitespace(self):
-        assert _norm_stk_cd("  005930  ") == "005930"
 
 
 # ── get_stock_name ────────────────────────────────────────────────────────────

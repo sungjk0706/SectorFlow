@@ -46,6 +46,12 @@ class TestBaseStkCd:
     def test_non_digit(self):
         assert _base_stk_cd("A005930") == "A005930"
 
+    def test_non_digit_lower_uppercased(self):
+        assert _base_stk_cd("0120g0") == "0120G0"
+
+    def test_strips_whitespace(self):
+        assert _base_stk_cd("  005930  ") == "005930"
+
     def test_truncated_to_6(self):
         assert _base_stk_cd("00005930") == "005930"
 

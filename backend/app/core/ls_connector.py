@@ -232,7 +232,7 @@ class _LsSocket:
             raw_shcode = body.get("shcode") or body.get("ex_shcode", "")
             if not raw_shcode:
                 return None
-            from backend.app.services.engine_symbol_utils import _base_stk_cd
+            from backend.app.core.symbol_utils import _base_stk_cd
             shcode = _base_stk_cd(raw_shcode)
             unt_totofferrem = int(body.get("unt_totofferrem", 0) or 0)
             unt_totbidrem = int(body.get("unt_totbidrem", 0) or 0)
@@ -252,7 +252,7 @@ class _LsSocket:
             raw_shcode = body.get("shcode") or body.get("ex_shcode", "")
             if not raw_shcode:
                 return None
-            from backend.app.services.engine_symbol_utils import _base_stk_cd
+            from backend.app.core.symbol_utils import _base_stk_cd
             shcode = _base_stk_cd(raw_shcode)
             tval = int(body.get("tval", 0) or 0)
             return {
@@ -773,7 +773,7 @@ class LsConnector(BrokerConnector):
         
         KRX 표준: 숫자 6자리(005930) 및 알파벳 포함 6자리(0017J0) 모두 지원
         """
-        from backend.app.services.engine_symbol_utils import _base_stk_cd
+        from backend.app.core.symbol_utils import _base_stk_cd
         base = _base_stk_cd(code)
         
         # 6자리 코드는 모두 LS 형식으로 변환 (숫자든 알파벳이든)

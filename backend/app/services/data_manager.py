@@ -5,23 +5,19 @@
 """
 import logging
 
+from backend.app.core.symbol_utils import _base_stk_cd
+
 logger = logging.getLogger(__name__)
 
 
-def _norm_stk_cd(stk_cd: str) -> str:
-    """캐시 키용. 순수 숫자만 6자리로; 비숫자 포함(0120G0)은 숫자만 남기면 001200과 충돌하므로 원문 유지."""
-    s = str(stk_cd).strip()
-    if not s:
-        return ""
-    if s.isdigit():
-        return s.zfill(6)[-6:]
-    return s.upper()
-
-
 def get_stock_name(stk_cd: str, access_token: str | None = None) -> str:
-    """종목코드 -> 종목명. 메모리 캐시(_master_stocks_cache)에서만 조회."""
+    """종목코드 -> 종목명. 메모리 캐시(_master_stocks_cache)에서만 조회.
+
+    종목코드 정규화는 core/symbol_utils._base_stk_cd (P10 SSOT) 사용.
+    입력은 master_stocks_cache 키와 동일 형태 (6자리, _AL/_NX 접미사 없음).
+    """
     from backend.app.services.engine_state import state
-    norm = _norm_stk_cd(stk_cd)
+    norm = _base_stk_cd(stk_cd)
     if not norm:
         return "알수없음"
     entry = state.master_stocks_cache.get(norm, {})

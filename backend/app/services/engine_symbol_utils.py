@@ -4,7 +4,11 @@ from __future__ import annotations
 키움·REST 종목코드 정규화 및 REAL item/9001 필드 해석 -- 전역 엔진 상태 없음.
 
 engine_service에서 분리된 순수 함수만 둔다 (로직·입출력 동일 유지).
+
+`_base_stk_cd`는 core/symbol_utils.py로 이동됨 (P10 SSOT, C-06 역참조 해소).
+본 모듈에서 재수출하여 기존 호출부·테스트 patch 경로 유지 (P16 살아있는 경로).
 """
+from backend.app.core.symbol_utils import _base_stk_cd
 
 
 def is_nxt_enabled(stk_cd: str) -> bool:
@@ -45,18 +49,6 @@ def get_stock_market(stk_cd: str) -> str | None:
     if stock:
         return stock.get("market")
     return None
-
-
-def _base_stk_cd(stk_cd: str) -> str:
-    """순수 종목코드 반환 (_AL/_NX 접미사 제거)."""
-    s = str(stk_cd or "").strip().upper()
-    for suffix in ("_AL", "_NX"):
-        if s.endswith(suffix):
-            s = s[: -len(suffix)]
-            break
-    if s.isdigit():
-        return s.zfill(6)[-6:]
-    return s
 
 
 def _dict_get_fid(d: dict | None, fid: str):

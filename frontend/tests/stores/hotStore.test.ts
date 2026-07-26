@@ -13,6 +13,7 @@ import {
   applyAccountSummaryUpdate,
   flushTickBatch,
   rebuildBuyTargetIndex,
+  normalizeStockCode,
   type HotState,
 } from '../../src/stores/hotStore'
 import type { SectorStock, RealDataEvent, Position } from '../../src/types'
@@ -1011,6 +1012,78 @@ describe('hotStore — account-update / account-summary-update 이벤트 분리 
       expect(state.positions.length).toBe(1)
       expect(state.positions[0].stk_cd).toBe('005930')
       expect(state.positionCount).toBe(1)
+    })
+  })
+})
+
+// ── normalizeStockCode 직접 단위 테스트 (P21/P25) ─────────────────────────────
+// 종목코드 정규화 헬퍼의 입력·출력 계약 명시 검증.
+// p25_isolated_failure_investigation.md에서 식별된 code undefined 시 throw 가능성 가드 검증 포함.
+
+describe('normalizeStockCode — 종목코드 정규화 헬퍼', () => {
+  describe('빈/null/undefined 입력', () => {
+    it('빈 문자열은 빈 문자열 반환', () => {
+      expect(normalizeStockCode('')).toBe('')
+    })
+    it('undefined는 빈 문자열 반환 (throw 없음)', () => {
+      expect(normalizeStockCode(undefined)).toBe('')
+    })
+    it('null은 빈 문자열 반환 (throw 없음)', () => {
+      expect(normalizeStockCode(null)).toBe('')
+    })
+  })
+
+  describe('A 접두사 제거 (KRX REST 응답 형식)', () => {
+    it('A005930 → 005930', () => {
+      expect(normalizeStockCode('A005930')).toBe('005930')
+    })
+    it('A 접두사 + 6자리 미만 숫자는 패딩 후 A만 제거', () => {
+      expect(normalizeStockCode('A5930')).toBe('005930')
+    })
+  })
+
+  describe('_ 접미사 제거', () => {
+    it('005930_AL → 005930', () => {
+      expect(normalizeStockCode('005930_AL')).toBe('005930')
+    })
+    it('005930_NX → 005930', () => {
+      expect(normalizeStockCode('005930_NX')).toBe('005930')
+    })
+    it('모든 _ 접미사 제거 (split 첫 부분)', () => {
+      expect(normalizeStockCode('005930_XYZ')).toBe('005930')
+    })
+  })
+
+  describe('숫자 패딩', () => {
+    it('6자리 미만 숫자는 padStart(6)', () => {
+      expect(normalizeStockCode('5930')).toBe('005930')
+    })
+    it('5자리 숫자 패딩', () => {
+      expect(normalizeStockCode('59300')).toBe('059300')
+    })
+    it('6자리 숫자는 그대로', () => {
+      expect(normalizeStockCode('005930')).toBe('005930')
+    })
+    it('7자리 이상 숫자는 잘라내지 않고 길이 유지', () => {
+      expect(normalizeStockCode('0000593')).toBe('0000593')
+    })
+  })
+
+  describe('비숫자 처리', () => {
+    it('비숫자는 그대로 (대소문자 변환 없음)', () => {
+      expect(normalizeStockCode('0120G0')).toBe('0120G0')
+    })
+    it('비숫자 소문자는 그대로 (upper 변환 없음)', () => {
+      expect(normalizeStockCode('0120g0')).toBe('0120g0')
+    })
+  })
+
+  describe('복합 케이스', () => {
+    it('A 접두사 + _ 접미사 동시 제거', () => {
+      expect(normalizeStockCode('A005930_AL')).toBe('005930')
+    })
+    it('A 접두사 + 6자리 미만 + _ 접미사', () => {
+      expect(normalizeStockCode('A5930_AL')).toBe('005930')
     })
   })
 })

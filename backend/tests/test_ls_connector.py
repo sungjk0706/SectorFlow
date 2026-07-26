@@ -379,7 +379,7 @@ class TestConvertLsToInternal:
 
     def test_uh1_normal(self):
         sock = _make_ls_socket()
-        with patch("backend.app.services.engine_symbol_utils._base_stk_cd", return_value="005930"):
+        with patch("backend.app.core.symbol_utils._base_stk_cd", return_value="005930"):
             result = sock._convert_ls_to_internal("UH1", {}, {
                 "shcode": "U005930   ", "unt_totofferrem": "1000", "unt_totbidrem": "2000",
             })
@@ -396,7 +396,7 @@ class TestConvertLsToInternal:
 
     def test_uh1_ex_shcode_fallback(self):
         sock = _make_ls_socket()
-        with patch("backend.app.services.engine_symbol_utils._base_stk_cd", return_value="005930"):
+        with patch("backend.app.core.symbol_utils._base_stk_cd", return_value="005930"):
             result = sock._convert_ls_to_internal("UH1", {}, {
                 "ex_shcode": "U005930   ", "unt_totofferrem": "500", "unt_totbidrem": "600",
             })
@@ -405,7 +405,7 @@ class TestConvertLsToInternal:
 
     def test_uph_normal(self):
         sock = _make_ls_socket()
-        with patch("backend.app.services.engine_symbol_utils._base_stk_cd", return_value="005930"):
+        with patch("backend.app.core.symbol_utils._base_stk_cd", return_value="005930"):
             result = sock._convert_ls_to_internal("UPH", {}, {
                 "shcode": "U005930   ", "tval": "50000000",
             })
@@ -642,7 +642,7 @@ class TestLsConnectorSubscribeStocks:
         mock_socket = AsyncMock()
         mock_socket.send.return_value = True
         conn._socket = mock_socket
-        with patch("backend.app.services.engine_symbol_utils._base_stk_cd", return_value="005930"):
+        with patch("backend.app.core.symbol_utils._base_stk_cd", return_value="005930"):
             result = await conn.subscribe_stocks(["005930"])
         assert result is True
         mock_socket.send.assert_called_once()
@@ -663,7 +663,7 @@ class TestLsConnectorSubscribeStocks:
         mock_socket = AsyncMock()
         mock_socket.send.return_value = True
         conn._socket = mock_socket
-        with patch("backend.app.services.engine_symbol_utils._base_stk_cd", side_effect=["005930", "000660"]):
+        with patch("backend.app.core.symbol_utils._base_stk_cd", side_effect=["005930", "000660"]):
             result = await conn.subscribe_stocks(["005930", "000660"])
         assert result is True
         assert mock_socket.send.call_count == 2
@@ -675,7 +675,7 @@ class TestLsConnectorSubscribeStocks:
         mock_socket = AsyncMock()
         mock_socket.send.side_effect = [True, False]
         conn._socket = mock_socket
-        with patch("backend.app.services.engine_symbol_utils._base_stk_cd", side_effect=["005930", "000660"]):
+        with patch("backend.app.core.symbol_utils._base_stk_cd", side_effect=["005930", "000660"]):
             result = await conn.subscribe_stocks(["005930", "000660"])
         assert result is False
 
@@ -686,7 +686,7 @@ class TestLsConnectorSubscribeStocks:
         mock_socket = AsyncMock()
         mock_socket.send.return_value = True
         conn._socket = mock_socket
-        with patch("backend.app.services.engine_symbol_utils._base_stk_cd", return_value="005930"):
+        with patch("backend.app.core.symbol_utils._base_stk_cd", return_value="005930"):
             result = await conn.unsubscribe_stocks(["005930"])
         assert result is True
         payload = mock_socket.send.call_args[0][0]
@@ -709,7 +709,7 @@ class TestLsConnectorSubscribeStocksTr:
         mock_socket = AsyncMock()
         mock_socket.send.return_value = True
         conn._socket = mock_socket
-        with patch("backend.app.services.engine_symbol_utils._base_stk_cd", return_value="005930"):
+        with patch("backend.app.core.symbol_utils._base_stk_cd", return_value="005930"):
             result = await conn.subscribe_stocks_tr(["005930"], "UH1")
         # 반환값: (success_count, fail_count)
         assert result == (1, 0)
@@ -730,7 +730,7 @@ class TestLsConnectorSubscribeStocksTr:
         mock_socket = AsyncMock()
         mock_socket.send.return_value = True
         conn._socket = mock_socket
-        with patch("backend.app.services.engine_symbol_utils._base_stk_cd", return_value="005930"):
+        with patch("backend.app.core.symbol_utils._base_stk_cd", return_value="005930"):
             result = await conn.unsubscribe_stocks_tr(["005930"], "UPH")
         # 반환값: (success_count, fail_count)
         assert result == (1, 0)
@@ -964,19 +964,19 @@ class TestLsConnectorCallbacks:
 class TestLsConnectorFormatCode:
     def test_format_6digit_numeric(self):
         conn = _make_ls_connector()
-        with patch("backend.app.services.engine_symbol_utils._base_stk_cd", return_value="005930"):
+        with patch("backend.app.core.symbol_utils._base_stk_cd", return_value="005930"):
             result = conn._format_code("005930")
             assert result == "U005930   "
 
     def test_format_6digit_alpha(self):
         conn = _make_ls_connector()
-        with patch("backend.app.services.engine_symbol_utils._base_stk_cd", return_value="0017J0"):
+        with patch("backend.app.core.symbol_utils._base_stk_cd", return_value="0017J0"):
             result = conn._format_code("0017J0")
             assert result == "U0017J0   "
 
     def test_format_non_6digit_passthrough(self):
         conn = _make_ls_connector()
-        with patch("backend.app.services.engine_symbol_utils._base_stk_cd", return_value="123"):
+        with patch("backend.app.core.symbol_utils._base_stk_cd", return_value="123"):
             result = conn._format_code("123")
             assert result == "123"
 
