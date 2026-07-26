@@ -4,7 +4,7 @@
 
 import { hotStore } from '../stores/hotStore'
 import { uiStore, setSelectedSector } from '../stores/uiStore'
-import { FONT_WEIGHT, FONT_SIZE, COLOR } from '../components/common/ui-styles'
+import { FONT_WEIGHT, FONT_SIZE, COLOR, fmtMillionsToBillion } from '../components/common/ui-styles'
 import { createCardTitle } from '../components/common/card-title'
 import { createDataTable, type DataTableApi, type ColumnDef } from '../components/common/data-table'
 import { getMaxTargetsStatusEl, getMaxTargetsSumEl } from './sector-settings'
@@ -175,7 +175,7 @@ const COLUMNS: ColumnDef<SectorScoreRow>[] = [
     label: '평균거래(억)',
     align: 'right',
     type: 'avg_amount',
-    render: (row) => (row.avg_trade_amount / 100).toLocaleString('ko-KR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }),
+    render: (row) => fmtMillionsToBillion(row.avg_trade_amount),
     headerStyle: NO_BORDER,
     cellStyle: { ...NO_BORDER, color: COLOR.tertiary },
   },

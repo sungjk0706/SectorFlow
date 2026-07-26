@@ -4,7 +4,7 @@
  * 순수 이동 — 동작 변경 없음. 외부 import 경로는 메인에서 re-export 유지.
  */
 
-import { COLOR, FONT_SIZE, FONT_WEIGHT, rateColor, pnlColor, strengthColor, changeArrow, fmtComma, fmtRate } from './ui-styles'
+import { COLOR, FONT_SIZE, FONT_WEIGHT, rateColor, pnlColor, strengthColor, changeArrow, fmtComma, fmtRate, fmtMillionsToBillion } from './ui-styles'
 
 /* ── 종목명 셀 ── */
 
@@ -165,7 +165,7 @@ export function createRateCell(rate: number | null | undefined): HTMLElement {
 export function createAmountCell(amount: number | null | undefined): HTMLElement {
   const cell = document.createElement('div')
   applyCell(cell, 'right')
-  cell.textContent = amount && amount > 0 ? (amount / 100).toLocaleString('ko-KR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) : '-'  // 백만원 → 억단위 (소수점 1자리, 콤마)
+  cell.textContent = amount && amount > 0 ? fmtMillionsToBillion(amount) : '-'  // 백만원 → 억단위 (소수점 1자리, 콤마)
   return cell
 }
 
@@ -187,7 +187,7 @@ export function createAvgAmountCell(amount: number): HTMLElement {
   const cell = document.createElement('div')
   applyCell(cell, 'right')
   // 백만원 단위 → 억단위 변환 (소수점 1자리, 콤마)
-  cell.textContent = amount > 0 ? (amount / 100).toLocaleString('ko-KR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) : '-'
+  cell.textContent = amount > 0 ? fmtMillionsToBillion(amount) : '-'
   return cell
 }
 

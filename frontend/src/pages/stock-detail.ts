@@ -7,7 +7,7 @@ import { createDataTable, type ColumnDef, type DataTableApi } from '../component
 import { createSearchInput } from '../components/common/search-input'
 import { createCardTitle } from '../components/common/card-title'
 import { createMarketCountRow, type MarketCountRowHandle } from '../components/common/market-count-row'
-import { FONT_SIZE, FONT_WEIGHT, COLOR, fmtComma, createStockNameColumn, createSeqCell } from '../components/common/ui-styles'
+import { FONT_SIZE, FONT_WEIGHT, COLOR, fmtComma, fmtMillionsToBillion, createStockNameColumn, createSeqCell } from '../components/common/ui-styles'
 
 interface StockDetail5dBar {
   dt: string
@@ -37,7 +37,7 @@ let _mounted = false
 
 function fmtAmount(v: number | null): string {
   if (v === null || v === undefined) return '-'
-  return (v / 100).toLocaleString('ko-KR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+  return fmtMillionsToBillion(v)
 }
 
 function fmtHigh(v: number | null): string {

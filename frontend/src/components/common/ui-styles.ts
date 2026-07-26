@@ -154,6 +154,12 @@ export function fmtWon(v: number): string {
   return `${v.toLocaleString()}원`
 }
 
+/** 백만원 단위 → 억 단위 문자열 (ko-KR, 소수점 1자리, 콤마).
+ *  순수 변환만 담당 — null/0/음수 등 빈 값 처리는 호출부에서 담당 (P20 폴백 금지). */
+export function fmtMillionsToBillion(v: number): string {
+  return (v / 100).toLocaleString('ko-KR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+}
+
 /**
  * Canvas 차트 툴팁 위치 보정 — overflow:hidden 컨테이너 내에서
  * 툴팁이 완전히 보이도록 양축(X/Y) 경계 클램핑.

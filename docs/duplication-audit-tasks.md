@@ -33,7 +33,7 @@
 | DUP-S1 | 높음 | D-01 암호화 키 파생 | ☑ | 암호화 상태별 테스트, 백엔드 전체 테스트, RuntimeWarning 승격 기동 |
 | DUP-S2 | 높음 | D-02 시간 기본값 | ☑ | 관련 프론트엔드 테스트, typecheck, build, 화면 대조 |
 | DUP-S3 | 중간 | D-03 HTTP Mock 헬퍼 | ☑ | 대상 테스트, 백엔드 전체 테스트 |
-| DUP-S4 | 중간 | D-04 금액 변환 표시 | ☐ | 관련 프론트엔드 테스트, typecheck, build, 화면 대조 |
+| DUP-S4 | 중간 | D-04 금액 변환 표시 | ☑ | 관련 프론트엔드 테스트, typecheck, build, 화면 대조 |
 | DUP-S5 | 낮음~중간 | D-05 `CellWithPrevContent` 타입 | ☐ | typecheck, build |
 | DUP-S6 | 낮음 | D-06 색상값 반복 | ☐ | typecheck, build, 화면 색상 대조 |
 
@@ -166,8 +166,21 @@
 
 ### 세션 DUP-S4 — D-04 프론트엔드 금액 변환·표시 로직 공통화
 
-**상태:** ☐ 미시작
-**대상 원칙:** P23 공통 UI 자산 재사용, P24 단순성, P21 사용자 표시 일관성
+**상태:** ☑ 완료 (2026-07-26)
+**대상 원칙:** P10 SSOT, P16 살아있는 경로, P20 폴백 금지, P21 사용자 표시 일관성, P23 공통 UI 자산 재사용, P24 단순성
+
+#### 완료 요약
+
+- 신규 공통 포맷 함수 `fmtMillionsToBillion(v)` 추가 (`components/common/ui-styles.ts`의 `fmtComma`/`fmtWon`/`fmtRate` 섹션 바로 뒤): `(v / 100).toLocaleString('ko-KR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })` — 백만원 → 억 단위 순수 변환. null/0/음수 빈 값 처리는 호출부에서 담당 (P20 폴백 금지 — 각 호출부의 기존 빈 값 의미 보존).
+- 4곳 중복 변환 → 공통 함수 호출로 전환 (P10 SSOT, P23 일관성):
+  1. `components/common/ui-styles-cells.ts` `createAmountCell` (168줄) — null/0/음수 → '-' 유지, 변환만 교체.
+  2. `components/common/ui-styles-cells.ts` `createAvgAmountCell` (190줄) — 0/음수 → '-' 유지, 변환만 교체.
+  3. `pages/stock-detail.ts` `fmtAmount` (40줄) — null/undefined → '-' 유지, 변환만 교체.
+  4. `pages/sector-ranking-list.ts` 178줄 컬럼 render 인라인 — 변환만 교체.
+- 통합하지 않은 항목 (P24 억지 통합 금지 — 의미 다름): `profit-overview-sector-pnl.ts` `createAmountCell(value, unit, opts)` (수익금/수익률 숫자+단위 분리 셀, 백만원→억 변환 무관), `canvas-profit-chart.ts` `formatAmountWon` (원 단위 입력, 억/만 축약 차트용), `buy-target-columns.ts` 91줄 `program_net_buy / 1000000` (÷100 아님, 부호별 색상·빈 문자열 처리).
+- 사용자 표시(단위·소수점·빈 값·색상·정렬) 한 건도 변경 없음 (P21).
+- 백엔드·거래 실행 경로·DB 영향 없음 (프론트엔드 표시 로직만).
+- 검증: typecheck 통과, build 성공 (97 modules, 2.18s), vitest 218 passed (회귀 0건). 잔존 `(v / 100).toLocaleString('ko-KR', ...)` 패턴 grep 결과 SSOT 공통 함수 본인 1곳만 남음 (중복 제거 완료). `duplication-audit-tasks.md` D-04 상태 ☑ 갱신. 커밋: 이 세션 완료 커밋. 푸시: 안 함.
 
 #### 대상 코드
 
