@@ -367,7 +367,7 @@
 
 ### 세션 COUPLING-S9 — C-09 대형 프론트엔드 파일의 변경 책임 집중
 
-**상태:** ☐ 미시작
+**상태:** ☑ 완료
 **대상 원칙:** P16 살아있는 경로, P21 사용자 투명성, P23 공통 UI 자산, P24 단순성, P25 격리된 실패
 
 #### 대상 코드
@@ -389,14 +389,25 @@
 4. 실행 승인 후 한 파일의 한 책임만 분리하며 import 방향, public API, mount/unmount, 실시간 이벤트, 사용자 표시를 보존한다.
 5. 분리 결과가 새 결합·순환 import·dead module을 만들지 않는지 확인하고, 실익이 없으면 `⊘`로 기록한다.
 
+#### 결과
+
+- **문서**: `docs/coupling-large-frontend-files.md` 신규 작성 (약 300줄)
+- **조사 방법**: 7개 대상 파일 전수 정독 + import/export grep + git log 변경 이력 카운트 + 테스트 커버리지 확인
+- **대상 7개 파일 총 3,886줄**: header.ts(615줄, 39회 변경), hotStore.ts(751줄, 31회), virtual-scroller.ts(555줄, 12회), profit-shared.ts(537줄, 30회), buy-target.ts(477줄, 52회), sector-stock.ts(482줄, 53회), data-table-fixed.ts(469줄, 5회)
+- **판정**: 모든 대상 파일 ⊘ 유지 — 줄 수 초과 4개 파일(header/hotStore/virtual-scroller/profit-shared) 모두 분리 시 공유 상태 접근 복잡도 증가 또는 단일 consumer로 공통화 실익 없음
+- **중복 패턴 4종 식별**: 셀 렌더링(data-table-fixed 3회), 칩 렌더링(header 15회), 배지 갱신(buy-target 3회), tick 리스너(buy-target 3회) — 모두 추출 임계치 미만이거나 클로저 변수 매개변수화 비용이 분리 이득 초과
+- **금지 패턴 5개 중 0건 위반**: 모든 catch 블록이 console.error 로깅 (P25 격리 일관 적용)
+- **장기적 관찰 항목 4개 지정**: hotStore 900줄 도달 시, header 20칩 도달 시, buy-target 5배지 도달 시, data-table-fixed 셀 렌더링 4회 도달 시
+- **코드 수정 없음** — 문서만 작성. 거래 경로·DB·비밀정보 변경 없음.
+
 #### 검증 방법
 
-- 대상 파일의 import/export·호출부·테스트 전체 검색 및 fan-in/fan-out 대조
-- 분리 시 이동한 함수·타입·상수명으로 전체 저장소 재검색
-- 관련 페이지·공통 컴포넌트·Store 테스트
-- `cd frontend && npm run typecheck`
-- `cd frontend && npm run build`
-- 브라우저에서 헤더·가상 스크롤·수익·매수 후보·업종 화면의 표시·스크롤·실시간 갱신·페이지 전환 확인
+- 대상 파일의 import/export·호출부·테스트 전체 검색 및 fan-in/fan-out 대조 — 완료
+- 분리 시 이동한 함수·타입·상수명으로 전체 저장소 재검색 — 해당 없음 (분리 없음)
+- 관련 페이지·공통 컴포넌트·Store 테스트 — 해당 없음 (코드 수정 없음)
+- `cd frontend && npm run typecheck` — 해당 없음 (코드 수정 없음)
+- `cd frontend && npm run build` — 해당 없음 (코드 수정 없음)
+- 브라우저에서 헤더·가상 스크롤·수익·매수 후보·업종 화면의 표시·스크롤·실시간 갱신·페이지 전환 확인 — 해당 없음 (코드 수정 없음)
 
 ---
 
