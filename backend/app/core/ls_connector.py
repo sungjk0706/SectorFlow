@@ -818,16 +818,15 @@ class LsConnector(BrokerConnector):
 def create_ls_connector() -> LsConnector:
     """단일 소스 진리: state.integrated_system_settings_cache 직접 사용.
 
-    B21-01 세션 5: 자격 상태 기반 검증 (빈 값 + 복호화 상태 + 평문 레거시 포함).
-    차단 사유는 engine_settings.broker_credential_block_reason() SSOT 사용 (P10/P24).
+    빈 app_key/app_secret만 사전 차단 — 복호화 상태(키 없음/복호화 실패/평문 레거시)는
+    broker_router.validate() 경고로 사용자 안내하고, 증권사 서버가 토큰 발급·WS 연결에서
+    어차피 거부하므로 앱에서 이중 차단하지 않음 (P24 단순성).
     """
-    from backend.app.core.engine_settings import broker_credential_block_reason
-    reason = broker_credential_block_reason("ls")
-    if reason:
-        raise ValueError(reason)
     from backend.app.services.engine_state import state
     from backend.app.core.broker_urls import build_broker_urls
     app_key = state.integrated_system_settings_cache.get("ls_app_key", "").strip()
     app_secret = state.integrated_system_settings_cache.get("ls_app_secret", "").strip()
+    if not app_key or not app_secret:
+        raise ValueError("LS증권 API 키가 설정되지 않았습니다. 일반설정에서 입력하세요.")
     ws_uri = build_broker_urls("ls")["ws_uri"]
     return LsConnector(app_key=app_key, app_secret=app_secret, ws_uri=ws_uri)
