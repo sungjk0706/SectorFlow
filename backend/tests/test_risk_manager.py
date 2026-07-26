@@ -27,7 +27,6 @@ def risk_manager(mock_circuit_breaker):
     """RiskManager 인스턴스 생성 — engine_state 설정 캐시 mock."""
     rm = RiskManager.__new__(RiskManager)
     rm.circuit_breaker = mock_circuit_breaker
-    rm.max_daily_loss_limit = -500_000
     rm.daily_loss_limit = -500_000
     rm.max_single_stock_exposure = 20_000_000
     # 신규 — 리스크 매니저 확장 속성 (기본값: risk_manager_on=False)
@@ -47,7 +46,6 @@ def settings_cache():
     """기본 설정 캐시 (실전모드)."""
     return {
         "test_mode_on": False,
-        "max_daily_loss_limit": -500_000,
         "max_single_stock_exposure": 20_000_000,
     }
 
@@ -60,14 +58,13 @@ class TestSyncThresholds:
         rm.circuit_breaker = CircuitBreaker()
 
         mock_cache = {
-            "max_daily_loss_limit": -1_000_000,
+            "daily_loss_limit": -1_000_000,
             "max_single_stock_exposure": 30_000_000,
         }
         with patch("backend.app.services.engine_state.state") as mock_state:
             mock_state.integrated_system_settings_cache = mock_cache
             rm._sync_thresholds()
 
-        assert rm.max_daily_loss_limit == -1_000_000
         assert rm.daily_loss_limit == -1_000_000
         assert rm.max_single_stock_exposure == 30_000_000
 
@@ -79,7 +76,6 @@ class TestSyncThresholds:
             mock_state.integrated_system_settings_cache = {}
             rm._sync_thresholds()
 
-        assert rm.max_daily_loss_limit == -500_000
         assert rm.daily_loss_limit == -500_000
         assert rm.max_single_stock_exposure == 20_000_000
         assert rm.daily_loss_limit_on is True  # 기본 ON — 기존 항상 실행 동작 유지

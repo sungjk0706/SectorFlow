@@ -242,6 +242,18 @@ def _migrate_remove_legacy_order_keys(merged: dict) -> tuple[dict, bool]:
     return merged, dirty
 
 
+def _migrate_remove_max_daily_loss_limit(merged: dict) -> tuple[dict, bool]:
+    """max_daily_loss_limit 키 제거 (COUPLING-S2 후속, P10 SSOT).
+    daily_loss_limit과 동일 기준이나 별도 저장 — daily_loss_limit이 SSOT.
+    risk_manager.py는 daily_loss_limit의 폴백 기본값 소스로만 사용 → 제거.
+    DB 잔존 키 삭제."""
+    dirty = False
+    if "max_daily_loss_limit" in merged:
+        del merged["max_daily_loss_limit"]
+        dirty = True
+    return merged, dirty
+
+
 # 암호화 필드 목록 (단일 정의)
 _ENCRYPT_FIELDS: frozenset[str] = frozenset({
     "kiwoom_app_key", "kiwoom_app_secret",
@@ -475,7 +487,7 @@ def classify_secret_fields(merged: dict) -> dict[str, str]:
 
 
 async def _apply_all_migrations(merged: dict, db_data: dict) -> None:
-    """레거시 키 마이그레이션 14개 순차 적용. dirty 시 DB에 저장."""
+    """레거시 키 마이그레이션 15개 순차 적용. dirty 시 DB에 저장."""
     _keys_before = set(merged.keys())
     merged, dirty = _migrate_legacy_auto_trade_on(merged)
     merged, dirty_tm = _migrate_trade_mode(merged)
@@ -491,8 +503,9 @@ async def _apply_all_migrations(merged: dict, db_data: dict) -> None:
     merged, dirty_mps = _migrate_remove_max_position_size(merged)
     merged, dirty_mt = _migrate_remove_market_time_keys(merged)
     merged, dirty_lo = _migrate_remove_legacy_order_keys(merged)
+    merged, dirty_mdl = _migrate_remove_max_daily_loss_limit(merged)
 
-    if dirty or dirty_tm or dirty_tr or dirty_si or dirty_bc or dirty_tg or dirty_krx or dirty_ws or dirty_wso or dirty_lv or dirty_td or dirty_mps or dirty_mt or dirty_lo:
+    if dirty or dirty_tm or dirty_tr or dirty_si or dirty_bc or dirty_tg or dirty_krx or dirty_ws or dirty_wso or dirty_lv or dirty_td or dirty_mps or dirty_mt or dirty_lo or dirty_mdl:
         _legacy_keys = list(_keys_before - set(merged.keys()))
         await save_settings(merged, delete_keys=_legacy_keys or None)
 

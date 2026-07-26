@@ -871,7 +871,7 @@ RiskManager
 
 **리스크 키 SSOT (COUPLING-S2 후속):**
 - `max_single_stock_exposure`: 현재 단일 종목 비중 한도 매수 차단 로직에 사용 중 (`risk_manager.py:146`). 레거시 아님 — 살아있는 경로 (P16).
-- `max_daily_loss_limit`: `daily_loss_limit`과 동일 기준(음수). `risk_manager.py`가 `daily_loss_limit`의 폴백 기본값 소스로만 사용. 다음 세션에서 safe-trade 절차와 함께 제거 예정.
+- `daily_loss_limit`: 일일 손실 한도 SSOT (`risk_manager.py:112-113` 매수 차단 로직). `max_daily_loss_limit`은 동일 기준이나 폴백 기본값 소스로만 사용되어 COUPLING-S2 후속에서 제거됨 (DEFAULT + engine_settings + risk_manager + DB 마이그레이션, safe-trade 절차 적용).
 - `max_position_size`: 운영 참조 0건 — COUPLING-S2 후속에서 제거됨 (DEFAULT + DB 마이그레이션).
 
 **CircuitBreaker OPEN 시:** 마스터 스위치 강제 OFF + 프론트엔드 브로드캐스트

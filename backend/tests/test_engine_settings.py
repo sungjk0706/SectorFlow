@@ -106,7 +106,6 @@ class TestBuildEngineSettingsDictDefaults:
 
     def test_risk_fields_defaults(self):
         result = build_engine_settings_dict({})
-        assert result["max_daily_loss_limit"] == -500000
         assert result["max_single_stock_exposure"] == 20000000
         assert result["daily_loss_limit_on"] is True  # 기본 ON — 기존 항상 실행 동작 유지
 

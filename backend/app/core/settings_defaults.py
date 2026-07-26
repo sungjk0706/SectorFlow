@@ -54,7 +54,6 @@ DEFAULT_USER_SETTINGS: dict[str, Any] = {
     "news_keywords": "수주,최대실적,특허,공급계약,무상증자,세계최초,MOU,FDA승인,독점공급,대규모수주",
 
     # 리스크 관리
-    "max_daily_loss_limit": -500000,
     "max_single_stock_exposure": 20000000,
 
     # 리스크 매니저 (일일 손실 한도, 손실률, 연속 손실)
@@ -63,7 +62,7 @@ DEFAULT_USER_SETTINGS: dict[str, Any] = {
     # risk_block_sell_on=False 기본 — 매도 차단은 손실 확대 방지를 위해 사용자 명시적 ON 필요
     "risk_manager_on": False,
     "daily_loss_limit_on": True,               # 일일 손실 한도 활성화 (기본 ON — 기존 항상 실행 동작 유지)
-    "daily_loss_limit": -500000,               # 일일 손실 한도 (원, 음수) — max_daily_loss_limit과 동일 기준
+    "daily_loss_limit": -500000,               # 일일 손실 한도 (원, 음수)
     "daily_loss_rate_limit_on": False,
     "daily_loss_rate_limit": -5.0,             # 일일 손실률 한도 (%)
     "risk_block_buy_on": True,

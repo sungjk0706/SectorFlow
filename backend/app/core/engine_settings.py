@@ -197,7 +197,6 @@ def _build_sell_settings(merged: dict) -> dict:
 def _build_risk_settings(merged: dict) -> dict:
     """리스크/리스크매니저 설정 — DEFAULT_USER_SETTINGS가 단일 소스 진리 (P10)."""
     return {
-        "max_daily_loss_limit": int(merged["max_daily_loss_limit"]),
         "max_single_stock_exposure": int(merged["max_single_stock_exposure"]),
         "risk_manager_on": bool(merged["risk_manager_on"]),
         "daily_loss_limit_on": bool(merged["daily_loss_limit_on"]),

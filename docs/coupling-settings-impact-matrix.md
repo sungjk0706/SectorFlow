@@ -196,20 +196,20 @@ GET /api/settings
 | `consecutive_loss_limit_on` | `False` | boolean | `bool()` | `risk_manager.py` | (일반) | auto-trade-tab |
 | `consecutive_loss_limit` | `3` | number | `int()` | `risk_manager.py` | (일반, 수치 검증 `1~100`) | auto-trade-tab |
 
-> `max_daily_loss_limit` / `max_single_stock_exposure` / `max_position_size` 3키는 3.6에서 별도 표기 (정규화 그룹이 다름).
+> `max_single_stock_exposure` / `max_position_size` 2키는 3.6에서 별도 표기 (정규화 그룹이 다름).
 
-### 3.6 레거시 리스크 한도 (3키 — _build_risk_settings)
+### 3.6 레거시 리스크 한도 (2키 — _build_risk_settings)
 
 | 키 | 기본값 | DB 타입 | 정규화 | 캐시 read | PATCH 후처리 | UI |
 |----|--------|---------|--------|-----------|--------------|-----|
-| `max_daily_loss_limit` | `-500000` | number | `int()` | `risk_manager.py:33-35` (`daily_loss_limit` 폴백 기본값 소스) | (일반) | (UI 노출 없음) |
 | `max_single_stock_exposure` | `20000000` | number | `int()` | `risk_manager.py:37,146` (**살아있는 매수 차단 로직** — 단일 종목 비중 한도) | (일반) | (UI 노출 없음) |
 | `max_position_size` | ~~`0`~~ | — | — | — | — | — |
+| `max_daily_loss_limit` | ~~`-500000`~~ | — | — | — | — | — |
 
 > **COUPLING-S2 후속 수정 (2026-07-27):**
 > - `max_position_size`: 운영 참조 0건 → DEFAULT + DB 마이그레이션 + engine_settings에서 제거 완료.
 > - `max_single_stock_exposure`: **매트릭스 원 판정 "dead read" 부정확** — `risk_manager.py:146`에서 살아있는 매수 차단 로직에 사용 중. 제거 금지, SSOT 위반 아님. ARCHITECTURE.md:872 "레거시 호환" 명시 정정 완료.
-> - `max_daily_loss_limit`: `daily_loss_limit`과 동일 기준. `risk_manager.py`가 `daily_loss_limit`의 폴백 기본값으로만 사용. **다음 세션에서 safe-trade 절차와 함께 제거 예정** (거래 로직 경로).
+> - `max_daily_loss_limit`: `daily_loss_limit`과 동일 기준. `risk_manager.py`가 `daily_loss_limit`의 폴백 기본값으로만 사용 → DEFAULT + engine_settings + risk_manager + DB 마이그레이션에서 제거 완료 (safe-trade 절차 적용). `daily_loss_limit`이 SSOT.
 
 ### 3.7 매도 설정 (9키)
 
@@ -474,7 +474,7 @@ export const MASKED_FIELDS = new Set([
 
 | 순위 | 항목 | 비고 | 상태 |
 |------|------|------|------|
-| 1 | `max_daily_loss_limit` vs `daily_loss_limit` 중복 의미 | 주석이 "동일 기준" 명시. `risk_manager.py`가 `daily_loss_limit`의 폴백 기본값으로만 사용 | ☐ 다음 세션 (safe-trade) |
+| 1 | `max_daily_loss_limit` vs `daily_loss_limit` 중복 의미 | 주석이 "동일 기준" 명시. `risk_manager.py`가 `daily_loss_limit`의 폴백 기본값으로만 사용 | ☑ 완료 (safe-trade 절차 적용, `daily_loss_limit` SSOT화) |
 | 2 | `max_single_stock_exposure` / `max_position_size` | **매트릭스 원 판정 부정확** — `max_single_stock_exposure`는 살아있는 매수 차단 로직(`risk_manager.py:146`). 제거 금지. `max_position_size`만 dead read | ☑ `max_position_size` 제거 / `max_single_stock_exposure` 유지+정정 |
 | 3 | `tele_on` vs `[derive] telegram_on` 복제 | `telegram_on` 파생 제거 + `telegram_bot.py` dead key 제거 + `get_settings_snapshot()` 호환 채움 제거 | ☑ 완료 |
 | 4 | `DEFAULT_SYSTEM_CONFIG` 마켓 시간 14키 vs `daily_time_scheduler.py` 코드 상수 | DB에 저장되나 코드 상수가 SSOT. DB 값 변경 무효 (매트릭스 원 "11키" → 실제 14키) | ☑ 완료 |
@@ -506,7 +506,7 @@ export const MASKED_FIELDS = new Set([
 |------|------|--------|------|------|
 | 1 | `sector_stock_layout` 원본 SSOT 명확화 | 중간 | 런타임 전용 키의 원본 소재 문서화 또는 DB 저장 경로 정비 | ☐ |
 | 2 | `confirmed_data_broker` PATCH 후처리 추가 | 중간 | P21 투명성 — 변경 시 사용자 안내 또는 자동 재기동 | ☐ |
-| 3 | `max_daily_loss_limit` 제거 (safe-trade) / `max_single_stock_exposure` 유지+정정 / `max_position_size` 제거 | 낮음 | `max_position_size` 제거 완료, `max_single_stock_exposure` 정정 완료, `max_daily_loss_limit` 다음 세션 | ☑ 부분 완료 |
+| 3 | `max_daily_loss_limit` 제거 (safe-trade) / `max_single_stock_exposure` 유지+정정 / `max_position_size` 제거 | 낮음 | `max_position_size` 제거 완료, `max_single_stock_exposure` 정정 완료, `max_daily_loss_limit` 제거 완료 (safe-trade 절차 적용) | ☑ 완료 |
 | 4 | `tele_on` / `telegram_on` 중복 제거 | 낮음 | `telegram_on` 파생 제거 + `telegram_bot.py` dead key 제거 + `get_settings_snapshot()` 호환 채움 제거 | ☑ 완료 |
 | 5 | 수치 범위 검증 누락 키 추가 | 낮음 | `_validate_numeric_fields` 확장 | ☐ |
 

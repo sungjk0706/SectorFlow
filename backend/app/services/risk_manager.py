@@ -30,10 +30,7 @@ class RiskManager:
         """engine_state 설정 캐시에서 리스크 임계치 동기화."""
         from backend.app.services.engine_state import state as engine_state
         cache = engine_state.integrated_system_settings_cache
-        self.max_daily_loss_limit = int(cache.get("max_daily_loss_limit", -500000) or -500000)
-        self.daily_loss_limit = int(
-            cache.get("daily_loss_limit", self.max_daily_loss_limit) or self.max_daily_loss_limit
-        )
+        self.daily_loss_limit = int(cache.get("daily_loss_limit", -500000) or -500000)
         self.max_single_stock_exposure = int(cache.get("max_single_stock_exposure", 20000000) or 20000000)
         # 신규 — 리스크 매니저 확장 (P13 메모리 상주)
         self.risk_manager_on = bool(cache.get("risk_manager_on", False))
