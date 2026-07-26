@@ -128,28 +128,29 @@ let summaryPnlBadge: BadgeHandle | null = null
 let summaryRateBadge: BadgeHandle | null = null
 let summaryStatusBadge: BadgeHandle | null = null
 
-/** 보유 종목 요약 행 렌더 — positions + sectorStocks에서 직접 계산 (개별 종목 행과 동일 소스·공식) */
+/** 보유 종목 요약 행 렌더 — positions + sectorStocks에서 직접 계산 (개별 종목 행과 동일 소스·공식)
+ *  P21/P23: cur_price null인 보유종목 있으면 평가금액/평가손익/수익률 '-' 표시 (개별 행과 동일 null 패턴) */
 function renderSummary(): void {
   const state = hotStore.getState()
   const count = state.positionCount
-  const { evalTotal, evalPnl, evalRate } = computeHoldingsSummary(state.positions, state.sectorStocks)
+  const { evalTotal, evalPnl, evalRate, hasNullPrice } = computeHoldingsSummary(state.positions, state.sectorStocks)
 
   if (summaryEvalBadge) {
-    updateBadge(summaryEvalBadge, fmtComma(evalTotal), {
+    updateBadge(summaryEvalBadge, hasNullPrice ? '-' : fmtComma(evalTotal), {
       statusNumber: String(count),
       statusLabel: '종목',
     })
   }
 
-  const color = pnlColor(evalPnl)
-  const pnlSign = evalPnl > 0 ? '+' : ''
-  const rateSign = evalRate > 0 ? '+' : ''
+  const color = hasNullPrice ? '' : pnlColor(evalPnl)
+  const pnlText = hasNullPrice ? '-' : `${evalPnl > 0 ? '+' : ''}${fmtComma(evalPnl)}`
+  const rateText = hasNullPrice ? '-' : `${evalRate > 0 ? '+' : ''}${evalRate.toFixed(2)}`
 
   if (summaryPnlBadge) {
-    updateBadge(summaryPnlBadge, `${pnlSign}${fmtComma(evalPnl)}`, { valueColor: color })
+    updateBadge(summaryPnlBadge, pnlText, { valueColor: color })
   }
   if (summaryRateBadge) {
-    updateBadge(summaryRateBadge, `${rateSign}${evalRate.toFixed(2)}`, { valueColor: color })
+    updateBadge(summaryRateBadge, rateText, { valueColor: color })
   }
 }
 
@@ -227,8 +228,9 @@ function onHotStoreChange(state: HotState): void {
   _prevSectorStocks = state.sectorStocks
   _prevAccount = state.account
 
-  // account 변경 시 요약 행 즉시 갱신 (rAF 배칭 불필요 — 텍스트 4개만 교체)
-  if (accountChanged) {
+  // account 또는 sectorStocks 변경 시 요약 행 즉시 갱신 (rAF 배칭 불필요 — 텍스트 4개만 교체)
+  // sectorStocks 변경 시 갱신 필수 — cur_price null → 실시간 틱 도달 후 정상 값 표시 (P21 투명성)
+  if (accountChanged || sectorStocksChanged) {
     renderSummary()
   }
 

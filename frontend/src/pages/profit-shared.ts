@@ -404,31 +404,37 @@ export function buildChartFromDailySummary(summary: Record<string, unknown>[]): 
  * 보유 종목 positions + 실시간 시세 sectorStocks로부터 평가금액/평가손익/수익률 계산.
  * 개별 종목 행(sell-position.ts COLUMNS pnl/rate 컬럼)과 동일한 데이터 소스·공식 사용.
  *
- * - 현재가: sectorStocks[code].cur_price (실시간 틱, 없으면 null → 0 처리)
+ * - 현재가: sectorStocks[code].cur_price (실시간 틱, 없으면 null)
  * - 매입가: p.avg_price
- * - 평가금액 = sum(현재가 × 수량)
+ * - 평가금액 = sum(현재가 × 수량) — cur_price null인 종목은 계산에서 제외 (P21 투명성)
  * - 매입금액 = sum(매입가 × 수량)
  * - 평가손익 = 평가금액 - 매입금액
  * - 수익률 = 평가손익 / 매입금액 × 100 (가중 평균, 매입금액 0이면 0)
+ * - hasNullPrice: cur_price null인 보유종목이 하나라도 있으면 true → 호출처에서 '-' 표시 (P21, P23 — 개별 행과 동일 null 패턴)
  */
 export function computeHoldingsSummary(
   positions: Position[],
   sectorStocks: Record<string, SectorStock>,
-): { evalTotal: number; evalPnl: number; evalRate: number; buyTotal: number } {
+): { evalTotal: number; evalPnl: number; evalRate: number; buyTotal: number; hasNullPrice: boolean } {
   let evalTotal = 0
   let buyTotal = 0
+  let hasNullPrice = false
   for (const p of positions) {
     const qty = p.qty ?? 0
     if (qty <= 0) continue
     const code = normalizeStockCode(p.stk_cd)
     const curPrice = sectorStocks[code]?.cur_price ?? null
+    if (curPrice == null) {
+      hasNullPrice = true
+      continue
+    }
     const buyPrice = p.avg_price
     evalTotal += Number(curPrice) * qty
     buyTotal += buyPrice * qty
   }
   const evalPnl = evalTotal - buyTotal
   const evalRate = computeWeightedRate(evalPnl, buyTotal)
-  return { evalTotal, evalPnl, evalRate, buyTotal }
+  return { evalTotal, evalPnl, evalRate, buyTotal, hasNullPrice }
 }
 
 /* ── 계좌 현황 렌더 (순수 함수 — 매개변수 기반) ── */
@@ -492,7 +498,7 @@ export function renderAccountVals(params: AccountValsParams): void {
   const { todayBuyAmt, todaySellAmt, todayFeeTax, cumFeeTax } = computeTodayAggregates(buyHistory, sellHistory, today)
 
   // 보유 종목 평가금액/평가손익/수익률: positions + sectorStocks에서 직접 계산 (개별 종목 행과 동일 소스·공식)
-  const { evalTotal, evalPnl, evalRate } = computeHoldingsSummary(params.positions, params.sectorStocks)
+  const { evalTotal, evalPnl, evalRate, hasNullPrice } = computeHoldingsSummary(params.positions, params.sectorStocks)
 
   // 누적 실현 손익: sellHistory 전체 합산
   const cumPnl = aggregatePnl(sellHistory)
@@ -506,9 +512,11 @@ export function renderAccountVals(params: AccountValsParams): void {
   // 11행 공통 값 조립 (행 0만 모드별 상이: 테스트=누적투자금, 실전=예수금)
   const row0 = isTestMode ? (a?.initial_deposit ?? 0) : (a?.deposit ?? 0)
   const orderable = a?.orderable ?? 0
-  const evalSign = evalPnl > 0 ? '+' : ''
-  const evalColor = pnlColor(evalPnl)
-  const evalRateSign = evalRate > 0 ? '+' : ''
+  // P21/P23: cur_price null인 보유종목 있으면 평가금액/평가손익/수익률 3행 '-' 표시 (개별 행과 동일 null 패턴)
+  const evalText = hasNullPrice ? '-' : `${evalTotal.toLocaleString()}원`
+  const evalPnlText = hasNullPrice ? '-' : `${evalPnl > 0 ? '+' : ''}${evalPnl.toLocaleString()}원`
+  const evalRateText = hasNullPrice ? '-' : `${evalRate > 0 ? '+' : ''}${evalRate.toFixed(2)}%`
+  const evalColor = hasNullPrice ? '' : pnlColor(evalPnl)
   const cumSign = cumPnl.pnl > 0 ? '+' : ''
   const cumColor = pnlColor(cumPnl.pnl)
 
@@ -517,9 +525,9 @@ export function renderAccountVals(params: AccountValsParams): void {
     `${orderable.toLocaleString()}원`,
     `${todayBuyAmt.toLocaleString()}원`,
     `${todaySellAmt.toLocaleString()}원`,
-    `${evalTotal.toLocaleString()}원`,
-    `${evalSign}${evalPnl.toLocaleString()}원`,
-    `${evalRateSign}${evalRate.toFixed(2)}%`,
+    evalText,
+    evalPnlText,
+    evalRateText,
     `${todayFeeTax.toLocaleString()}원`,
     `${cumFeeTax.toLocaleString()}원`,
     `${cumSign}${cumPnl.pnl.toLocaleString()}원`,
