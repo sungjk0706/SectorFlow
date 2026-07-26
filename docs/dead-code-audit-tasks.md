@@ -31,9 +31,9 @@
 | DC-S3 | P16/P23/P24 | DC-07, DC-10 | ☑ | 키움 5일 조회·구형 WS FID 파서 |
 | DC-S4 | P15/P16/P20/P22 | DC-08, DC-11 | ☑ | 서킷브레이커·정산 매수능력 검증. safe-trade 필수 |
 | DC-S5 | P10/P16/P24 | DC-09, DC-12 | ☑ | DC-09 `get_total_buy_amount`/`get_total_pnl` 제거, DC-12 `changed_keys_general_save`/`load_integrated_system_settings_for_editing` + cascading 3함수 제거 |
-| DC-S6 | P16/P24 | 테스트·스크립트 미사용 자산 | ☐ | import·fixture·지역 변수·unreachable code |
+| DC-S6 | P16/P24 | 테스트·스크립트 미사용 자산 | ☑ | 미사용 import 8종·지역 변수 5종·매개변수 3종 rename·`_UNREG_BATCH_PENDING` 근본 해결. `reset_cash_gate`/`setup_master_cache`/unreachable `yield`는 false positive 유지 |
 | DC-S7 | P16/P21/P23 | 정적 분석 오탐 및 프론트엔드 최종 확인 | ☑ | 오탐 9종 근거 확정(유지), DC-13 신규(삭제), pyflakes/ESLint 근본 해결 |
-| DC-S8 | P16/P19/P20/P25 | 전체 잔존 검색·통합 검증 | ☐ | 모든 승인 세션 완료 후 최종 게이트 |
+| DC-S8 | P16/P19/P20/P25 | 전체 잔존 검색·통합 검증 | ☑ | 잔존 참조 0건(모두 docs 히스토리/제거 완료 주석). 백엔드 2760 passed, RuntimeWarning 기동 정상, 잔존 프로세스 0건, pyflakes/ESLint 0경고, 프론트엔드 typecheck/build/vitest 218 passed. DC-S5/S6 문서 상태 불일치 정리 |
 
 ---
 
@@ -152,7 +152,7 @@
 
 ### 세션 DC-S5 — 계좌 집계·설정 저장 보조 함수 검토
 
-**상태:** ☐ 미시작  
+**상태:** ☑ 완료
 **대상 원칙:** P10 SSOT, P16, P21, P24
 
 #### 대상 코드
@@ -273,7 +273,7 @@
 
 ### 세션 DC-S8 — 전체 잔존 검색·통합 검증 게이트
 
-**상태:** ☐ 미시작  
+**상태:** ☑ 완료
 **대상 원칙:** P16, P19, P20, P23, P24, P25
 
 #### 대상 코드
@@ -300,6 +300,20 @@
 - `cd frontend && npm run test`
 - 데드코드 관련 정적 분석 재실행
 - 문서와 코드의 DC ID·상태·검증 결과 일치 여부 확인
+
+#### 완료 결과 (DC-S8)
+
+- **잔존 참조 검색**: DC-S1~DC-S7 제거 대상 20종 전체 저장소 검색 (`backend`, `frontend`, `tests`, `docs`). 코드 본문에 살아있는 정의/호출 0건. 모든 잔존 매치는 docs 히스토리 기록 또는 코드 내 "제거 완료" 주석.
+  - `DEFAULT_BROKER_CREDENTIALS`, `shutdown_requested`, `MIN_CACHE_LIFETIME_SEC`, `confirmed_refresh_running` — docs/`engine_state.py`/`test_engine_state_groups.py`의 "DC-S2 제거 완료" 히스토리 주석. `_reset_confirmed_refresh_running()` 헬퍼는 별개 함수.
+  - `fetch_ka10081_all_stocks_5day`, `parse_fid9081_exchange`, `parse_fid290_session` — docs에만.
+  - `reset_circuit_breaker`, `check_buy_power` — docs에만.
+  - `get_total_buy_amount`, `get_total_pnl`, `changed_keys_general_save`, `load_integrated_system_settings_for_editing`, `general_save_payload_from_flat`, `_payload_values_equal`, `_account_field_or_legacy_flat` — docs + `architecture_audit_*`의 B-23-c 히스토리 로그 (규칙3 역사적 로그 유지 대상).
+  - `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `TRADING_LOG_PATH` — docs에만.
+- **백엔드 전체 테스트**: 2760 passed, 3 warnings (StarletteDeprecationWarning — 기존과 동일, 회귀 0건).
+- **RuntimeWarning 승격 기동**: 정상 기동, RuntimeWarning/Traceback 0건, 잔존 프로세스 0건.
+- **프론트엔드**: typecheck 통과, build 성공 (656ms), vitest 218 passed.
+- **정적 분석**: pyflakes 0경고, ESLint 0경고, vulture 60% 보고는 FastAPI 라우트 핸들러(데코레이터 등록으로 추적 불가) + `deps.py:13 credentials`(DC-S7 오탐 확정) — 신규 데드코드 0건.
+- **문서-코드 일치 정리**: DC-S5 본문 상태 ☐→☑, DC-S6 표 상태 ☐→☑ + 비고 갱신, DC-S8 표/본문 상태 ☐→☑.
 
 ---
 
