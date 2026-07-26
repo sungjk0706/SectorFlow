@@ -151,7 +151,7 @@ export function applyEngineReloadComplete(): void {
   uiStore.setState({ engineReloadComplete: true, circuitBreakerOpen: null })
 }
 
-/* ── circuit_breaker_open: OMS 서킷브레이커 발동 알림 ── */
+/* ── circuit-breaker-open: OMS 서킷브레이커 발동 알림 ── */
 export function applyCircuitBreakerOpen(data: { message?: string }): void {
   uiStore.setState({ circuitBreakerOpen: { message: data.message ?? '서킷브레이커 발동 — 자동매매 중지' } })
 }
@@ -161,7 +161,7 @@ export function clearCircuitBreakerOpen(): void {
   uiStore.setState({ circuitBreakerOpen: null })
 }
 
-/* ── order_time_blocked: 체결 불가 시간대 주문 차단 상태 갱신 ── */
+/* ── order-time-blocked: 체결 불가 시간대 주문 차단 상태 갱신 ── */
 export function applyOrderTimeBlocked(data: { blocked?: boolean; reason?: string }): void {
   if (data.blocked) {
     uiStore.setState({ orderTimeBlocked: { reason: data.reason ?? '동시호가/장외 시간대 — 주문 일시중단' } })
@@ -175,7 +175,7 @@ export function clearOrderTimeBlocked(): void {
   uiStore.setState({ orderTimeBlocked: null })
 }
 
-/* ── risk_block_status: 리스크 매니저 차단 상태 갱신 ── */
+/* ── risk-block-status: 리스크 매니저 차단 상태 갱신 ── */
 export function applyRiskBlockStatus(data: { blocked?: boolean; side?: string; reason?: string }): void {
   if (data.blocked) {
     uiStore.setState({ riskBlockStatus: { side: data.side ?? 'unknown', reason: data.reason ?? '리스크 차단' } })
@@ -194,17 +194,17 @@ export function applyBuyLimitStatus(data: { daily_buy_spent: number }): void {
   uiStore.setState({ buyLimitStatus: { daily_buy_spent: data.daily_buy_spent ?? 0 } })
 }
 
-/* ── realtime_latency_status: 실시간 통신 지연 200ms 초과 상태 갱신 (매수/매도 공통) ── */
+/* ── realtime-latency-status: 실시간 통신 지연 200ms 초과 상태 갱신 (매수/매도 공통) ── */
 export function applyRealtimeLatencyStatus(data: { blocked?: boolean }): void {
   uiStore.setState({ realtimeLatencyExceeded: !!data.blocked })
 }
 
-/* ── daily_buy_state_status: 일일 매수 상태 로드 실패 갱신 (매수 전용) ── */
+/* ── daily-buy-state-status: 일일 매수 상태 로드 실패 갱신 (매수 전용) ── */
 export function applyDailyBuyStateStatus(data: { failed?: boolean }): void {
   uiStore.setState({ dailyBuyStateFailed: !!data.failed })
 }
 
-/* ── test_cash_failed: 테스트 예수금 검증 실패 갱신 (사후 1회성 — 헤더 칩) ── */
+/* ── test-cash-failed: 테스트 예수금 검증 실패 갱신 (사후 1회성 — 헤더 칩) ── */
 export function applyTestCashFailed(data: { failed?: boolean; stk_cd?: string; reason?: string }): void {
   if (data.failed) {
     uiStore.setState({ testCashFailed: { stk_cd: data.stk_cd ?? '', reason: data.reason ?? '테스트 잔고 부족 — 매수 거부' } })

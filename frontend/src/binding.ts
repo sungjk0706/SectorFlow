@@ -280,20 +280,20 @@ export function bindWSToStore(
     applyWsSubscribeStatus(data as { index_subscribed: boolean; quote_subscribed: boolean })
   })
 
-  /* ── circuit_breaker_open: OMS 서킷브레이커 발동 알림 ── */
-  pricesClient.onEvent('circuit_breaker_open', (data) => {
+  /* ── circuit-breaker-open: OMS 서킷브레이커 발동 알림 ── */
+  pricesClient.onEvent('circuit-breaker-open', (data) => {
     const d = data as { message?: string }
     applyCircuitBreakerOpen(d)
     showToast('error', d.message ?? '서킷브레이커 발동 — 자동매매 중지', 8000)
   })
 
-  /* ── order_time_blocked: 체결 불가 시간대 주문 차단 상태 (10초 주기) ── */
-  pricesClient.onEvent('order_time_blocked', (data) => {
+  /* ── order-time-blocked: 체결 불가 시간대 주문 차단 상태 (10초 주기) ── */
+  pricesClient.onEvent('order-time-blocked', (data) => {
     applyOrderTimeBlocked(data as { blocked?: boolean; reason?: string })
   })
 
-  /* ── risk_block_status: 리스크 매니저 차단 상태 (손실 한도 도달 등) ── */
-  pricesClient.onEvent('risk_block_status', (data) => {
+  /* ── risk-block-status: 리스크 매니저 차단 상태 (손실 한도 도달 등) ── */
+  pricesClient.onEvent('risk-block-status', (data) => {
     applyRiskBlockStatus(data as { blocked?: boolean; side?: string; reason?: string })
   })
 
@@ -302,18 +302,18 @@ export function bindWSToStore(
     applyBuyLimitStatus(data as { daily_buy_spent: number })
   })
 
-  /* ── realtime_latency_status: 실시간 통신 지연 200ms 초과 상태 (매수/매도 공통 차단) ── */
-  pricesClient.onEvent('realtime_latency_status', (data) => {
+  /* ── realtime-latency-status: 실시간 통신 지연 200ms 초과 상태 (매수/매도 공통 차단) ── */
+  pricesClient.onEvent('realtime-latency-status', (data) => {
     applyRealtimeLatencyStatus(data as { blocked?: boolean })
   })
 
-  /* ── daily_buy_state_status: 일일 매수 상태 로드 실패 (매수 전용 차단) ── */
-  pricesClient.onEvent('daily_buy_state_status', (data) => {
+  /* ── daily-buy-state-status: 일일 매수 상태 로드 실패 (매수 전용 차단) ── */
+  pricesClient.onEvent('daily-buy-state-status', (data) => {
     applyDailyBuyStateStatus(data as { failed?: boolean })
   })
 
-  /* ── test_cash_failed: 테스트 예수금 검증 실패 (사후 1회성 — 헤더 칩 알림) ── */
-  pricesClient.onEvent('test_cash_failed', (data) => {
+  /* ── test-cash-failed: 테스트 예수금 검증 실패 (사후 1회성 — 헤더 칩 알림) ── */
+  pricesClient.onEvent('test-cash-failed', (data) => {
     applyTestCashFailed(data as { failed?: boolean; stk_cd?: string; reason?: string })
   })
 }

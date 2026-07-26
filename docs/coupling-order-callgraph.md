@@ -35,7 +35,7 @@
 - `send_order`/`fake_send_order` 전체 grep → 주문 전송 호출부 7건 확인 (trading.py 4건 = 단일 경로, 나머지는 정의/문서)
 - `execute_buy`/`execute_sell` 전체 grep → 단일 진입점 확인
 - `BUY_REJECT_*` 상수 18개 전체 grep → 사유코드 소비자 추적
-- `circuit_breaker_open`/`risk_block_status`/`order_time_blocked`/`realtime_latency_status`/`daily_buy_state_status`/`test_cash_failed`/`buy-limit-status` 7개 WS 이벤트 → binding.ts → uiStore → header.ts/buy-target.ts 소비자 추적
+- `circuit-breaker-open`/`risk-block-status`/`order-time-blocked`/`realtime-latency-status`/`daily-buy-state-status`/`test-cash-failed`/`buy-limit-status` 7개 WS 이벤트 → binding.ts → uiStore → header.ts/buy-target.ts 소비자 추적
 - `is_test_mode` 분기 지점 전체 grep → P18 동등성 점검
 - `RiskManager`/`CircuitBreaker` 호출 지점 추적 → P16 살아있는 경로 점검
 
@@ -157,7 +157,7 @@ execute_buy(stk_cd, current_price, access_token, reason)
    │   ├─ risk_manager.record_order_failure()
    │   └─ 서킷브레이커 OPEN 시:
    │       ├─ state.integrated_system_settings_cache["time_scheduler_on"] = False (강제 OFF)
-   │       ├─ _broadcast("circuit_breaker_open", {message}) (P21)
+   │       ├─ _broadcast("circuit-breaker-open", {message}) (P21)
    │       ├─ notify_desktop_header_refresh()
    │       └─ notify_desktop_settings_toggled({"time_scheduler_on": False})
    │   → [차단] BUY_REJECT_ORDER_FAIL
@@ -198,7 +198,7 @@ execute_buy(stk_cd, current_price, access_token, reason)
 | [13] RiskManager | stk_cd, price, qty | (allowed, reason) | risk_manager 임계치 동기화 | trade_history 읽기 (손실/연속손실) |
 | [16] 사전 차감 | settlement_engine | (ok, reason, cost) | _orderable 차감 | DB 쓰기(settlement_state), WS 브로드캐스트 |
 | [17] 주문 전송 | dry_run / broker_router | res | 없음 | 테스트: 가상 / 실전: 증권사 API |
-| [17a] 실패 처리 | risk_manager, settlement_engine | 없음 | _orderable 복원, circuit_breaker, time_scheduler_on | WS 브로드캐스트(circuit_breaker_open) |
+| [17a] 실패 처리 | risk_manager, settlement_engine | 없음 | _orderable 복원, circuit_breaker, time_scheduler_on | WS 브로드캐스트(circuit-breaker-open) |
 | [18] 저널링 | journal | 없음 | 없음 | journal 큐 |
 | [21] 체결 이력 | trade_history | 없음 | _positions_dirty=True | DB 쓰기(trades) |
 | [22] 한도 브로드캐스트 | engine_account | 없음 | 없음 | WS "buy-limit-status" |
@@ -240,7 +240,7 @@ execute_sell(stk_cd, cur_price, stk_nm, reason, qty, pnl_rate, trade_settings, b
 │   ├─ risk_manager.record_order_failure()
 │   └─ 서킷브레이커 OPEN 시:
 │       ├─ state.integrated_system_settings_cache["time_scheduler_on"] = False
-│       ├─ _broadcast("circuit_breaker_open", {message})
+│       ├─ _broadcast("circuit-breaker-open", {message})
 │       ├─ notify_desktop_header_refresh()
 │       └─ notify_desktop_settings_toggled({"time_scheduler_on": False})
 │   → return False
@@ -275,7 +275,7 @@ check_sell_conditions(stock_list, base_settings, access_token)
 ├─ [2] 실시간 지연 게이트 (fail-closed — 매수와 동일 정책, P23)
 ├─ [3] RiskManager 매도 차단 체크
 │   └─ risk_manager.check_sell_order_allowed()
-│      차단 → _safe_broadcast("risk_block_status", {blocked, side="sell", reason}) (P21)
+│      차단 → _safe_broadcast("risk-block-status", {blocked, side="sell", reason}) (P21)
 ├─ [4] 매도 주문 간격 게이트
 │   └─ order_interval.check_order_interval("sell")
 └─ [5] for stock in stock_list:
@@ -342,7 +342,7 @@ CLOSED (정상)
   ↓
 OPEN (차단 — 모든 주문 거부)
   │ time_scheduler_on = False (마스터 스위치 강제 OFF)
-  │ _broadcast("circuit_breaker_open")
+  │ _broadcast("circuit-breaker-open")
   │ (타이머 경과 후)
   ↓
 HALF_OPEN (복구 시도 — 1건 주문 허용)
@@ -358,20 +358,20 @@ HALF_OPEN (복구 시도 — 1건 주문 허용)
 
 | 사유코드 | 상수 | 분류 | WS 이벤트 | 프론트엔드 필드 |
 |----------|------|------|-----------|-----------------|
-| `daily_state` | BUY_REJECT_DAILY_STATE | 전체 | `daily_buy_state_status` | `dailyBuyStateFailed` |
-| `realtime_latency` | BUY_REJECT_REALTIME_LATENCY | 전체 | `realtime_latency_status` | `realtimeLatencyExceeded` |
+| `daily_state` | BUY_REJECT_DAILY_STATE | 전체 | `daily-buy-state-status` | `dailyBuyStateFailed` |
+| `realtime_latency` | BUY_REJECT_REALTIME_LATENCY | 전체 | `realtime-latency-status` | `realtimeLatencyExceeded` |
 | `auto_buy_off` | BUY_REJECT_AUTO_BUY_OFF | 전체 | (없음 — uiStore에서 settings 기반 판정) | `computeOrderBlockStatus` |
 | `max_holding` | BUY_REJECT_MAX_HOLDING | 전체 | (없음) | — |
 | `buy_amt_zero` | BUY_REJECT_BUY_AMT_ZERO | 전체 | (없음) | — |
 | `daily_limit` | BUY_REJECT_DAILY_LIMIT | 전체 | `buy-limit-status` | `buyLimitStatus` |
-| `risk_circuit` | BUY_REJECT_RISK_CIRCUIT | 전체 | `circuit_breaker_open` | `circuitBreakerOpen` |
-| `risk_loss` | BUY_REJECT_RISK_LOSS | 전체 | `risk_block_status` | `riskBlockStatus` |
-| `risk_loss_rate` | BUY_REJECT_RISK_LOSS_RATE | 전체 | `risk_block_status` | `riskBlockStatus` |
-| `risk_consec_loss` | BUY_REJECT_RISK_CONSEC_LOSS | 전체 | `risk_block_status` | `riskBlockStatus` |
-| `risk_cash` | BUY_REJECT_RISK_CASH | 전체 | `risk_block_status` | `riskBlockStatus` |
-| `test_cash` | BUY_REJECT_TEST_CASH | 전체 | `test_cash_failed` | `testCashFailed` |
-| `order_fail` | BUY_REJECT_ORDER_FAIL | 전체 | `circuit_breaker_open` (서킷브레이커 시) | `circuitBreakerOpen` |
-| `time_blocked` | BUY_REJECT_TIME_BLOCKED | 종목별 | `order_time_blocked` | `orderTimeBlocked` |
+| `risk_circuit` | BUY_REJECT_RISK_CIRCUIT | 전체 | `circuit-breaker-open` | `circuitBreakerOpen` |
+| `risk_loss` | BUY_REJECT_RISK_LOSS | 전체 | `risk-block-status` | `riskBlockStatus` |
+| `risk_loss_rate` | BUY_REJECT_RISK_LOSS_RATE | 전체 | `risk-block-status` | `riskBlockStatus` |
+| `risk_consec_loss` | BUY_REJECT_RISK_CONSEC_LOSS | 전체 | `risk-block-status` | `riskBlockStatus` |
+| `risk_cash` | BUY_REJECT_RISK_CASH | 전체 | `risk-block-status` | `riskBlockStatus` |
+| `test_cash` | BUY_REJECT_TEST_CASH | 전체 | `test-cash-failed` | `testCashFailed` |
+| `order_fail` | BUY_REJECT_ORDER_FAIL | 전체 | `circuit-breaker-open` (서킷브레이커 시) | `circuitBreakerOpen` |
+| `time_blocked` | BUY_REJECT_TIME_BLOCKED | 종목별 | `order-time-blocked` | `orderTimeBlocked` |
 | `rebuy` | BUY_REJECT_REBUY | 종목별 | (없음) | — |
 | `open_order` | BUY_REJECT_OPEN_ORDER | 종목별 | (없음) | — |
 | `signal_interval` | BUY_REJECT_SIGNAL_INTERVAL | 종목별 | (없음) | — |
@@ -379,7 +379,7 @@ HALF_OPEN (복구 시도 — 1건 주문 허용)
 | `rise_guard` | BUY_REJECT_RISE_GUARD | 종목별 | (없음) | — |
 | `fall_guard` | BUY_REJECT_FALL_GUARD | 종목별 | (없음) | — |
 | `symbol_limit` | BUY_REJECT_SYMBOL_LIMIT | 종목별 | (없음) | — |
-| `risk_single` | BUY_REJECT_RISK_SINGLE | 종목별 | `risk_block_status` | `riskBlockStatus` |
+| `risk_single` | BUY_REJECT_RISK_SINGLE | 종목별 | `risk-block-status` | `riskBlockStatus` |
 | `qty_zero` | BUY_REJECT_QTY_ZERO | 조건부 | (없음 — 잔액 0 시 별도) | — |
 
 **P10 SSOT**: `BUY_GLOBAL_REJECT_REASONS` frozenset이 사유 분류의 단일 진실 소스 (`trading.py:59-73`).
@@ -387,7 +387,7 @@ HALF_OPEN (복구 시도 — 1건 주문 허용)
 
 ### 7.2 매도 실패
 
-매도는 사유코드 없이 `bool`만 반환. `check_sell_conditions()`에서 건별 간격 적용에만 사용. 매도 차단 사유는 `risk_block_status` WS 이벤트(`side="sell"`)로 전달되며, 사용자에게 동일한 헤더 칩으로 표시됨.
+매도는 사유코드 없이 `bool`만 반환. `check_sell_conditions()`에서 건별 간격 적용에만 사용. 매도 차단 사유는 `risk-block-status` WS 이벤트(`side="sell"`)로 전달되며, 사용자에게 동일한 헤더 칩으로 표시됨.
 
 ### 7.3 프론트엔드 통합 판정 (order-block-status.ts)
 

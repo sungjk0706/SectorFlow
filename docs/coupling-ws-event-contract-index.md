@@ -64,9 +64,9 @@ WebSocket 이벤트의 **이름 · 채널 · producer · payload 필드 · Store
 |------|----------|------|
 | **정상 계약 (producer + consumer 일치)** | ~~30~~ 31 | payload 필드 일치 또는 부분 일치 — `index-data` 분리로 `engine-status` 정상 계약 추가 |
 | **payload 필드 불일치** | ~~2~~ 1 | ~~`ws-subscribe-status`(`index_subscribed` 누락)~~ — ☑ 2026-07-27 해결 완료. `account-update`(경량화/전체 분기) 잔존 |
-| **다중 producer (동일 이벤트 다른 파일)** | ~~6~~ 5 | ~~`index-data`(4곳)~~ → ☑ 2026-07-27 분리 완료 (`engine-status` 3곳 + `index-data` 2곳). `market-phase`(3곳), `stock-classification-changed`(3곳), `buy-targets-update`(2곳), `sector-stocks-refresh`(2곳), `engine-ready`(2곳), `circuit_breaker_open`(2곳) |
+| **다중 producer (동일 이벤트 다른 파일)** | ~~6~~ 5 | ~~`index-data`(4곳)~~ → ☑ 2026-07-27 분리 완료 (`engine-status` 3곳 + `index-data` 2곳). `market-phase`(3곳), `stock-classification-changed`(3곳), `buy-targets-update`(2곳), `sector-stocks-refresh`(2곳), `engine-ready`(2곳), `circuit-breaker-open`(2곳) |
 | **프론트엔드 구독 + 백엔드 producer 누락 (P16/P21 위반)** | ~~4~~ 0 | ~~`engine-reload-complete`, `bootstrap-stage`, `avg-amt-progress`, `order-filled`~~ — 2026-07-27 후속 세션에서 4건 전수 정리 완료 |
-| **네이밍 컨벤션 불일치 (P23)** | 6 | `circuit_breaker_open`, `order_time_blocked`, `risk_block_status`, `realtime_latency_status`, `daily_buy_state_status`, `test_cash_failed` (나머지 34개는 hyphen) |
+| **네이밍 컨벤션 불일치 (P23)** | ~~6~~ 0 | ~~`circuit_breaker_open`, `order_time_blocked`, `risk_block_status`, `realtime_latency_status`, `daily_buy_state_status`, `test_cash_failed`~~ — ☑ 2026-07-27 hyphen 통일 완료 (`circuit-breaker-open` 등 6개). 전체 40개 이벤트 hyphen 통일 |
 
 ### 2.2 이벤트 전체 목록 (이름 · 채널 · producer · consumer · 갱신 빈도)
 
@@ -93,13 +93,13 @@ WebSocket 이벤트의 **이름 · 채널 · producer · payload 필드 · Store
 | 19 | `receive-rate` | prices | `pipeline_compute.py:97` (broadcast_queue → gateway) | binding.ts:265 | 인라인 setState (`receiveRate`) | 수신율 계산 시 |
 | 20 | `sector-scores` | prices | `engine_account_notify.py:267` (broadcast) | binding.ts:274 | `applySectorScores` + 인라인 setState (`sectorScoresDelta`, `receiveRate`) | 업종순위 변경 시 (delta/전체) |
 | 21 | `ws-subscribe-status` | prices | `ws_subscribe_control.py:62` (broadcast) | binding.ts:300 | `applyWsSubscribeStatus` | WS 구독 상태 변경 시 |
-| 22 | `circuit_breaker_open` | prices | `trading.py:438,647` (broadcast) | binding.ts:305 | `applyCircuitBreakerOpen` + showToast | 서킷브레이커 차단 시 |
-| 23 | `order_time_blocked` | prices | `daily_time_scheduler.py:766` (broadcast) | binding.ts:312 | `applyOrderTimeBlocked` | 체결 불가 시간대 (10초 주기) |
-| 24 | `risk_block_status` | prices | `trading.py:742` (broadcast) | binding.ts:317 | `applyRiskBlockStatus` | 리스크 매니저 차단 시 |
+| 22 | `circuit-breaker-open` | prices | `trading.py:438,647` (broadcast) | binding.ts:305 | `applyCircuitBreakerOpen` + showToast | 서킷브레이커 차단 시 |
+| 23 | `order-time-blocked` | prices | `daily_time_scheduler.py:766` (broadcast) | binding.ts:312 | `applyOrderTimeBlocked` | 체결 불가 시간대 (10초 주기) |
+| 24 | `risk-block-status` | prices | `trading.py:742` (broadcast) | binding.ts:317 | `applyRiskBlockStatus` | 리스크 매니저 차단 시 |
 | 25 | `buy-limit-status` | prices | `engine_account.py:87` (broadcast) | binding.ts:322 | `applyBuyLimitStatus` | 매수 한도 상태 변경 시 |
-| 26 | `realtime_latency_status` | prices | `engine_ws_dispatch.py:120` (broadcast) | binding.ts:327 | `applyRealtimeLatencyStatus` | 실시간 지연 200ms 초과 시 |
-| 27 | `daily_buy_state_status` | prices | `trading.py:118` (broadcast) | binding.ts:332 | `applyDailyBuyStateStatus` | 일일 매수 상태 로드 실패 시 |
-| 28 | `test_cash_failed` | prices | `trading.py:132` (broadcast) | binding.ts:337 | `applyTestCashFailed` | 테스트 예수금 검증 실패 시 (1회성) |
+| 26 | `realtime-latency-status` | prices | `engine_ws_dispatch.py:120` (broadcast) | binding.ts:327 | `applyRealtimeLatencyStatus` | 실시간 지연 200ms 초과 시 |
+| 27 | `daily-buy-state-status` | prices | `trading.py:118` (broadcast) | binding.ts:332 | `applyDailyBuyStateStatus` | 일일 매수 상태 로드 실패 시 |
+| 28 | `test-cash-failed` | prices | `trading.py:132` (broadcast) | binding.ts:337 | `applyTestCashFailed` | 테스트 예수금 검증 실패 시 (1회성) |
 | 29 | `settings-changed` | settings | `engine_account_notify.py:237` (broadcast) | binding.ts:180 | `applySettingsChanged` | 설정 변경 시 (전체/delta) |
 | 30 | ~~`engine-reload-complete`~~ | settings | ~~**❌ 백엔드 producer 없음**~~ | ~~binding.ts:184~~ | ~~`applyEngineReloadComplete`~~ | ☑ 2026-07-27 구독 제거 완료 |
 | 31 | `index-data` | settings | `engine_account_notify.py:213` (broadcast), `ws.py:155` (send_to) | binding.ts:188 | `applyIndexData` | 업종지수 변경 시 (2026-07-27 분리 — 엔진 상태는 `engine-status`) |
@@ -259,26 +259,26 @@ WebSocket 이벤트의 **이름 · 채널 · producer · payload 필드 · Store
 - **수정 상태**: uiStore(`wsSubscribeStatus`)
 - **계약 상태**: ❌ **payload 필드 불일치** — 프론트엔드가 `index_subscribed` 필드를 기대하지만 백엔드가 전송하지 않음. `applyWsSubscribeStatus`가 `index_subscribed`를 `undefined`로 처리할 것. P21/P23 위반 후보.
 
-#### `circuit_breaker_open` (서킷브레이커 차단) — ⚠️ 네이밍 underscore
+#### `circuit-breaker-open` (서킷브레이커 차단) — ☑ 네이밍 hyphen 통일 (2026-07-27)
 - **Producer**: `trading.py:438` (매수), `trading.py:647` (매도) (broadcast)
 - **Payload**: `{"message": str}`
 - **Consumer**: binding.ts:305 → `applyCircuitBreakerOpen(d)` + `showToast('error', d.message ?? '서킷브레이커 발동 — 자동매매 중지', 8000)`
 - **수정 상태**: uiStore(`circuitBreakerOpen`)
-- **계약 상태**: ✅ 다중 producer이나 payload 일치. 네이밍 underscore (P23 위반 후보, §6 참조)
+- **계약 상태**: ✅ 다중 producer이나 payload 일치. 네이밍 hyphen 통일 완료 (이전 underscore).
 
-#### `order_time_blocked` (체결 불가 시간대, 10초 주기) — ⚠️ 네이밍 underscore
+#### `order-time-blocked` (체결 불가 시간대, 10초 주기) — ☑ 네이밍 hyphen 통일 (2026-07-27)
 - **Producer**: `daily_time_scheduler.py:766` (broadcast)
 - **Payload**: `{"blocked": bool, "reason": str}`
 - **Consumer**: binding.ts:312 → `applyOrderTimeBlocked({blocked?, reason?})`
 - **수정 상태**: uiStore(`orderTimeBlocked`)
-- **계약 상태**: ✅ 단일 producer. 네이밍 underscore.
+- **계약 상태**: ✅ 단일 producer. 네이밍 hyphen 통일 완료 (이전 underscore).
 
-#### `risk_block_status` (리스크 매니저 차단) — ⚠️ 네이밍 underscore
+#### `risk-block-status` (리스크 매니저 차단) — ☑ 네이밍 hyphen 통일 (2026-07-27)
 - **Producer**: `trading.py:742` (broadcast)
 - **Payload**: `{"blocked": bool, "side": str, "reason": str}`
 - **Consumer**: binding.ts:317 → `applyRiskBlockStatus({blocked?, side?, reason?})`
 - **수정 상태**: uiStore(`riskBlockStatus`)
-- **계약 상태**: ✅ 단일 producer. 네이밍 underscore.
+- **계약 상태**: ✅ 단일 producer. 네이밍 hyphen 통일 완료 (이전 underscore).
 
 #### `buy-limit-status` (매수 한도 상태)
 - **Producer**: `engine_account.py:87` (broadcast)
@@ -287,26 +287,26 @@ WebSocket 이벤트의 **이름 · 채널 · producer · payload 필드 · Store
 - **수정 상태**: uiStore(`buyLimitStatus`)
 - **계약 상태**: ✅ 단일 producer
 
-#### `realtime_latency_status` (실시간 지연 200ms 초과) — ⚠️ 네이밍 underscore
+#### `realtime-latency-status` (실시간 지연 200ms 초과) — ☑ 네이밍 hyphen 통일 (2026-07-27)
 - **Producer**: `engine_ws_dispatch.py:120` (broadcast)
 - **Payload**: `{"blocked": bool}`
 - **Consumer**: binding.ts:327 → `applyRealtimeLatencyStatus({blocked?})`
 - **수정 상태**: uiStore(`realtimeLatencyExceeded`)
-- **계약 상태**: ✅ 단일 producer. 네이밍 underscore.
+- **계약 상태**: ✅ 단일 producer. 네이밍 hyphen 통일 완료 (이전 underscore).
 
-#### `daily_buy_state_status` (일일 매수 상태 로드 실패) — ⚠️ 네이밍 underscore
+#### `daily-buy-state-status` (일일 매수 상태 로드 실패) — ☑ 네이밍 hyphen 통일 (2026-07-27)
 - **Producer**: `trading.py:118` (broadcast)
 - **Payload**: `{"failed": bool}`
 - **Consumer**: binding.ts:332 → `applyDailyBuyStateStatus({failed?})`
 - **수정 상태**: uiStore(`dailyBuyStateFailed`)
-- **계약 상태**: ✅ 단일 producer. 네이밍 underscore.
+- **계약 상태**: ✅ 단일 producer. 네이밍 hyphen 통일 완료 (이전 underscore).
 
-#### `test_cash_failed` (테스트 예수금 검증 실패, 1회성) — ⚠️ 네이밍 underscore
+#### `test-cash-failed` (테스트 예수금 검증 실패, 1회성) — ☑ 네이밍 hyphen 통일 (2026-07-27)
 - **Producer**: `trading.py:132` (broadcast)
 - **Payload**: `{"failed": bool, "stk_cd": str, "reason": str}`
 - **Consumer**: binding.ts:337 → `applyTestCashFailed({failed?, stk_cd?, reason?})`
 - **수정 상태**: uiStore(`testCashFailed`)
-- **계약 상태**: ✅ 단일 producer. 네이밍 underscore.
+- **계약 상태**: ✅ 단일 producer. 네이밍 hyphen 통일 완료 (이전 underscore).
 
 ### 3.2 settings 채널 — 설정·진행률 (이벤트 29~34)
 
@@ -407,7 +407,7 @@ WebSocket 이벤트의 **이름 · 채널 · producer · payload 필드 · Store
 | `buy-targets-update` | 2 | `ws.py:138`, `engine_account_notify.py:418` | ✅ 일치 | 자연스러운 다중 producer (연결 시 + 초기 상태) |
 | `sector-stocks-refresh` | 2 | `ws.py:91`, `engine_account_notify.py:349` | ✅ 일치 | 자연스러운 다중 producer (연결 시 + 변경 시) |
 | `engine-ready` | 2 | `engine_loop.py:41`, `ws.py:42` | ✅ 일치 | 자연스러운 다중 producer (브로드캐스트 + 연결 시 유니캐스트) |
-| `circuit_breaker_open` | 2 | `trading.py:438,647` | ✅ 일치 | 자연스러운 다중 producer (매수/매도 분기) |
+| `circuit-breaker-open` | 2 | `trading.py:438,647` | ✅ 일치 | 자연스러운 다중 producer (매수/매도 분기) |
 | `account-update` | 1 (3분기) | `engine_account_broadcast.py:47,66,70` | ⚠️ 경량화/전체 분기 | 단일 파일 내 3분기 — 자연스러운 페이지별 최적화 |
 
 ### 5.1 단일화 후보
@@ -419,26 +419,29 @@ WebSocket 이벤트의 **이름 · 채널 · producer · payload 필드 · Store
 
 ---
 
-## 6. 네이밍 컨벤션 불일치 (P23 일관성)
+## 6. 네이밍 컨벤션 — ☑ 2026-07-27 hyphen 통일 완료
+
+~~6개 underscore 이벤트~~ → ☑ 2026-07-27 전부 hyphen 통일 완료. 전체 40개 이벤트 hyphen 통일.
 
 | 이벤트 이름 | 구분자 | 채널 |
 |------------|--------|------|
-| `circuit_breaker_open` | underscore | prices |
-| `order_time_blocked` | underscore | prices |
-| `risk_block_status` | underscore | prices |
-| `realtime_latency_status` | underscore | prices |
-| `daily_buy_state_status` | underscore | prices |
-| `test_cash_failed` | underscore | prices |
+| ~~`circuit_breaker_open`~~ → `circuit-breaker-open` | ~~underscore~~ → hyphen | prices |
+| ~~`order_time_blocked`~~ → `order-time-blocked` | ~~underscore~~ → hyphen | prices |
+| ~~`risk_block_status`~~ → `risk-block-status` | ~~underscore~~ → hyphen | prices |
+| ~~`realtime_latency_status`~~ → `realtime-latency-status` | ~~underscore~~ → hyphen | prices |
+| ~~`daily_buy_state_status`~~ → `daily-buy-state-status` | ~~underscore~~ → hyphen | prices |
+| ~~`test_cash_failed`~~ → `test-cash-failed` | ~~underscore~~ → hyphen | prices |
 
-나머지 34개 이벤트는 모두 hyphen 사용.
+나머지 34개 이벤트는 모두 hyphen 사용. 전체 40개 이벤트 hyphen 통일 완료.
 
 ### 6.1 패턴 분석
 
-- 6개 underscore 이벤트는 모두 **trading.py / engine_ws_dispatch.py / daily_time_scheduler.py**에서 생산되는 **상태 차단 알림** 계열.
-- hyphen 이벤트는 `engine_account_notify.py`, `trade_history.py`, `ws.py` 등에서 생산되는 **데이터 갱신** 계열.
-- 두 계열이 네이밍 컨벤션을 따로 따름 — P23(일관성) 위반 후보.
-- 단, 6개 underscore 이벤트는 모두 프론트엔드 binding.ts에서 동일 underscore로 구독하므로 **기능적 불일치는 아님** (오타 아님).
-- 후속 세션에서 hyphen 통일 검토 시 producer 6곳 + binding.ts 6곳 + 테스트 파일 전수 수정 필요.
+- ~~6개 underscore 이벤트는 모두 **trading.py / engine_ws_dispatch.py / daily_time_scheduler.py**에서 생산되는 **상태 차단 알림** 계열.~~
+- ~~hyphen 이벤트는 `engine_account_notify.py`, `trade_history.py`, `ws.py` 등에서 생산되는 **데이터 갱신** 계열.~~
+- ~~두 계열이 네이밍 컨벤션을 따로 따름 — P23(일관성) 위반 후보.~~
+- ~~단, 6개 underscore 이벤트는 모두 프론트엔드 binding.ts에서 동일 underscore로 구독하므로 **기능적 불일치는 아님** (오타 아님).~~
+- ~~후속 세션에서 hyphen 통일 검토 시 producer 6곳 + binding.ts 6곳 + 테스트 파일 전수 수정 필요.~~
+- ☑ 2026-07-27 COUPLING-S3 항목5 근본 해결 — producer 3파일(trading.py/engine_ws_dispatch.py/daily_time_scheduler.py) + binding.ts + uiStore.ts 주석 + 테스트 3파일 전수 hyphen 통일. P23(일관성) 위반 해소.
 
 ---
 
@@ -551,7 +554,7 @@ WS 이벤트 (real-data / orderbook-update / program-update)
 | 5 | `engine-reload-complete` / `avg-amt-progress` 중복 구독 제거 | 구독 제거 (동일 액션 대체 이벤트 존재, 공유 함수는 유지) | 낮음 | P16, P24 | ☑ 완료 |
 | 6 | `receive-rate` / `sector-scores.status.receive_rate` 중복 경로 | 단일 경로로 통일 | 낮음 | P10, P24 | ☑ 완료 |
 | 7 | `market-phase` 부분 payload 통일 | 부분 payload 전송을 전체 payload로 통일 | 낮음 | P23 | ☑ 완료 |
-| 8 | 6개 underscore 이벤트 hyphen 통일 | 네이밍 컨벤션 통일 (producer 6곳 + binding 6곳 + 테스트) | 낮음 | P23 | ☐ |
+| 8 | ~~6개 underscore 이벤트 hyphen 통일~~ | ~~네이밍 컨벤션 통일 (producer 6곳 + binding 6곳 + 테스트)~~ | 낮음 | P23 | ☑ 2026-07-27 완료 |
 | 9 | `account-update` / `settings-changed` payload 분기 정리 | 분기를 별도 이벤트로 분리 또는 optional 필드 명시 | 낮음 | P23 | ☐ |
 
 > 후속 세션에서는 위 9개 항목 중 1개만 별도 승인 후 진행 권장. 규칙 0-1(세션당 1단계) 준수.
@@ -565,7 +568,7 @@ WS 이벤트 (real-data / orderbook-update / program-update)
 - 프론트엔드 구독 36개 이벤트 ↔ 백엔드 producer 1:1 대조 완료
 - 4개 dead subscription 식별 (`engine-reload-complete`, `bootstrap-stage`, `avg-amt-progress`, `order-filled`) — 백엔드 `backend/` 전체 grep으로 producer 0건 확인 → **2026-07-27 후속 세션에서 4건 전수 정리 완료**
 - 2개 payload 필드 불일치 식별 (`ws-subscribe-status`, `account-update` 분기)
-- 6개 네이밍 컨벤션 불일치 식별 (underscore 6개 vs hyphen 34개)
+- ~~6개 네이밍 컨벤션 불일치 식별 (underscore 6개 vs hyphen 34개)~~ → ☑ 2026-07-27 COUPLING-S3 항목5 hyphen 통일 완료 (전체 40개 이벤트 hyphen 통일)
 - 3개 중복 데이터 전송 경로 식별 (`receive-rate`/`sector-scores`, `engine-ready`/`engine-reload-complete`, `confirmed-progress`/`avg-amt-progress`)
 
 ### 11.2 코드 수정 — 2026-07-27 후속 세션에서 dead subscription 4건 정리 완료

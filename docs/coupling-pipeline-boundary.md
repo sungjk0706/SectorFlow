@@ -123,7 +123,7 @@
 │  side effect:                                                                    │
 │   - state.market_phase[krx/nxt] 갱신                                             │
 │   - WS: _broadcast("market-phase", ...) (engine_account_notify)                 │
-│   - WS: _broadcast("order_time_blocked", {blocked, reason})                     │
+│   - WS: _broadcast("order-time-blocked", {blocked, reason})                     │
 │   - 페이즈 변경 감지 시:                                                         │
 │     NXT "프리마켓" → _on_nxt_premarket_start() + _on_ws_subscribe_start()       │
 │     KRX "정규장" → _on_krx_market_open()                                         │
@@ -315,7 +315,7 @@
 │   - 0D 호가: notify_orderbook_update → ws_manager.broadcast 직접                   │
 │   - PGM 프로그램: notify_program_update → ws_manager.broadcast 직접                │
 │   - 0J 업종지수: notify_index_data → ws_manager.broadcast 직접                     │
-│   - market-phase/order_time_blocked: _broadcast 헬퍼 → ws_manager.broadcast        │
+│   - market-phase/order-time-blocked: _broadcast 헬퍼 → ws_manager.broadcast        │
 │   - confirmed-progress: broadcast_queue.put (스레드풀 안전 call_soon_threadsafe)   │
 └─────────────────────────────────────────────────────────────────────────────────┘
                               │

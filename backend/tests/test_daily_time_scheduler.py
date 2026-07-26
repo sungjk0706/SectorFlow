@@ -999,11 +999,11 @@ class TestBroadcastMarketPhase:
             _broadcast_market_phase()
             assert mock_state.market_phase["krx"] == "정규장"
             assert mock_state.market_phase["nxt"] == "메인마켓"
-            # market-phase + order_time_blocked 브로드캐스트 2회 (5세션 Step 7)
+            # market-phase + order-time-blocked 브로드캐스트 2회 (5세션 Step 7)
             assert mock_sched.call_count == 2
             contexts = [c.kwargs.get("context", "") for c in mock_sched.call_args_list]
             assert any("market-phase" in ctx for ctx in contexts)
-            assert any("order_time_blocked" in ctx for ctx in contexts)
+            assert any("order-time-blocked" in ctx for ctx in contexts)
 
     def test_exception_does_not_raise(self):
         with patch("backend.app.services.daily_time_scheduler.calc_timebased_market_phase", side_effect=Exception("boom")):
@@ -1067,7 +1067,7 @@ class TestBroadcastMarketPhase:
              patch("backend.app.services.daily_time_scheduler.get_market_phase", return_value={"krx": "정규장", "nxt": "메인마켓"}), \
              patch("backend.app.services.daily_time_scheduler.schedule_engine_task", side_effect=_close_coro) as mock_sched:
             _broadcast_market_phase()
-            # market-phase + order_time_blocked 브로드캐스트 2회, 재계산 없음 (5세션 Step 7)
+            # market-phase + order-time-blocked 브로드캐스트 2회, 재계산 없음 (5세션 Step 7)
             assert mock_sched.call_count == 2
             contexts = [c.kwargs.get("context", "") for c in mock_sched.call_args_list]
             assert all("진입" not in ctx and "구독" not in ctx for ctx in contexts)
@@ -1105,7 +1105,7 @@ class TestApplyMarketPhase:
              patch("backend.app.services.daily_time_scheduler.get_market_phase", return_value={"krx": "정규장", "nxt": "메인마켓", "krx_countdown": None, "nxt_countdown": None}), \
              patch("backend.app.services.daily_time_scheduler.schedule_engine_task", side_effect=_close_coro) as mock_sched:
             _apply_market_phase({"krx": "정규장", "nxt": "메인마켓"})
-            # market-phase + order_time_blocked 브로드캐스트 2회, 부작용 없음 (5세션 Step 7)
+            # market-phase + order-time-blocked 브로드캐스트 2회, 부작용 없음 (5세션 Step 7)
             assert mock_sched.call_count == 2
             contexts = [c.kwargs.get("context", "") for c in mock_sched.call_args_list]
             assert all("진입" not in ctx and "구독" not in ctx for ctx in contexts)

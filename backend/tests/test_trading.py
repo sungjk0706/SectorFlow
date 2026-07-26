@@ -439,13 +439,13 @@ class TestBroadcastDailyBuyStateStatus:
     async def test_failed_broadcasts(self):
         with patch("backend.app.services.engine_account_notify._safe_broadcast", new=AsyncMock()) as mock_bc:
             await _broadcast_daily_buy_state_status(failed=True)
-            mock_bc.assert_awaited_once_with("daily_buy_state_status", {"failed": True})
+            mock_bc.assert_awaited_once_with("daily-buy-state-status", {"failed": True})
 
     @pytest.mark.asyncio
     async def test_success_broadcasts(self):
         with patch("backend.app.services.engine_account_notify._safe_broadcast", new=AsyncMock()) as mock_bc:
             await _broadcast_daily_buy_state_status(failed=False)
-            mock_bc.assert_awaited_once_with("daily_buy_state_status", {"failed": False})
+            mock_bc.assert_awaited_once_with("daily-buy-state-status", {"failed": False})
 
 
 # ── _broadcast_test_cash_failed 헬퍼 단위 테스트 (P21 사용자 투명성) ──────────
@@ -457,7 +457,7 @@ class TestBroadcastTestCashFailed:
     async def test_failed_broadcasts(self):
         with patch("backend.app.services.engine_account_notify._safe_broadcast", new=AsyncMock()) as mock_bc:
             await _broadcast_test_cash_failed(stk_cd="005930", reason="예수금 부족")
-            mock_bc.assert_awaited_once_with("test_cash_failed", {"failed": True, "stk_cd": "005930", "reason": "예수금 부족"})
+            mock_bc.assert_awaited_once_with("test-cash-failed", {"failed": True, "stk_cd": "005930", "reason": "예수금 부족"})
 
 
 # ── _map_risk_reason_to_code 헬퍼 단위 테스트 (P23 일관성) ─────────────────────

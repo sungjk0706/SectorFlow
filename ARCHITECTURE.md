@@ -875,7 +875,7 @@ RiskManager
 - `max_position_size`: 운영 참조 0건 — COUPLING-S2 후속에서 제거됨 (DEFAULT + DB 마이그레이션).
 
 **CircuitBreaker OPEN 시:** 마스터 스위치 강제 OFF + 프론트엔드 브로드캐스트
-**리스크 조건 차단 시:** `risk_block_status` WS 이벤트 브로드캐스트 → 프론트엔드 헤더 빨간 칩 표시(클릭 시 해제)
+**리스크 조건 차단 시:** `risk-block-status` WS 이벤트 브로드캐스트 → 프론트엔드 헤더 빨간 칩 표시(클릭 시 해제)
 
 ### 7.3 자동매매 게이트
 
@@ -1040,8 +1040,8 @@ WSManager (싱글톤)
 | `account-update` | 상태형 | 계좌 정보 |
 | `engine-status` | 상태형 | 엔진 상태 |
 | `market-phase` | 이벤트형 | 장 단계 (개장/장중/장마감 etc.) |
-| `circuit_breaker_open` | 이벤트형 | 서킷 브레이커 알림 |
-| `risk_block_status` | 이벤트형 | 리스크 매니저 매수/매도 차단 알림 (헤더 빨간 칩) |
+| `circuit-breaker-open` | 이벤트형 | 서킷 브레이커 알림 |
+| `risk-block-status` | 이벤트형 | 리스크 매니저 매수/매도 차단 알림 (헤더 빨간 칩) |
 | `engine-ready` | 이벤트형 | 엔진 준비 완료 |
 | `buy-history-append` | 이벤트형 | 매수 체결 단건 |
 | `sell-history-append` | 이벤트형 | 매도 체결 단건 + 일자 요약 |

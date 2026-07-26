@@ -763,7 +763,7 @@ def _apply_market_phase(phase: dict) -> None:
         # 페이즈 갱신 시마다 차단 상태 산정 — JIF + 10초 주기 양쪽에서 자동 전송 (P10 SSOT, P16 살아있는 경로).
         # 페이즈 기반이므로 blocked=False 시 자동 해제 (P24 — 별도 해제 로직 없음).
         blocked, reason = get_order_time_block_status()
-        schedule_engine_task(_broadcast("order_time_blocked", {"blocked": blocked, "reason": reason}), context="order_time_blocked 브로드캐스트")
+        schedule_engine_task(_broadcast("order-time-blocked", {"blocked": blocked, "reason": reason}), context="order-time-blocked 브로드캐스트")
         # 페이즈 변경 감지 → 업종 재계산 + WS 구독 시작/종료 트리거
         if prev_krx != new_krx or prev_nxt != new_nxt:
             # ── 장 상태 변경 로그 (P21 사용자 투명성) ──

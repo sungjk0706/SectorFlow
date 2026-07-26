@@ -157,7 +157,7 @@ class TestCheckRealtimeLatency:
             assert mock_state.realtime_latency_exceeded is False
 
     def test_latency_exceeded_broadcasts_blocked(self):
-        """200ms 초과 진입 시 realtime_latency_status {blocked: True} 브로드캐스트 (P21)."""
+        """200ms 초과 진입 시 realtime-latency-status {blocked: True} 브로드캐스트 (P21)."""
         with patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.services.engine_ws_dispatch._broadcast_realtime_latency_status") as mock_bc:
             mock_state.realtime_latency_exceeded = False
@@ -167,7 +167,7 @@ class TestCheckRealtimeLatency:
             mock_bc.assert_called_once_with(blocked=True)
 
     def test_latency_recovery_broadcasts_unblocked(self):
-        """지연 회복 시 realtime_latency_status {blocked: False} 브로드캐스트 (P21)."""
+        """지연 회복 시 realtime-latency-status {blocked: False} 브로드캐스트 (P21)."""
         with patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.services.engine_ws_dispatch._broadcast_realtime_latency_status") as mock_bc:
             mock_state.realtime_latency_exceeded = True

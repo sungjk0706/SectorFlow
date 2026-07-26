@@ -111,17 +111,17 @@ def _broadcast_realtime_latency_status(*, blocked: bool) -> None:
     """실시간 지연 상태 변화를 화면에 전송 (P21 사용자 투명성).
 
     schedule_engine_task로 비동기 브로드캐스트 예약 — 동기 컨텍스트(_check_realtime_latency)에서 호출.
-    P23(일관성): order_time_blocked 브로드캐스트 패턴과 동일 (daily_time_scheduler.py 참조).
+    P23(일관성): order-time-blocked 브로드캐스트 패턴과 동일 (daily_time_scheduler.py 참조).
     """
     try:
         from backend.app.services.engine_lifecycle import schedule_engine_task
         from backend.app.services.engine_account_notify import _broadcast
         schedule_engine_task(
-            _broadcast("realtime_latency_status", {"blocked": blocked}),
-            context="realtime_latency_status 브로드캐스트",
+            _broadcast("realtime-latency-status", {"blocked": blocked}),
+            context="realtime-latency-status 브로드캐스트",
         )
     except Exception:
-        logger.warning("[체결지연] realtime_latency_status 브로드캐스트 예약 실패", exc_info=True)
+        logger.warning("[체결지연] realtime-latency-status 브로드캐스트 예약 실패", exc_info=True)
 
 
 async def _handle_real_00(item: dict, vals: dict) -> None:

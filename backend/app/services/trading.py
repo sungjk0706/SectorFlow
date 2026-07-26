@@ -111,13 +111,13 @@ async def _broadcast_daily_buy_state_status(*, failed: bool) -> None:
     """일일 매수 상태 로드 성공/실패를 화면에 전송 (P21 사용자 투명성).
 
     매수 배지에 "차단: 일일 상태 오류" 반영 — 매수 전용 (매도는 해당 없음).
-    P23(일관성): risk_block_status 브로드캐스트 패턴과 동일 (_safe_broadcast 사용).
+    P23(일관성): risk-block-status 브로드캐스트 패턴과 동일 (_safe_broadcast 사용).
     """
     try:
         from backend.app.services.engine_account_notify import _safe_broadcast
-        await _safe_broadcast("daily_buy_state_status", {"failed": failed})
+        await _safe_broadcast("daily-buy-state-status", {"failed": failed})
     except Exception:
-        logger.warning("[매매] daily_buy_state_status 브로드캐스트 실패", exc_info=True)
+        logger.warning("[매매] daily-buy-state-status 브로드캐스트 실패", exc_info=True)
 
 
 async def _broadcast_test_cash_failed(*, stk_cd: str, reason: str) -> None:
@@ -129,9 +129,9 @@ async def _broadcast_test_cash_failed(*, stk_cd: str, reason: str) -> None:
     """
     try:
         from backend.app.services.engine_account_notify import _safe_broadcast
-        await _safe_broadcast("test_cash_failed", {"failed": True, "stk_cd": stk_cd, "reason": reason})
+        await _safe_broadcast("test-cash-failed", {"failed": True, "stk_cd": stk_cd, "reason": reason})
     except Exception:
-        logger.warning("[매매] test_cash_failed 브로드캐스트 실패", exc_info=True)
+        logger.warning("[매매] test-cash-failed 브로드캐스트 실패", exc_info=True)
 
 
 class AutoTradeManager:
@@ -435,7 +435,7 @@ class AutoTradeManager:
                     from backend.app.services.engine_state import state
                     from backend.app.services.engine_account_notify import _broadcast, notify_desktop_header_refresh, notify_desktop_settings_toggled
                     state.integrated_system_settings_cache["time_scheduler_on"] = False
-                    await _broadcast("circuit_breaker_open", {
+                    await _broadcast("circuit-breaker-open", {
                         "message": "서킷브레이커 차단 — 자동매매 마스터 스위치 강제 OFF",
                     })
                     await notify_desktop_header_refresh()
@@ -644,7 +644,7 @@ class AutoTradeManager:
                     from backend.app.services.engine_state import state
                     from backend.app.services.engine_account_notify import _broadcast, notify_desktop_header_refresh, notify_desktop_settings_toggled
                     state.integrated_system_settings_cache["time_scheduler_on"] = False
-                    await _broadcast("circuit_breaker_open", {
+                    await _broadcast("circuit-breaker-open", {
                         "message": "서킷브레이커 차단 — 자동매매 마스터 스위치 강제 OFF",
                     })
                     await notify_desktop_header_refresh()
@@ -739,7 +739,7 @@ class AutoTradeManager:
                 logger.info("[매매] [리스크차단] 매도 조건 전체 차단 — %s", reason)
                 # P21 사용자 투명성 — 차단 사유 WS 브로드캐스트
                 from backend.app.services.engine_account_notify import _safe_broadcast
-                await _safe_broadcast("risk_block_status", {
+                await _safe_broadcast("risk-block-status", {
                     "blocked": True,
                     "side": "sell",
                     "reason": reason,
