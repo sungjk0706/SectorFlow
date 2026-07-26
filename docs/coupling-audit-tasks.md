@@ -39,7 +39,7 @@
 | COUPLING-S4 | P0 | C-04 주문 호출 그래프 | ☑ | safe-trade 점검, 주문·리스크 테스트, RuntimeWarning 기동 |
 | COUPLING-S5 | P1 | C-05 파이프라인 경계 | ☑ | `docs/coupling-pipeline-boundary.md` 작성 (608줄). scheduler→pipeline→compute→candidate→notification 단계별 호출 그래프 + 소유 캐시·DB 저장·WS 진행률·주문 후보 side effect 매트릭스. 코드 수정 없음(조사·문서만). P8/P9/P10/P11/P16/P20/P24/P25 점검 완료. 개선 후보 4건 식별(후처리 헬퍼 추출 1순위, 낮은 위험). |
 | COUPLING-S6 | 중간 | C-06 브로커 core 역참조 | ☑ | `docs/coupling-broker-core-backref.md` 작성 (436줄). core→services 역참조 33건(키움 19 + LS 14) + 부수 17건 전수 매트릭스화. 8개 유형 분류(A 상태동기화/B 설정읽기/C 토큰재사용/D ACK전송/E 키움REG빌더/F 순수함수/G WS상태브로드캐스트/H LS전용후처리). P4/P10/P16/P20/P23/P24/P25 점검 완료. 개선 후보 5건 식별(1순위: 키움 REG 빌더 이동, 낮은 위험, P4/P23 동시 개선). 코드 수정 없음(조사·문서만). |
-| COUPLING-S7 | 중간 | C-07 종목코드 정규화 표현 | ☐ | 입력/출력 경계 테스트, 백엔드 테스트, typecheck/build |
+| COUPLING-S7 | 중간 | C-07 종목코드 정규화 표현 | ☑ | `docs/coupling-stock-code-normalization.md` 작성 (422줄). 종목코드 정규화 4함수(normalize_stk_cd_key/_base_stk_cd/_norm_stk_cd/normalizeStockCode) 입력·출력·용도·계층 매트릭스 + 호출부 전수 조사(25+/1/30+) + 테스트 커버리지 + 통합 가능성 판정. 코드 수정 없음(조사·문서만). 4개 함수 모두 ⊘ 통합 금지 판정 (입력 도메인·출력 계약 다름). 개선 후보 4건 식별(1순위: _base_stk_cd core 이동 + _norm_stk_cd 통합 검토, C-06 후보 2와 중복, 낮음). |
 | COUPLING-S8 | 중간 | C-08 Store·페이지 직접 결합 | ☐ | producer/consumer 대조, 프론트 테스트, typecheck/build·브라우저 |
 | COUPLING-S9 | 낮음~중간 | C-09 대형 프론트엔드 파일 | ☐ | fan-in/fan-out 검토, 관련 테스트, typecheck/build·브라우저 |
 
@@ -293,7 +293,16 @@
 
 ### 세션 COUPLING-S7 — C-07 종목코드 정규화 표현의 의미 경계
 
-**상태:** ☐ 미시작
+**상태:** ☑ 완료 (매트릭스 문서 작성)
+**대상 원칙:** P10 SSOT, P16 살아있는 경로, P20 입력 오류 의미 보존, P22 데이터 정합성, P23 용어·타입 일관성, P24 단순성
+**결과:** `docs/coupling-stock-code-normalization.md`에 4함수 입력·출력·용도·계층 매트릭스 작성. 코드 수정 없음(조사·문서만).
+- 4개 함수 비교 매트릭스: `normalize_stk_cd_key`(core, 설정 키, zfill만), `_base_stk_cd`(services, 엔진 전 경로, _AL/_NX 제거+truncate, 25+ 호출부), `_norm_stk_cd`(services, 종목명 캐시 키, truncate만, 1 호출부), `normalizeStockCode`(frontend, Store/페이지, A 접두사 제거+_ split, 30+ 호출부).
+- 통합 판정: 4개 함수 모두 ⊘ 통합 금지 — 입력 도메인(설정 키/엔진 코드/종목명 캐시/프론트 Store)·출력 계약(접미사/접두사/truncate/upper)이 다름. 단순 병합 시 P22 위험.
+- 단일화 후보: `_base_stk_cd`와 `_norm_stk_cd`는 거의 동일(_AL/_NX 제거만 차이) — C-06 후보 2(core 이동) 진행 시 통합 검토 권장.
+- 개선 후보 4건: (1) _base_stk_cd core 이동 + _norm_stk_cd 통합 검토(낮음, C-06 후보 2와 중복), (2) normalizeStockCode 직접 테스트 추가(낮음, P21/P25), (3) normalize_stk_cd_key truncate 정책 docstring 명시(낮음, P21), (4) _base_stk_cd 직접 테스트 추가(낮음, P21).
+- 변경 금지 6건 식별(normalize_stk_cd_key truncate 추가 금지, 접미사 제거 추가 금지, _base_stk_cd A 접두사 제거 추가 금지, normalizeStockCode truncate 추가 금지, 4개 단순 병합 금지, _norm_stk_cd 접미사 제거 추가는 별도 승인 전 금지).
+- 테스트 커버리지: normalize_stk_cd_key 6 cases 직접, _norm_stk_cd 6 cases 직접, _base_stk_cd patch 기반 간접만(직접 단위 테스트 부재), normalizeStockCode 직접 테스트 부재.
+- 잠재 정합성 위험 2건: _norm_stk_cd 접미사 미제거로 _AL/_NX 입력 시 캐시 미스 가능, normalize_stk_cd_key truncate 안 함으로 8자리 입력 시 설정 키 8자리 저장.
 **대상 원칙:** P10 SSOT, P16 살아있는 경로, P20 입력 오류 의미 보존, P22 데이터 정합성, P23 용어·타입 일관성, P24 단순성
 
 #### 대상 코드
