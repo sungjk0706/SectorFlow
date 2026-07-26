@@ -35,7 +35,7 @@
 |---|---|---|---|---|
 | COUPLING-S1 | P0 | C-01 `engine_state` 상태 소유권 | ☑ | 69개 속성 owner/readers/writers 매트릭스 작성(`docs/coupling-engine-state-matrix.md`). 코드 수정 없음(조사·문서만). 후속 단일화 1순위: `sector_summary_cache` (7곳 writer). docstring 대조 1건 불일치(`positions`의 `kiwoom_account_parsing` 누락). |
 | COUPLING-S2 | P0 | C-02 설정 키 영향 매트릭스 | ☑ | `docs/coupling-settings-impact-matrix.md` 작성 (525줄). DEFAULT_USER_SETTINGS 66키 + DEFAULT_SYSTEM_CONFIG 17키 + 동적 증권사 자격증명 + 파생 키 전체 파이프라인(DB→기본값→정규화→캐시→서비스→API/UI) 매트릭스화. 코드 수정 없음(조사·문서만). P10 SSOT 위반 후보 6건, P21 투명성 후보 1건, 검증 누락 키 다수, 단일화 우선순위 5건 식별. |
-| COUPLING-S3 | P1 | C-03 WebSocket 이벤트 계약 인덱스 | ☐ | producer/consumer 전수 검색, WS·Store 관련 테스트, typecheck/build |
+| COUPLING-S3 | P1 | C-03 WebSocket 이벤트 계약 인덱스 | ☑ | `docs/coupling-ws-event-contract-index.md` 작성 (575줄). WS 36개 구독 이벤트 + 4개 dead subscription 전수 인덱스화. 3 채널(prices/settings/orders) 구조, 40개 이벤트 producer/consumer/payload/Store 액션/CustomEvent 배칭 매트릭스. 코드 수정 없음(조사·문서만). P16/P21 위반 4건(dead subscription), P23 위반 8건(네이밍 6 + payload 불일치 2), P10/P24 위반 3건(중복 경로), 단일화 우선순위 9건 식별. |
 | COUPLING-S4 | P0 | C-04 주문 호출 그래프 | ☐ | safe-trade 점검, 주문·리스크 테스트, RuntimeWarning 기동 |
 | COUPLING-S5 | P1 | C-05 파이프라인 경계 | ☐ | 파이프라인·스케줄러 테스트, 전체 백엔드 테스트, RuntimeWarning 기동 |
 | COUPLING-S6 | 중간 | C-06 브로커 core 역참조 | ☐ | import 방향·계약 대조, 브로커·WS 테스트, RuntimeWarning 기동 |
@@ -129,8 +129,18 @@
 
 ### 세션 COUPLING-S3 — C-03 WebSocket 이벤트 계약 인덱스
 
-**상태:** ☐ 미시작
+**상태:** ☑ 완료 (인덱스 문서 작성)
 **대상 원칙:** P5 직접 호출·Queue 경계 유지, P10 SSOT, P16 살아있는 경로, P21 사용자 투명성, P23 일관성, P24 단순성, P25 격리된 실패
+**결과:** `docs/coupling-ws-event-contract-index.md`에 WS 이벤트 전수 인덱스 작성. 코드 수정 없음(조사·문서만).
+- WS 3 채널 구조 정의: prices(28 이벤트), settings(6 이벤트), orders(2 이벤트). 3 채널 모두 동일 `ws_manager` 싱글턴 공유 (채널 분리는 TCP 연결 분리일 뿐 이벤트 라우팅 분리 아님).
+- 40개 이벤트 전수 인덱스: 36개 프론트엔드 구독 + 4개 dead subscription.
+- P16/P21 위반 4건 (dead subscription): `engine-reload-complete`, `bootstrap-stage`, `avg-amt-progress`, `order-filled` — 백엔드 producer 전혀 없음. `bootstrap-stage`는 P21(사용자 투명성) 위반 (부트스트랩 진행 미표시).
+- P23 위반 8건: 네이밍 underscore 6개(`circuit_breaker_open` 등) vs hyphen 34개, payload 필드 불일치 2건(`ws-subscribe-status` `index_subscribed` 누락, `account-update` 경량화/전체 분기).
+- P10/P24 위반 3건 (중복 경로): `receive-rate` vs `sector-scores.status.receive_rate`, `engine-ready` vs `engine-reload-complete`(동일 액션), `confirmed-progress` vs `avg-amt-progress`(동일 액션).
+- 다중 producer 6건: `index-data`(4곳, payload 혼용), `market-phase`(3곳, 부분 payload), `stock-classification-changed`(3곳), `buy-targets-update`/`sector-stocks-refresh`/`engine-ready`(각 2곳).
+- CustomEvent 배칭 3종: `real-data-tick`/`orderbook-tick`/`program-tick` — hotStore `flushTickBatch()` rAF coalescing → 4개 페이지 consumer.
+- 단일화 우선순위 9건 식별. 1순위: `bootstrap-stage` dead subscription (P21 위반).
+- 후속 세션에서 위 9개 항목 중 1개만 별도 승인 후 진행 권장.
 
 #### 대상 코드
 
