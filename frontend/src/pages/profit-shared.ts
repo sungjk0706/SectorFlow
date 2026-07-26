@@ -398,17 +398,63 @@ export function buildChartFromDailySummary(summary: Record<string, unknown>[]): 
   return rows
 }
 
-/* ── 보유 종목 요약 계산 (순수 함수 — P22 데이터 정합성) ── */
+/* ── 보유 종목 평가 계산 (순수 함수 — P10 SSOT, P22 데이터 정합성, P23 일관성) ── */
 
 /**
- * 보유 종목 positions + 실시간 시세 sectorStocks로부터 평가금액/평가손익/수익률 계산.
- * 개별 종목 행(sell-position.ts COLUMNS pnl/rate 컬럼)과 동일한 데이터 소스·공식 사용.
+ * 개별 보유종목 1건의 평가 계산 — 단일 진실 소스(SSOT).
+ * sell-position.ts 개별 행(cur_price/pnl/rate 컬럼)과 computeHoldingsSummary(요약행)가
+ * 동일한 공식·null 패턴을 공유하도록 추출 (P10/P23 — 공식 중복 제거).
  *
  * - 현재가: sectorStocks[code].cur_price (실시간 틱, 없으면 null)
  * - 매입가: p.avg_price
- * - 평가금액 = sum(현재가 × 수량) — cur_price null인 종목은 계산에서 제외 (P21 투명성)
- * - 매입금액 = sum(매입가 × 수량)
- * - 평가손익 = 평가금액 - 매입금액
+ * - curPrice null → isNull=true, 나머지 필드 0 (P21 투명성 — 호출처에서 '-' 표시)
+ *   isNull은 오직 curPrice null(시세 미수신)만 의미. qty<=0은 isNull=false이며
+ *   evalAmt/buyAmt=0으로 합산에 0 기여 (요약 hasNullPrice 영향 X — 기존 동작 보존).
+ * - diff = curPrice - buyPrice
+ * - pnl = diff × qty
+ * - rate = buyPrice > 0 ? diff / buyPrice × 100 : 0 (단일 종목 수익률)
+ * - evalAmt = curPrice × qty (평가금액)
+ * - buyAmt = buyPrice × qty (매입금액)
+ */
+export interface PositionValuation {
+  curPrice: number
+  buyPrice: number
+  qty: number
+  diff: number
+  pnl: number
+  rate: number
+  evalAmt: number
+  buyAmt: number
+  isNull: boolean
+}
+
+export function computePositionValuation(
+  p: Position,
+  sectorStocks: Record<string, SectorStock>,
+): PositionValuation {
+  const qty = p.qty ?? 0
+  const buyPrice = p.avg_price
+  const code = normalizeStockCode(p.stk_cd)
+  const curPriceRaw = sectorStocks[code]?.cur_price ?? null
+  if (curPriceRaw == null) {
+    return { curPrice: 0, buyPrice, qty, diff: 0, pnl: 0, rate: 0, evalAmt: 0, buyAmt: 0, isNull: true }
+  }
+  const curPrice = Number(curPriceRaw)
+  const diff = curPrice - buyPrice
+  const pnl = diff * qty
+  const rate = buyPrice > 0 ? (diff / buyPrice) * 100 : 0
+  const evalAmt = curPrice * qty
+  const buyAmt = buyPrice * qty
+  return { curPrice, buyPrice, qty, diff, pnl, rate, evalAmt, buyAmt, isNull: false }
+}
+
+/**
+ * 보유 종목 positions 전체 요약 — computePositionValuation 결과를 합산 (P10 SSOT 재사용).
+ * 개별 종목 행과 동일한 데이터 소스·공식 사용.
+ *
+ * - 평가금액 = sum(evalAmt) — cur_price null인 종목은 계산에서 제외 (P21 투명성)
+ * - 매입금액 = sum(buyAmt)
+ * - 평가손익 = sum(pnl) (= 평가금액 - 매입금액, 수학적 동일)
  * - 수익률 = 평가손익 / 매입금액 × 100 (가중 평균, 매입금액 0이면 0)
  * - hasNullPrice: cur_price null인 보유종목이 하나라도 있으면 true → 호출처에서 '-' 표시 (P21, P23 — 개별 행과 동일 null 패턴)
  */
@@ -420,17 +466,13 @@ export function computeHoldingsSummary(
   let buyTotal = 0
   let hasNullPrice = false
   for (const p of positions) {
-    const qty = p.qty ?? 0
-    if (qty <= 0) continue
-    const code = normalizeStockCode(p.stk_cd)
-    const curPrice = sectorStocks[code]?.cur_price ?? null
-    if (curPrice == null) {
+    const v = computePositionValuation(p, sectorStocks)
+    if (v.isNull) {
       hasNullPrice = true
       continue
     }
-    const buyPrice = p.avg_price
-    evalTotal += Number(curPrice) * qty
-    buyTotal += buyPrice * qty
+    evalTotal += v.evalAmt
+    buyTotal += v.buyAmt
   }
   const evalPnl = evalTotal - buyTotal
   const evalRate = computeWeightedRate(evalPnl, buyTotal)

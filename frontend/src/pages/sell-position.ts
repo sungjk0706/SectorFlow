@@ -13,7 +13,7 @@ import { rateColor, pnlColor, fmtComma, fmtRate, createCodeCell, createStockName
 import { createBadgeRow, createBadge, updateBadge, type BadgeHandle } from '../components/common/badge'
 import { computeOrderBlockStatus } from '../utils/order-block-status'
 import { getLocalToday } from '../utils/date'
-import { computeHoldingsSummary } from './profit-shared'
+import { computeHoldingsSummary, computePositionValuation } from './profit-shared'
 import type { Position } from '../types'
 
 const COLUMNS: ColumnDef<Position>[] = [
@@ -39,13 +39,9 @@ const COLUMNS: ColumnDef<Position>[] = [
   {
     key: 'cur_price', label: '현재가', align: 'right', type: 'price', flash: true,
     render: (p) => {
-      const sectorStock = hotStore.getState().sectorStocks[normalizeStockCode(p.stk_cd)]
-      const curPrice = sectorStock?.cur_price
-      if (curPrice == null) return createPriceCell(null, null)
-      const buyPrice = p.avg_price
-      const diff = Number(curPrice) - buyPrice
-      const rate = buyPrice > 0 ? (diff / buyPrice) * 100 : 0
-      return createPriceCell(Number(curPrice), rate)
+      const v = computePositionValuation(p, hotStore.getState().sectorStocks)
+      if (v.isNull) return createPriceCell(null, null)
+      return createPriceCell(v.curPrice, v.rate)
     },
   },
   {
@@ -59,35 +55,28 @@ const COLUMNS: ColumnDef<Position>[] = [
   {
     key: 'pnl', label: '평가손익', align: 'right', type: 'pnl',
     render: (p) => {
-      const sectorStock = hotStore.getState().sectorStocks[normalizeStockCode(p.stk_cd)]
-      const curPrice = sectorStock?.cur_price ?? null
+      const v = computePositionValuation(p, hotStore.getState().sectorStocks)
       const span = document.createElement('span')
-      if (curPrice == null) {
+      if (v.isNull) {
         span.textContent = '-'
         return span
       }
-      const buyPrice = p.avg_price
-      const qty = p.qty
-      const pnl = (Number(curPrice) - buyPrice) * qty
-      span.style.color = rateColor(pnl)
-      span.textContent = fmtComma(pnl)
+      span.style.color = rateColor(v.pnl)
+      span.textContent = fmtComma(v.pnl)
       return span
     },
   },
   {
     key: 'rate', label: '수익률', align: 'right', type: 'pnl_rate',
     render: (p) => {
-      const sectorStock = hotStore.getState().sectorStocks[normalizeStockCode(p.stk_cd)]
-      const curPrice = sectorStock?.cur_price ?? null
+      const v = computePositionValuation(p, hotStore.getState().sectorStocks)
       const span = document.createElement('span')
-      if (curPrice == null) {
+      if (v.isNull) {
         span.textContent = '-'
         return span
       }
-      const buyPrice = p.avg_price
-      const rate = buyPrice > 0 ? ((Number(curPrice) - buyPrice) / buyPrice) * 100 : 0
-      span.style.color = rateColor(rate)
-      span.textContent = fmtRate(rate) + '%'
+      span.style.color = rateColor(v.rate)
+      span.textContent = fmtRate(v.rate) + '%'
       return span
     },
   },
