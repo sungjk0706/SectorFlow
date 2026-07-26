@@ -200,7 +200,8 @@ SectorFlow is a local real-time stock auto-trading web app for one person.
    - **커밋**: 커밋 해시 (승인 후 커밋한 경우) 또는 "안 함(승인 전)"
    - **푸시**: "안 함(기본)" 또는 "완료(승인 후)"
    - **HANDOVER.md 갱신**: "완료" 또는 "보류(사유 명시)"
-   - **상세 포맷**: 섹션4 "세션 완료 보고 포맷" 396~411줄 준수. 본 항목은 강제성 명시용이며 내용 중복 기재 금지 (P10 SSOT · P24 단순성).
+   - **독립 줄 표시 (강제)**: 위 3항목은 보고서 본문에서 **각각 독립된 줄**로 명시적 표시. 한 줄로 통합·병합 금지. "커밋에 포함"·"커밋과 함께" 등 간접·통합 표현 금지 — 반드시 "HANDOVER.md 갱신: 완료" 또는 "HANDOVER.md 갱신: 보류(사유)" 형태로 명시.
+   - **상세 포맷**: 섹션4 "세션 완료 보고 포맷" 396~411줄 준수. 본 항목은 강제성 명시용이며 포맷 항목과의 중복 기재 금지 (P10 SSOT · P24 단순성 — "중복 금지"는 포맷 항목 간 중복을 의미, 3항목 독립 줄 표시와 충돌 아님).
 1. No guessing. Base all conclusions on actual code, search results, logs, and browser reproducible behavior.
 2. Solve the root cause, not the symptom. No temporary fixes, fallbacks, `!important`, `as any`, or "let's do this for now" workarounds.
 2-1. **아키텍처 원칙 위반 발견/발생 시 즉시 중단 + 사용자 보고 (강제).** 작성 중이거나 기존 코드에서 P10~P25 위반을 발견한 경우, 즉시 작업을 중단하고 사용자에게 보고(위반 원칙 번호 + 사유 + 영향 범위) 후 승인 대기. "임시로/우선/나중에" 금지는 규칙 2 본문에 이미 포함되므로 본 항목은 '발견 시 행동'만 명시 (P24 중복 회피). 단, 사용자가 위반 영향을 이해하고도 명시적으로 감수를 결정한 경우 그 결정을 존중 (P21 사용자 투명성 + 사용자 최종 결정권).
@@ -403,7 +404,8 @@ SectorFlow is a local real-time stock auto-trading web app for one person.
 - 프론트엔드: npm run build ✅ (해당 시)
 - 커밋: <해시> (승인 후 커밋한 경우)
 - 푸시: <여부 — 기본 "안 함(승인 전)" / 승인 시 "완료">
-- HANDOVER.md 갱신: <완료 / 보류>
+- HANDOVER.md 갱신: <완료 / 보류(사유)>
+(위 3항목은 반드시 각각 독립된 줄로 표시. "커밋에 포함" 등 통합·간접 표현 금지 — 규칙 0-7)
 
 **다음 세션 예정**: <다단계 작업 시 다음 단계 요약 + 참조 문서 경로. 단일 세션 완료면 "다음 예정 없음">
 
