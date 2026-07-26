@@ -449,19 +449,40 @@ def _parse_value(value: str, value_type: str) -> Any:
 
 def _encrypt_field_or_raise(field: str, plain: str) -> str:
     """암호화 필드 평문 → 암호문. 암호화 실패(Fernet 미가용/예외) 시 평문을 그대로 반환하지 않고
-    ValueError 발생 (P20 폴백 금지 + 보안: 평문 저장 차단).
+    EncryptionError 발생 (P20 폴백 금지 + 보안: 평문 저장 차단).
 
-    B21-01 세션2: encrypt_secret() 결과 상태 기반 검사로 전환 (임시 래퍼 의존 제거)."""
-    from backend.app.core.encryption import encrypt_secret, SecretValueState
+    B21-01 세션2: encrypt_secret() 결과 상태 기반 검사로 전환 (임시 래퍼 의존 제거).
+    B21-01 세션3: ValueError → EncryptionError(code/message/field) 전환 — 라우터가 422 detail
+    객체로 변환 (설계 5). 오류 코드 매핑:
+      - KEY_UNAVAILABLE + KeyState.MISSING → ENCRYPTION_KEY_MISSING
+      - KEY_UNAVAILABLE + KeyState.INVALID  → ENCRYPTION_KEY_INVALID
+      - DECRYPT_FAILED (암호화 자체 실패)   → ENCRYPTION_FAILED
+      - EMPTY                              → ENCRYPTION_FAILED (빈 입력은 호출부에서 걸러지지만 방어)
+    복호화 관련 코드(DECRYPTION_*)는 저장 경로가 아닌 복호화 소비자(세션 4)에서 사용."""
+    from backend.app.core.encryption import (
+        encrypt_secret, get_key_state, KeyState, SecretValueState, EncryptionError,
+    )
     result = encrypt_secret(str(plain))
     if result.state is SecretValueState.ENCRYPTED and result.ciphertext is not None:
         return result.ciphertext
     enc_state = result.state
+    if enc_state is SecretValueState.KEY_UNAVAILABLE:
+        key_state = get_key_state()
+        if key_state is KeyState.MISSING:
+            code = "ENCRYPTION_KEY_MISSING"
+            message = "암호화 키가 설정되지 않아 인증정보를 저장할 수 없습니다."
+        else:
+            code = "ENCRYPTION_KEY_INVALID"
+            message = "암호화 키를 사용할 수 없어 인증정보를 저장할 수 없습니다. 키 설정을 확인하세요."
+    else:
+        # DECRYPT_FAILED (암호화 자체 실패) / EMPTY / 기타 — 모두 암호화 처리 실패로 분류.
+        code = "ENCRYPTION_FAILED"
+        message = "인증정보 암호화 처리에 실패해 저장할 수 없습니다."
     logger.error(
-        "[설정] %s 암호화 실패 (상태: %s) — 평문 저장 차단 (P20/보안). 암호화 키 확인 필요.",
-        field, enc_state.name, exc_info=True,
+        "[설정] %s 암호화 실패 (상태: %s, 코드: %s) — 평문 저장 차단 (P20/보안). 암호화 키 확인 필요.",
+        field, enc_state.name, code, exc_info=True,
     )
-    raise ValueError(f"암호화 실패 — 평문 저장 차단 (필드: {field}, 상태: {enc_state.name})")
+    raise EncryptionError(code=code, message=message, field=field)
 
 
 def _collect_save_params(data: dict) -> tuple[list[tuple[str, str, str]], list[tuple[str, str, str]]]:

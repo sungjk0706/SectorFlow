@@ -519,6 +519,37 @@ class TestPatchSettingField:
         assert result["ok"] is True
         mock_bot.stop_async.assert_called_once()
 
+    async def test_encryption_error_returns_structured_detail(self):
+        """B21-01 세션3: EncryptionError → 422 detail 객체(code/message/field) 반환 (설계 5)."""
+        from backend.app.web.routes.settings import patch_setting_field
+        from backend.app.core.encryption import EncryptionError
+        from fastapi import HTTPException
+        err = EncryptionError(
+            code="ENCRYPTION_KEY_MISSING",
+            message="암호화 키가 설정되지 않아 인증정보를 저장할 수 없습니다.",
+            field="kiwoom_app_key",
+        )
+        with patch("backend.app.core.settings_store.apply_settings_updates", new_callable=AsyncMock, side_effect=err):
+            with pytest.raises(HTTPException) as exc_info:
+                await patch_setting_field("kiwoom_app_key", {"value": "plaintext"}, _="dev")
+        assert exc_info.value.status_code == 422
+        detail = exc_info.value.detail
+        assert isinstance(detail, dict)
+        assert detail["code"] == "ENCRYPTION_KEY_MISSING"
+        assert detail["field"] == "kiwoom_app_key"
+        assert "암호화 키" in detail["message"]
+
+    async def test_value_error_keeps_string_detail(self):
+        """B21-01 세션3: 비암호화 ValueError(타임테이블·리스크)는 기존 문자열 detail 유지 (하위 호환)."""
+        from backend.app.web.routes.settings import patch_setting_field
+        from fastapi import HTTPException
+        with patch("backend.app.core.settings_store.apply_settings_updates", new_callable=AsyncMock, side_effect=ValueError("타임테이블 시간 순서 오류")):
+            with pytest.raises(HTTPException) as exc_info:
+                await patch_setting_field("buy_time_start", {"value": "25:00"}, _="dev")
+        assert exc_info.value.status_code == 422
+        assert isinstance(exc_info.value.detail, str)
+        assert "타임테이블 시간 순서 오류" in exc_info.value.detail
+
 
 class TestResetTestData:
     """settings.py: POST /api/test-data/reset — 테스트 데이터 전체 초기화."""

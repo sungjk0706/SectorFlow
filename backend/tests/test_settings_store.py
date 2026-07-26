@@ -4,7 +4,7 @@ from __future__ import annotations
 import pytest
 from unittest.mock import patch, AsyncMock
 
-from backend.app.core.encryption import DecryptResult, SecretValueState
+from backend.app.core.encryption import DecryptResult, EncryptionError, SecretValueState
 from backend.app.core.settings_store import (
     normalize_stk_cd_key,
     normalize_symbol_override_map,
@@ -464,12 +464,26 @@ class TestApplySettingsUpdates:
 
     @pytest.mark.asyncio
     async def test_encrypt_field_failure_raises(self):
-        """암호화 실패 시 ValueError 발생 — 평문 저장 차단 (P20/보안)."""
+        """암호화 실패 시 EncryptionError 전파 — 평문 저장 차단 (P20/보안, B21-01 세션3)."""
+        err = EncryptionError(code="ENCRYPTION_KEY_MISSING", message="키 없음", field="kiwoom_app_key")
         with patch("backend.app.core.settings_store.load_selected_settings", new=AsyncMock(return_value={})), \
              patch("backend.app.core.settings_store.save_selected_settings", new=AsyncMock()) as mock_save, \
-             patch("backend.app.core.settings_store._encrypt_field_or_raise", side_effect=ValueError("암호화 실패")):
-            with pytest.raises(ValueError, match="암호화 실패"):
+             patch("backend.app.core.settings_store._encrypt_field_or_raise", side_effect=err):
+            with pytest.raises(EncryptionError) as exc_info:
                 await apply_settings_updates({"kiwoom_app_key": "plaintext_key"})
+            assert exc_info.value.code == "ENCRYPTION_KEY_MISSING"
+            assert exc_info.value.field == "kiwoom_app_key"
+            mock_save.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_encrypt_field_error_propagates_without_save(self):
+        """EncryptionError 전파 시 save_selected_settings 호출 금지 — 평문 저장 차단 (P20/보안)."""
+        err = EncryptionError(code="ENCRYPTION_FAILED", message="암호화 처리 실패", field="ls_app_secret")
+        with patch("backend.app.core.settings_store.load_selected_settings", new=AsyncMock(return_value={})), \
+             patch("backend.app.core.settings_store.save_selected_settings", new=AsyncMock()) as mock_save, \
+             patch("backend.app.core.settings_store._encrypt_field_or_raise", side_effect=err):
+            with pytest.raises(EncryptionError, match="암호화 처리 실패"):
+                await apply_settings_updates({"ls_app_secret": "plaintext_secret"})
             mock_save.assert_not_called()
 
     @pytest.mark.asyncio

@@ -7,6 +7,8 @@ B21-01: 암호화·복호화는 명시적 상태 모델(KeyState/SecretValueStat
 결과 객체(EncryptResult/DecryptResult)를 반환한다. 폴백(평문/암호문 그대로
 반환)은 신규 함수에서 제거된다. 기존 encrypt_value/decrypt_value는
 호출부 전환(세션 2-4) 완료 전까지 임시 래퍼로 동작을 보존한다.
+세션 3: EncryptionError 예외 클래스 추가 — 저장 경로 실패 시 구조화된
+code/message/field 를 라우터가 422 detail 객체로 변환 (설계 5).
 """
 from __future__ import annotations
 import base64
@@ -48,6 +50,22 @@ class DecryptResult:
     """복호화 결과 — 상태 + 선택적 평문. 폴백 없음 (설계 3.3)."""
     state: SecretValueState
     plaintext: str | None = None
+
+
+# ── 구조화된 오류 (설계 5 — API detail 객체 매핑) ────────────────────────────────
+
+class EncryptionError(Exception):
+    """암호화·복호화 실패를 구조화된 코드로 전달 (설계 5).
+
+    code/message/field 를 포함하며, 라우터가 422 detail 객체로 변환.
+    평문·암호문·키 원문·traceback 은 포함하지 않는다 (설계 5 — 민감값 노출 금지).
+    """
+
+    def __init__(self, code: str, message: str, field: str) -> None:
+        super().__init__(message)
+        self.code = code
+        self.message = message
+        self.field = field
 
 
 # ── Fernet 인스턴스 / 키 상태 ─────────────────────────────────────────────────

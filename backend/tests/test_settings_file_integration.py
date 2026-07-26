@@ -16,6 +16,8 @@ from backend.app.db import database
 from backend.app.core.encryption import (
     EncryptResult,
     DecryptResult,
+    EncryptionError,
+    KeyState,
     SecretValueState,
 )
 from backend.app.core.settings_file import (
@@ -417,31 +419,52 @@ class TestSettingsFileP20Propagation:
             mock_logger.warning.assert_not_called()
 
     def test_encrypt_field_or_raise_blocks_key_unavailable(self):
-        """B21-01: KEY_UNAVAILABLE 상태 → ValueError (평문 저장 차단 — P20/보안)."""
+        """B21-01 세션3: KEY_UNAVAILABLE 상태 → EncryptionError(ENCRYPTION_KEY_MISSING) (평문 저장 차단 — P20/보안)."""
         with patch(
             "backend.app.core.encryption.encrypt_secret",
             return_value=EncryptResult(state=SecretValueState.KEY_UNAVAILABLE),
+        ), patch(
+            "backend.app.core.encryption.get_key_state", return_value=KeyState.MISSING,
         ):
-            with pytest.raises(ValueError, match="암호화 실패"):
+            with pytest.raises(EncryptionError) as exc_info:
                 _encrypt_field_or_raise("kiwoom_app_key", "plaintext_key")
+            assert exc_info.value.code == "ENCRYPTION_KEY_MISSING"
+            assert exc_info.value.field == "kiwoom_app_key"
+
+    def test_encrypt_field_or_raise_blocks_key_invalid(self):
+        """B21-01 세션3: KEY_UNAVAILABLE + KeyState.INVALID → EncryptionError(ENCRYPTION_KEY_INVALID)."""
+        with patch(
+            "backend.app.core.encryption.encrypt_secret",
+            return_value=EncryptResult(state=SecretValueState.KEY_UNAVAILABLE),
+        ), patch(
+            "backend.app.core.encryption.get_key_state", return_value=KeyState.INVALID,
+        ):
+            with pytest.raises(EncryptionError) as exc_info:
+                _encrypt_field_or_raise("kiwoom_app_key", "plaintext_key")
+            assert exc_info.value.code == "ENCRYPTION_KEY_INVALID"
+            assert exc_info.value.field == "kiwoom_app_key"
 
     def test_encrypt_field_or_raise_blocks_decrypt_failed(self):
-        """B21-01: DECRYPT_FAILED 상태(암호화 자체 실패) → ValueError (평문 저장 차단)."""
+        """B21-01 세션3: DECRYPT_FAILED 상태(암호화 자체 실패) → EncryptionError(ENCRYPTION_FAILED)."""
         with patch(
             "backend.app.core.encryption.encrypt_secret",
             return_value=EncryptResult(state=SecretValueState.DECRYPT_FAILED),
         ):
-            with pytest.raises(ValueError, match="암호화 실패"):
+            with pytest.raises(EncryptionError) as exc_info:
                 _encrypt_field_or_raise("kiwoom_app_key", "plaintext_key")
+            assert exc_info.value.code == "ENCRYPTION_FAILED"
+            assert exc_info.value.field == "kiwoom_app_key"
 
     def test_encrypt_field_or_raise_blocks_empty(self):
-        """B21-01: EMPTY 상태(빈 입력) → ValueError (평문 저장 차단)."""
+        """B21-01 세션3: EMPTY 상태(빈 입력) → EncryptionError(ENCRYPTION_FAILED) (평문 저장 차단)."""
         with patch(
             "backend.app.core.encryption.encrypt_secret",
             return_value=EncryptResult(state=SecretValueState.EMPTY),
         ):
-            with pytest.raises(ValueError, match="암호화 실패"):
+            with pytest.raises(EncryptionError) as exc_info:
                 _encrypt_field_or_raise("kiwoom_app_key", "plaintext_key")
+            assert exc_info.value.code == "ENCRYPTION_FAILED"
+            assert exc_info.value.field == "kiwoom_app_key"
 
     def test_encrypt_field_or_raise_success(self):
         """B21-01: ENCRYPTED 상태 → 암호문 반환 (정상 경로)."""
@@ -458,13 +481,17 @@ class TestSaveSelectedSettingsEncryptionPolicy:
 
     @pytest.mark.asyncio
     async def test_save_selected_settings_blocks_plaintext_when_key_unavailable(self, in_memory_db):
-        """증분 저장: 키 없음 시 평문 민감값 저장 차단 (전체 저장과 동일 정책)."""
+        """증분 저장: 키 없음 시 평문 민감값 저장 차단 — EncryptionError(ENCRYPTION_KEY_MISSING) (전체 저장과 동일 정책, B21-01 세션3)."""
         with patch(
             "backend.app.core.encryption.encrypt_secret",
             return_value=EncryptResult(state=SecretValueState.KEY_UNAVAILABLE),
+        ), patch(
+            "backend.app.core.encryption.get_key_state", return_value=KeyState.MISSING,
         ):
-            with pytest.raises(ValueError, match="암호화 실패"):
+            with pytest.raises(EncryptionError) as exc_info:
                 await save_selected_settings({"kiwoom_app_key": "plaintext_key"})
+            assert exc_info.value.code == "ENCRYPTION_KEY_MISSING"
+            assert exc_info.value.field == "kiwoom_app_key"
 
     @pytest.mark.asyncio
     async def test_save_selected_settings_saves_non_sensitive_without_key(self, in_memory_db):

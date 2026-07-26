@@ -3,6 +3,7 @@
 from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, status
 from backend.app.web.deps import get_current_user
+from backend.app.core.encryption import EncryptionError
 import logging
 router = APIRouter(prefix="/api", tags=["settings"])
 logger = logging.getLogger(__name__)
@@ -76,6 +77,17 @@ async def patch_setting_field(field_name: str, body: dict, _: str = Depends(get_
         return {"ok": True}
     except HTTPException:
         raise
+    except EncryptionError as e:
+        # B21-01 세션3: 암호화 실패 — 구조화된 detail 객체 반환 (설계 5).
+        # 평문·암호문·키 원문·traceback 은 포함하지 않는다.
+        logger.error(
+            "[설정] 민감정보 저장 차단 (필드: %s, 코드: %s): %s",
+            e.field, e.code, e.message, exc_info=True,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"code": e.code, "message": e.message, "field": e.field},
+        )
     except Exception as e:
         import traceback
         traceback.print_exc()
