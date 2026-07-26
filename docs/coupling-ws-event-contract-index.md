@@ -4,7 +4,7 @@
 > 세션: COUPLING-S3 (C-03)
 > 기준 파일: `backend/app/web/ws_manager.py`, `backend/app/services/engine_account_notify.py`, `frontend/src/binding.ts`, `frontend/src/stores/hotStore.ts`, `frontend/src/stores/uiStore.ts`, `frontend/src/stores/stockClassificationStore.ts`
 > 원칙: P5 직접 호출·Queue 경계 유지, P10 SSOT, P16 살아있는 경로, P21 사용자 투명성, P23 일관성, P24 단순성, P25 격리된 실패
-> 상태: 조사 전수 완료 + 후속 dead subscription 4건 정리 완료 (2026-07-27) + 잔여 3건 근본 해결 완료 (2026-07-27, 항목2/5는 다음 세션)
+> 상태: 조사 전수 완료 + 후속 dead subscription 4건 정리 완료 (2026-07-27) + 잔여 3건 근본 해결 완료 (2026-07-27, 항목2/5는 다음 세션) + 항목2 index-data 분리 완료 (2026-07-27)
 
 ---
 
@@ -62,9 +62,9 @@ WebSocket 이벤트의 **이름 · 채널 · producer · payload 필드 · Store
 
 | 분류 | 이벤트 수 | 비고 |
 |------|----------|------|
-| **정상 계약 (producer + consumer 일치)** | 30 | payload 필드 일치 또는 부분 일치 |
+| **정상 계약 (producer + consumer 일치)** | ~~30~~ 31 | payload 필드 일치 또는 부분 일치 — `index-data` 분리로 `engine-status` 정상 계약 추가 |
 | **payload 필드 불일치** | ~~2~~ 1 | ~~`ws-subscribe-status`(`index_subscribed` 누락)~~ — ☑ 2026-07-27 해결 완료. `account-update`(경량화/전체 분기) 잔존 |
-| **다중 producer (동일 이벤트 다른 파일)** | 6 | `index-data`(4곳), `market-phase`(3곳), `stock-classification-changed`(3곳), `buy-targets-update`(2곳), `sector-stocks-refresh`(2곳), `engine-ready`(2곳), `circuit_breaker_open`(2곳) |
+| **다중 producer (동일 이벤트 다른 파일)** | ~~6~~ 5 | ~~`index-data`(4곳)~~ → ☑ 2026-07-27 분리 완료 (`engine-status` 3곳 + `index-data` 2곳). `market-phase`(3곳), `stock-classification-changed`(3곳), `buy-targets-update`(2곳), `sector-stocks-refresh`(2곳), `engine-ready`(2곳), `circuit_breaker_open`(2곳) |
 | **프론트엔드 구독 + 백엔드 producer 누락 (P16/P21 위반)** | ~~4~~ 0 | ~~`engine-reload-complete`, `bootstrap-stage`, `avg-amt-progress`, `order-filled`~~ — 2026-07-27 후속 세션에서 4건 전수 정리 완료 |
 | **네이밍 컨벤션 불일치 (P23)** | 6 | `circuit_breaker_open`, `order_time_blocked`, `risk_block_status`, `realtime_latency_status`, `daily_buy_state_status`, `test_cash_failed` (나머지 34개는 hyphen) |
 
@@ -102,7 +102,8 @@ WebSocket 이벤트의 **이름 · 채널 · producer · payload 필드 · Store
 | 28 | `test_cash_failed` | prices | `trading.py:132` (broadcast) | binding.ts:337 | `applyTestCashFailed` | 테스트 예수금 검증 실패 시 (1회성) |
 | 29 | `settings-changed` | settings | `engine_account_notify.py:237` (broadcast) | binding.ts:180 | `applySettingsChanged` | 설정 변경 시 (전체/delta) |
 | 30 | ~~`engine-reload-complete`~~ | settings | ~~**❌ 백엔드 producer 없음**~~ | ~~binding.ts:184~~ | ~~`applyEngineReloadComplete`~~ | ☑ 2026-07-27 구독 제거 완료 |
-| 31 | `index-data` | settings | `engine_account_notify.py:195,215` (broadcast), `ws.py:146,155` (send_to) | binding.ts:188 | `applyIndexData` | 엔진 상태/업종지수 변경 시 |
+| 31 | `index-data` | settings | `engine_account_notify.py:213` (broadcast), `ws.py:155` (send_to) | binding.ts:188 | `applyIndexData` | 업종지수 변경 시 (2026-07-27 분리 — 엔진 상태는 `engine-status`) |
+| 31a | `engine-status` | settings | `engine_account_notify.py:193,439` (broadcast), `ws.py:146` (send_to) | binding.ts:183 | `applyEngineStatus` | 엔진 상태 변경 시 (2026-07-27 신설 — `index-data`에서 분리) |
 | 32 | ~~`bootstrap-stage`~~ | settings | ~~**❌ 백엔드 producer 없음**~~ | ~~binding.ts:192~~ | ~~`applyBootstrapStage`~~ | ☑ 2026-07-27 완전 제거 완료 |
 | 33 | ~~`avg-amt-progress`~~ | settings | ~~**❌ 백엔드 producer 없음**~~ | ~~binding.ts:196~~ | ~~`applyAvgAmtProgress`~~ | ☑ 2026-07-27 구독 제거 완료 |
 | 34 | `daily-summary-update` | settings | `trade_history.py:215` (broadcast) | binding.ts:201 | `applyDailySummaryUpdate` | 일일 요약 갱신 시 |
@@ -322,13 +323,19 @@ WebSocket 이벤트의 **이름 · 채널 · producer · payload 필드 · Store
 - **수정 상태**: uiStore(`engineReloadComplete`, `circuitBreakerOpen`) — `engine-ready` 이벤트가 동일 액션 호출
 - **계약 상태**: ☑ **dead subscription 정리 완료** — `engine-ready`가 동일 액션 `applyEngineReloadComplete`를 호출하므로 중복 구독 제거. §4 참조.
 
-#### `index-data` (엔진 상태/업종지수)
-- **Producer**: `engine_account_notify.py:195` (`notify_desktop_header_refresh`, broadcast), `engine_account_notify.py:215` (`notify_index_data`, broadcast), `ws.py:146` (send_to, 연결 시 엔진 상태), `ws.py:155` (send_to, 연결 시 업종지수 캐시 재전송)
-- **Payload (엔진 상태)**: `get_engine_status()` + `{"_v": 1}` (broker_statuses 포함)
-- **Payload (업종지수)**: `{"_v": 1, "upcode": str, "jisu": str, "change": str, "drate": str, "sign": str, "broker_statuses": dict}`
+#### `engine-status` (엔진 상태) — ☑ 2026-07-27 index-data에서 분리 완료
+- **Producer**: `engine_account_notify.py:193` (`notify_desktop_header_refresh`, broadcast), `engine_account_notify.py:439` (`broadcast_engine_status_ws`, broadcast), `ws.py:146` (send_to, 연결 시 엔진 상태)
+- **Payload**: `get_engine_status()` + `{"_v": 1}` (broker_statuses, market_phase, position_build_failed, degraded_mode 포함)
+- **Consumer**: binding.ts:183 → `applyEngineStatus(data as EngineStatusPayload)`
+- **수정 상태**: uiStore(`status.broker_statuses`, `marketPhase`, `positionBuildFailed`, `degradedMode`)
+- **계약 상태**: ✅ 단일 payload 형태 — 엔진 상태 전용. 2026-07-27 분리 전에는 `index-data` 이벤트에 혼용되었음.
+
+#### `index-data` (업종지수) — ☑ 2026-07-27 엔진 상태 분리 완료
+- **Producer**: `engine_account_notify.py:213` (`notify_index_data`, broadcast), `ws.py:155` (send_to, 연결 시 업종지수 캐시 재전송)
+- **Payload**: `{"_v": 1, "upcode": str, "jisu": str, "change": str, "drate": str, "sign": str}` (broker_statuses 제거 — engine-status로 분리)
 - **Consumer**: binding.ts:188 → `applyIndexData(data as IndexData)`
-- **수정 상태**: uiStore(`indexData`, `status`, `marketPhase`)
-- **계약 상태**: ⚠️ 다중 producer (4곳), 두 가지 payload 형태 (엔진 상태/업종지수). 프론트엔드 `IndexData` 타입이 두 형태를 모두 수용하는지 별도 검증 필요.
+- **수정 상태**: uiStore(`indexData`)
+- **계약 상태**: ✅ 단일 payload 형태 — 업종지수 전용. 2026-07-27 분리 전에는 엔진 상태 payload와 혼용되었음.
 
 #### `bootstrap-stage` — ☑ 2026-07-27 완전 제거 완료
 - **Consumer**: ~~binding.ts:192 → `applyBootstrapStage({stage_id, stage_name, total, progress?})`~~ 제거 완료
@@ -393,7 +400,8 @@ WebSocket 이벤트의 **이름 · 채널 · producer · payload 필드 · Store
 
 | 이벤트 | Producer 수 | Producer 위치 | payload 일치 여부 | 비고 |
 |--------|------------|--------------|------------------|------|
-| `index-data` | 4 | `engine_account_notify.py:195,215`, `ws.py:146,155` | ⚠️ 두 가지 형태 (엔진 상태/업종지수) | 단일화 후보 — `notify_index_data`와 `broadcast_engine_status_ws`가 동일 이벤트로 혼용 |
+| `index-data` | ~~4~~ 2 | ~~`engine_account_notify.py:195,215`, `ws.py:146,155`~~ → ☑ 2026-07-27 분리 완료 | ~~⚠️ 두 가지 형태 (엔진 상태/업종지수)~~ → ☑ 해결 | ~~단일화 후보~~ → ☑ `engine-status` 분리 완료 |
+| `engine-status` | 3 | `engine_account_notify.py:193,439`, `ws.py:146` | ✅ 단일 형태 (엔진 상태) | 2026-07-27 분리 신설 — 자연스러운 다중 producer (브로드캐스트 + 연결 시 유니캐스트) |
 | `market-phase` | 3 | `daily_time_scheduler.py:761,1137`, `engine_ws_dispatch.py:343,372` | ~~⚠️ 부분 payload 존재 (`{krx_alert}`만 전송)~~ → ☑ 2026-07-27 전체 payload 통일 완료 | ~~단일화 후보~~ → ☑ 완료 |
 | `stock-classification-changed` | 3 | `ws.py:76`, `stock_classification.py:130,132` | ✅ 일치 | 자연스러운 다중 producer (연결 시 유니캐스트 + 변경 시 브로드캐스트) |
 | `buy-targets-update` | 2 | `ws.py:138`, `engine_account_notify.py:418` | ✅ 일치 | 자연스러운 다중 producer (연결 시 + 초기 상태) |
@@ -406,7 +414,7 @@ WebSocket 이벤트의 **이름 · 채널 · producer · payload 필드 · Store
 
 | 순위 | 이벤트 | 이유 |
 |------|--------|------|
-| 1 | `index-data` | 4곳 producer, 두 가지 payload 형태 (엔진 상태/업종지수) 혼용 — 의미 분리 또는 단일 producer 허브 검토 |
+| 1 | ~~`index-data`~~ | ~~4곳 producer, 두 가지 payload 형태 (엔진 상태/업종지수) 혼용 — 의미 분리 또는 단일 producer 허브 검토~~ → ☑ 2026-07-27 `engine-status` 분리 완료 |
 | 2 | `market-phase` | ~~3곳 producer, 부분 payload 전송 존재~~ → ☑ 2026-07-27 전체 payload 통일 완료 |
 
 ---
@@ -497,13 +505,12 @@ WS 이벤트 (real-data / orderbook-update / program-update)
 - **위반 원칙**: P23 (일관성 — payload 계약 불일치), 잠재적 런타임 오류
 - **조치**: delta 분기를 별도 이벤트(`settings-changed-delta`)로 분리 또는 프론트엔드가 `delta` 필드로 분기 처리. 현재 `applySettingsChanged` 구현 확인 필요.
 
-### 8.4 `index-data` — 엔진 상태/업종지수 payload 혼용
+### 8.4 `index-data` — 엔진 상태/업종지수 payload 혼용 — ☑ 2026-07-27 해결 완료
 
-- **엔진 상태 payload**: `get_engine_status()` + `{"_v": 1}` (broker_statuses 포함, upcode 없음)
-- **업종지수 payload**: `{"_v": 1, "upcode": str, "jisu": str, "change": str, "drate": str, "sign": str, "broker_statuses": dict}`
-- **영향**: 프론트엔드 `IndexData` 타입이 두 형태를 모두 수용해야 함. `upcode` 유무로 분기 처리 필요.
-- **위반 원칙**: P23 (일관성 — 동일 이벤트의 payload 구조가 producer별 상이), P24 (단순성 — 의미 분리 미수행)
-- **조치**: 엔진 상태와 업종지수를 별도 이벤트로 분리 검토 (예: `engine-status` / `index-data`). 단, 프론트엔드 `applyIndexData`가 `upcode` 유무로 이미 분기 처리 중일 수 있음.
+- ~~**엔진 상태 payload**: `get_engine_status()` + `{"_v": 1}` (broker_statuses 포함, upcode 없음)~~ → `engine-status` 이벤트로 분리
+- ~~**업종지수 payload**: `{"_v": 1, "upcode": str, "jisu": str, "change": str, "drate": str, "sign": str, "broker_statuses": dict}`~~ → `broker_statuses` 제거, `index-data` 이벤트는 업종지수 전용
+- **해결**: 엔진 상태 producer 3곳(`notify_desktop_header_refresh`, `broadcast_engine_status_ws`, `ws.py:146`) → `engine-status` 이벤트로 분리. 업종지수 producer 2곳(`notify_index_data`, `ws.py:155`) → `index-data` 유지(broker_statuses 제거). 프론트엔드 `applyEngineStatus`(신규) + `applyIndexData`(단순화) 분리. `IndexData` 타입에서 `broker_statuses`/`market_phase` 제거, `EngineStatusPayload` 타입 신설.
+- **위반 원칙**: ~~P23 (일관성 — 동일 이벤트의 payload 구조가 producer별 상이), P24 (단순성 — 의미 분리 미수행)~~ → ☑ 해결
 
 ---
 
@@ -540,7 +547,7 @@ WS 이벤트 (real-data / orderbook-update / program-update)
 | 1 | `bootstrap-stage` dead subscription | 구독 + state + action + chip + test fixture 완전 제거 | 높음 | P21, P16 | ☑ 완료 |
 | 2 | `ws-subscribe-status` payload 불일치 | `index_subscribed` 필드 추가 또는 프론트엔드 타입 제거 | 중간 | P21, P23 | ☑ 완료 |
 | 3 | `order-filled` dead subscription + orders 채널 검토 | 구독 + `applyOrderFilled` 함수 제거 (orders 채널은 `test-data-reset-completed`로 유지) | 중간 | P16, P24 | ☑ 완료 |
-| 4 | `index-data` 다중 producer + payload 혼용 | 엔진 상태/업종지수 이벤트 분리 검토 | 중간 | P10, P23, P24 | ☐ |
+| 4 | `index-data` 다중 producer + payload 혼용 | 엔진 상태/업종지수 이벤트 분리 검토 | 중간 | P10, P23, P24 | ☑ 완료 |
 | 5 | `engine-reload-complete` / `avg-amt-progress` 중복 구독 제거 | 구독 제거 (동일 액션 대체 이벤트 존재, 공유 함수는 유지) | 낮음 | P16, P24 | ☑ 완료 |
 | 6 | `receive-rate` / `sector-scores.status.receive_rate` 중복 경로 | 단일 경로로 통일 | 낮음 | P10, P24 | ☑ 완료 |
 | 7 | `market-phase` 부분 payload 통일 | 부분 payload 전송을 전체 payload로 통일 | 낮음 | P23 | ☑ 완료 |

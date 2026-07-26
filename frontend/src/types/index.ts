@@ -84,6 +84,22 @@ export interface IndexData {
   change?: string;
   drate?: string;
   sign?: string;
+}
+
+/** engine-status 이벤트 payload — get_engine_status() 결과 + _v */
+export interface EngineStatusPayload {
+  _v?: number;
+  running?: boolean;
+  connected?: boolean;
+  broker_connected?: boolean;
+  logged_in?: boolean;
+  login_ok?: boolean;
+  broker_token_valid?: boolean;
+  trade_mode?: string;
+  is_test_mode?: boolean;
+  engine_task_alive?: boolean;
+  stock_subscribed_count?: number;
+  ws_reg_total_estimate?: number;
   broker_statuses?: Record<string, { token_valid: boolean; ws_connected: boolean }>;
   market_phase?: {
     krx: string;
@@ -93,6 +109,8 @@ export interface IndexData {
     krx_countdown?: { label: string; remaining_sec: number } | null;
     nxt_countdown?: { label: string; remaining_sec: number } | null;
   };
+  position_build_failed?: boolean;
+  degraded_mode?: boolean;
 }
 
 export interface AppSettings {

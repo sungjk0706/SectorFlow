@@ -139,11 +139,11 @@ async def _send_initial_snapshot_delayed(websocket: WebSocket, ws_manager) -> No
                 websocket, "buy-targets-update", {"_v": 1, "buy_targets": targets}
             )
 
-        # 엔진 상태 전송 (index-data) — broker_statuses 포함, token_ready와 무관하게 즉시 전송
+        # 엔진 상태 전송 (engine-status) — broker_statuses/market_phase 포함, token_ready와 무관하게 즉시 전송
         from backend.app.services.engine_lifecycle import get_engine_status
         engine_status = get_engine_status()
         engine_status["_v"] = 1
-        await ws_manager.send_to(websocket, "index-data", engine_status)
+        await ws_manager.send_to(websocket, "engine-status", engine_status)
 
         # 업종지수 캐시 재전송 — WS 재연결/새로고침 시 마지막 수신값 복원 (P10 SSOT, P23 일관성).
         # state.index_data_cache의 각 upcode에 대해 index-data 이벤트 순차 전송.
@@ -159,7 +159,6 @@ async def _send_initial_snapshot_delayed(websocket: WebSocket, ws_manager) -> No
                     "change": idx.get("change", ""),
                     "drate": idx.get("drate", ""),
                     "sign": idx.get("sign", ""),
-                    "broker_statuses": engine_status.get("broker_statuses", {}),
                 })
             except Exception:
                 logger.warning("[연결] 업종지수 캐시 재전송 실패: upcode=%s", upcode, exc_info=True)

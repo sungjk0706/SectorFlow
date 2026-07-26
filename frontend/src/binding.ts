@@ -37,6 +37,7 @@ import {
   applyTestCashFailed,
   applyMarketPhase,
   applyIndexData,
+  applyEngineStatus,
   uiStore,
   type ReceiveRateEntry,
 } from './stores/uiStore'
@@ -49,6 +50,7 @@ import type {
   SectorScoreRow,
   SectorScoresEvent,
   IndexData,
+  EngineStatusPayload,
 } from './types'
 import { applyStockClassificationChanged } from './stores/stockClassificationStore'
 import { showToast } from './components/common/toast'
@@ -176,6 +178,10 @@ export function bindWSToStore(
   /* ── settings 채널 이벤트 핸들러 ── */
   settingsClient.onEvent('settings-changed', (data) => {
     applySettingsChanged(data as AppSettings)
+  })
+
+  settingsClient.onEvent('engine-status', (data) => {
+    applyEngineStatus(data as EngineStatusPayload)
   })
 
   settingsClient.onEvent('index-data', (data) => {

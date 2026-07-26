@@ -18,6 +18,7 @@ from backend.app.services.engine_account_notify import (
     _rebuild_positions_cache,
     _rebuild_layout_cache,
     broadcast_engine_status_ws,
+    notify_desktop_header_refresh,
     notify_program_update,
     notify_index_data,
     notify_buy_targets_update,
@@ -254,7 +255,9 @@ class TestBroadcastEngineStatusWs:
         with patch("backend.app.services.engine_account_notify._safe_broadcast", new_callable=AsyncMock) as mock_bc:
             await broadcast_engine_status_ws({"connected": True})
             mock_bc.assert_awaited_once()
+            event_name = mock_bc.call_args.args[0]
             payload = mock_bc.call_args.args[1]
+            assert event_name == "engine-status"
             assert payload["_v"] == 1
             assert payload["connected"] is True
 
@@ -262,8 +265,30 @@ class TestBroadcastEngineStatusWs:
     async def test_preserves_existing_v(self):
         with patch("backend.app.services.engine_account_notify._safe_broadcast", new_callable=AsyncMock) as mock_bc:
             await broadcast_engine_status_ws({"_v": 2, "connected": False})
+            event_name = mock_bc.call_args.args[0]
             payload = mock_bc.call_args.args[1]
+            assert event_name == "engine-status"
             assert payload["_v"] == 2
+
+
+# ── notify_desktop_header_refresh ────────────────────────────────────────────────
+
+class TestNotifyDesktopHeaderRefresh:
+    """notify_desktop_header_refresh — 엔진 상태 변경 시 engine-status 이벤트 전송 검증."""
+
+    @pytest.mark.asyncio
+    async def test_broadcasts_engine_status_event(self):
+        """엔진 상태 변경 → engine-status 이벤트 브로드캐스트."""
+        with patch("backend.app.services.engine_account_notify._safe_broadcast", new_callable=AsyncMock) as mock_bc, \
+             patch("backend.app.services.engine_lifecycle.get_engine_status", return_value={"running": True, "broker_statuses": {"ls": {"token_valid": True}}}):
+            await notify_desktop_header_refresh()
+            mock_bc.assert_awaited_once()
+            event_name = mock_bc.call_args.args[0]
+            payload = mock_bc.call_args.args[1]
+            assert event_name == "engine-status"
+            assert payload["_v"] == 1
+            assert payload["running"] is True
+            assert payload["broker_statuses"] == {"ls": {"token_valid": True}}
 
 
 # ── notify_index_data ────────────────────────────────────────────────────────────
@@ -273,11 +298,10 @@ class TestNotifyIndexData:
 
     @pytest.mark.asyncio
     async def test_updates_cache_and_broadcasts(self):
-        """정상 틱: 캐시 갱신 + index-data 브로드캐스트."""
+        """정상 틱: 캐시 갱신 + index-data 브로드캐스트 (broker_statuses 미포함 — engine-status 분리)."""
         from backend.app.services import engine_state
         engine_state.state.index_data_cache.clear()
-        with patch("backend.app.services.engine_account_notify._safe_broadcast", new_callable=AsyncMock) as mock_bc, \
-             patch("backend.app.services.engine_lifecycle.get_engine_status", return_value={"broker_statuses": {"ls": {"token_valid": True}}}):
+        with patch("backend.app.services.engine_account_notify._safe_broadcast", new_callable=AsyncMock) as mock_bc:
             await notify_index_data("001", "2500.5", "10.5", "0.5", "2")
             # 캐시 갱신 검증
             assert engine_state.state.index_data_cache["001"] == {
@@ -285,10 +309,12 @@ class TestNotifyIndexData:
             }
             # 브로드캐스트 검증
             mock_bc.assert_awaited_once()
+            event_name = mock_bc.call_args.args[0]
             payload = mock_bc.call_args.args[1]
+            assert event_name == "index-data"
             assert payload["upcode"] == "001"
             assert payload["jisu"] == "2500.5"
-            assert payload["broker_statuses"] == {"ls": {"token_valid": True}}
+            assert "broker_statuses" not in payload
         engine_state.state.index_data_cache.clear()
 
     @pytest.mark.asyncio
@@ -299,8 +325,7 @@ class TestNotifyIndexData:
         engine_state.state.index_data_cache["001"] = {
             "jisu": "2400", "sign": "4", "change": "-10", "drate": "-0.4",
         }
-        with patch("backend.app.services.engine_account_notify._safe_broadcast", new_callable=AsyncMock), \
-             patch("backend.app.services.engine_lifecycle.get_engine_status", return_value={"broker_statuses": {}}):
+        with patch("backend.app.services.engine_account_notify._safe_broadcast", new_callable=AsyncMock):
             await notify_index_data("001", "2500.5", "10.5", "0.5", "2")
             assert engine_state.state.index_data_cache["001"]["jisu"] == "2500.5"
             assert engine_state.state.index_data_cache["001"]["sign"] == "2"

@@ -186,11 +186,11 @@ def init_sent_caches(sector_stocks: list[dict], positions: list[dict], snapshot:
 # ── 알림 함수 (WebSocket 브로드캐스트) ─────────────────────────────────────────────
 
 async def notify_desktop_header_refresh() -> None:
-    """엔진 상태(connected, login_ok 등) 변경 시 헤더 갱신 → WS index-data."""
+    """엔진 상태(connected, login_ok 등) 변경 시 헤더 갱신 → WS engine-status."""
     from backend.app.services.engine_lifecycle import get_engine_status
     payload = get_engine_status()
     payload["_v"] = 1
-    await _safe_broadcast("index-data", payload)
+    await _safe_broadcast("engine-status", payload)
 
 
 async def notify_index_data(upcode: str, jisu: str, change: str, drate: str, sign: str) -> None:
@@ -198,10 +198,9 @@ async def notify_index_data(upcode: str, jisu: str, change: str, drate: str, sig
 
     P10 SSOT: state.index_data_cache에 마지막 수신값 보관 (종목 현재가/업종점수와 동일 패턴).
     WS 재연결 시 _send_initial_snapshot_delayed()가 이 캐시에서 재전송.
-    broker_statuses를 항상 포함하여 프론트엔드 헤더 칩 상태를 갱신한다.
+    엔진 상태(broker_statuses)는 engine-status 이벤트로 별도 전송되므로 index-data에 미포함.
     """
     from backend.app.services import engine_state
-    from backend.app.services.engine_lifecycle import get_engine_status
     # 캐시 갱신 (P25 격리된 실패 — 캐시 실패해도 브로드캐스트는 진행)
     try:
         engine_state.state.index_data_cache[upcode] = {
@@ -209,14 +208,12 @@ async def notify_index_data(upcode: str, jisu: str, change: str, drate: str, sig
         }
     except Exception:
         logger.warning("[알림] 업종지수 캐시 갱신 실패: upcode=%s", upcode, exc_info=True)
-    broker_statuses = get_engine_status().get("broker_statuses", {})
     await _safe_broadcast("index-data", {
         "upcode": upcode,
         "jisu": jisu,
         "change": change,
         "drate": drate,
         "sign": sign,
-        "broker_statuses": broker_statuses,
     })
 
 
@@ -433,10 +430,10 @@ async def notify_buy_targets_update() -> None:
 
 
 async def broadcast_engine_status_ws(engine_status: dict) -> None:
-    """엔진 상태 변경 시 모든 WS 구독자에게 push (index-data 통일)."""
+    """엔진 상태 변경 시 모든 WS 구독자에게 push (engine-status 이벤트)."""
     if "_v" not in engine_status:
         engine_status["_v"] = 1
-    await _safe_broadcast("index-data", engine_status)
+    await _safe_broadcast("engine-status", engine_status)
 
 
 async def notify_program_update(code: str, net_buy: int) -> None:

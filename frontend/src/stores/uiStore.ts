@@ -5,6 +5,7 @@ import type {
   SectorStatus,
   AppSettings,
   EngineStatus,
+  EngineStatusPayload,
   IndexData,
 } from '../types'
 
@@ -244,14 +245,20 @@ export function applyMarketPhase(data: Partial<UIState['marketPhase']>): void {
   uiStore.setState({ marketPhase: { ...prev, ...data } })
 }
 
-/* ── index-data: 업종지수 실시간 갱신 + broker_statuses + market_phase 갱신 ── */
+/* ── index-data: 업종지수 실시간 갱신 (업종지수 전용 — 엔진 상태는 engine-status 이벤트) ── */
 export function applyIndexData(data: IndexData): void {
+  const upcode = data.upcode
+  if (!upcode) return
+  uiStore.setState((state) => {
+    const prev = state.indexData ?? {}
+    return { indexData: { ...prev, [upcode]: data } }
+  })
+}
+
+/* ── engine-status: 엔진 상태 갱신 (broker_statuses + market_phase + 엔진 상태 필드) ── */
+export function applyEngineStatus(data: EngineStatusPayload): void {
   uiStore.setState((state) => {
     const patch: Partial<UIState> = {}
-    if (data.upcode) {
-      const prev = state.indexData ?? {}
-      patch.indexData = { ...prev, [data.upcode]: data }
-    }
     if (data.broker_statuses) {
       patch.status = state.status
         ? { ...state.status, broker_statuses: data.broker_statuses }
@@ -259,6 +266,12 @@ export function applyIndexData(data: IndexData): void {
     }
     if (data.market_phase) {
       patch.marketPhase = { ...state.marketPhase, ...data.market_phase }
+    }
+    if (data.position_build_failed !== undefined) {
+      patch.positionBuildFailed = !!data.position_build_failed
+    }
+    if (data.degraded_mode !== undefined) {
+      patch.degradedMode = !!data.degraded_mode
     }
     return patch
   })

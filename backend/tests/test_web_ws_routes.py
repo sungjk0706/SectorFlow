@@ -488,7 +488,7 @@ class TestSendInitialSnapshotDelayed:
         assert "stock-classification-changed" in sent_events
         assert "initial-snapshot" in sent_events
         assert "sector-stocks-refresh" in sent_events
-        assert "index-data" in sent_events
+        assert "engine-status" in sent_events
 
     async def test_threshold_not_passed_skips_sector_scores(self):
         from backend.app.web.routes.ws import _send_initial_snapshot_delayed
