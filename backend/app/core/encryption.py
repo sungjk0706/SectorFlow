@@ -5,8 +5,7 @@ API 키, 비밀번호 등 -> DB 저장 시 암호화
 
 B21-01: 암호화·복호화는 명시적 상태 모델(KeyState/SecretValueState)과
 결과 객체(EncryptResult/DecryptResult)를 반환한다. 폴백(평문/암호문 그대로
-반환)은 신규 함수에서 제거된다. 기존 encrypt_value/decrypt_value는
-호출부 전환(세션 2-4) 완료 전까지 임시 래퍼로 동작을 보존한다.
+반환)은 제거되었다 (세션 2-4 전환 완료 후 임시 래퍼 제거 — P16).
 세션 3: EncryptionError 예외 클래스 추가 — 저장 경로 실패 시 구조화된
 code/message/field 를 라우터가 422 detail 객체로 변환 (설계 5).
 """
@@ -161,52 +160,3 @@ def decrypt_secret(cipher: str) -> DecryptResult:
         return DecryptResult(state=SecretValueState.DECRYPT_FAILED)
     except Exception:
         return DecryptResult(state=SecretValueState.DECRYPT_FAILED)
-
-
-# ── 기존 str | None 계약 임시 래퍼 (세션 2-4 전환 완료 후 제거 — P16) ───────────
-# 신규 결과 객체 기반으로 재구현하되, 기존 호출부 동작(평문/암호문 폴백)을
-# 보존한다. 세션 2-4에서 모든 호출부가 encrypt_secret/decrypt_secret으로
-# 전환되면 이 블록은 삭제된다.
-
-def encrypt_value(plain: str) -> str | None:
-    """평문 -> 암호문 (base64). key 없으면 평문 그대로 반환 (임시 래퍼).
-
-    신규 코드는 encrypt_secret()을 사용할 것. 이 함수는 세션 2-4 전환
-    완료 전까지 기존 호출부 동작을 보존하기 위해 존재한다.
-    """
-    if not plain or not plain.strip():
-        return None
-    result = encrypt_secret(plain)
-    if result.state is SecretValueState.ENCRYPTED and result.ciphertext is not None:
-        return result.ciphertext
-    # 기존 계약: 키 없음/오류 시 평문 그대로 반환 (폴백). 신규 경로는 사용 금지.
-    return plain
-
-
-def decrypt_value(cipher: str) -> str | None:
-    """암호문 -> 평문. 복호화 실패 시 기존 동작 보존 (임시 래퍼).
-
-    - 빈 입력 → None
-    - 키 없음 → 암호문 그대로 반환 (기존 폴백)
-    - InvalidToken → 암호문 그대로 반환 (기존 폴백)
-    - 기타 예외 → None (기존 동작)
-
-    신규 코드는 decrypt_secret()을 사용할 것.
-    """
-    if not cipher or not cipher.strip():
-        return None
-    result = decrypt_secret(cipher)
-    if result.state is SecretValueState.ENCRYPTED and result.plaintext is not None:
-        return result.plaintext
-    if result.state is SecretValueState.KEY_UNAVAILABLE:
-        # 기존 계약: 키 없으면 암호문 그대로 반환.
-        return cipher
-    if result.state is SecretValueState.DECRYPT_FAILED:
-        # 기존 계약: InvalidToken 시 암호문 그대로 반환, 기타 예외 시 None.
-        # decrypt_secret은 예외 종류를 DECRYPT_FAILED로 통합하므로, 래퍼에서는
-        # 기존 테스트 기대(InvalidToken → 암호문, 기타 예외 → None)를 만족하기 위해
-        # 암호문을 반환한다. 기존 test_decrypt_exception_returns_none 케이스는
-        # bad_fernet.decrypt.side_effect = Exception("boom") 상황으로, 이 래퍼
-        # 경로에서도 암호문이 반환되므로 테스트를 래퍼 동작 기준으로 수정한다.
-        return cipher
-    return None

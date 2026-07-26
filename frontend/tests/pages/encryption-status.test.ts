@@ -2,7 +2,6 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import {
   ENCRYPTION_KEY_STATE_MESSAGES,
   SECRET_FIELD_STATUS_MESSAGES,
-  ENCRYPTION_ERROR_CODE_MESSAGES,
   ENCRYPTION_KEY_BACKUP_GUIDE,
   mapEncryptionErrorMessage,
   currentEncryptionKeyState,
