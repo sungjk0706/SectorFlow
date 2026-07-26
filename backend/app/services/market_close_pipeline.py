@@ -18,7 +18,7 @@ from backend.app.services.engine_symbol_utils import (
     is_nxt_enabled,
     get_ws_subscribe_code,
 )
-from backend.app.services.engine_ws_reg import build_0b_remove_payloads
+from backend.app.core.kiwoom_ws_reg import build_0b_remove_payloads
 from backend.app.core.trading_calendar import (
     get_current_trading_day_str,
     get_previous_trading_day_str,

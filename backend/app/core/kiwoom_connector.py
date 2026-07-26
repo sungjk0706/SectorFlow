@@ -282,7 +282,7 @@ class KiwoomConnector(BrokerConnector):
             logger.warning("[연결] %s 구독 실패 — 연결 없음", _BROKER_DISPLAY)
             return False
 
-        from backend.app.services.engine_ws_reg import build_0b_reg_payloads
+        from backend.app.core.kiwoom_ws_reg import build_0b_reg_payloads
         from backend.app.services.engine_ws import _ws_send_reg_unreg_and_wait_ack
         from backend.app.services.engine_symbol_utils import get_ws_subscribe_code
 
@@ -302,7 +302,7 @@ class KiwoomConnector(BrokerConnector):
         if not self.is_connected() or not self._socket:
             return False
 
-        from backend.app.services.engine_ws_reg import build_0b_remove_payloads
+        from backend.app.core.kiwoom_ws_reg import build_0b_remove_payloads
         from backend.app.services.engine_ws import _ws_send_remove_fire_and_forget
         from backend.app.services.engine_symbol_utils import get_ws_subscribe_code
 
@@ -326,7 +326,7 @@ class KiwoomConnector(BrokerConnector):
             logger.warning("[연결] %s 동적 구독 실패 — 연결 없음", _BROKER_DISPLAY)
             return False
 
-        from backend.app.services.engine_ws_reg import build_0d_reg_payloads
+        from backend.app.core.kiwoom_ws_reg import build_0d_reg_payloads
         from backend.app.services.engine_ws import _ws_send_reg_unreg_and_wait_ack
 
         payloads = build_0d_reg_payloads(codes)
@@ -346,7 +346,7 @@ class KiwoomConnector(BrokerConnector):
         if not self.is_connected() or not self._socket:
             return
 
-        from backend.app.services.engine_ws_reg import build_0d_remove_payloads
+        from backend.app.core.kiwoom_ws_reg import build_0d_remove_payloads
         from backend.app.services.engine_ws import _ws_send_reg_unreg_and_wait_ack
 
         payloads = build_0d_remove_payloads(codes)
@@ -362,7 +362,7 @@ class KiwoomConnector(BrokerConnector):
         if not self.is_connected() or not self._socket:
             logger.warning("[연결] %s 업종지수 구독 실패 — 연결 없음", _BROKER_DISPLAY)
             return False
-        from backend.app.services.engine_ws_reg import build_index_reg_payload
+        from backend.app.core.kiwoom_ws_reg import build_index_reg_payload
         from backend.app.services.engine_ws import _ws_send_reg_unreg_and_wait_ack
         payload = build_index_reg_payload()
         ok, _rc = await _ws_send_reg_unreg_and_wait_ack(payload, sender=self)

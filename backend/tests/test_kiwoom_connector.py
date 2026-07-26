@@ -539,7 +539,7 @@ class TestKiwoomConnectorSubscribeStocks:
         mock_socket.connected = True
         conn._socket = mock_socket
         with (
-            patch("backend.app.services.engine_ws_reg.build_0b_reg_payloads", return_value=[{"trnm": "REG", "data": []}]),
+            patch("backend.app.core.kiwoom_ws_reg.build_0b_reg_payloads", return_value=[{"trnm": "REG", "data": []}]),
             patch("backend.app.services.engine_ws._ws_send_reg_unreg_and_wait_ack", AsyncMock(return_value=(True, "0"))) as mock_ack,
             patch("backend.app.services.engine_symbol_utils.get_ws_subscribe_code", side_effect=lambda cd: cd + "_AL"),
         ):
@@ -561,7 +561,7 @@ class TestKiwoomConnectorSubscribeStocks:
         conn._socket = mock_socket
         payloads = [{"trnm": "REG", "data": ["005930"]}, {"trnm": "REG", "data": ["000660"]}]
         with (
-            patch("backend.app.services.engine_ws_reg.build_0b_reg_payloads", return_value=payloads),
+            patch("backend.app.core.kiwoom_ws_reg.build_0b_reg_payloads", return_value=payloads),
             patch("backend.app.services.engine_ws._ws_send_reg_unreg_and_wait_ack", AsyncMock(return_value=(True, "0"))) as mock_ack,
             patch("backend.app.services.engine_symbol_utils.get_ws_subscribe_code", side_effect=lambda cd: cd + "_AL"),
         ):
@@ -577,7 +577,7 @@ class TestKiwoomConnectorSubscribeStocks:
         conn._socket = mock_socket
         payloads = [{"trnm": "REG", "data": ["005930"]}, {"trnm": "REG", "data": ["000660"]}]
         with (
-            patch("backend.app.services.engine_ws_reg.build_0b_reg_payloads", return_value=payloads),
+            patch("backend.app.core.kiwoom_ws_reg.build_0b_reg_payloads", return_value=payloads),
             patch("backend.app.services.engine_ws._ws_send_reg_unreg_and_wait_ack", AsyncMock(side_effect=[(True, "0"), (False, "1")])),
             patch("backend.app.services.engine_symbol_utils.get_ws_subscribe_code", side_effect=lambda cd: cd + "_AL"),
         ):
@@ -595,7 +595,7 @@ class TestKiwoomConnectorUnsubscribeStocks:
         mock_socket.connected = True
         conn._socket = mock_socket
         with (
-            patch("backend.app.services.engine_ws_reg.build_0b_remove_payloads", return_value=[{"trnm": "REMOVE", "data": []}]),
+            patch("backend.app.core.kiwoom_ws_reg.build_0b_remove_payloads", return_value=[{"trnm": "REMOVE", "data": []}]),
             patch("backend.app.services.engine_ws._ws_send_remove_fire_and_forget", AsyncMock(return_value=True)) as mock_ff,
             patch("backend.app.services.engine_symbol_utils.get_ws_subscribe_code", side_effect=lambda cd: cd + "_AL"),
         ):
@@ -617,7 +617,7 @@ class TestKiwoomConnectorUnsubscribeStocks:
         conn._socket = mock_socket
         payloads = [{"trnm": "REMOVE", "data": ["005930"]}, {"trnm": "REMOVE", "data": ["000660"]}]
         with (
-            patch("backend.app.services.engine_ws_reg.build_0b_remove_payloads", return_value=payloads),
+            patch("backend.app.core.kiwoom_ws_reg.build_0b_remove_payloads", return_value=payloads),
             patch("backend.app.services.engine_ws._ws_send_remove_fire_and_forget", AsyncMock(side_effect=[True, False])),
             patch("backend.app.services.engine_symbol_utils.get_ws_subscribe_code", side_effect=lambda cd: cd + "_AL"),
         ):
@@ -635,7 +635,7 @@ class TestKiwoomConnectorSubscribeDynamic:
         mock_socket.connected = True
         conn._socket = mock_socket
         with (
-            patch("backend.app.services.engine_ws_reg.build_0d_reg_payloads", return_value=[{"trnm": "REG", "data": []}]),
+            patch("backend.app.core.kiwoom_ws_reg.build_0d_reg_payloads", return_value=[{"trnm": "REG", "data": []}]),
             patch("backend.app.services.engine_ws._ws_send_reg_unreg_and_wait_ack", AsyncMock(return_value=(True, "0"))) as mock_ack,
         ):
             await conn.subscribe_dynamic(["005930"])
@@ -645,7 +645,7 @@ class TestKiwoomConnectorSubscribeDynamic:
         conn = _make_kiwoom_connector()
         conn._connected = False
         with (
-            patch("backend.app.services.engine_ws_reg.build_0d_reg_payloads") as mock_build,
+            patch("backend.app.core.kiwoom_ws_reg.build_0d_reg_payloads") as mock_build,
             patch("backend.app.services.engine_ws._ws_send_reg_unreg_and_wait_ack") as mock_ack,
         ):
             await conn.subscribe_dynamic(["005930"])
@@ -659,7 +659,7 @@ class TestKiwoomConnectorSubscribeDynamic:
         mock_socket.connected = True
         conn._socket = mock_socket
         with (
-            patch("backend.app.services.engine_ws_reg.build_0d_reg_payloads", return_value=[{"trnm": "REG"}]),
+            patch("backend.app.core.kiwoom_ws_reg.build_0d_reg_payloads", return_value=[{"trnm": "REG"}]),
             patch("backend.app.services.engine_ws._ws_send_reg_unreg_and_wait_ack", AsyncMock(side_effect=RuntimeError("no loop"))),
         ):
             # RuntimeError should be caught, not propagated
@@ -672,7 +672,7 @@ class TestKiwoomConnectorSubscribeDynamic:
         mock_socket.connected = True
         conn._socket = mock_socket
         with (
-            patch("backend.app.services.engine_ws_reg.build_0d_remove_payloads", return_value=[{"trnm": "UNREG", "data": []}]),
+            patch("backend.app.core.kiwoom_ws_reg.build_0d_remove_payloads", return_value=[{"trnm": "UNREG", "data": []}]),
             patch("backend.app.services.engine_ws._ws_send_reg_unreg_and_wait_ack", AsyncMock(return_value=(True, "0"))) as mock_ack,
         ):
             await conn.unsubscribe_dynamic(["005930"])
@@ -682,7 +682,7 @@ class TestKiwoomConnectorSubscribeDynamic:
         conn = _make_kiwoom_connector()
         conn._connected = False
         with (
-            patch("backend.app.services.engine_ws_reg.build_0d_remove_payloads") as mock_build,
+            patch("backend.app.core.kiwoom_ws_reg.build_0d_remove_payloads") as mock_build,
             patch("backend.app.services.engine_ws._ws_send_reg_unreg_and_wait_ack") as mock_ack,
         ):
             await conn.unsubscribe_dynamic(["005930"])
@@ -696,7 +696,7 @@ class TestKiwoomConnectorSubscribeDynamic:
         mock_socket.connected = True
         conn._socket = mock_socket
         with (
-            patch("backend.app.services.engine_ws_reg.build_0d_remove_payloads", return_value=[{"trnm": "UNREG"}]),
+            patch("backend.app.core.kiwoom_ws_reg.build_0d_remove_payloads", return_value=[{"trnm": "UNREG"}]),
             patch("backend.app.services.engine_ws._ws_send_reg_unreg_and_wait_ack", AsyncMock(side_effect=RuntimeError("no loop"))),
         ):
             await conn.unsubscribe_dynamic(["005930"])
@@ -712,7 +712,7 @@ class TestKiwoomConnectorSubscribeIndex:
         mock_socket.connected = True
         conn._socket = mock_socket
         with (
-            patch("backend.app.services.engine_ws_reg.build_index_reg_payload", return_value={"trnm": "REG", "data": []}),
+            patch("backend.app.core.kiwoom_ws_reg.build_index_reg_payload", return_value={"trnm": "REG", "data": []}),
             patch("backend.app.services.engine_ws._ws_send_reg_unreg_and_wait_ack", AsyncMock(return_value=(True, "0"))) as mock_ack,
         ):
             result = await conn.subscribe_index()
@@ -732,7 +732,7 @@ class TestKiwoomConnectorSubscribeIndex:
         mock_socket.connected = True
         conn._socket = mock_socket
         with (
-            patch("backend.app.services.engine_ws_reg.build_index_reg_payload", return_value={"trnm": "REG"}),
+            patch("backend.app.core.kiwoom_ws_reg.build_index_reg_payload", return_value={"trnm": "REG"}),
             patch("backend.app.services.engine_ws._ws_send_reg_unreg_and_wait_ack", AsyncMock(return_value=(False, ""))),
         ):
             result = await conn.subscribe_index()

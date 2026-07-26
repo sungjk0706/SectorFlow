@@ -1,10 +1,10 @@
-"""engine_ws_reg.py 단위 테스트 — REG/UNREG/REMOVE 페이로드 빌더 순수 함수 검증.
+"""kiwoom_ws_reg.py 단위 테스트 — 키움 REG/UNREG/REMOVE 페이로드 빌더 순수 함수 검증.
 
-async 구독 함수(subscribe_*)는 state/connector mock이 필요하여 핵심 payload 빌더만 검증.
+core/kiwoom_ws_reg.py 빌더 6종 (COUPLING-S6 후속 — engine_ws_reg.py에서 이동).
 """
 from __future__ import annotations
 
-from backend.app.services.engine_ws_reg import (
+from backend.app.core.kiwoom_ws_reg import (
     build_0b_reg_payloads,
     build_0b_remove_payloads,
     build_0d_reg_payloads,
