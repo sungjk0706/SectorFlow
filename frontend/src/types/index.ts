@@ -238,6 +238,9 @@ export const DEFAULT_SECTOR_MAX_TARGETS = 3;
 export interface SaveResult {
   ok: boolean;
   error?: string;
+  // B21-01 세션6: 백엔드 구조화 오류 응답(설계 5) 전달 — 세션7 UI에서 코드 기반 메시지 매핑.
+  errorCode?: string;
+  errorField?: string;
 }
 
 export interface SectorScoreRow {

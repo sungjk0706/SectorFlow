@@ -161,3 +161,109 @@ describe('createSettingsManager.saveSection — 422 detail 전파 (P21)', () => 
     expect(res.error).toBeUndefined()
   })
 })
+
+describe('createSettingsManager.saveSection — 구조화 오류 전파 (B21-01 세션6, 설계 5/7.3)', () => {
+  const store = new Map<string, string>()
+  const localStorageMock = {
+    getItem: (k: string) => store.get(k) ?? null,
+    setItem: (k: string, v: string) => { store.set(k, v) },
+    removeItem: (k: string) => { store.delete(k) },
+    clear: () => { store.clear() },
+  }
+
+  beforeEach(() => {
+    store.clear()
+    store.set('token', 'test-token')
+    vi.stubGlobal('localStorage', localStorageMock)
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+  })
+
+  function makeMockStoreWithSettings(initial: Record<string, unknown>): { store: StoreApi<UIState>; setStateSpy: ReturnType<typeof vi.fn> } {
+    let s: UIState = { settings: { ...initial } } as unknown as UIState
+    const setStateSpy = vi.fn((next: Partial<UIState> | ((state: UIState) => Partial<UIState>)) => {
+      const patch = typeof next === 'function' ? next(s) : next
+      s = { ...s, ...patch } as UIState
+    })
+    return {
+      store: {
+        getState: () => s,
+        setState: setStateSpy as unknown as StoreApi<UIState>['setState'],
+        subscribe: () => () => {},
+      },
+      setStateSpy,
+    }
+  }
+
+  it('구조화 detail 객체 → SaveResult.errorCode/errorField 전파', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: false,
+      status: 422,
+      json: async () => ({
+        detail: {
+          code: 'ENCRYPTION_KEY_MISSING',
+          message: '암호화 키가 설정되지 않아 인증정보를 저장할 수 없습니다.',
+          field: 'kiwoom_app_key',
+        },
+      }),
+    }))
+
+    const { store } = makeMockStoreWithSettings({ kiwoom_app_key: '***' })
+    const mgr = createSettingsManager(store)
+    const res = await mgr.saveSection({ kiwoom_app_key: 'new_key' })
+    expect(res.ok).toBe(false)
+    expect(res.error).toBe('암호화 키가 설정되지 않아 인증정보를 저장할 수 없습니다.')
+    expect(res.errorCode).toBe('ENCRYPTION_KEY_MISSING')
+    expect(res.errorField).toBe('kiwoom_app_key')
+  })
+
+  it('저장 실패 시 store.setState 미호출 — 평문 입력값이 성공 상태로 반영되지 않음 (설계 7.3)', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: false,
+      status: 422,
+      json: async () => ({
+        detail: { code: 'ENCRYPTION_KEY_INVALID', message: '키 오류', field: 'ls_app_secret' },
+      }),
+    }))
+
+    const { store, setStateSpy } = makeMockStoreWithSettings({ ls_app_secret: '***' })
+    const mgr = createSettingsManager(store)
+    await mgr.saveSection({ ls_app_secret: 'new_secret' })
+    // 실패 경로 → store.setState 호출 0회 (성공 시에만 반영)
+    expect(setStateSpy).not.toHaveBeenCalled()
+  })
+
+  it('문자열 detail 실패 시에도 store.setState 미호출 (하위 호환 경로)', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: false,
+      status: 422,
+      json: async () => ({ detail: '유효하지 않은 설정값: 타임테이블 오류' }),
+    }))
+
+    const { store, setStateSpy } = makeMockStoreWithSettings({ 'timetable.ws_prestart': '07:58' })
+    const mgr = createSettingsManager(store)
+    const res = await mgr.saveSection({ 'timetable.ws_prestart': '07:59' })
+    expect(res.ok).toBe(false)
+    expect(res.errorCode).toBeUndefined()
+    expect(res.errorField).toBeUndefined()
+    expect(setStateSpy).not.toHaveBeenCalled()
+  })
+
+  it('저장 성공 시에만 store.setState 호출 — 기존 동작 회귀 검증', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ ok: true }),
+    }))
+
+    const { store, setStateSpy } = makeMockStoreWithSettings({ foo: 'old' })
+    const mgr = createSettingsManager(store)
+    const res = await mgr.saveSection({ foo: 'new' })
+    expect(res.ok).toBe(true)
+    expect(setStateSpy).toHaveBeenCalledTimes(1)
+    expect(store.getState().settings).toMatchObject({ foo: 'new' })
+  })
+})

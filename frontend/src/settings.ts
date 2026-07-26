@@ -1,7 +1,7 @@
 // frontend/src/settings.ts — 설정 관리 모듈 (순수 TS, React 의존성 없음)
 
 import { uiStore } from './stores/uiStore'
-import { api } from './api/client'
+import { api, ApiError } from './api/client'
 import type { StoreApi } from './stores/store'
 import type { UIState } from './stores/uiStore'
 import type { AppSettings, SaveResult } from './types'
@@ -70,12 +70,18 @@ export function createSettingsManager(store: StoreApi<UIState> = uiStore): Setti
         await api.patchSettingField(key, value)
       }
       // API 저장 성공 → 로컬 store 반영 (WS settings-changed는 외부 변경 감지용으로 보조)
+      // 설계 7.3: 서버에서 거부되면 기존 설정값을 성공한 것처럼 store에 반영하지 않는다.
+      //   → 실패 경로는 catch 로 빠지므로 이 블록은 성공 시에만 실행됨 (이미 충족).
       const current = store.getState().settings
       if (current) {
         store.setState({ settings: { ...current, ...data } })
       }
       return { ok: true }
     } catch (e: unknown) {
+      // B21-01 세션6: ApiError 인 경우 구조화 오류 코드/필드 전달 (설계 5 — 세션7 UI에서 매핑).
+      if (e instanceof ApiError) {
+        return { ok: false, error: e.message, errorCode: e.code, errorField: e.field }
+      }
       const msg = e instanceof Error ? e.message : '저장 실패'
       return { ok: false, error: msg }
     }

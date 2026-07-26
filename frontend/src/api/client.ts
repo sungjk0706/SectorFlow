@@ -6,6 +6,19 @@ function getToken(): string | null {
   return localStorage.getItem('token');
 }
 
+// B21-01 세션6: 백엔드 구조화 오류 응답(설계 5 — detail={code,message,field}) 전달.
+// Error 상속 → 기존 e instanceof Error 호환. code/field는 선택적(문자열 detail 응답에는 없음).
+export class ApiError extends Error {
+  code?: string;
+  field?: string;
+  constructor(message: string, code?: string, field?: string) {
+    super(message);
+    this.name = 'ApiError';
+    this.code = code;
+    this.field = field;
+  }
+}
+
 interface RequestOptions {
   method?: string;
   headers?: Record<string, string>;
@@ -31,14 +44,24 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   if (!res.ok) {
     // 백엔드 에러 응답 본문의 detail 필드 추출 (FastAPI HTTPException 형식)
     // — P21: 사용자가 검증 실패 사유를 토스트에서 확인 가능 (예: 타임테이블 시간 순서 오류)
-    let detail = ''
+    // — B21-01 세션6: detail 이 객체인 경우(code/message/field) ApiError 로 전달 (P20 폴백 제거).
+    //   문자열 detail 은 기존대로 Error(message) throw (하위 호환 — 비암호화 검증 오류).
+    let body: unknown = null
     try {
-      const body = await res.json()
-      if (typeof body?.detail === 'string' && body.detail.length > 0) detail = body.detail
+      body = await res.json()
     } catch {
       // 본문이 JSON이 아닌 경우 status 코드만 사용 (에러 경로 처리 — P20 폴백 금지 대상 아님)
     }
-    throw new Error(detail || `API error: ${res.status}`)
+    const detail = (body as { detail?: unknown } | null)?.detail
+    if (typeof detail === 'string' && detail.length > 0) {
+      throw new Error(detail)
+    }
+    if (detail && typeof detail === 'object') {
+      const d = detail as { code?: string; message?: string; field?: string }
+      const msg = typeof d.message === 'string' && d.message.length > 0 ? d.message : `API error: ${res.status}`
+      throw new ApiError(msg, d.code, d.field)
+    }
+    throw new Error(`API error: ${res.status}`)
   }
 
   return res.json();
