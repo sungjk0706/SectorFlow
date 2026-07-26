@@ -20,11 +20,14 @@ def _mock_settings(
     app_secret="test_secret",
     preloaded_specs=None,
     page_overrides=None,
+    credential_state="ENCRYPTED",
 ):
     """테스트용 integrated_system_settings_cache dict 생성.
 
     broker_config이 제공되지 않으면 build_engine_settings_dict와 동일하게
     모든 feature를 broker로 채운 정규화된 dict 생성 (P20 폴백 금지 준수).
+    credential_state: B21-01 세션 5 — _credential_states의 app_key/app_secret 상태.
+        "ENCRYPTED"=정상(기본값), "EMPTY"/"KEY_UNAVAILABLE"/"DECRYPT_FAILED"/"PLAINTEXT_LEGACY"=차단.
     """
     if broker_config is None:
         broker_config = {
@@ -49,6 +52,9 @@ def _mock_settings(
         f"{broker}_app_key": app_key,
         f"{broker}_app_secret": app_secret,
         "_broker_specs": preloaded_specs or {},
+        "_credential_states": {
+            broker: {"app_key": credential_state, "app_secret": credential_state},
+        },
     }
     if page_overrides is not None:
         settings["page_overrides"] = page_overrides
@@ -237,8 +243,8 @@ class TestProperties:
 
 class TestValidate:
     def test_validate_no_api_key_returns_message(self):
-        """API 키가 없으면 경고 메시지 반환."""
-        settings = _mock_settings(app_key="", app_secret="")
+        """자격 상태 EMPTY — 경고 메시지 반환 (B21-01 세션 5: 상태 기반)."""
+        settings = _mock_settings(app_key="", app_secret="", credential_state="EMPTY")
         router, mock_state = _make_router(settings=settings)
         # validate 내부에서 state를 다시 import하므로 mock_state 유지
         with patch("backend.app.services.engine_state.state", mock_state):
@@ -246,8 +252,8 @@ class TestValidate:
         assert any("API 키" in m for m in messages)
 
     def test_validate_with_api_key_no_message(self):
-        """API 키가 있으면 메시지 없음 (동일 증권사 쌍이므로)."""
-        settings = _mock_settings(app_key="key", app_secret="secret")
+        """자격 상태 ENCRYPTED — 메시지 없음 (동일 증권사 쌍이므로)."""
+        settings = _mock_settings(app_key="key", app_secret="secret", credential_state="ENCRYPTED")
         router, mock_state = _make_router(settings=settings)
         with patch("backend.app.services.engine_state.state", mock_state):
             messages = router.validate()
@@ -260,6 +266,41 @@ class TestValidate:
         with patch("backend.app.services.engine_state.state", mock_state):
             result = router.validate()
         assert isinstance(result, list)
+
+    # ── B21-01 세션 5: 자격 상태 기반 검증 (설계 8.2) ──────────────────────
+
+    def test_validate_key_unavailable_returns_message(self):
+        """KEY_UNAVAILABLE — 암호화 키 없음 메시지."""
+        settings = _mock_settings(credential_state="KEY_UNAVAILABLE")
+        router, mock_state = _make_router(settings=settings)
+        with patch("backend.app.services.engine_state.state", mock_state):
+            messages = router.validate()
+        assert any("암호화 키가 없어" in m for m in messages)
+
+    def test_validate_decrypt_failed_returns_message(self):
+        """DECRYPT_FAILED — 복호화 실패 메시지."""
+        settings = _mock_settings(credential_state="DECRYPT_FAILED")
+        router, mock_state = _make_router(settings=settings)
+        with patch("backend.app.services.engine_state.state", mock_state):
+            messages = router.validate()
+        assert any("복호화할 수 없습니다" in m for m in messages)
+
+    def test_validate_plaintext_legacy_returns_message(self):
+        """PLAINTEXT_LEGACY — 평문 레거시 재입력 안내 메시지."""
+        settings = _mock_settings(credential_state="PLAINTEXT_LEGACY")
+        router, mock_state = _make_router(settings=settings)
+        with patch("backend.app.services.engine_state.state", mock_state):
+            messages = router.validate()
+        assert any("안전하게 암호화되지 않았습니다" in m for m in messages)
+
+    def test_validate_credential_states_missing_returns_unknown_message(self):
+        """_credential_states 누락 — UNKNOWN 상태로 fail-closed 차단 (P20)."""
+        settings = _mock_settings()
+        settings.pop("_credential_states", None)  # 의도적 누락
+        router, mock_state = _make_router(settings=settings)
+        with patch("backend.app.services.engine_state.state", mock_state):
+            messages = router.validate()
+        assert any("자격증명 상태를 확인할 수 없습니다" in m for m in messages)
 
 
 # ── summary ────────────────────────────────────────────────────────────────────

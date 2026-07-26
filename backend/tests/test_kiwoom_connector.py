@@ -953,6 +953,7 @@ class TestCreateKiwoomConnector:
         mock_state.integrated_system_settings_cache = {
             "kiwoom_app_key": "mykey",
             "kiwoom_app_secret": "mysecret",
+            "_credential_states": {"kiwoom": {"app_key": "ENCRYPTED", "app_secret": "ENCRYPTED"}},
         }
         with patch("backend.app.services.engine_state.state", mock_state):
             from backend.app.core.kiwoom_connector import create_kiwoom_connector
@@ -961,9 +962,66 @@ class TestCreateKiwoomConnector:
             assert conn._app_secret == "mysecret"
 
     def test_create_no_credentials_raises(self):
+        """자격 상태 EMPTY — 차단 사유 메시지와 함께 ValueError (B21-01 세션 5)."""
         mock_state = MagicMock()
-        mock_state.integrated_system_settings_cache = {}
+        mock_state.integrated_system_settings_cache = {
+            "_credential_states": {"kiwoom": {"app_key": "EMPTY", "app_secret": "EMPTY"}},
+        }
         with patch("backend.app.services.engine_state.state", mock_state):
             from backend.app.core.kiwoom_connector import create_kiwoom_connector
-            with pytest.raises(ValueError, match="app_key"):
+            with pytest.raises(ValueError, match="API 키가 설정되지 않았습니다"):
+                create_kiwoom_connector()
+
+    # ── B21-01 세션 5: 자격 상태 기반 검증 (설계 8.2) ──────────────────────
+
+    def test_create_key_unavailable_raises(self):
+        """KEY_UNAVAILABLE — 암호화 키 없음 사유로 ValueError."""
+        mock_state = MagicMock()
+        mock_state.integrated_system_settings_cache = {
+            "kiwoom_app_key": "gAAAAcipher",
+            "kiwoom_app_secret": "gAAAAcipher2",
+            "_credential_states": {"kiwoom": {"app_key": "KEY_UNAVAILABLE", "app_secret": "KEY_UNAVAILABLE"}},
+        }
+        with patch("backend.app.services.engine_state.state", mock_state):
+            from backend.app.core.kiwoom_connector import create_kiwoom_connector
+            with pytest.raises(ValueError, match="암호화 키가 없어"):
+                create_kiwoom_connector()
+
+    def test_create_decrypt_failed_raises(self):
+        """DECRYPT_FAILED — 복호화 실패 사유로 ValueError."""
+        mock_state = MagicMock()
+        mock_state.integrated_system_settings_cache = {
+            "kiwoom_app_key": "gAAAAcipher",
+            "kiwoom_app_secret": "gAAAAcipher2",
+            "_credential_states": {"kiwoom": {"app_key": "DECRYPT_FAILED", "app_secret": "DECRYPT_FAILED"}},
+        }
+        with patch("backend.app.services.engine_state.state", mock_state):
+            from backend.app.core.kiwoom_connector import create_kiwoom_connector
+            with pytest.raises(ValueError, match="복호화할 수 없습니다"):
+                create_kiwoom_connector()
+
+    def test_create_plaintext_legacy_raises(self):
+        """PLAINTEXT_LEGACY — 평문 레거시 재입력 안내 사유로 ValueError."""
+        mock_state = MagicMock()
+        mock_state.integrated_system_settings_cache = {
+            "kiwoom_app_key": "plain_key",
+            "kiwoom_app_secret": "plain_secret",
+            "_credential_states": {"kiwoom": {"app_key": "PLAINTEXT_LEGACY", "app_secret": "PLAINTEXT_LEGACY"}},
+        }
+        with patch("backend.app.services.engine_state.state", mock_state):
+            from backend.app.core.kiwoom_connector import create_kiwoom_connector
+            with pytest.raises(ValueError, match="안전하게 암호화되지 않았습니다"):
+                create_kiwoom_connector()
+
+    def test_create_credential_states_missing_raises_unknown(self):
+        """_credential_states 누락 — UNKNOWN 상태로 fail-closed 차단 (P20)."""
+        mock_state = MagicMock()
+        mock_state.integrated_system_settings_cache = {
+            "kiwoom_app_key": "mykey",
+            "kiwoom_app_secret": "mysecret",
+            # _credential_states 의도적 누락
+        }
+        with patch("backend.app.services.engine_state.state", mock_state):
+            from backend.app.core.kiwoom_connector import create_kiwoom_connector
+            with pytest.raises(ValueError, match="자격증명 상태를 확인할 수 없습니다"):
                 create_kiwoom_connector()

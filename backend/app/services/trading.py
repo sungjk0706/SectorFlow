@@ -41,6 +41,14 @@ BUY_REJECT_RISK_CASH = "risk_cash"               # 예수금 부족 (잔액 0)
 BUY_REJECT_TEST_CASH = "test_cash"               # 테스트 예수금 검증 실패
 BUY_REJECT_ORDER_FAIL = "order_fail"             # 주문 전송 실패
 
+# ── 자격증명 상태 차단 사유 (B21-01 세션 5, 설계 8.3) ──────────────────────────
+# 실전모드에서만 적용 — 모의투자(test_mode)는 dry_run 경로로 자격 불필요.
+BUY_REJECT_CREDENTIAL_KEY_UNAVAILABLE = "credential_key_unavailable"   # 암호화 키 없음
+BUY_REJECT_CREDENTIAL_DECRYPT_FAILED = "credential_decrypt_failed"     # 복호화 실패
+BUY_REJECT_CREDENTIAL_PLAINTEXT_LEGACY = "credential_plaintext_legacy" # 평문 레거시 재입력 필요
+BUY_REJECT_CREDENTIAL_EMPTY = "credential_empty"                       # 자격 미설정
+BUY_REJECT_CREDENTIAL_UNKNOWN = "credential_unknown"                   # 상태 확인 불가
+
 # 종목별 차단 사유 (차순위 시도 유효 → continue)
 BUY_REJECT_TIME_BLOCKED = "time_blocked"         # 체결 불가 시간대 (nxt 여부)
 BUY_REJECT_REBUY = "rebuy"                       # 재매수 차단
@@ -70,7 +78,36 @@ BUY_GLOBAL_REJECT_REASONS: frozenset[str] = frozenset({
     BUY_REJECT_RISK_CASH,
     BUY_REJECT_TEST_CASH,
     BUY_REJECT_ORDER_FAIL,
+    BUY_REJECT_CREDENTIAL_KEY_UNAVAILABLE,
+    BUY_REJECT_CREDENTIAL_DECRYPT_FAILED,
+    BUY_REJECT_CREDENTIAL_PLAINTEXT_LEGACY,
+    BUY_REJECT_CREDENTIAL_EMPTY,
+    BUY_REJECT_CREDENTIAL_UNKNOWN,
 })
+
+
+# 자격증명 상태 → 사유코드 매핑 (B21-01 세션 5, P10 SSOT)
+# engine_settings.broker_credential_state() 반환값과 정합.
+_CREDENTIAL_STATE_TO_BUY_REASON: dict[str, str] = {
+    "KEY_UNAVAILABLE":  BUY_REJECT_CREDENTIAL_KEY_UNAVAILABLE,
+    "DECRYPT_FAILED":   BUY_REJECT_CREDENTIAL_DECRYPT_FAILED,
+    "PLAINTEXT_LEGACY": BUY_REJECT_CREDENTIAL_PLAINTEXT_LEGACY,
+    "EMPTY":            BUY_REJECT_CREDENTIAL_EMPTY,
+    "UNKNOWN":          BUY_REJECT_CREDENTIAL_UNKNOWN,
+}
+
+
+def _credential_block_buy_reason(broker_name: str) -> str:
+    """실전모드 주문 자격 상태 게이트 — 차단 사유코드 반환 (빈 문자열=정상).
+
+    모의투자는 호출부에서 스킵 (dry_run 경로로 자격 불필요, 설계 8.3).
+    broker_credential_state() SSOT 호출 (P10/P24).
+    """
+    from backend.app.core.engine_settings import broker_credential_state
+    cred_state = broker_credential_state(broker_name)
+    if cred_state == "ENCRYPTED":
+        return ""
+    return _CREDENTIAL_STATE_TO_BUY_REASON.get(cred_state, BUY_REJECT_CREDENTIAL_UNKNOWN)
 
 
 def _map_risk_reason_to_code(risk_reason: str) -> str:
@@ -224,6 +261,18 @@ class AutoTradeManager:
         if self._daily_buy_spent is None:
             logger.critical("[매매] [매수차단] %s 일일 매수 상태 로드 실패 — 매수 불가", stk_cd)
             return False, BUY_REJECT_DAILY_STATE
+
+        # ── 자격증명 상태 게이트 (B21-01 세션 5, 설계 8.3) ──────────────────────
+        # 실전모드에서만 적용 — 모의투자(test_mode)는 dry_run 경로로 자격 불필요.
+        # P15(단일 주문 경로): execute_buy 진입부에서 검증, 우회 경로 없음.
+        # P21(사용자 투명성): 차단 사유코드로 UI 전달 가능.
+        if not is_test_mode(raw_all):
+            _broker = str(raw_all.get("broker", "") or "").lower().strip()
+            if _broker:
+                _cred_reason = _credential_block_buy_reason(_broker)
+                if _cred_reason:
+                    logger.warning("[매매] [매수차단] %s 자격증명 상태 불가 — 사유코드=%s", stk_cd, _cred_reason)
+                    return False, _cred_reason
 
         # ── 실시간 지연 중단 게이트 (fail-closed — P20/P25 안전 우선) ──────────
         # 체크 자체가 실패하면 매수 차단: 지연 상태를 확인할 수 없는 상황은
@@ -574,6 +623,16 @@ class AutoTradeManager:
         """
         if not trade_settings.get("is_sell_auto", False):
             return False
+        # ── 자격증명 상태 게이트 (B21-01 세션 5, 설계 8.3) ──────────────────────
+        # 실전모드에서만 적용 — 모의투자(test_mode)는 dry_run 경로로 자격 불필요.
+        # P15(단일 주문 경로): execute_sell 진입부에서 검증, 우회 경로 없음.
+        if not is_test_mode(base_settings):
+            _broker = str(base_settings.get("broker", "") or "").lower().strip()
+            if _broker:
+                _cred_reason = _credential_block_buy_reason(_broker)
+                if _cred_reason:
+                    logger.warning("[매매] [매도차단] %s(%s) 자격증명 상태 불가 — 사유코드=%s", stk_nm, stk_cd, _cred_reason)
+                    return False
         # ── 체결 불가 시간대 주문 게이트 — 매도 동일 적용 (P15/P16) ──
         if self._is_order_time_blocked(stk_cd):
             logger.info("[매매] [주문차단] %s(%s) 체결 불가 시간대 — 매도 중단", stk_nm, stk_cd)

@@ -36,6 +36,11 @@ from backend.app.services.trading import (  # noqa: E402
     BUY_REJECT_RISK_LOSS_RATE,
     BUY_REJECT_RISK_SINGLE,
     BUY_REJECT_SIGNAL_INTERVAL,
+    BUY_REJECT_CREDENTIAL_KEY_UNAVAILABLE,
+    BUY_REJECT_CREDENTIAL_DECRYPT_FAILED,
+    BUY_REJECT_CREDENTIAL_PLAINTEXT_LEGACY,
+    BUY_REJECT_CREDENTIAL_EMPTY,
+    BUY_REJECT_CREDENTIAL_UNKNOWN,
     _map_risk_reason_to_code,
     _broadcast_daily_buy_state_status,
     _broadcast_test_cash_failed,
@@ -86,6 +91,7 @@ def _raw_settings(**overrides):
         "ts_apply": False,
         "ts_start_val": 0.0,
         "ts_drop_val": 0.0,
+        "broker": "kiwoom",  # B21-01 세션 5: 자격 상태 게이트용 기본값
     }
     s.update(overrides)
     return s
@@ -429,6 +435,172 @@ class TestExecuteBuyReasonCodes:
             result, reason = await mgr.execute_buy("005930", 70000, "token")
         assert result is False
         assert reason == BUY_REJECT_RISK_CIRCUIT
+
+
+# ── B21-01 세션 5: 자격증명 상태 게이트 (설계 8.3) ──────────────────────────────
+# 실전모드에서만 적용 — 모의투자(test_mode)는 dry_run 경로로 자격 불필요.
+
+class TestExecuteBuyCredentialGate:
+    """실전모드 execute_buy 자격증명 상태 게이트 검증."""
+
+    @pytest.mark.asyncio
+    async def test_real_mode_key_unavailable_blocks_buy(self):
+        """실전모드 + KEY_UNAVAILABLE → BUY_REJECT_CREDENTIAL_KEY_UNAVAILABLE."""
+        mgr = _make_manager()
+        with patch("backend.app.services.engine_state.state") as mock_state, \
+             patch("backend.app.services.trading.is_test_mode", return_value=False), \
+             patch("backend.app.services.trading._credential_block_buy_reason",
+                   return_value=BUY_REJECT_CREDENTIAL_KEY_UNAVAILABLE):
+            mock_state.realtime_latency_exceeded = False
+            mock_state.integrated_system_settings_cache = _raw_settings()
+            result, reason = await mgr.execute_buy("005930", 70000, "token")
+        assert result is False
+        assert reason == BUY_REJECT_CREDENTIAL_KEY_UNAVAILABLE
+
+    @pytest.mark.asyncio
+    async def test_real_mode_decrypt_failed_blocks_buy(self):
+        """실전모드 + DECRYPT_FAILED → BUY_REJECT_CREDENTIAL_DECRYPT_FAILED."""
+        mgr = _make_manager()
+        with patch("backend.app.services.engine_state.state") as mock_state, \
+             patch("backend.app.services.trading.is_test_mode", return_value=False), \
+             patch("backend.app.services.trading._credential_block_buy_reason",
+                   return_value=BUY_REJECT_CREDENTIAL_DECRYPT_FAILED):
+            mock_state.realtime_latency_exceeded = False
+            mock_state.integrated_system_settings_cache = _raw_settings()
+            result, reason = await mgr.execute_buy("005930", 70000, "token")
+        assert result is False
+        assert reason == BUY_REJECT_CREDENTIAL_DECRYPT_FAILED
+
+    @pytest.mark.asyncio
+    async def test_real_mode_plaintext_legacy_blocks_buy(self):
+        """실전모드 + PLAINTEXT_LEGACY → BUY_REJECT_CREDENTIAL_PLAINTEXT_LEGACY."""
+        mgr = _make_manager()
+        with patch("backend.app.services.engine_state.state") as mock_state, \
+             patch("backend.app.services.trading.is_test_mode", return_value=False), \
+             patch("backend.app.services.trading._credential_block_buy_reason",
+                   return_value=BUY_REJECT_CREDENTIAL_PLAINTEXT_LEGACY):
+            mock_state.realtime_latency_exceeded = False
+            mock_state.integrated_system_settings_cache = _raw_settings()
+            result, reason = await mgr.execute_buy("005930", 70000, "token")
+        assert result is False
+        assert reason == BUY_REJECT_CREDENTIAL_PLAINTEXT_LEGACY
+
+    @pytest.mark.asyncio
+    async def test_real_mode_empty_blocks_buy(self):
+        """실전모드 + EMPTY → BUY_REJECT_CREDENTIAL_EMPTY."""
+        mgr = _make_manager()
+        with patch("backend.app.services.engine_state.state") as mock_state, \
+             patch("backend.app.services.trading.is_test_mode", return_value=False), \
+             patch("backend.app.services.trading._credential_block_buy_reason",
+                   return_value=BUY_REJECT_CREDENTIAL_EMPTY):
+            mock_state.realtime_latency_exceeded = False
+            mock_state.integrated_system_settings_cache = _raw_settings()
+            result, reason = await mgr.execute_buy("005930", 70000, "token")
+        assert result is False
+        assert reason == BUY_REJECT_CREDENTIAL_EMPTY
+
+    @pytest.mark.asyncio
+    async def test_real_mode_credential_ok_does_not_block_buy(self):
+        """실전모드 + 자격 상태 정상(빈 문자열) → 게이트 통과 (후속 게이트에서 차단 가능)."""
+        mgr = _make_manager()
+        # 자격 게이트 통과 후 auto_buy_off 게이트에서 차단되는지 확인
+        with patch("backend.app.services.engine_state.state") as mock_state, \
+             patch("backend.app.services.trading.is_test_mode", return_value=False), \
+             patch("backend.app.services.trading._credential_block_buy_reason", return_value=""), \
+             patch("backend.app.services.trading.auto_buy_effective", return_value=False):
+            mock_state.realtime_latency_exceeded = False
+            mock_state.integrated_system_settings_cache = _raw_settings(time_scheduler_on=False)
+            result, reason = await mgr.execute_buy("005930", 70000, "token")
+        assert result is False
+        # 자격 게이트 통과 → auto_buy_off 게이트 도달
+        assert reason == BUY_REJECT_AUTO_BUY_OFF
+
+    @pytest.mark.asyncio
+    async def test_test_mode_skips_credential_gate(self):
+        """모의투자(test_mode=True) → 자격 상태 게이트 스킵 (설계 8.3, P18)."""
+        mgr = _make_manager()
+        # _credential_block_buy_reason이 차단 사유를 반환하도록 설정해도
+        # test_mode=True면 게이트가 호출되지 않아야 함
+        with patch("backend.app.services.engine_state.state") as mock_state, \
+             patch("backend.app.services.trading.is_test_mode", return_value=True), \
+             patch("backend.app.services.trading._credential_block_buy_reason",
+                   return_value=BUY_REJECT_CREDENTIAL_KEY_UNAVAILABLE) as mock_cred_gate, \
+             patch("backend.app.services.trading.auto_buy_effective", return_value=False):
+            mock_state.realtime_latency_exceeded = False
+            mock_state.integrated_system_settings_cache = _raw_settings()
+            result, reason = await mgr.execute_buy("005930", 70000, "token")
+        assert result is False
+        # 자격 게이트가 호출되지 않았으므로 auto_buy_off 도달
+        assert reason == BUY_REJECT_AUTO_BUY_OFF
+        mock_cred_gate.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_real_mode_no_broker_skips_credential_gate(self):
+        """실전모드 + broker 키 없음 → 자격 상태 게이트 스킵 (빈 broker는 검증 대상 아님)."""
+        mgr = _make_manager(_raw_settings(broker=""))
+        with patch("backend.app.services.engine_state.state") as mock_state, \
+             patch("backend.app.services.trading.is_test_mode", return_value=False), \
+             patch("backend.app.services.trading._credential_block_buy_reason",
+                   return_value=BUY_REJECT_CREDENTIAL_KEY_UNAVAILABLE) as mock_cred_gate, \
+             patch("backend.app.services.trading.auto_buy_effective", return_value=False):
+            mock_state.realtime_latency_exceeded = False
+            mock_state.integrated_system_settings_cache = _raw_settings(broker="")
+            result, reason = await mgr.execute_buy("005930", 70000, "token")
+        assert result is False
+        assert reason == BUY_REJECT_AUTO_BUY_OFF
+        mock_cred_gate.assert_not_called()
+
+
+class TestExecuteSellCredentialGate:
+    """실전모드 execute_sell 자격증명 상태 게이트 검증 (B21-01 세션 5, 설계 8.3)."""
+
+    @pytest.mark.asyncio
+    async def test_real_mode_key_unavailable_blocks_sell(self):
+        """실전모드 + KEY_UNAVAILABLE → execute_sell False 반환."""
+        mgr = _make_manager()
+        trade_settings = {
+            "is_sell_auto": True,
+            "is_sell_mkt": True,
+            "chk_loss": True,
+            "chk_tp": False,
+            "chk_ts": False,
+        }
+        base_settings = _raw_settings()
+        with patch("backend.app.services.trading.is_test_mode", return_value=False), \
+             patch("backend.app.services.trading._credential_block_buy_reason",
+                   return_value=BUY_REJECT_CREDENTIAL_KEY_UNAVAILABLE):
+            result = await mgr.execute_sell(
+                "005930", 70000, "삼성전자", "손절 발동", 10, -6.0,
+                trade_settings, base_settings, "token",
+            )
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_test_mode_skips_sell_credential_gate(self):
+        """모의투자(test_mode=True) → execute_sell 자격 상태 게이트 스킵 (P18)."""
+        mgr = _make_manager()
+        trade_settings = {
+            "is_sell_auto": True,
+            "is_sell_mkt": True,
+            "chk_loss": True,
+            "chk_tp": False,
+            "chk_ts": False,
+        }
+        base_settings = _raw_settings()
+        # 자격 게이트가 차단 사유를 반환하도록 설정해도 test_mode=True면 스킵
+        # 시간대 게이트에서 차단되어 False 반환 (자격 게이트 통과 확인)
+        with patch("backend.app.services.trading.is_test_mode", return_value=True), \
+             patch("backend.app.services.trading._credential_block_buy_reason",
+                   return_value=BUY_REJECT_CREDENTIAL_KEY_UNAVAILABLE) as mock_cred_gate, \
+             patch("backend.app.services.trading.AutoTradeManager._is_order_time_blocked",
+                   return_value=True):
+            result = await mgr.execute_sell(
+                "005930", 70000, "삼성전자", "손절 발동", 10, -6.0,
+                trade_settings, base_settings, "token",
+            )
+        assert result is False
+        # 자격 게이트가 호출되지 않았으므로 시간대 게이트 도달
+        mock_cred_gate.assert_not_called()
 
 
 # ── _broadcast_daily_buy_state_status 헬퍼 단위 테스트 (P21 사용자 투명성) ──────
@@ -877,6 +1049,7 @@ class TestDailyBuySpentFeeInclusive:
              patch("backend.app.services.trading.auto_buy_effective", return_value=True), \
              patch("backend.app.services.engine_account.get_positions", new_callable=AsyncMock, return_value=[]), \
              patch("backend.app.services.trading.is_test_mode", return_value=False), \
+             patch("backend.app.services.trading._credential_block_buy_reason", return_value=""), \
              patch("backend.app.services.settlement_engine.get_available_cash", return_value=10_000_000), \
              patch("backend.app.services.dry_run.estimate_fill_price", return_value=70000), \
              patch("backend.app.services.trading.get_risk_manager") as mock_rm, \

@@ -130,23 +130,19 @@ class BrokerRouter:
         설정 검증. 경고/오류 메시지 리스트 반환.
 
         검증 항목:
-        1. 각 증권사의 app_key/app_secret 존재 확인
+        1. 각 증권사의 자격증명 상태 확인 (B21-01 세션 5 — 복호화 상태 기반)
         2. 주문-계좌 동일 증권사 경고
         3. 미지원 증권사/기능 조합 (이미 _build에서 ValueError)
         """
-        from backend.app.services.engine_state import state
+        from backend.app.core.engine_settings import broker_credential_block_reason
         messages: list[str] = []
         used_brokers = set(self._broker_map.values())
 
-        # 인증 정보 존재 확인
+        # 자격증명 상태 기반 차단 사유 (빈 값 확인 → 복호화 상태 기반으로 확장)
         for broker_name in used_brokers:
-            key = state.integrated_system_settings_cache.get(f"{broker_name}_app_key")
-            secret = state.integrated_system_settings_cache.get(f"{broker_name}_app_secret")
-            if not key or not secret:
-                messages.append(
-                    "증권사 API 키가 설정되지 않았습니다. "
-                    "일반설정에서 입력하세요."
-                )
+            reason = broker_credential_block_reason(broker_name)
+            if reason:
+                messages.append(reason)
 
         # 동일 증권사 강제 쌍 검증
         for feat_a, feat_b in MUST_SAME_BROKER_PAIRS:

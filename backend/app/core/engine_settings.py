@@ -76,6 +76,66 @@ def _pick_broker_credentials(merged: dict) -> dict:
     return result
 
 
+# ── 자격 상태 판정 SSOT (B21-01 세션 5, 설계 8.2/8.3) ──────────────────────────
+# broker_router.validate() / create_*_connector() / trading.py 주문 게이트가
+# 모두 이 헬퍼를 호출 — 상태 판정·메시지 매핑의 단일 진실 소스 (P10/P24).
+
+# 차단 상태 우선순위 (심각도 높은 순) — app_key/app_secret 중 더 심각한 상태 채택.
+# ENCRYPTED는 정상이므로 제외. EMPTY는 값 미설정.
+_CREDENTIAL_BLOCK_PRIORITY: tuple[str, ...] = (
+    "KEY_UNAVAILABLE",   # 암호화 키 없음/오류 — 가장 심각
+    "DECRYPT_FAILED",    # 복호화 실패 (암호문 손상/다른 키)
+    "PLAINTEXT_LEGACY",  # 평문 레거시 — 재입력 필요
+    "EMPTY",             # 값 없음 — 미설정
+)
+
+# 상태 → 사용자용 차단 사유 메시지 (설계 7.2 표시 상태와 정렬).
+_CREDENTIAL_BLOCK_MESSAGES: dict[str, str] = {
+    "KEY_UNAVAILABLE":  "암호화 키가 없어 저장된 인증정보를 읽을 수 없습니다.",
+    "DECRYPT_FAILED":   "저장된 인증정보를 복호화할 수 없습니다. 인증정보를 다시 입력하세요.",
+    "PLAINTEXT_LEGACY": "기존 인증정보가 안전하게 암호화되지 않았습니다. 인증정보를 다시 입력해 저장하세요.",
+    "EMPTY":            "증권사 API 키가 설정되지 않았습니다. 일반설정에서 입력하세요.",
+    "UNKNOWN":          "자격증명 상태를 확인할 수 없습니다. 설정을 다시 확인하세요.",
+}
+
+
+def broker_credential_state(broker_name: str) -> str:
+    """브로커 자격증명 종합 상태 반환 (SecretValueState.name 문자열).
+
+    ENCRYPTED=정상 (app_key/app_secret 모두 ENCRYPTED).
+    그 외=차단 (둘 중 더 심각한 상태 채택).
+    _credential_states 누락 시 UNKNOWN (fail-closed — P20 폴백 금지).
+    """
+    from backend.app.services.engine_state import state
+    states = state.integrated_system_settings_cache.get("_credential_states") or {}
+    broker_states = states.get(broker_name)
+    if not broker_states:
+        return "UNKNOWN"
+    key_state = str(broker_states.get("app_key", "UNKNOWN"))
+    sec_state = str(broker_states.get("app_secret", "UNKNOWN"))
+    # 둘 다 ENCRYPTED면 정상
+    if key_state == "ENCRYPTED" and sec_state == "ENCRYPTED":
+        return "ENCRYPTED"
+    # 차단 상태 중 더 심각한 것 (우선순위 테이블 기준)
+    for block_state in _CREDENTIAL_BLOCK_PRIORITY:
+        if key_state == block_state or sec_state == block_state:
+            return block_state
+    # 알 수 없는 상태 — 보수적 차단 (P20)
+    return "UNKNOWN"
+
+
+def broker_credential_block_reason(broker_name: str) -> str:
+    """브로커 자격증명 차단 사유 메시지 — 빈 문자열=정상, 비어있지 않음=차단.
+
+    broker_router.validate() / create_*_connector() / trading.py 주문 게이트가
+    공통 호출 (P10 SSOT, P24 중복 제거).
+    """
+    cred_state = broker_credential_state(broker_name)
+    if cred_state == "ENCRYPTED":
+        return ""
+    return _CREDENTIAL_BLOCK_MESSAGES.get(cred_state, _CREDENTIAL_BLOCK_MESSAGES["UNKNOWN"])
+
+
 def _build_operation_settings(merged: dict, tm: str) -> dict:
     """운영 설정: 증권사, 투자모드, 자동매매 토글, 매수/매도 시간대."""
     return {

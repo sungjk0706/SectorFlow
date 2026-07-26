@@ -526,10 +526,16 @@ class KiwoomConnector(BrokerConnector):
 # ── 팩토리 ───────────────────────────────────────────────────────────────────
 
 def create_kiwoom_connector() -> KiwoomConnector:
-    """단일 소스 진리: state.integrated_system_settings_cache 직접 사용."""
+    """단일 소스 진리: state.integrated_system_settings_cache 직접 사용.
+
+    B21-01 세션 5: 자격 상태 기반 검증 (빈 값 + 복호화 상태 + 평문 레거시 포함).
+    차단 사유는 engine_settings.broker_credential_block_reason() SSOT 사용 (P10/P24).
+    """
+    from backend.app.core.engine_settings import broker_credential_block_reason
+    reason = broker_credential_block_reason("kiwoom")
+    if reason:
+        raise ValueError(reason)
     from backend.app.services.engine_state import state
     app_key = (state.integrated_system_settings_cache.get("kiwoom_app_key") or "").strip()
     app_secret = (state.integrated_system_settings_cache.get("kiwoom_app_secret") or "").strip()
-    if not app_key or not app_secret:
-        raise ValueError("키움 app_key, app_secret이 설정되지 않았습니다")
     return KiwoomConnector(app_key=app_key, app_secret=app_secret)
