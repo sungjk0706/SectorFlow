@@ -34,7 +34,7 @@
 | 세션 | 우선순위 | 대상 | 계획 상태 | 핵심 검증 |
 |---|---|---|---|---|
 | COUPLING-S1 | P0 | C-01 `engine_state` 상태 소유권 | ☑ | 69개 속성 owner/readers/writers 매트릭스 작성(`docs/coupling-engine-state-matrix.md`). 코드 수정 없음(조사·문서만). 후속 단일화 1순위: `sector_summary_cache` (7곳 writer). docstring 대조 1건 불일치(`positions`의 `kiwoom_account_parsing` 누락). |
-| COUPLING-S2 | P0 | C-02 설정 키 영향 매트릭스 | ☐ | 설정 관련 테스트, 백엔드 전체 테스트, 프론트 typecheck/build |
+| COUPLING-S2 | P0 | C-02 설정 키 영향 매트릭스 | ☑ | `docs/coupling-settings-impact-matrix.md` 작성 (525줄). DEFAULT_USER_SETTINGS 66키 + DEFAULT_SYSTEM_CONFIG 17키 + 동적 증권사 자격증명 + 파생 키 전체 파이프라인(DB→기본값→정규화→캐시→서비스→API/UI) 매트릭스화. 코드 수정 없음(조사·문서만). P10 SSOT 위반 후보 6건, P21 투명성 후보 1건, 검증 누락 키 다수, 단일화 우선순위 5건 식별. |
 | COUPLING-S3 | P1 | C-03 WebSocket 이벤트 계약 인덱스 | ☐ | producer/consumer 전수 검색, WS·Store 관련 테스트, typecheck/build |
 | COUPLING-S4 | P0 | C-04 주문 호출 그래프 | ☐ | safe-trade 점검, 주문·리스크 테스트, RuntimeWarning 기동 |
 | COUPLING-S5 | P1 | C-05 파이프라인 경계 | ☐ | 파이프라인·스케줄러 테스트, 전체 백엔드 테스트, RuntimeWarning 기동 |
@@ -84,8 +84,18 @@
 
 ### 세션 COUPLING-S2 — C-02 설정 키 영향 매트릭스
 
-**상태:** ☐ 미시작
+**상태:** ☑ 완료 (매트릭스 문서 작성)
 **대상 원칙:** P10 SSOT, P20 폴백 금지, P21 사용자 투명성, P22 데이터 정합성, P23 일관성, P24 단순성
+**결과:** `docs/coupling-settings-impact-matrix.md`에 설정 키 전체 파이프라인 매트릭스 작성. 코드 수정 없음(조사·문서만).
+- 파이프라인 6단계 정의: DB 원본 → 기본값 보충 → 정규화(`build_engine_settings_dict` 9개 `_build_*`) → 메모리 캐시 → 서비스 소비자(28개 파일) → API/UI.
+- 19개 키 그룹별 매트릭스: 자동매매 토글·시간(8), 투자모드·증권사·가상잔고(5), 매수 설정(12), NWS(4), 리스크 매니저(9), 레거시 리스크(3), 매도(11), 업종순위·필터(10), 슬라이더(3), 주문 간격(4), 수신율·구독한도(2), 종목별·브로커매핑(2), 스케줄러 토글(2), 타임테이블(4), UI(1), 수익요약(1), 텔레그램(5), 증권사 자격(동적), 시스템 설정(17).
+- 정규화 변환 패턴 11종, 저장 검증 규칙 14종, PATCH 후처리 디스패처 11분기 정리.
+- P10 SSOT 위반 후보 6건: `max_daily_loss_limit`/`daily_loss_limit` 중복, `max_single_stock_exposure`/`max_position_size` dead read, `tele_on`/`telegram_on` 복제, DEFAULT_SYSTEM_CONFIG 마켓시간 11키 vs 코드 상수, `boost_order_ratio_side` 레거시, `buy_interval_min` 레거시.
+- P21 투명성 후보 1건: `confirmed_data_broker` PATCH 후처리 누락 (변경 시 재기동 필요하나 사용자 안내 없음).
+- 검증 누락 키 다수: `buy_block_rise_pct`(양수만 허용해야 하나 검증 없음), `tp_val`/`ts_start_val`/`sell_offset`/`sell_custom_qty`/`max_daily_total_buy_amt`/`test_virtual_*` 등 수치 범위 검증 미존재.
+- 단일화 우선순위 5건: (1) `sector_stock_layout` 원본 SSOT 명확화, (2) `confirmed_data_broker` PATCH 후처리 추가, (3) 레거시 리스크 3키 dead read 제거, (4) `tele_on`/`telegram_on` 중복 제거, (5) 수치 검증 누락 키 추가.
+- 거래 관련 산재 1건(`trading.py`의 `time_scheduler_on` write)은 COUPLING-S1과 동일 변경 금지 범주.
+- 후속 세션에서 위 5개 우선순위 항목 중 1개만 별도 승인 후 진행 권장.
 
 #### 대상 코드
 
