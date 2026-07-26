@@ -588,31 +588,40 @@ export function applyBuyTargetsDelta(data: {
       for (const item of changed) {
         const idx = buyTargets.findIndex((t: SectorStock) => normalizeStockCode(t.code) === normalizeStockCode(item.code))
         if (idx >= 0) {
-          // 아키텍처 원칙 — sectorStocks가 실시간 데이터 단일 소스
+          // P10(SSOT) + P22(데이터 정합성): sectorStocks가 실시간 데이터 단일 소스.
+          // sectorStocks 누락 시 incoming 실시간 필드 유지 — applyBuyTargetsUpdate 결합 패턴과 동일 (P23 일관성).
           const sectorStock = state.sectorStocks[normalizeStockCode(item.code)]
-          buyTargets[idx] = {
-            ...item,
-            cur_price: sectorStock?.cur_price,
-            change: sectorStock?.change,
-            change_rate: sectorStock?.change_rate,
-            strength: sectorStock?.strength,
-            trade_amount: sectorStock?.trade_amount,
+          if (sectorStock) {
+            buyTargets[idx] = {
+              ...item,
+              cur_price: sectorStock.cur_price,
+              change: sectorStock.change,
+              change_rate: sectorStock.change_rate,
+              strength: sectorStock.strength,
+              trade_amount: sectorStock.trade_amount,
+            }
+          } else {
+            buyTargets[idx] = { ...item }
           }
         }
       }
     }
     if (added && added.length > 0) {
-      // 아키텍처 원칙 — sectorStocks가 실시간 데이터 단일 소스
+      // P10(SSOT) + P22(데이터 정합성): sectorStocks가 실시간 데이터 단일 소스.
+      // sectorStocks 누락 시 incoming 실시간 필드 유지 — applyBuyTargetsUpdate 결합 패턴과 동일 (P23 일관성).
       const addedWithRealtime = added.map(item => {
         const sectorStock = state.sectorStocks[normalizeStockCode(item.code)]
-        return {
-          ...item,
-          cur_price: sectorStock?.cur_price,
-          change: sectorStock?.change,
-          change_rate: sectorStock?.change_rate,
-          strength: sectorStock?.strength,
-          trade_amount: sectorStock?.trade_amount,
+        if (sectorStock) {
+          return {
+            ...item,
+            cur_price: sectorStock.cur_price,
+            change: sectorStock.change,
+            change_rate: sectorStock.change_rate,
+            strength: sectorStock.strength,
+            trade_amount: sectorStock.trade_amount,
+          }
         }
+        return { ...item }
       })
       buyTargets = buyTargets === state.buyTargets ? [...buyTargets, ...addedWithRealtime] : [...buyTargets, ...addedWithRealtime]
     }

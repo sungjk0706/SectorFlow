@@ -527,10 +527,9 @@ describe('hotStore — applyBuyTargetsDelta (COUPLING-S8 후속)', () => {
     expect(btC.strength).toBe(90)
   })
 
-  it('added: sectorStocks에 없는 종목은 정적 필드 유지, 실시간 필드는 undefined (인라인 블록 보존 동작)', () => {
-    // 참고: applyBuyTargetsUpdate는 sectorStocks 누락 시 incoming 실시간 필드 유지,
-    // 하지만 buy-targets-delta 인라인 블록은 sectorStock?.cur_price로 덮어씀 (undefined).
-    // 이는 기존 인라인 동작 — action 추출 시 보존. P23 불일치는 HANDOVER.md 발견 문제 기록.
+  it('added: sectorStocks에 없는 종목은 incoming 실시간 필드 유지 (applyBuyTargetsUpdate와 P23 일치)', () => {
+    // COUPLING-S8 후속2 — applyBuyTargetsUpdate는 sectorStocks 누락 시 incoming 실시간 필드 유지.
+    // applyBuyTargetsDelta도 동일 패턴으로 일치화 — undefined 덮어쓰기 제거 (P23 일관성).
     const added: SectorStock[] = [
       {
         code: '000005', name: '종목E', cur_price: 50000, change: 500, change_rate: 1.0,
@@ -543,9 +542,42 @@ describe('hotStore — applyBuyTargetsDelta (COUPLING-S8 후속)', () => {
     expect(btE.name).toBe('종목E')
     expect(btE.rank).toBe(5)
     expect(btE.sector).toBe('업종5')
-    // 실시간 필드는 sectorStocks에 없으므로 undefined (인라인 블록 보존 동작)
-    expect(btE.cur_price).toBeUndefined()
-    expect(btE.trade_amount).toBeUndefined()
+    // 실시간 필드도 incoming 값 유지 (sectorStocks에 없으므로 incoming 그대로)
+    expect(btE.cur_price).toBe(50000)
+    expect(btE.change).toBe(500)
+    expect(btE.change_rate).toBe(1.0)
+    expect(btE.trade_amount).toBe(9999)
+    expect(btE.strength).toBe(70)
+  })
+
+  it('changed: sectorStocks에 없는 종목은 incoming 실시간 필드 유지 (applyBuyTargetsUpdate와 P23 일치)', () => {
+    // COUPLING-S8 후속2 — changed 케이스도 added와 동일하게 incoming 유지.
+    // sectorStocks에 없는 종목의 changed 이벤트 수신 시 undefined 덮어쓰기 방지.
+    // 먼저 buyTargets에 000001 추가 (초기 상태에 이미 있음 — 종목A)
+    const changed: SectorStock[] = [
+      {
+        code: '000001', name: '종목A-리네임', cur_price: 9000, change: -100, change_rate: -1.0,
+        trade_amount: 1000, strength: 50, sector: '업종1', rank: 3, guard_pass: false, reason: 'r',
+      },
+    ]
+    // sectorStocks에서 000001 제거하여 누락 상태 시뮬레이션
+    const stateBefore = hotStore.getState()
+    const { ['000001']: _removed, ...remainingStocks } = stateBefore.sectorStocks
+    hotStore.setState({ sectorStocks: remainingStocks })
+
+    applyBuyTargetsDelta({ changed })
+
+    const btA = hotStore.getState().buyTargets.find(t => t.code === '000001')!
+    // 정적 필드는 changed 값으로 교체
+    expect(btA.name).toBe('종목A-리네임')
+    expect(btA.rank).toBe(3)
+    expect(btA.guard_pass).toBe(false)
+    // 실시간 필드도 incoming 값 유지 (sectorStocks에 없으므로 incoming 그대로)
+    expect(btA.cur_price).toBe(9000)
+    expect(btA.change).toBe(-100)
+    expect(btA.change_rate).toBe(-1.0)
+    expect(btA.trade_amount).toBe(1000)
+    expect(btA.strength).toBe(50)
   })
 
   it('added/removed/changed 동시 적용 시 순서대로 처리 (removed → changed → added)', () => {
