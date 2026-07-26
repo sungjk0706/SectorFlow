@@ -195,8 +195,8 @@ ws.onmessage (ws.ts:104)
 | 채널 | 핸들러 수 | 위험도 | 고위험 핸들러 (복잡 로직) |
 |------|-----------|--------|---------------------------|
 | prices | 25 | HIGH | `buy-targets-delta`(114-161), `sector-scores`(287-310), `sector-stocks-delta`(95-112), `sell-history-append`(234-242), `circuit_breaker_open`(318-322, showToast) |
-| settings | 6 | MEDIUM | `avg-amt-progress`(209-211, 다중 optional 필드), `bootstrap-stage`(205-207) |
-| orders | 2 | LOW | `order-filled`(220-222), `test-data-reset-completed`(225-227) — 단순 applyXxx 호출 |
+| settings | 4 | MEDIUM | `settings-changed`, `index-data`, `daily-summary-update` — ~~`avg-amt-progress`/`bootstrap-stage`~~ 2026-07-27 dead subscription 정리로 제거 |
+| orders | 1 | LOW | `test-data-reset-completed` — ~~`order-filled`~~ 2026-07-27 dead subscription 정리로 제거 |
 
 전 33개 핸들러가 내부 try/catch 없음. 단순 핸들러(orders 채널 등)는 applyXxx 내부 오류 가능성만 남고, 복잡 핸들러(prices 채널)는 핸들러 본문 자체 오류 가능성이 높음.
 
@@ -591,8 +591,8 @@ app.py lifespan (62):
 - `store.ts:40-46` listener 루프 try/catch + `console.error('[Store] listener error', e)` — **P25 준수** (F-02 fix). silent pass 아님 (P20 준수).
 - `store.ts:22-33` shallow merge + Object.is 변경 감지 — 변경된 키가 있을 때만 state 교체 + listener 통지. 불필요한 리렌더 방지. **P24 단순성 준수**.
 - `store.ts:49-54` subscribe/unsubscribe — Set 기반, 반환된 unsubscribe 함수로 정리. **P25 준수** (listener 누적 방지).
-- `hotStore.ts` apply* 함수 13개(`applyAccountUpdate`, `applyRealData`, `applyOrderbookUpdate`, `applyProgramUpdate`, `applyRealtimeReset`, `applyBuyTargetsUpdate`, `applySectorScores`, `applySectorStocksRefresh`, `applyOrderFilled`, `applySellHistoryUpdate`, `applyBuyHistoryUpdate`, `applyDailySummaryUpdate`, `applyInitialSnapshotHot`) — 모두 `hotStore.setState()` 경유. setState 내부 listener 루프 보호됨. **P25 준수** (updater 본문 제외 — A2-04-01).
-- `uiStore.ts` apply* 함수 16개(`applyAvgAmtProgress`, `applyBootstrapStage`, `applySettingsChanged`, `applyEngineReloadComplete`, `applyCircuitBreakerOpen`, `clearCircuitBreakerOpen`, `applyOrderTimeBlocked`, `clearOrderTimeBlocked`, `applyRiskBlockStatus`, `clearRiskBlockStatus`, `applyBuyLimitStatus`, `applyTestDataResetCompleted`, `applyWsSubscribeStatus`, `applyMarketPhase`, `applyIndexData`, `setSelectedSector`, `applyInitialSnapshotUI`) — 모두 `uiStore.setState()` 경유. **P25 준수** (updater 본문 제외 — A2-04-01).
+- `hotStore.ts` apply* 함수 12개(`applyAccountUpdate`, `applyRealData`, `applyOrderbookUpdate`, `applyProgramUpdate`, `applyRealtimeReset`, `applyBuyTargetsUpdate`, `applySectorScores`, `applySectorStocksRefresh`, `applySellHistoryUpdate`, `applyBuyHistoryUpdate`, `applyDailySummaryUpdate`, `applyInitialSnapshotHot`) — 모두 `hotStore.setState()` 경유. setState 내부 listener 루프 보호됨. **P25 준수** (updater 본문 제외 — A2-04-01). — ~~`applyOrderFilled`~~ 2026-07-27 제거 (dead subscription `order-filled` 정리)
+- `uiStore.ts` apply* 함수 15개(`applyAvgAmtProgress`, `applySettingsChanged`, `applyEngineReloadComplete`, `applyCircuitBreakerOpen`, `clearCircuitBreakerOpen`, `applyOrderTimeBlocked`, `clearOrderTimeBlocked`, `applyRiskBlockStatus`, `clearRiskBlockStatus`, `applyBuyLimitStatus`, `applyTestDataResetCompleted`, `applyWsSubscribeStatus`, `applyMarketPhase`, `applyIndexData`, `setSelectedSector`, `applyInitialSnapshotUI`) — 모두 `uiStore.setState()` 경유. **P25 준수** (updater 본문 제외 — A2-04-01). — ~~`applyBootstrapStage`~~ 2026-07-27 제거 (dead subscription `bootstrap-stage` 정리)
 - `stockClassificationStore.ts:34-45` `applyStockClassificationChanged` — `stockClassificationStore.setState()` 경유. **P25 준수**.
 - `hotStore.ts:98-109` `recalcTradeAmountRank` — `targets.filter().sort()` 후 rank 할당. 순수 함수, throw 가능성 낮음. 다만 `binding.ts:157` buy-targets-delta updater 내부에서 호출되므로 A2-04-01 경로에 포함.
 - `hotStore.ts:71-95` `rebuildBuyTargetIndex`/`rebuildPositionIndex` — Map 구축. 순수 함수. `binding.ts:158`에서 updater 내부 호출 — A2-04-01 경로 포함.

@@ -367,11 +367,6 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
   })
   header.appendChild(degradedModeChip)
 
-  // 앱준비 진행률 칩
-  const bootstrapChip = createChipEl()
-  bootstrapChip.style.display = 'none'
-  header.appendChild(bootstrapChip)
-
   // 설정 상태 칩: 자동매매, 자동매수, 자동매도, 텔레그램
   const autoTradeChip = createChipEl()
   autoTradeChip.style.display = 'none'
@@ -394,12 +389,10 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
   header.appendChild(kospiChip)
   header.appendChild(kosdaqChip)
 
-  const spinnerHtml = '<span style="display:inline-block;width:12px;height:12px;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;animation:header-spin 0.8s linear infinite"></span>'
-
   // ── Store 구독 ──
 
   function onStateChange(state: UIState): void {
-    const { marketPhase, bootstrapStage, engineReady, avgAmtProgress, status, settings, indexData, circuitBreakerOpen, orderTimeBlocked, riskBlockStatus, testCashFailed, positionBuildFailed, degradedMode } = state
+    const { marketPhase, avgAmtProgress, status, settings, indexData, circuitBreakerOpen, orderTimeBlocked, riskBlockStatus, testCashFailed, positionBuildFailed, degradedMode } = state
 
     // P25: 칩 단위 격리 — 각 칩 렌더링 throw 시 해당 칩만 미갱신 + 로깅, 다음 칩 계속
     // (F-02 잔존 위험 해결 — onStateChange 콜백 내부 칩 간 격리)
@@ -515,23 +508,6 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
         krxAlertChip.style.display = 'none'
       }
     } catch (e) { console.error('[header] krxAlert chip error', e) }
-
-    // 앱준비 진행률
-    try {
-      if (bootstrapStage && !engineReady) {
-        bootstrapChip.style.display = ''
-        bootstrapChip.style.background = '#f3e5f5'
-        bootstrapChip.style.color = '#6a1b9a'
-        bootstrapChip.style.border = '1px solid #6a1b9a20'
-        let text = ` ${bootstrapStage.stage_name}`
-        if (bootstrapStage.progress) {
-          text += ` (${bootstrapStage.progress.current}/${bootstrapStage.progress.total})`
-        }
-        bootstrapChip.innerHTML = spinnerHtml + text
-      } else {
-        bootstrapChip.style.display = 'none'
-      }
-    } catch (e) { console.error('[header] bootstrap chip error', e) }
 
     // 백그라운드 데이터 갱신
     try {

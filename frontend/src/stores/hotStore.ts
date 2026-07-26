@@ -686,17 +686,6 @@ export function applySectorStocksDelta(data: { added: SectorStock[]; removed: st
   })
 }
 
-/* ── order-filled: 체결 이벤트 -- 거래내역 테이블 즉시 갱신 ── */
-export function applyOrderFilled(data: Record<string, unknown>): void {
-  const side = data.side as string
-  const state = hotStore.getState()
-  if (side === 'BUY') {
-    hotStore.setState({ buyHistory: [data, ...state.buyHistory] })
-  } else if (side === 'SELL') {
-    hotStore.setState({ sellHistory: [data, ...state.sellHistory] })
-  }
-}
-
 /* ── sell-history-update: 매도 내역 갱신 ── */
 export function applySellHistoryUpdate(data: { sell_history: Record<string, unknown>[] }): void {
   hotStore.setState({ sellHistory: data.sell_history ?? [] })

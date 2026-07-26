@@ -11,7 +11,6 @@ import {
   applyBuyTargetsUpdate,
   applySectorStocksRefresh,
   applySectorStocksDelta,
-  applyOrderFilled,
   applyRealtimeReset,
   applySellHistoryUpdate,
   applyBuyHistoryUpdate,
@@ -24,7 +23,6 @@ import {
 } from './stores/hotStore'
 import {
   applySettingsChanged,
-  applyBootstrapStage,
   applyAvgAmtProgress,
   applyTestDataResetCompleted,
   applyInitialSnapshotUI,
@@ -180,22 +178,9 @@ export function bindWSToStore(
     applySettingsChanged(data as AppSettings)
   })
 
-  settingsClient.onEvent('engine-reload-complete', () => {
-    applyEngineReloadComplete()
-  })
-
   settingsClient.onEvent('index-data', (data) => {
     applyIndexData(data as IndexData)
   })
-
-  settingsClient.onEvent('bootstrap-stage', (data) => {
-    applyBootstrapStage(data as { stage_id: number; stage_name: string; total: number; progress?: { current: number; total: number } })
-  })
-
-  settingsClient.onEvent('avg-amt-progress', (data) => {
-    applyAvgAmtProgress(data as { current: number; total: number; done: boolean; message?: string; eta_sec?: number; status?: string; step?: number; failed_count?: number })
-  })
-
 
   settingsClient.onEvent('daily-summary-update', (data) => {
     applyDailySummaryUpdate(data as { daily_summary: Record<string, unknown>[] })
@@ -203,11 +188,6 @@ export function bindWSToStore(
 
 
   /* ── orders 채널 이벤트 핸들러 ── */
-  ordersClient.onEvent('order-filled', (data) => {
-    applyOrderFilled(data as Record<string, unknown>)
-  })
-
-
   ordersClient.onEvent('test-data-reset-completed', () => {
     applyTestDataResetCompleted()
   })

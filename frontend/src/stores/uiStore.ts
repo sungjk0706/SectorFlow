@@ -29,9 +29,6 @@ export interface UIState {
   /* ── 백그라운드 진행률 ── */
   avgAmtProgress: { current: number; total: number; done: boolean; message?: string; eta_sec?: number; status?: string; step?: number; failed_count?: number } | null
 
-  /* ── 부트스트랩 단계 ── */
-  bootstrapStage: { stage_id: number; stage_name: string; total: number; progress?: { current: number; total: number } } | null
-
   /* ── 장 상태 ── */
   marketPhase: {
     krx: string
@@ -94,7 +91,6 @@ const initialState: UIState = {
   initialized: false,
   engineReady: false,
   avgAmtProgress: null,
-  bootstrapStage: null,
   marketPhase: { krx: '장마감', nxt: '장마감', krx_alert: null, is_nxt_only: false },
   buyLimitStatus: { daily_buy_spent: 0 },
   wsSubscribeStatus: { index_subscribed: false, quote_subscribed: false },
@@ -138,10 +134,6 @@ export function applyAvgAmtProgress(data: { current: number; total: number; done
   }
 }
 
-export function applyBootstrapStage(data: { stage_id: number; stage_name: string; total: number; progress?: { current: number; total: number } } | null): void {
-  uiStore.setState({ bootstrapStage: data })
-}
-
 /* ── settings-changed: 설정만 갱신 (증분 갱신 대응) ── */
 export function applySettingsChanged(data: AppSettings | { delta: boolean; changed: Partial<AppSettings> }): void {
   if (data && 'delta' in data && data.delta) {
@@ -153,7 +145,7 @@ export function applySettingsChanged(data: AppSettings | { delta: boolean; chang
   }
 }
 
-/* ── engine-reload-complete: 설정 재로드 완료 + 서킷브레이커 알림 해제 ── */
+/* ── engine-ready: 엔진 준비 완료 + 서킷브레이커 알림 해제 ── */
 export function applyEngineReloadComplete(): void {
   uiStore.setState({ engineReloadComplete: true, circuitBreakerOpen: null })
 }

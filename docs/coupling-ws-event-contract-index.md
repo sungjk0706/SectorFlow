@@ -4,7 +4,7 @@
 > 세션: COUPLING-S3 (C-03)
 > 기준 파일: `backend/app/web/ws_manager.py`, `backend/app/services/engine_account_notify.py`, `frontend/src/binding.ts`, `frontend/src/stores/hotStore.ts`, `frontend/src/stores/uiStore.ts`, `frontend/src/stores/stockClassificationStore.ts`
 > 원칙: P5 직접 호출·Queue 경계 유지, P10 SSOT, P16 살아있는 경로, P21 사용자 투명성, P23 일관성, P24 단순성, P25 격리된 실패
-> 상태: 조사 전수 완료 (운영 코드 수정 없음, 인덱스 문서만 작성)
+> 상태: 조사 전수 완료 + 후속 dead subscription 4건 정리 완료 (2026-07-27)
 
 ---
 
@@ -65,7 +65,7 @@ WebSocket 이벤트의 **이름 · 채널 · producer · payload 필드 · Store
 | **정상 계약 (producer + consumer 일치)** | 30 | payload 필드 일치 또는 부분 일치 |
 | **payload 필드 불일치** | 2 | `ws-subscribe-status`(`index_subscribed` 누락), `account-update`(경량화/전체 분기) |
 | **다중 producer (동일 이벤트 다른 파일)** | 6 | `index-data`(4곳), `market-phase`(3곳), `stock-classification-changed`(3곳), `buy-targets-update`(2곳), `sector-stocks-refresh`(2곳), `engine-ready`(2곳), `circuit_breaker_open`(2곳) |
-| **프론트엔드 구독 + 백엔드 producer 누락 (P16/P21 위반)** | 4 | `engine-reload-complete`, `bootstrap-stage`, `avg-amt-progress`, `order-filled` |
+| **프론트엔드 구독 + 백엔드 producer 누락 (P16/P21 위반)** | ~~4~~ 0 | ~~`engine-reload-complete`, `bootstrap-stage`, `avg-amt-progress`, `order-filled`~~ — 2026-07-27 후속 세션에서 4건 전수 정리 완료 |
 | **네이밍 컨벤션 불일치 (P23)** | 6 | `circuit_breaker_open`, `order_time_blocked`, `risk_block_status`, `realtime_latency_status`, `daily_buy_state_status`, `test_cash_failed` (나머지 34개는 hyphen) |
 
 ### 2.2 이벤트 전체 목록 (이름 · 채널 · producer · consumer · 갱신 빈도)
@@ -101,12 +101,12 @@ WebSocket 이벤트의 **이름 · 채널 · producer · payload 필드 · Store
 | 27 | `daily_buy_state_status` | prices | `trading.py:118` (broadcast) | binding.ts:332 | `applyDailyBuyStateStatus` | 일일 매수 상태 로드 실패 시 |
 | 28 | `test_cash_failed` | prices | `trading.py:132` (broadcast) | binding.ts:337 | `applyTestCashFailed` | 테스트 예수금 검증 실패 시 (1회성) |
 | 29 | `settings-changed` | settings | `engine_account_notify.py:237` (broadcast) | binding.ts:180 | `applySettingsChanged` | 설정 변경 시 (전체/delta) |
-| 30 | `engine-reload-complete` | settings | **❌ 백엔드 producer 없음** | binding.ts:184 | `applyEngineReloadComplete` | (구독만 존재, dead subscription) |
+| 30 | ~~`engine-reload-complete`~~ | settings | ~~**❌ 백엔드 producer 없음**~~ | ~~binding.ts:184~~ | ~~`applyEngineReloadComplete`~~ | ☑ 2026-07-27 구독 제거 완료 |
 | 31 | `index-data` | settings | `engine_account_notify.py:195,215` (broadcast), `ws.py:146,155` (send_to) | binding.ts:188 | `applyIndexData` | 엔진 상태/업종지수 변경 시 |
-| 32 | `bootstrap-stage` | settings | **❌ 백엔드 producer 없음** | binding.ts:192 | `applyBootstrapStage` | (구독만 존재, dead subscription) |
-| 33 | `avg-amt-progress` | settings | **❌ 백엔드 producer 없음** | binding.ts:196 | `applyAvgAmtProgress` | (구독만 존재, dead subscription) |
+| 32 | ~~`bootstrap-stage`~~ | settings | ~~**❌ 백엔드 producer 없음**~~ | ~~binding.ts:192~~ | ~~`applyBootstrapStage`~~ | ☑ 2026-07-27 완전 제거 완료 |
+| 33 | ~~`avg-amt-progress`~~ | settings | ~~**❌ 백엔드 producer 없음**~~ | ~~binding.ts:196~~ | ~~`applyAvgAmtProgress`~~ | ☑ 2026-07-27 구독 제거 완료 |
 | 34 | `daily-summary-update` | settings | `trade_history.py:215` (broadcast) | binding.ts:201 | `applyDailySummaryUpdate` | 일일 요약 갱신 시 |
-| 35 | `order-filled` | orders | **❌ 백엔드 producer 없음** | binding.ts:207 | `applyOrderFilled` | (구독만 존재, dead subscription) |
+| 35 | ~~`order-filled`~~ | orders | ~~**❌ 백엔드 producer 없음**~~ | ~~binding.ts:207~~ | ~~`applyOrderFilled`~~ | ☑ 2026-07-27 구독 + 함수 제거 완료 |
 | 36 | `test-data-reset-completed` | orders | `settings.py:188` (broadcast) | binding.ts:212 | `applyTestDataResetCompleted` | 테스트 데이터 초기화 완료 시 |
 
 ---
@@ -317,10 +317,10 @@ WebSocket 이벤트의 **이름 · 채널 · producer · payload 필드 · Store
 - **수정 상태**: uiStore(`settings`)
 - **계약 상태**: ⚠️ 단일 producer이나 두 분기 (전체/delta). 프론트엔드 `AppSettings` 타입이 delta 분기(`{delta: true, changed: {...}}`)를 수용하는지 별도 검증 필요.
 
-#### `engine-reload-complete` — ❌ 백엔드 producer 없음
-- **Consumer**: binding.ts:184 → `applyEngineReloadComplete()`
-- **수정 상태**: uiStore(`engineReloadComplete`, `circuitBreakerOpen`)
-- **계약 상태**: ❌ **dead subscription (P16 위반)** — 백엔드에 producer 전혀 없음. `engine-ready`가 동일 액션 `applyEngineReloadComplete`를 호출하므로 기능적으로 중복 구독. §4 참조.
+#### `engine-reload-complete` — ☑ 2026-07-27 구독 제거 완료
+- **Consumer**: ~~binding.ts:184 → `applyEngineReloadComplete()`~~ 제거 완료
+- **수정 상태**: uiStore(`engineReloadComplete`, `circuitBreakerOpen`) — `engine-ready` 이벤트가 동일 액션 호출
+- **계약 상태**: ☑ **dead subscription 정리 완료** — `engine-ready`가 동일 액션 `applyEngineReloadComplete`를 호출하므로 중복 구독 제거. §4 참조.
 
 #### `index-data` (엔진 상태/업종지수)
 - **Producer**: `engine_account_notify.py:195` (`notify_desktop_header_refresh`, broadcast), `engine_account_notify.py:215` (`notify_index_data`, broadcast), `ws.py:146` (send_to, 연결 시 엔진 상태), `ws.py:155` (send_to, 연결 시 업종지수 캐시 재전송)
@@ -330,15 +330,15 @@ WebSocket 이벤트의 **이름 · 채널 · producer · payload 필드 · Store
 - **수정 상태**: uiStore(`indexData`, `status`, `marketPhase`)
 - **계약 상태**: ⚠️ 다중 producer (4곳), 두 가지 payload 형태 (엔진 상태/업종지수). 프론트엔드 `IndexData` 타입이 두 형태를 모두 수용하는지 별도 검증 필요.
 
-#### `bootstrap-stage` — ❌ 백엔드 producer 없음
-- **Consumer**: binding.ts:192 → `applyBootstrapStage({stage_id, stage_name, total, progress?})`
-- **수정 상태**: uiStore(`bootstrapStage`)
-- **계약 상태**: ❌ **dead subscription (P16/P21 위반)** — 백엔드에 producer 전혀 없음. 부트스트랩 단계 진행이 화면에 표시되지 않음.
+#### `bootstrap-stage` — ☑ 2026-07-27 완전 제거 완료
+- **Consumer**: ~~binding.ts:192 → `applyBootstrapStage({stage_id, stage_name, total, progress?})`~~ 제거 완료
+- **수정 상태**: ~~uiStore(`bootstrapStage`)~~ — state 필드, `applyBootstrapStage` 액션, `bootstrapChip` 모두 제거
+- **계약 상태**: ☑ **dead subscription 완전 제거 완료** — 백엔드 producer는 B-08(P16 정리)에서 제거됨. 프론트엔드 정리 누락이 원인. 부트 진행 표시는 기존 로딩 오버레이(`shell.ts` + `main.ts:200` "로딩 중…")가 단일 경로로 수행 (P21 유지).
 
-#### `avg-amt-progress` — ❌ 백엔드 producer 없음
-- **Consumer**: binding.ts:196 → `applyAvgAmtProgress({current, total, done, message?, eta_sec?, status?, step?, failed_count?})`
-- **수정 상태**: uiStore(`avgAmtProgress`)
-- **계약 상태**: ❌ **dead subscription (P16 위반)** — 백엔드에 producer 전혀 없음. `confirmed-progress`가 동일 액션 `applyAvgAmtProgress`를 호출하므로 기능적으로 중복 구독. §4 참조.
+#### `avg-amt-progress` — ☑ 2026-07-27 구독 제거 완료
+- **Consumer**: ~~binding.ts:196 → `applyAvgAmtProgress({current, total, done, message?, eta_sec?, status?, step?, failed_count?})`~~ 제거 완료
+- **수정 상태**: uiStore(`avgAmtProgress`) — `confirmed-progress` 이벤트가 동일 액션 호출
+- **계약 상태**: ☑ **dead subscription 정리 완료** — `confirmed-progress`가 동일 액션 `applyAvgAmtProgress`를 호출하므로 중복 구독 제거. 공유 함수는 유지. §4 참조.
 
 #### `daily-summary-update` (일일 요약 갱신)
 - **Producer**: `trade_history.py:215` (broadcast)
@@ -349,10 +349,10 @@ WebSocket 이벤트의 **이름 · 채널 · producer · payload 필드 · Store
 
 ### 3.3 orders 채널 — 체결 (이벤트 35~36)
 
-#### `order-filled` — ❌ 백엔드 producer 없음
-- **Consumer**: binding.ts:207 → `applyOrderFilled(data)`
-- **수정 상태**: hotStore(`buyHistory`, `sellHistory`)
-- **계약 상태**: ❌ **dead subscription (P16/P21 위반)** — 백엔드에 producer 전혀 없음. 체결 관련은 `buy-history-append`/`sell-history-append`로 대체된 것으로 추정. orders 채널의 유일한 비-ping 이벤트가 dead subscription이면 채널 자체가 사실상 미사용.
+#### `order-filled` — ☑ 2026-07-27 구독 + 함수 제거 완료
+- **Consumer**: ~~binding.ts:207 → `applyOrderFilled(data)`~~ 제거 완료
+- **수정 상태**: ~~hotStore(`buyHistory`, `sellHistory`)~~ — `applyOrderFilled` 함수도 제거 (오직 이 이벤트만 사용)
+- **계약 상태**: ☑ **dead subscription 정리 완료** — 체결 알림은 `buy-history-append`/`sell-history-append`로 대체됨. orders 채널은 `test-data-reset-completed` 이벤트가 남아 유지.
 
 #### `test-data-reset-completed` (테스트 데이터 초기화 완료)
 - **Producer**: `settings.py:188` (broadcast)
@@ -363,7 +363,7 @@ WebSocket 이벤트의 **이름 · 채널 · producer · payload 필드 · Store
 
 ---
 
-## 4. P16/P21 위반 후보 — 4개 dead subscription (프론트엔드 구독 + 백엔드 producer 누락)
+## 4. P16/P21 위반 후보 — 4개 dead subscription (프론트엔드 구독 + 백엔드 producer 누락) — ☑ 2026-07-27 정리 완료
 
 | 이벤트 | 채널 | 프론트엔드 구독 | 백엔드 producer | 동일 액션 대체 이벤트 | 위반 원칙 |
 |--------|------|----------------|----------------|---------------------|----------|
@@ -372,20 +372,20 @@ WebSocket 이벤트의 **이름 · 채널 · producer · payload 필드 · Store
 | `avg-amt-progress` | settings | binding.ts:196 | ❌ 없음 | `confirmed-progress` (동일 `applyAvgAmtProgress`) | P16 (dead code), P24 (중복 구독) |
 | `order-filled` | orders | binding.ts:207 | ❌ 없음 | `buy-history-append`/`sell-history-append` (유사 기능) | P16 (dead code), P21 (체결 알림 경로 불명확) |
 
-### 4.1 분석
+### 4.1 분석 — ☑ 2026-07-27 정리 완료
 
-- `engine-reload-complete` / `avg-amt-progress`: 동일 Store 액션을 호출하는 대체 이벤트가 존재하므로 기능 손실 없이 dead subscription 제거 가능. P24(단순성) 관점에서 중복 구독 정리 권장.
-- `bootstrap-stage`: 대체 이벤트가 없으며, 부트스트랩 단계 진행이 사용자에게 표시되지 않음. **P21(사용자 투명성) 위반**. 백엔드에서 부트스트랩 단계를 전송하는 producer를 추가하거나, 구독을 제거하고 `initial-snapshot`의 `bootstrapStage` 필드로 대체해야 함.
-- `order-filled`: 체결 알림이 `buy-history-append`/`sell-history-append`로 대체된 것으로 추정되나, orders 채널의 유일한 비-ping 이벤트가 dead subscription이면 orders 채널 자체가 사실상 미사용 상태. 채널 분리 목적(시세 폭주 격리)이 무의미해짐.
+- `engine-reload-complete` / `avg-amt-progress`: 동일 Store 액션을 호출하는 대체 이벤트가 존재하므로 기능 손실 없이 dead subscription 제거 완료. 구독만 제거 (공유 함수 `applyEngineReloadComplete`/`applyAvgAmtProgress`는 alive 이벤트 `engine-ready`/`confirmed-progress`가 호출하므로 유지).
+- `bootstrap-stage`: 백엔드 producer는 B-08(P16 정리)에서 `BOOTSTRAP_STAGES` + `_broadcast_bootstrap_stage` 제거됨. 프론트엔드 정리 누락이 원인. 구독 + `applyBootstrapStage` 액션 + `bootstrapStage` state + `bootstrapChip` + test fixture 완전 제거. 부트 진행 표시는 기존 로딩 오버레이(`shell.ts` + `main.ts:200` "로딩 중…")가 단일 경로로 수행 (P21 유지).
+- `order-filled`: 체결 알림은 `buy-history-append`/`sell-history-append`로 대체됨. 구독 + `applyOrderFilled` 함수 제거. orders 채널은 `test-data-reset-completed` 이벤트가 남아 유지.
 
-### 4.2 후속 조치 우선순위
+### 4.2 후속 조치 우선순위 — ☑ 전체 완료
 
-| 순위 | 이벤트 | 조치 | 위험도 |
-|------|--------|------|--------|
-| 1 | `bootstrap-stage` | producer 추가 또는 구독 제거 + `initial-snapshot` 필드 대체 | 높음 (P21 위반, 사용자 투명성) |
-| 2 | `order-filled` | 구독 제거 + orders 채널 존재 의미 검토 | 중간 (채널 분리 설계 영향) |
-| 3 | `engine-reload-complete` | 구독 제거 (`engine-ready`로 충분) | 낮음 (중복 제거) |
-| 4 | `avg-amt-progress` | 구독 제거 (`confirmed-progress`로 충분) | 낮음 (중복 제거) |
+| 순위 | 이벤트 | 조치 | 위험도 | 상태 |
+|------|--------|------|--------|------|
+| 1 | `bootstrap-stage` | 구독 + state + action + chip + test fixture 완전 제거 | 높음 (P21 위반) | ☑ 완료 |
+| 2 | `order-filled` | 구독 + `applyOrderFilled` 함수 제거 | 중간 (채널 분리 설계 영향) | ☑ 완료 |
+| 3 | `engine-reload-complete` | 구독 제거 (`engine-ready`로 충분) | 낮음 (중복 제거) | ☑ 완료 |
+| 4 | `avg-amt-progress` | 구독 제거 (`confirmed-progress`로 충분) | 낮음 (중복 제거) | ☑ 완료 |
 
 ---
 
@@ -518,35 +518,35 @@ WS 이벤트 (real-data / orderbook-update / program-update)
 - **영향**: 동일 데이터가 두 경로로 전송되어 `receiveRate` 상태가 이벤트 순서에 따라 덮어쓰기됨. P10(SSOT) 관점에서 단일 경로 권장.
 - **조치**: `sector-scores`의 `status.receive_rate` 제거 또는 `receive-rate` 이벤트 제거 검토. 단, `sector-scores`가 delta 전송 시 `status` 블록이 항상 포함되므로 `receive-rate` 단독 이벤트가 더 적합할 수 있음.
 
-### 9.2 `engine-ready` vs `engine-reload-complete` (동일 액션)
+### 9.2 `engine-ready` vs `engine-reload-complete` (동일 액션) — ☑ 2026-07-27 정리 완료
 
 - `engine-ready`: 백엔드 producer 존재, `applyEngineReloadComplete()` 호출
-- `engine-reload-complete`: 백엔드 producer 없음 (dead subscription), 동일 `applyEngineReloadComplete()` 호출
+- `engine-reload-complete`: ~~백엔드 producer 없음 (dead subscription), 동일 `applyEngineReloadComplete()` 호출~~ — 구독 제거 완료
 - **영향**: `engine-reload-complete` 구독 제거 시 기능 손실 없음.
-- **조치**: `engine-reload-complete` 구독 제거 권장 (§4 순위 3).
+- **조치**: ☑ `engine-reload-complete` 구독 제거 완료 (§4 순위 3).
 
-### 9.3 `confirmed-progress` vs `avg-amt-progress` (동일 액션)
+### 9.3 `confirmed-progress` vs `avg-amt-progress` (동일 액션) — ☑ 2026-07-27 정리 완료
 
 - `confirmed-progress`: 백엔드 producer 존재, `applyAvgAmtProgress()` 호출
-- `avg-amt-progress`: 백엔드 producer 없음 (dead subscription), 동일 `applyAvgAmtProgress()` 호출
+- `avg-amt-progress`: ~~백엔드 producer 없음 (dead subscription), 동일 `applyAvgAmtProgress()` 호출~~ — 구독 제거 완료
 - **영향**: `avg-amt-progress` 구독 제거 시 기능 손실 없음.
-- **조치**: `avg-amt-progress` 구독 제거 권장 (§4 순위 4).
+- **조치**: ☑ `avg-amt-progress` 구독 제거 완료 (§4 순위 4).
 
 ---
 
 ## 10. 단일화 우선순위 (후속 세션 권장)
 
-| 순위 | 항목 | 조치 | 위험도 | 관련 원칙 |
-|------|------|------|--------|----------|
-| 1 | `bootstrap-stage` dead subscription | producer 추가 또는 구독 제거 + `initial-snapshot` 필드 대체 | 높음 | P21, P16 |
-| 2 | `ws-subscribe-status` payload 불일치 | `index_subscribed` 필드 추가 또는 프론트엔드 타입 제거 | 중간 | P21, P23 |
-| 3 | `order-filled` dead subscription + orders 채널 검토 | 구독 제거 + orders 채널 존재 의미 검토 | 중간 | P16, P24 |
-| 4 | `index-data` 다중 producer + payload 혼용 | 엔진 상태/업종지수 이벤트 분리 검토 | 중간 | P10, P23, P24 |
-| 5 | `engine-reload-complete` / `avg-amt-progress` 중복 구독 제거 | 구독 제거 (동일 액션 대체 이벤트 존재) | 낮음 | P16, P24 |
-| 6 | `receive-rate` / `sector-scores.status.receive_rate` 중복 경로 | 단일 경로로 통일 | 낮음 | P10, P24 |
-| 7 | `market-phase` 부분 payload 통일 | 부분 payload 전송을 전체 payload로 통일 | 낮음 | P23 |
-| 8 | 6개 underscore 이벤트 hyphen 통일 | 네이밍 컨벤션 통일 (producer 6곳 + binding 6곳 + 테스트) | 낮음 | P23 |
-| 9 | `account-update` / `settings-changed` payload 분기 정리 | 분기를 별도 이벤트로 분리 또는 optional 필드 명시 | 낮음 | P23 |
+| 순위 | 항목 | 조치 | 위험도 | 관련 원칙 | 상태 |
+|------|------|------|--------|----------|------|
+| 1 | `bootstrap-stage` dead subscription | 구독 + state + action + chip + test fixture 완전 제거 | 높음 | P21, P16 | ☑ 완료 |
+| 2 | `ws-subscribe-status` payload 불일치 | `index_subscribed` 필드 추가 또는 프론트엔드 타입 제거 | 중간 | P21, P23 | ☐ |
+| 3 | `order-filled` dead subscription + orders 채널 검토 | 구독 + `applyOrderFilled` 함수 제거 (orders 채널은 `test-data-reset-completed`로 유지) | 중간 | P16, P24 | ☑ 완료 |
+| 4 | `index-data` 다중 producer + payload 혼용 | 엔진 상태/업종지수 이벤트 분리 검토 | 중간 | P10, P23, P24 | ☐ |
+| 5 | `engine-reload-complete` / `avg-amt-progress` 중복 구독 제거 | 구독 제거 (동일 액션 대체 이벤트 존재, 공유 함수는 유지) | 낮음 | P16, P24 | ☑ 완료 |
+| 6 | `receive-rate` / `sector-scores.status.receive_rate` 중복 경로 | 단일 경로로 통일 | 낮음 | P10, P24 | ☐ |
+| 7 | `market-phase` 부분 payload 통일 | 부분 payload 전송을 전체 payload로 통일 | 낮음 | P23 | ☐ |
+| 8 | 6개 underscore 이벤트 hyphen 통일 | 네이밍 컨벤션 통일 (producer 6곳 + binding 6곳 + 테스트) | 낮음 | P23 | ☐ |
+| 9 | `account-update` / `settings-changed` payload 분기 정리 | 분기를 별도 이벤트로 분리 또는 optional 필드 명시 | 낮음 | P23 | ☐ |
 
 > 후속 세션에서는 위 9개 항목 중 1개만 별도 승인 후 진행 권장. 규칙 0-1(세션당 1단계) 준수.
 
@@ -557,14 +557,19 @@ WS 이벤트 (real-data / orderbook-update / program-update)
 ### 11.1 정적 대조 (이벤트명 + payload 필드)
 
 - 프론트엔드 구독 36개 이벤트 ↔ 백엔드 producer 1:1 대조 완료
-- 4개 dead subscription 식별 (`engine-reload-complete`, `bootstrap-stage`, `avg-amt-progress`, `order-filled`) — 백엔드 `backend/` 전체 grep으로 producer 0건 확인
+- 4개 dead subscription 식별 (`engine-reload-complete`, `bootstrap-stage`, `avg-amt-progress`, `order-filled`) — 백엔드 `backend/` 전체 grep으로 producer 0건 확인 → **2026-07-27 후속 세션에서 4건 전수 정리 완료**
 - 2개 payload 필드 불일치 식별 (`ws-subscribe-status`, `account-update` 분기)
 - 6개 네이밍 컨벤션 불일치 식별 (underscore 6개 vs hyphen 34개)
 - 3개 중복 데이터 전송 경로 식별 (`receive-rate`/`sector-scores`, `engine-ready`/`engine-reload-complete`, `confirmed-progress`/`avg-amt-progress`)
 
-### 11.2 코드 수정 없음
+### 11.2 코드 수정 — 2026-07-27 후속 세션에서 dead subscription 4건 정리 완료
 
-본 세션은 조사·인덱스 문서 작성만 수행. 운영 코드(backend/frontend) 수정 없음. 후속 세션에서 위 9개 우선순위 항목 중 1개만 별도 승인 후 진행.
+본 세션(COUPLING-S3)은 조사·인덱스 문서 작성만 수행. 후속 세션(2026-07-27)에서 dead subscription 4건 전수 정리 완료:
+- `bootstrap-stage`: 구독 + `applyBootstrapStage` + `bootstrapStage` state + `bootstrapChip` + `spinnerHtml` + test fixture 제거
+- `order-filled`: 구독 + `applyOrderFilled` 함수 제거
+- `engine-reload-complete`: 구독만 제거 (공유 함수 `applyEngineReloadComplete`는 `engine-ready`가 호출하므로 유지)
+- `avg-amt-progress`: 구독만 제거 (공유 함수 `applyAvgAmtProgress`는 `confirmed-progress`가 호출하므로 유지)
+- 검증: typecheck ✓, build ✓ (97 modules), 218 tests ✓ (회귀 0건)
 
 ### 11.3 검증 명령어 (후속 세션에서 코드 수정 시)
 

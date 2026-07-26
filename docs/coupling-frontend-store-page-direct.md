@@ -13,8 +13,8 @@
 
 | Store | 파일:줄 | 상태 인터페이스 | 필드 수 | 공개 action 수 | 공개 헬퍼 수 |
 |-------|---------|----------------|---------|----------------|--------------|
-| `hotStore` | `frontend/src/stores/hotStore.ts:60` | `HotState` | 8 | 13 (`applyAccountUpdate`/`applyRealData`/`applyOrderbookUpdate`/`applyProgramUpdate`/`applyRealtimeReset`/`applyBuyTargetsUpdate`/`applySectorScores`/`applySectorStocksRefresh`/`applySectorStocksDelta`/`applyOrderFilled`/`applySellHistoryUpdate`/`applyBuyHistoryUpdate`/`applyDailySummaryUpdate`/`applyInitialSnapshotHot`) | 4 (`normalizeStockCode`/`stocksToMap`/`rebuildBuyTargetIndex`/`rebuildPositionIndex`/`getBuyTargetIndex`/`getPositionIndex`/`flushTickBatch`) |
-| `uiStore` | `frontend/src/stores/uiStore.ts:116` | `UIState` | 24 | 22 (`applyAvgAmtProgress`/`applyBootstrapStage`/`applySettingsChanged`/`applyEngineReloadComplete`/`applyCircuitBreakerOpen`/`clearCircuitBreakerOpen`/`applyOrderTimeBlocked`/`clearOrderTimeBlocked`/`applyRiskBlockStatus`/`clearRiskBlockStatus`/`applyBuyLimitStatus`/`applyRealtimeLatencyStatus`/`applyDailyBuyStateStatus`/`applyTestCashFailed`/`clearTestCashFailed`/`clearPositionBuildFailed`/`clearDegradedMode`/`applyTestDataResetCompleted`/`applyWsSubscribeStatus`/`applyMarketPhase`/`applyIndexData`/`setSelectedSector`/`applyInitialSnapshotUI`) | 0 |
+| `hotStore` | `frontend/src/stores/hotStore.ts:60` | `HotState` | 8 | 12 (`applyAccountUpdate`/`applyRealData`/`applyOrderbookUpdate`/`applyProgramUpdate`/`applyRealtimeReset`/`applyBuyTargetsUpdate`/`applySectorScores`/`applySectorStocksRefresh`/`applySectorStocksDelta`/`applySellHistoryUpdate`/`applyBuyHistoryUpdate`/`applyDailySummaryUpdate`/`applyInitialSnapshotHot`) — ~~`applyOrderFilled`~~ 2026-07-27 제거 | 4 (`normalizeStockCode`/`stocksToMap`/`rebuildBuyTargetIndex`/`rebuildPositionIndex`/`getBuyTargetIndex`/`getPositionIndex`/`flushTickBatch`) |
+| `uiStore` | `frontend/src/stores/uiStore.ts:116` | `UIState` | 23 | 21 (`applyAvgAmtProgress`/`applySettingsChanged`/`applyEngineReloadComplete`/`applyCircuitBreakerOpen`/`clearCircuitBreakerOpen`/`applyOrderTimeBlocked`/`clearOrderTimeBlocked`/`applyRiskBlockStatus`/`clearRiskBlockStatus`/`applyBuyLimitStatus`/`applyRealtimeLatencyStatus`/`applyDailyBuyStateStatus`/`applyTestCashFailed`/`clearTestCashFailed`/`clearPositionBuildFailed`/`clearDegradedMode`/`applyTestDataResetCompleted`/`applyWsSubscribeStatus`/`applyMarketPhase`/`applyIndexData`/`setSelectedSector`/`applyInitialSnapshotUI`) — ~~`applyBootstrapStage`~~ 2026-07-27 제거 | 0 |
 | `stockClassificationStore` | `frontend/src/stores/stockClassificationStore.ts:31` | `StockClassificationState` | 6 | 1 (`applyStockClassificationChanged`) | 1 (`computeEditWindowOpenByTime`) |
 
 공개 API는 `store.ts:createStore<T>`가 반환하는 3개 메서드 (`getState`/`setState`/`subscribe`)와 각 Store 모듈이 추가로 export 하는 action 함수로 이원화. **action 함수는 내부적으로 `store.setState()`를 호출** — 외부에서 `setState`를 직접 부르는 것은 action 우회.
@@ -68,8 +68,10 @@ export interface StoreApi<T> {
 
 ### 2.3 `uiStore` — 저빈도 UI 상태 (사용자 인터랙션 + WS 상태)
 
-- **24개 상태 필드**: `settings` / `status` / `sectorStatus` / `selectedSector` / `initialized` / `engineReady` / `avgAmtProgress` / `bootstrapStage` / `marketPhase` / `buyLimitStatus` / `wsSubscribeStatus` / `sectorScoresDelta` / `sectorSummary` / `engineReloadComplete` / `receiveRate` / `indexData` / `circuitBreakerOpen` / `orderTimeBlocked` / `riskBlockStatus` / `realtimeLatencyExceeded` / `dailyBuyStateFailed` / `testCashFailed` / `positionBuildFailed` / `degradedMode`
-- **22개 action 함수**: WS 이벤트 → action → `uiStore.setState()` 단일 경로. 사용자 클릭 해제 action 6개 (`clearCircuitBreakerOpen`/`clearOrderTimeBlocked`/`clearRiskBlockStatus`/`clearTestCashFailed`/`clearPositionBuildFailed`/`clearDegradedMode`).
+- **23개 상태 필드**: `settings` / `status` / `sectorStatus` / `selectedSector` / `initialized` / `engineReady` / `avgAmtProgress` / `marketPhase` / `buyLimitStatus` / `wsSubscribeStatus` / `sectorScoresDelta` / `sectorSummary` / `engineReloadComplete` / `receiveRate` / `indexData` / `circuitBreakerOpen` / `orderTimeBlocked` / `riskBlockStatus` / `realtimeLatencyExceeded` / `dailyBuyStateFailed` / `testCashFailed` / `positionBuildFailed` / `degradedMode`
+  - ~~`bootstrapStage`~~ — 2026-07-27 제거 (dead subscription `bootstrap-stage` 정리, COUPLING-S3 후속)
+- **21개 action 함수**: WS 이벤트 → action → `uiStore.setState()` 단일 경로. 사용자 클릭 해제 action 6개 (`clearCircuitBreakerOpen`/`clearOrderTimeBlocked`/`clearRiskBlockStatus`/`clearTestCashFailed`/`clearPositionBuildFailed`/`clearDegradedMode`).
+  - ~~`applyBootstrapStage`~~ — 2026-07-27 제거 (dead subscription `bootstrap-stage` 정리)
 - **`applyAvgAmtProgress` 자동 숨김**: `data.done && status === 'completed'|'confirmed'` 시 3초 후 `setTimeout`으로 `avgAmtProgress: null` (하위 호환: status 없이 done=true → 즉시 숨김)
 - **`applyIndexData` 다중 patch**: 한 이벤트에서 `indexData` + `status.broker_statuses` + `marketPhase` 3필드 동시 갱신 (단일 setState)
 
@@ -109,7 +111,7 @@ export interface StoreApi<T> {
 | `initialized` | `applyInitialSnapshotUI` | (현재 직접 consumer 없음) | 부트 1회 | △ |
 | `engineReady` | `applyInitialSnapshotUI` | (현재 직접 consumer 없음) | 부트 1회 | △ |
 | `avgAmtProgress` | `applyAvgAmtProgress` | (헤더/설정 화면에서 진행률 표시 — `layout/header.ts` 간접) | 진행률 이벤트 | O (평균거래액 진행률) |
-| `bootstrapStage` | `applyBootstrapStage` | (부트스트랩 단계 표시) | 부트 단계 | O (부트 진행률) |
+| ~~`bootstrapStage`~~ | ~~`applyBootstrapStage`~~ | ~~(부트스트랩 단계 표시)~~ | ~~부트 단계~~ | ☑ 2026-07-27 제거 (dead subscription 정리) |
 | `marketPhase` | `applyMarketPhase` / `applyIndexData` / `applyInitialSnapshotUI` | `layout/header:597,600,604` / `sector-settings:162,230,252,369` | 중빈도 | O (헤더 장 상태 칩, 설정 수신율) |
 | `buyLimitStatus` | `applyBuyLimitStatus` / `applyTestDataResetCompleted` / `applyInitialSnapshotUI` | (매수 한도 표시 — `buy-target` 배지 간접) | 중빈도 | O (매수 한도 배지) |
 | `wsSubscribeStatus` | `applyWsSubscribeStatus` / `applyInitialSnapshotUI` | `sector-stock:setupSubscriptions` | 중빈도 | O (구독 상태 기반 새로고침) |

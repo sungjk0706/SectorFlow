@@ -19,7 +19,6 @@ function makeCleanUiState(): UIState {
     initialized: true,
     engineReady: true,
     avgAmtProgress: null,
-    bootstrapStage: null,
     marketPhase: { krx: '장중', nxt: '장중', krx_alert: null, is_nxt_only: false },
     buyLimitStatus: { daily_buy_spent: 0 },
     wsSubscribeStatus: { index_subscribed: true, quote_subscribed: true },
