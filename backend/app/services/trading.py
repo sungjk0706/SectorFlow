@@ -134,6 +134,34 @@ async def _broadcast_test_cash_failed(*, stk_cd: str, reason: str) -> None:
         logger.warning("[매매] test-cash-failed 브로드캐스트 실패", exc_info=True)
 
 
+async def _handle_order_failure() -> None:
+    """주문 전송 실패 공통 후처리 — RiskManager 실패 보고 + 서킷브레이커 차단 시 마스터 스위치 강제 OFF.
+
+    매수/매도 execute_* 주문 전송 실패 공통 후처리 (P24 중복 제거).
+    record_order_failure() → circuit_breaker OPEN 시 time_scheduler_on=False +
+    circuit-breaker-open 브로드캐스트 + header_refresh + settings_toggled + 에러 로그.
+    P16(살아있는 경로): execute_buy/execute_sell 내부에서 호출.
+    P18(테스트모드 동등성): 모드 무관 동일 동작.
+    P25(격리된 실패): 리스크 매니저 실패 시 warning 로그 후 차단.
+    """
+    try:
+        risk_mgr = get_risk_manager()
+        risk_mgr.record_order_failure()
+        # 서킷브레이커 차단 시 마스터 스위치 강제 OFF
+        if risk_mgr.circuit_breaker.get_state() == "OPEN":
+            from backend.app.services.engine_state import state
+            from backend.app.services.engine_account_notify import _broadcast, notify_desktop_header_refresh, notify_desktop_settings_toggled
+            state.integrated_system_settings_cache["time_scheduler_on"] = False
+            await _broadcast("circuit-breaker-open", {
+                "message": "서킷브레이커 차단 — 자동매매 마스터 스위치 강제 OFF",
+            })
+            await notify_desktop_header_refresh()
+            await notify_desktop_settings_toggled({"time_scheduler_on": False})
+            logger.error("[매매] 서킷브레이커 차단 — 자동매매 마스터 스위치 강제 OFF")
+    except Exception:
+        logger.warning("[매매] 리스크 관리자 실패 보고 실패", exc_info=True)
+
+
 class AutoTradeManager:
     """자동매매 관리 - get_settings_fn으로 매번 최신 설정 로드."""
 
@@ -427,22 +455,7 @@ class AutoTradeManager:
             if _reserved_cost > 0:
                 await settlement_engine.release_buy_power(_reserved_cost)
                 _reserved_cost = 0
-            try:
-                risk_mgr = get_risk_manager()
-                risk_mgr.record_order_failure()
-                # 서킷브레이커 차단 시 마스터 스위치 강제 OFF
-                if risk_mgr.circuit_breaker.get_state() == "OPEN":
-                    from backend.app.services.engine_state import state
-                    from backend.app.services.engine_account_notify import _broadcast, notify_desktop_header_refresh, notify_desktop_settings_toggled
-                    state.integrated_system_settings_cache["time_scheduler_on"] = False
-                    await _broadcast("circuit-breaker-open", {
-                        "message": "서킷브레이커 차단 — 자동매매 마스터 스위치 강제 OFF",
-                    })
-                    await notify_desktop_header_refresh()
-                    await notify_desktop_settings_toggled({"time_scheduler_on": False})
-                    logger.error("[매매] 서킷브레이커 차단 — 자동매매 마스터 스위치 강제 OFF")
-            except Exception:
-                logger.warning("[매매] 리스크 관리자 실패 보고 실패", exc_info=True)
+            await _handle_order_failure()
             return False, BUY_REJECT_ORDER_FAIL
 
         # ── 저널링: 주문 요청 기록 ─────────────────────────────────────────────
@@ -636,22 +649,7 @@ class AutoTradeManager:
             self._recent_sells.discard(stk_cd)
             logger.info("[매매] [매도] %s 주문 전송 실패: %s", stk_nm, result.get('msg', '알 수 없음'))
             _fire_and_forget_telegram(f"⚠️ [매도실패] {stk_nm}({stk_cd}) 주문 전송 실패: {result.get('msg', '알 수 없음')}", base_settings)
-            try:
-                risk_mgr = get_risk_manager()
-                risk_mgr.record_order_failure()
-                # 서킷브레이커 차단 시 마스터 스위치 강제 OFF
-                if risk_mgr.circuit_breaker.get_state() == "OPEN":
-                    from backend.app.services.engine_state import state
-                    from backend.app.services.engine_account_notify import _broadcast, notify_desktop_header_refresh, notify_desktop_settings_toggled
-                    state.integrated_system_settings_cache["time_scheduler_on"] = False
-                    await _broadcast("circuit-breaker-open", {
-                        "message": "서킷브레이커 차단 — 자동매매 마스터 스위치 강제 OFF",
-                    })
-                    await notify_desktop_header_refresh()
-                    await notify_desktop_settings_toggled({"time_scheduler_on": False})
-                    logger.error("[매매] 서킷브레이커 차단 — 자동매매 마스터 스위치 강제 OFF")
-            except Exception:
-                logger.warning("[매매] 리스크 관리자 실패 보고 실패", exc_info=True)
+            await _handle_order_failure()
             return False
 
         # ── 매도 주문 전송 성공 — 간격 타이머 갱신 (P22: 실제 실행만 기록) ──
