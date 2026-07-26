@@ -38,7 +38,7 @@
 | COUPLING-S3 | P1 | C-03 WebSocket 이벤트 계약 인덱스 | ☑ | `docs/coupling-ws-event-contract-index.md` 작성 (575줄). WS 36개 구독 이벤트 + 4개 dead subscription 전수 인덱스화. 3 채널(prices/settings/orders) 구조, 40개 이벤트 producer/consumer/payload/Store 액션/CustomEvent 배칭 매트릭스. 코드 수정 없음(조사·문서만). P16/P21 위반 4건(dead subscription), P23 위반 8건(네이밍 6 + payload 불일치 2), P10/P24 위반 3건(중복 경로), 단일화 우선순위 9건 식별. |
 | COUPLING-S4 | P0 | C-04 주문 호출 그래프 | ☑ | safe-trade 점검, 주문·리스크 테스트, RuntimeWarning 기동 |
 | COUPLING-S5 | P1 | C-05 파이프라인 경계 | ☑ | `docs/coupling-pipeline-boundary.md` 작성 (608줄). scheduler→pipeline→compute→candidate→notification 단계별 호출 그래프 + 소유 캐시·DB 저장·WS 진행률·주문 후보 side effect 매트릭스. 코드 수정 없음(조사·문서만). P8/P9/P10/P11/P16/P20/P24/P25 점검 완료. 개선 후보 4건 식별(후처리 헬퍼 추출 1순위, 낮은 위험). |
-| COUPLING-S6 | 중간 | C-06 브로커 core 역참조 | ☐ | import 방향·계약 대조, 브로커·WS 테스트, RuntimeWarning 기동 |
+| COUPLING-S6 | 중간 | C-06 브로커 core 역참조 | ☑ | `docs/coupling-broker-core-backref.md` 작성 (436줄). core→services 역참조 33건(키움 19 + LS 14) + 부수 17건 전수 매트릭스화. 8개 유형 분류(A 상태동기화/B 설정읽기/C 토큰재사용/D ACK전송/E 키움REG빌더/F 순수함수/G WS상태브로드캐스트/H LS전용후처리). P4/P10/P16/P20/P23/P24/P25 점검 완료. 개선 후보 5건 식별(1순위: 키움 REG 빌더 이동, 낮은 위험, P4/P23 동시 개선). 코드 수정 없음(조사·문서만). |
 | COUPLING-S7 | 중간 | C-07 종목코드 정규화 표현 | ☐ | 입력/출력 경계 테스트, 백엔드 테스트, typecheck/build |
 | COUPLING-S8 | 중간 | C-08 Store·페이지 직접 결합 | ☐ | producer/consumer 대조, 프론트 테스트, typecheck/build·브라우저 |
 | COUPLING-S9 | 낮음~중간 | C-09 대형 프론트엔드 파일 | ☐ | fan-in/fan-out 검토, 관련 테스트, typecheck/build·브라우저 |
@@ -252,8 +252,18 @@
 
 ### 세션 COUPLING-S6 — C-06 브로커 core의 services 역참조
 
-**상태:** ☐ 미시작
+**상태:** ☑ 완료 (역참조 매트릭스 문서 작성)
 **대상 원칙:** P4 증권사명 공통 침투 금지, P10 SSOT, P16 살아있는 경로, P23 계층 일관성, P24 단순성, P25 격리된 실패
+**결과:** `docs/coupling-broker-core-backref.md`에 core→services 역참조 33건(키움 19 + LS 14) + 부수 17건 전수 매트릭스 작성. 코드 수정 없음(조사·문서만).
+- 역참조 8개 유형 분류: A(상태동기화 8), B(설정읽기 5), C(토큰재사용 4), D(ACK전송 6), E(키움REG빌더 5), F(순수함수 8), G(WS상태브로드캐스트 6), H(LS전용후처리 3).
+- P4 위반 후보 1건: 키움 REG 빌더 5종이 services/engine_ws_reg.py에 침투. LS는 자체 페이로드 조립(ls_connector 내부)으로 P4 준수.
+- P10 준수: state.login_ok/ws_connection_status/broker_rest_apis/integrated_system_settings_cache 단일 소유. 역참조는 갱신/읽기만.
+- P25 준수: 모든 역참조 try/except + logger.warning(exc_info=True) 격리. silent except 0건.
+- 키움 vs LS 비대칭: 키움 ACK 기반 순차 전송, LS fire-and-forget. LS는 소켓 연결=로그인(별도 LOGIN 단계 없음) → 커넥터에서 _notify_reg_ack + _trigger_reg_pipeline 직접 호출.
+- 개선 후보 5건: (1) 키움 REG 빌더 이동 core/kiwoom_ws_reg.py(낮음, P4/P23, 1순위), (2) 순수 함수 유틸 core 이동(낮음, P23), (3) 연결 생명주기 콜백 인터페이스(중간, P23), (4) LS 전용 로그인 후처리 콜백(중간, P23), (5) state.broker_rest_apis 재사용(현행 유지 적합).
+- 변경 금지 항목 10건 식별(state.login_ok 단일 소유, broker_rest_apis 재사용, broadcast_ws_connection_status 게이트, 키움 ACK 프로토콜, LS 소켓=로그인, 재연결 백오프, Queue 누락 정책, try/except 격리, _LazyBrokerRegistry, gather(return_exceptions=True)).
+- 테스트 커버리지: test_kiwoom_connector 32건 patch, test_ls_connector 19건 patch로 역참조 전수 모킹.
+- 후속 개선은 5개 후보 중 1개만 별도 승인 후 진행 권장 — 1순위: 키움 REG 빌더 이동 (낮은 위험, P4/P23 동시 개선).
 
 #### 대상 코드
 
