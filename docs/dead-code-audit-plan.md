@@ -1,0 +1,189 @@
+# SectorFlow 데드코드·불필요 참조 전수조사 수정계획서
+
+> 작성일: 2026-07-26
+> 상태: 조사 완료 / 수정 대기
+> 원칙: 본 문서는 조사 결과와 후속 계획만 기록하며, 이번 세션에서는 소스 코드·테스트 코드·설정·DB를 수정하지 않음.
+
+---
+
+## 1. 조사 목적
+
+프로젝트 전체에서 실제 실행 경로에 연결되지 않은 함수·변수·상수·타입·인터페이스·import와 주석 처리된 코드 블록을 확인했다. 단순한 텍스트 검색 결과를 그대로 데드코드로 확정하지 않고, 프레임워크 등록 경로·테스트 사용 여부·추상 인터페이스 계약·동적 참조를 함께 대조했다.
+
+특히 다음을 구분했다.
+
+- **운영 경로 참조 0건**: 실제 삭제 검토 우선 대상
+- **운영 코드에서는 미사용이나 테스트에서 사용**: 운영 dead path 후보이지만 테스트 계약을 먼저 정리해야 하는 대상
+- **정적 분석 오탐**: 추상 메서드·FastAPI 데코레이터·동적 설정·외부 계약 때문에 유지되는 대상
+- **데드코드와 별개인 품질 신호**: lint 오류·undefined name 등은 별도 수정 항목으로 기록
+
+## 2. 조사 범위와 방법
+
+### 2.1 대상
+
+- 백엔드 운영 코드: `backend/app/`
+- 백엔드 테스트·스크립트: `backend/tests/`, `backend/scripts/`
+- 프론트엔드 운영 코드: `frontend/src/`
+- 프론트엔드 테스트: `frontend/tests/`
+- 참고 문서: `AGENTS.md`, `ARCHITECTURE.md`, `HANDOVER.md`, `docs/architecture_audit_plan.md`, `docs/architecture_audit_tasks.md`
+
+### 2.2 수행한 확인
+
+- Python 정의·참조 전체 검색
+- `vulture backend` 정적 분석(신뢰도 60% 및 80% 기준)
+- `pyflakes backend` 미사용 import/변수 및 이름 오류 확인
+- TypeScript `npm run typecheck` 실행(`noUnusedLocals`, `noUnusedParameters` 활성화)
+- ESLint 실행
+- 주석 처리된 실행 코드·TODO/DEPRECATED/legacy 표기 검색
+- 기존 아키텍처 감사 및 F-07 타입 정리 이력과 대조
+- 라우트·예외 핸들러·추상 메서드·테스트 전용 함수의 실제 사용 경로 확인
+
+## 3. 조사 결론
+
+### 3.1 운영 코드에서 우선 확인할 dead-code 후보
+
+아래 항목은 현재 운영 코드의 정상 호출 경로에서 참조되지 않거나, 정의·쓰기만 확인된 후보이다. 삭제 확정이 아니라 후속 별도 세션에서 사용 의도와 외부 계약을 확인한 뒤 처리한다.
+
+| ID | 우선순위 | 위치 | 후보 | 확인 결과 | 관련 원칙 |
+|---|---|---|---|---|---|
+| DC-01 | 중간 | `backend/app/core/settings_defaults.py:178` | `DEFAULT_BROKER_CREDENTIALS` | 정의 1건만 확인. 전체 코드·테스트 참조 0건 | P16, P24 |
+| DC-02 | 중간 | `backend/app/services/engine_state.py:111` | `EngineState.shutdown_requested` | 운영 코드의 읽기·쓰기 참조 0건. 테스트는 dead 상태를 확인하는 메타 테스트만 존재 | P16, P24 |
+| DC-03 | 중간 | `backend/app/services/engine_state.py:146` | `EngineState.MIN_CACHE_LIFETIME_SEC` | 운영 읽기 참조 0건. 선언·설명·메타 테스트만 존재 | P16, P24 |
+| DC-04 | 낮음 | `backend/app/services/engine_state.py:148` | `EngineState.confirmed_refresh_running` | 쓰기 0건, 읽기 2건. 미구현 플래그로 확인되며 단순 삭제 전 사용 의도 확인 필요 | P16, P24 |
+| DC-05 | 낮음 | `backend/app/core/ls_rest.py:212` | `LsRestAPI.call_api` | 운영 코드와 테스트에서 해당 메서드명 참조 0건. `_call_api`와 혼동 가능성 확인 필요 | P16, P24 |
+| DC-06 | 낮음 | `backend/app/web/ws_manager.py:8` | `asyncio` import | 파일 내 사용 0건으로 pyflakes가 확정 보고 | P16, P24 |
+
+> `DC-02`~`DC-04`는 기존 `engine_state.py` 문서에 이미 dead-code 후보로 기록되어 있어 새 발견이 아니라 잔여 항목 재확인이다. 삭제 시 해당 문서·메타 테스트·참조 주석을 함께 정리해야 한다.
+
+### 3.2 운영 코드에서는 미사용이나 테스트에서만 사용되는 함수
+
+전체 프로젝트 기준으로 호출 0건은 아니므로 “정의만 있고 전체 호출 0건”으로 확정하지 않았다. 다만 프로덕션 실행 경로에는 연결되지 않아, 테스트가 해당 API의 유지 계약인지 먼저 결정해야 한다.
+
+| ID | 위치 | 함수/상수 | 현재 사용 | 후속 검토 |
+|---|---|---|---|---|
+| DC-07 | `backend/app/core/kiwoom_stock_rest.py:282` | `fetch_ka10081_all_stocks_5day` | 백엔드 테스트에서만 호출 | 장마감 파이프라인이 다른 경로를 사용하는지 확인 후 테스트 전용 API 여부 결정 |
+| DC-08 | `backend/app/services/circuit_breaker.py:116` | `reset_circuit_breaker` | 백엔드 테스트에서만 호출 | 운영에서 필요한 수동 reset 진입점인지 확인. 주문 안전성과 관련되어 임의 삭제 금지 |
+| DC-09 | `backend/app/services/engine_account.py:56,65` | `get_total_buy_amount`, `get_total_pnl` | 백엔드 테스트에서만 호출 | API/알림의 과거 계약인지 확인 후 삭제 또는 실제 호출 경로 연결 |
+| DC-10 | `backend/app/services/engine_ws_parsing.py:150,162` | `parse_fid9081_exchange`, `parse_fid290_session` | 백엔드 테스트에서만 호출 | 현재 WS 파서에서 사용하지 않는 구형 FID인지 확인. 테스트 제거 전 수신 계약 확인 |
+| DC-11 | `backend/app/services/settlement_engine.py:55` | `check_buy_power` | 백엔드 테스트에서만 호출. 현재 매수 경로는 `reserve_buy_power` 중심 | 주문 단일 경로(P15) 관점에서 테스트용 검증 함수 유지 여부를 별도 판단 |
+| DC-12 | `backend/app/core/settings_store.py:112,431` | `changed_keys_general_save`, `load_integrated_system_settings_for_editing` | 백엔드 테스트에서만 호출 | 프론트 설정 저장의 과거 계약인지 확인. 테스트가 의도한 공개 서비스면 유지, 아니면 테스트와 함께 정리 |
+
+### 3.3 정적 분석에서 발견된 미사용 변수·매개변수
+
+#### 운영 코드
+
+| 위치 | 항목 | 판단 |
+|---|---|---|
+| `backend/app/core/broker_connector.py:55,60` | 추상 메서드 매개변수 `data_types` | 구현 계약의 일부. 매개변수명만 미사용이며 dead method로 확정하지 않음 |
+| `backend/app/core/kiwoom_connector.py:271,275` | `data_types` | 현재 구현에서 미사용. 추상 브로커 계약과 실제 구독 타입 처리의 관계 확인 필요 |
+| `backend/app/core/ls_connector.py:432,436` | `data_types` | 위와 동일 |
+| `backend/app/web/deps.py:13` | `credentials` | 개발 모드에서 의도적으로 토큰을 사용하지 않는 인증 자리표시자. 보안 전환 전 삭제 금지 |
+| `backend/app/services/engine_utils.py:54` | `args` | vulture가 미사용으로 보고. 콜백/이벤트 호출 계약에서 전달되는 인자인지 확인 필요 |
+| `backend/app/config.py:47,48,52,54` | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `TRADING_LOG_PATH`, `model_config` | 설정·Pydantic/dynamic access 가능성이 있어 단순 삭제 금지. 실제 설정 소비처 확인 필요 |
+| `backend/app/core/stock_filter.py:126` | `parsed_fields` | 미사용 지역 변수 후보. 해당 파싱 결과가 side effect 또는 검증용인지 확인 후 정리 |
+| `backend/app/domain/models.py:53,64` | `sector_rank`, `version` | 모델 생성·직렬화 계약에 포함될 수 있어 API 응답과 테스트 대조 필요 |
+
+#### 테스트·스크립트 코드
+
+`pyflakes`와 `vulture`에서 다음 유형이 확인되었다. 운영 기능과 분리된 후속 테스트 품질 정리 대상으로 기록한다.
+
+- `backend/tests/test_data_manager.py`: `pytest`, `MagicMock` 미사용 import
+- `backend/tests/test_engine_ws_dispatch_isolation.py`: `asyncio` 미사용 import
+- `backend/tests/test_engine_state_groups.py`: `subprocess` 미사용 import
+- `backend/tests/test_kiwoom_rest.py`, `test_kiwoom_providers.py`: 미사용 지역 변수·import
+- `backend/tests/test_engine_loop.py`: `AwaitableMock`, `mock_sw` 미사용
+- `backend/tests/test_daily_time_scheduler.py`: countdown 상수 import 및 `sched_ctx` 미사용
+- `backend/tests/test_notification_worker.py`: `mock_task` 미사용 및 `raise` 뒤 unreachable code
+- `backend/tests/test_pipeline_compute.py`: `seconds` 미사용
+- `backend/tests/test_sector_calculator_integration.py`: `setup_master_cache` fixture 미사용
+- `backend/tests/test_settlement_verification.py`: `task` 미사용
+- `backend/tests/test_broker_change.py`: `_UNREG_BATCH_PENDING` 미사용
+- `backend/scripts/migrate_realized_pnl_cash.py`: `sys` 미사용 import
+- `backend/tests/test_buy_order_executor.py`: 다수의 `reset_cash_gate` fixture 매개변수 미사용. fixture 자동 적용 여부를 확인한 뒤 매개변수만 제거할지 판단
+
+### 3.4 프론트엔드 함수·변수·타입·인터페이스 조사 결과
+
+- `frontend/tsconfig.json`에서 `noUnusedLocals: true`, `noUnusedParameters: true`가 활성화되어 있다.
+- `npm run typecheck`는 통과했다. 따라서 컴파일러 기준의 일반적인 미사용 지역 변수·매개변수·import는 현재 발견되지 않았다.
+- 기존 F-07에서 확인된 미사용 타입 5개와 필드는 이미 제거되었으며, 현재 잔존 여부는 확인되지 않았다.
+- 내보낸 타입·인터페이스는 `types/index.ts`, 페이지 공통 모듈, 공통 컴포넌트에서 실제 import/구조 타입으로 사용되는 것을 확인했다. 이번 조사에서 “정의만 있고 전체 프로젝트 참조 0건”으로 확정할 프론트엔드 타입은 발견하지 못했다.
+- `vulture`/`pyflakes`에 대응하는 프론트엔드 전용 export 사용 분석 도구는 프로젝트 의존성에 없으므로, export된 public API는 텍스트 참조만으로 삭제 확정하지 않았다.
+
+### 3.5 주석 처리된 죽은 코드 블록
+
+실행 코드가 통째로 주석 처리된 블록은 백엔드 운영 코드와 프론트엔드 `src`에서 확정하지 못했다. 검색된 주석은 대부분 설명·계산식·레거시 호환 문서였다.
+
+다만 아래는 후속 확인 대상이다.
+
+- `backend/app/web/routes/ws_settings.py:18`
+- `backend/app/web/routes/ws_orders.py:18`
+
+두 파일의 `# TODO: 개발 완료 후 토큰 검증 재활성화`는 주석 처리된 코드 블록은 아니지만, 인증 검증이 비활성화된 상태를 나타낸다. 데드코드 삭제 대상이 아니라 보안·운영 전환 과제로 분리해야 한다.
+
+### 3.6 정적 분석의 오탐 또는 별도 품질 이슈
+
+- `backend/app/core/settings_file.py:341`의 `SecretValueState`는 함수 내부 import와 `from __future__ import annotations`를 사용하는 타입 주석 때문에 pyflakes가 undefined로 보고한 것으로 보인다. 실행 경로상 import는 존재하며, 데드코드로 분류하지 않는다. 별도 세션에서 정적 분석 친화성만 검토한다.
+- FastAPI 라우트·예외 핸들러·SPA fallback·WebSocket 엔드포인트는 일반 호출 검색과 vulture에서 미사용 함수처럼 보이지만 데코레이터/라우터 등록으로 살아 있는 진입점이다. 예: `backend/app/web/routes/*`, `backend/app/web/app.py`.
+- 브로커 추상 메서드 `subscribe`, `unsubscribe`, `receive`는 자식 구현·인터페이스 계약 대상이므로 vulture 결과만으로 삭제하지 않는다.
+- `frontend/src/components/common/info-tooltip.ts:99`는 ESLint의 no-unused-expressions 오류가 확인되었지만 데드코드가 아니라 문법/스타일 품질 이슈다. 이번 요청 범위의 코드 수정은 하지 않았다.
+
+## 4. 우선순위별 후속 수정 계획
+
+### 4.1 1순위: 운영 경로 0건 후보 재확인
+
+1. `DC-01`, `DC-05`, `DC-06`의 전체 참조와 외부 계약을 다시 확인한다.
+2. `DC-02`~`DC-04`는 `engine_state` 문서·메타 테스트·주석까지 함께 검토한다.
+3. 삭제 시 거래 경로·엔진 기동·브로커 연결에 영향이 없는지 관련 테스트를 먼저 작성하거나 기존 테스트의 의도를 확인한다.
+4. 승인된 별도 세션에서 한 묶음씩 수정하고, 참조 주석·docstring·메타 테스트를 함께 정리한다.
+
+### 4.2 2순위: 테스트 전용 함수·미사용 테스트 자산
+
+- DC-07~DC-12는 테스트만 삭제하면 회귀 보호가 약해질 수 있으므로, 운영 호출 경로가 정말 불필요한지 확인한 후 API 유지/삭제를 결정한다.
+- 테스트 import·fixture 매개변수·지역 변수는 기능 테스트에 영향을 주지 않는지 확인 후 별도 테스트 품질 세션에서 정리한다.
+
+### 4.3 보류
+
+- 인증 placeholder(`credentials`)와 인증 재활성화 TODO는 데드코드 삭제가 아니라 보안 설계·사용자 승인 과제다.
+- FastAPI 진입점, 브로커 추상 메서드, 동적 설정·모델 필드는 프레임워크·외부 계약 확인 전 삭제하지 않는다.
+- 프론트엔드 export 타입은 현재 typecheck 통과 상태이므로 별도 TypeScript export graph 도구 도입 없이 삭제하지 않는다.
+
+## 5. 아키텍처 원칙 점검
+
+- **P10 SSOT**: 정의만 남은 설정 상수·상태 필드를 제거할 때 다른 설정 저장소나 파생 상태를 새로 만들지 않는다.
+- **P16 살아있는 경로**: 실제 호출 경로가 있는 라우트·추상 메서드·테스트 계약은 정적 분석만으로 dead code 처리하지 않는다.
+- **P20 폴백 금지**: 미사용 정리 과정에서 인증·설정·암호화의 정상 경로를 임의의 빈값/None 폴백으로 바꾸지 않는다.
+- **P21 사용자 투명성**: 주문·인증·엔진 상태에 연결된 플래그를 삭제할 경우 UI와 로그의 상태 표시를 먼저 확인한다.
+- **P22 데이터 정합성**: 상태 변수·모델 필드 제거 시 DB/브로커 응답/프론트 계약과의 불일치를 차단한다.
+- **P23 일관성**: 기존 공통 타입·추상 계약·테스트 fixture를 우선 재사용하고, 삭제된 항목의 주석·문서 참조도 함께 정리한다.
+- **P24 단순성**: 운영 호출 0건인 후보부터 검토하며, 테스트 전용·프레임워크 진입점까지 일괄 삭제하지 않는다.
+- **P25 격리된 실패**: 데드코드 정리로 한 태스크나 브로커 구성요소의 실패가 전체 기동을 막지 않도록 관련 런타임 검증을 수행한다.
+
+## 6. 후속 검증 계획
+
+코드 수정 승인 후 별도 세션에서 대상별로 다음을 수행한다.
+
+- 백엔드 관련 테스트 및 전체 `pytest`
+- `python -W error::RuntimeWarning main.py` 기동 검증
+- 프론트엔드 `typecheck`, `build`, 테스트
+- 제거 대상 이름의 전체 저장소 잔존 검색
+- 라우트/데코레이터/추상 메서드 등록 확인
+- 기존 DB 파일은 읽기만 하며 삭제·덮어쓰기하지 않음
+
+이번 세션에서 실행한 검증은 문서·조사 전용이며 소스 수정은 없었다.
+
+## 7. 참고 파일
+
+- `backend/app/core/settings_defaults.py`
+- `backend/app/core/ls_rest.py`
+- `backend/app/web/ws_manager.py`
+- `backend/app/services/engine_state.py`
+- `backend/app/core/settings_store.py`
+- `backend/app/services/circuit_breaker.py`
+- `backend/app/services/engine_account.py`
+- `backend/app/services/engine_ws_parsing.py`
+- `backend/app/services/settlement_engine.py`
+- `frontend/src/types/index.ts`
+- `frontend/tsconfig.json`
+- `HANDOVER.md`
+- `docs/architecture_audit_plan.md`
+- `docs/architecture_audit_tasks.md`
