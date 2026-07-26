@@ -247,10 +247,11 @@
   - 타임아웃 처리 방식 통일 (`asyncio.wait_for` vs 수동 `asyncio.sleep` 체크 중 하나 일관)
   - 병렬 처리가 필요한 경우 `asyncio.gather` 사용, 순차 처리가 필요한 경우 순차 `await` — 혼용 금지
   - 백그라운드 태스크는 `schedule_engine_task()`로 통일
-- **백엔드 네이밍 일관성**: 파일/함수/변수 명명 규칙 통일
-  - Python: `snake_case` (PEP 8 준수)
-  - 증권사별 코드는 `kiwoom_`/`ls_` 접두사 (원칙 4와 일관)
-  - 공통 로직은 증권사 접두사 없이 (원칙 4)
+- **네이밍 일관성**: 파일/함수/변수/이벤트 명명 규칙 통일 — 새 이름 생성 시 기존 규칙 먼저 확인, `_`/`-` 혼용 방지
+  - 백엔드 Python: `snake_case` (PEP 8 준수). 증권사별 코드는 `kiwoom_`/`ls_` 접두사, 공통 로직은 접두사 없이 (원칙 4와 일관)
+  - 프론트엔드 TypeScript: 변수/함수 `camelCase`, 컴포넌트/클래스/타입 `PascalCase`
+  - 프론트엔드 파일명: `kebab-case.ts` (store 파일은 기존 `camelCase.ts` 유지 — `store.ts`, `uiStore.ts`, `hotStore.ts`)
+  - WS 이벤트명: `kebab-case` (예: `real-data`, `buy-targets-update`, `page-active` — 백엔드 송신·프론트엔드 수신 동일 문자열)
 - **백엔드 상수 관리 일관성**: 매직 넘버는 `core/constants.py`에 집중 관리
   - 파일 간 분산된 상수 정의 금지
   - 동일한 의미의 상수가 여러 파일에 중복 정의 금지 (SSOT 원칙 10과 중복 강화)
