@@ -5,8 +5,7 @@
 import { createRadioGroup } from '../components/common/setting-row'
 import { sectionTitle, createDescText } from '../components/common/settings-common'
 import { createActionButton } from '../components/common/button'
-import { showConfirmDialog } from '../components/common/dialog'
-import { showSaveToast } from '../components/common/toast'
+import { showConfirmDialog, showAlertDialog } from '../components/common/dialog'
 import { FONT_WEIGHT, COLOR, createDarkInput } from '../components/common/ui-styles'
 import { extractDirty } from '../settings'
 import { focusNext } from '../components/common/setting-row'
@@ -133,15 +132,34 @@ function buildApiSaveRow(state: GeneralSettingsState, fields: { key: string }[])
         current[k] = state.apiKeyInputs[k]?.value ?? state.vals[k]
       }
       const dirty = extractDirty(orig, current, keys)
-      if (Object.keys(dirty).length === 0) return
+      let dataToSave: Record<string, unknown>
+      if (Object.keys(dirty).length === 0) {
+        const confirmed = await showConfirmDialog({
+          title: '변경 사항 없음',
+          message: '입력하신 값이 기존과 동일합니다.\n그래도 저장하시겠습니까?',
+          confirmText: '저장',
+          cancelText: '취소',
+        })
+        if (!confirmed) return
+        dataToSave = current
+      } else {
+        dataToSave = dirty
+      }
       saveBtn.textContent = '저장 중...'
       saveBtn.disabled = true
-      const res = await state.settingsMgr!.saveSection(dirty)
-      // B21-01 세션7: 구조화 오류 코드 매핑 (설계 7.3 — 코드 기반 사용자용 메시지)
+      const res = await state.settingsMgr!.saveSection(dataToSave)
       if (res.ok) {
-        showSaveToast('saved')
+        await showAlertDialog({
+          title: '저장 완료',
+          message: '✅ 저장이 완료되었습니다.',
+          confirmText: '확인',
+        })
       } else {
-        showSaveToast('error', mapEncryptionErrorMessage(res.errorCode, res.error))
+        await showAlertDialog({
+          title: '저장 실패',
+          message: `❌ 저장 실패: ${mapEncryptionErrorMessage(res.errorCode, res.error)}`,
+          confirmText: '확인',
+        })
       }
       saveBtn.textContent = '저장'
       saveBtn.disabled = isEncryptionBlockingSave()
