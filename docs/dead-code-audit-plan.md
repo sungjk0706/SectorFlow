@@ -46,12 +46,12 @@
 
 | ID | 우선순위 | 위치 | 후보 | 확인 결과 | 관련 원칙 |
 |---|---|---|---|---|---|
-| DC-01 | 중간 | `backend/app/core/settings_defaults.py:178` | `DEFAULT_BROKER_CREDENTIALS` | 정의 1건만 확인. 전체 코드·테스트 참조 0건 | P16, P24 |
+| DC-01 | 중간 | `backend/app/core/settings_defaults.py:178` | `DEFAULT_BROKER_CREDENTIALS` | ☑ 제거 — 정의 1건만 확인. 전체 코드·테스트 참조 0건. `coupling-settings-impact-matrix.md` 문서 참조 정리 | P16, P24 |
 | DC-02 | 중간 | `backend/app/services/engine_state.py:111` | `EngineState.shutdown_requested` | 운영 코드의 읽기·쓰기 참조 0건. 테스트는 dead 상태를 확인하는 메타 테스트만 존재 | P16, P24 |
 | DC-03 | 중간 | `backend/app/services/engine_state.py:146` | `EngineState.MIN_CACHE_LIFETIME_SEC` | 운영 읽기 참조 0건. 선언·설명·메타 테스트만 존재 | P16, P24 |
 | DC-04 | 낮음 | `backend/app/services/engine_state.py:148` | `EngineState.confirmed_refresh_running` | 쓰기 0건, 읽기 2건. 미구현 플래그로 확인되며 단순 삭제 전 사용 의도 확인 필요 | P16, P24 |
-| DC-05 | 낮음 | `backend/app/core/ls_rest.py:212` | `LsRestAPI.call_api` | 운영 코드와 테스트에서 해당 메서드명 참조 0건. `_call_api`와 혼동 가능성 확인 필요 | P16, P24 |
-| DC-06 | 낮음 | `backend/app/web/ws_manager.py:8` | `asyncio` import | 파일 내 사용 0건으로 pyflakes가 확정 보고 | P16, P24 |
+| DC-05 | 낮음 | `backend/app/core/ls_rest.py:212` | `LsRestAPI.call_api` | ⊘ 보류 — 운영 코드 참조 0건이나 테스트 7개 메서드(`TestLsRestCallApi`) 존재. 테스트 계약 확인 필요 | P16, P24 |
+| DC-06 | 낮음 | `backend/app/web/ws_manager.py:8` | `asyncio` import | ☑ 제거 — 파일 내 사용 0건으로 pyflakes가 확정 보고. import 제거 완료 | P16, P24 |
 
 > `DC-02`~`DC-04`는 기존 `engine_state.py` 문서에 이미 dead-code 후보로 기록되어 있어 새 발견이 아니라 잔여 항목 재확인이다. 삭제 시 해당 문서·메타 테스트·참조 주석을 함께 정리해야 한다.
 

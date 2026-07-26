@@ -174,5 +174,3 @@ DEFAULT_SYSTEM_CONFIG: dict[str, Any] = {
     "log_level": "INFO",
 }
 
-# broker_credentials는 기본값 없음 (사용자 입력 필수)
-DEFAULT_BROKER_CREDENTIALS: dict[str, Any] = {}

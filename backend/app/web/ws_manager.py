@@ -5,7 +5,6 @@ set[WebSocket] 기반 직접 참조.
 broadcast()는 async 함수로, 모든 이벤트를 await 기반 직접 전송한다.
 """
 from __future__ import annotations
-import asyncio
 import logging
 from typing import Any
 from collections import OrderedDict

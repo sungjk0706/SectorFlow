@@ -14,7 +14,7 @@
 
 ### 조사 범위 (실제 코드 기준)
 
-- 기본값 SSOT: `settings_defaults.py` `DEFAULT_USER_SETTINGS`(66키) · `DEFAULT_SYSTEM_CONFIG`(17키) · `DEFAULT_BROKER_CREDENTIALS`(빈 dict)
+- 기본값 SSOT: `settings_defaults.py` `DEFAULT_USER_SETTINGS`(66키) · `DEFAULT_SYSTEM_CONFIG`(17키)
 - DB I/O: `settings_file.py` `load_integrated_system_settings()` / `load_selected_settings()` / `save_settings()` / `save_selected_settings()` + 마이그레이션 11개 + 암호화/복호화
 - 저장 검증·증분저장: `settings_store.py` `apply_settings_updates()` + 타임테이블 순서 검증 + 리스크/구독 한도 수치 검증 + 민감값 마스킹(`build_masked_settings_dict`)
 - 정규화: `engine_settings.py` `build_engine_settings_dict()` → 9개 `_build_*` 그룹 함수 + `_pick_broker_credentials()` + `_decrypt_field()`
