@@ -39,14 +39,14 @@ function buildBuyTimeRow(state: GeneralSettingsState): HTMLElement {
   label.textContent = '자동매수 시간'
   row.appendChild(label)
   const buyStart = String(state.vals.buy_time_start ?? '09:00')
-  const buyEnd = String(state.vals.buy_time_end ?? '15:00')
+  const buyEnd = String(state.vals.buy_time_end ?? '15:20')
   // 행 하단 경고 메시지 영역 (P21 투명성 — 순서 위반 시 지속 표시, P23 createDescText 위치와 일치)
   const warnEl = createTimeOrderWarnEl()
   const { el: tpWrap, handle } = createTimePairInput(buyStart, buyEnd, (s, e) => {
     warnEl.textContent = '' // 유효 복귀 시 즉시 해제
     if (state.settingsMgr) {
       const origS = String(state.vals.buy_time_start ?? '09:00')
-      const origE = String(state.vals.buy_time_end ?? '15:00')
+      const origE = String(state.vals.buy_time_end ?? '15:20')
       const dirty: Record<string, unknown> = {}
       if (s !== state.vals.buy_time_start) dirty.buy_time_start = s
       if (e !== state.vals.buy_time_end) dirty.buy_time_end = e
@@ -85,14 +85,14 @@ function buildSellTimeRow(state: GeneralSettingsState): HTMLElement {
   label.textContent = '자동매도 시간'
   row.appendChild(label)
   const sellStart = String(state.vals.sell_time_start ?? '09:00')
-  const sellEnd = String(state.vals.sell_time_end ?? '15:00')
+  const sellEnd = String(state.vals.sell_time_end ?? '15:20')
   // 행 하단 경고 메시지 영역 (P21 투명성 — 순서 위반 시 지속 표시, P23 createDescText 위치와 일치)
   const warnEl = createTimeOrderWarnEl()
   const { el: tpWrap, handle } = createTimePairInput(sellStart, sellEnd, (s, e) => {
     warnEl.textContent = '' // 유효 복귀 시 즉시 해제
     if (state.settingsMgr) {
       const origS = String(state.vals.sell_time_start ?? '09:00')
-      const origE = String(state.vals.sell_time_end ?? '15:00')
+      const origE = String(state.vals.sell_time_end ?? '15:20')
       const dirty: Record<string, unknown> = {}
       if (s !== state.vals.sell_time_start) dirty.sell_time_start = s
       if (e !== state.vals.sell_time_end) dirty.sell_time_end = e
@@ -291,7 +291,7 @@ export function syncTimeSettingsTab(r: Record<string, unknown>): void {
 
   // 자동매수/매도 토글 + 시간쌍 (토글 OFF 시에도 시간 입력 활성화 유지 — 설계서 2-1)
   state.autoBuyToggle?.setOn(!!r.auto_buy_on)
-  if (state.buyTimeHandle) state.buyTimeHandle.setValue(String(r.buy_time_start ?? '09:00'), String(r.buy_time_end ?? '15:00'))
+  if (state.buyTimeHandle) state.buyTimeHandle.setValue(String(r.buy_time_start ?? '09:00'), String(r.buy_time_end ?? '15:20'))
   state.autoSellToggle?.setOn(!!r.auto_sell_on)
-  if (state.sellTimeHandle) state.sellTimeHandle.setValue(String(r.sell_time_start ?? '09:00'), String(r.sell_time_end ?? '15:00'))
+  if (state.sellTimeHandle) state.sellTimeHandle.setValue(String(r.sell_time_start ?? '09:00'), String(r.sell_time_end ?? '15:20'))
 }
