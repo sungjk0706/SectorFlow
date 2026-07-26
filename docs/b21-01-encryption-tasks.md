@@ -40,11 +40,11 @@
 
 ### 0.2 영향 범위
 
-- **백엔드 핵심**: 암호화 상태 모델, 전체·증분 저장 경로 통합, 복호화 소비자(엔진 설정·텔레그램), 브로커 연결·주문 자격 검증.
+- **백엔드 핵심**: 암호화 상태 모델, 전체·증분 저장 경로 통합, 복호화 소비자(엔진 설정·텔레그램), 브로커 연결 자격 검증(`validate()` 안내 + 빈 값 사전 차단). 주문 경로 자격 게이트는 제거(증권사 서버가 어차피 차단).
 - **백엔드 API**: `PATCH /api/settings/{field_name}` 오류 응답 구조화(기존 422 상태 유지 + detail 객체 추가).
 - **프론트엔드**: API 클라이언트 오류 파싱, 설정 저장 실패 시 store 미반영, 일반설정 화면 암호화 상태 배너 + API/텔레그램 탭 상태 표시 + 키 백업 안내.
 - **DB**: `stocks.db` 스키마 변경 없음. 기존 평문 값은 `plaintext_legacy` 상태로 분류(자동 마이그레이션·삭제 금지).
-- **거래 안전**: 실전 거래 활성화 아님. 실전 브로커 인증정보 복호화 불가 시 연결·주문 차단 방향. 테스트 모드는 인증정보 불필요 경로 유지.
+- **거래 안전**: 실전 거래 활성화 아님. 실전 브로커 인증정보 복호화 불가 시 `validate()` 경고 안내 + 빈 값 커넥터 생성 차단. 복호화 불가·평문 레거시의 최종 차단은 증권사 서버에 위임. 테스트 모드는 인증정보 불필요 경로 유지.
 
 ### 0.3 아키텍처 원칙 부합
 
@@ -125,36 +125,37 @@
   - `backend/tests/test_engine_settings.py`
   - `backend/tests/test_telegram_bot.py`
 - **파일별 변경점**:
-  - `engine_settings.py`: `_dec()`를 `decrypt_secret()` 결과 상태 기반으로 전환. `ENCRYPTED`→평문 반환, `KEY_UNAVAILABLE`/`DECRYPT_FAILED`→빈문자열 대신 상태 로깅 + 빈값 유지(엔진 기동 차단 아님 — P25, 복호화 불가 자격은 세션 5에서 연결·주문 차단). `PLAINTEXT_LEGACY`→평문 반환(레거시 호환, 재저장 시 암호화). `_pick_broker_credentials()` 결과에 자격 상태 정보 추가(세션 5 연계).
+  - `engine_settings.py`: `_dec()`를 `decrypt_secret()` 결과 상태 기반으로 전환. `ENCRYPTED`→평문 반환, `KEY_UNAVAILABLE`/`DECRYPT_FAILED`→빈문자열 대신 상태 로깅 + 빈값 유지(엔진 기동 차단 아님 — P25, 복호화 불가 자격은 세션 5 `validate()` 경고로 안내). `PLAINTEXT_LEGACY`→평문 반환(레거시 호환, 재저장 시 암호화). `_pick_broker_credentials()` 결과에 자격 상태 정보 추가(세션 5 연계).
   - `telegram_bot.py`: `_fetch_enabled_settings()`의 `(decrypt_value(raw_token) or "").strip()` 폴백 제거. `decrypt_secret()` 결과 기반으로 전환. 복호화 불가 토큰은 스킵 + 로깅(폴링 차단).
   - `test_engine_settings.py`: `_dec()` 신규 상태별 테스트 추가. 기존 `decrypt_value` mock 전환.
   - `test_telegram_bot.py`: 복호화 불가 토큰 스킵 테스트 추가. 기존 `decrypt_value` mock 전환.
-- **변경하지 않을 범위**: `encryption.py`, `settings_file.py`, `settings_store.py`, API 라우트(세션 1-3 완료), 브로커 연결·주문 차단(세션 5), 프론트엔드.
+- **변경하지 않을 범위**: `encryption.py`, `settings_file.py`, `settings_store.py`, API 라우트(세션 1-3 완료), 브로커 연결 자격 검증(세션 5), 프론트엔드.
 - **검증 방법**:
   - `.venv/bin/python -m pytest backend/tests/test_engine_settings.py backend/tests/test_telegram_bot.py -q -W error::RuntimeWarning`
   - `.venv/bin/python -m pytest backend/tests -q` (회귀 없음)
   - `.venv/bin/python -W error::RuntimeWarning main.py` 10s 기동 검증 (RuntimeWarning 없음)
 
-### 세션 5 — 백엔드 브로커 연결·주문 자격 검증 연계
+### 세션 5 — 백엔드 브로커 연결 자격 검증 연계 (축소 — 사용자 재검토 반영)
 
-- **목표**: 선택된 브로커의 인증정보가 복호화 불가(`KEY_UNAVAILABLE`/`DECRYPT_FAILED`)/재입력 필요(`PLAINTEXT_LEGACY`)인 경우 브로커 연결을 시작하지 않고, 주문 단일 경로에서 자격 상태를 확인하여 차단한다. 차단 사유를 UI에 전달 가능한 형태로 기록한다.
+- **목표**: `broker_router.validate()`가 자격증명 복호화 상태(`_credential_states`) 기반으로 차단 사유 메시지를 사용자에게 안내한다. 커넥터 생성 시 빈 app_key/app_secret만 사전 차단한다. **주문 경로 자격 게이트는 제거** — 증권사 서버가 토큰 발급·주문을 어차피 거부하므로 앱에서의 이중 차단은 불필요 (P24 단순성).
 - **수정 파일 목록**:
-  - `backend/app/core/broker_router.py`
-  - `backend/app/core/kiwoom_connector.py`
-  - `backend/app/core/ls_connector.py`
-  - `backend/app/services/trading.py` (주문 단일 경로 — safe-trade 스킬 필수)
-  - 관련 테스트 파일 (구현 세션에서 실제 경로 재확인)
+  - `backend/app/core/engine_settings.py` (자격 상태 판정 SSOT 헬퍼 — `validate()`가 사용)
+  - `backend/app/core/broker_router.py` (`validate()` 상태 기반 경고 메시지)
+  - `backend/app/core/kiwoom_connector.py` (빈 값 사전 차단만)
+  - `backend/app/core/ls_connector.py` (빈 값 사전 차단만)
+  - 관련 테스트 파일
 - **파일별 변경점**:
-  - `broker_router.py`: `validate()`에서 자격 상태 확인 추가(기존 빈 값 확인 확장 — 복호화 상태·키 상태 포함). 차단 사유 메시지에 구조화된 코드 추가.
-  - `kiwoom_connector.py`/`ls_connector.py`: `create_*_connector()` 인자 검증 시 자격 상태 확인(빈 값 + 복호화 불가 구분).
-  - `trading.py`: `execute_buy()`/`execute_sell()` 진입 전 자격 상태 확인(이미 검증된 브로커 자격 상태 사용 — 단일 경로 우회 금지 P15). 차단 시 사유 기록·표시.
-  - 테스트: 자격 불가 시 연결 차단·주문 차단 시나리오 추가. 테스트 모드(인증정보 불필요 경로)는 차단 제외 검증.
-- **변경하지 않을 범위**: 암호화 모델·저장 경로·API 응답·복호화 소비자(세션 1-4 완료), 프론트엔드. 실전 거래 활성화 아님.
+  - `engine_settings.py`: `broker_credential_state()`/`broker_credential_block_reason()` SSOT 헬퍼 + `_CREDENTIAL_BLOCK_PRIORITY`/`_CREDENTIAL_BLOCK_MESSAGES` 상수. `validate()`가 호출.
+  - `broker_router.py`: `validate()`가 빈 값 확인에서 `broker_credential_block_reason()` 호출로 전환. 차단 사유 메시지가 상태별로 구분됨 (KEY_UNAVAILABLE/DECRYPT_FAILED/PLAINTEXT_LEGACY/EMPTY/UNKNOWN). **순수 안내** — 차단 자체는 증권사 서버에 위임.
+  - `kiwoom_connector.py`/`ls_connector.py`: `create_*_connector()`는 빈 app_key/app_secret만 사전 차단 (ValueError). 복호화 불가·평문 레거시는 `validate()` 경고에 맡기고 증권사 서버가 토큰 발급 거부.
+  - **`trading.py` 주문 게이트 제거** (세션 5 REV): 사유코드 5개, 매핑, 헬퍼, `_execute_buy_locked`/`execute_sell` 진입부 게이트 2곳. 주문 단일 경로(P15)는 유지.
+  - 테스트: `validate()` 상태별 메시지 테스트, 커넥터 빈 값 차단 테스트. 주문 자격 게이트 테스트는 제거.
+- **변경하지 않을 범위**: 암호화 모델·저장 경로·API 응답·복호화 소비자(세션 1-4 완료), 주문 단일 경로 로직, 프론트엔드. 실전 거래 활성화 아님.
 - **검증 방법**:
-  - `.venv/bin/python -m pytest backend/tests -k "broker_router or connector or trading" -q -W error::RuntimeWarning`
+  - `.venv/bin/python -m pytest backend/tests -k "broker_router or connector or engine_settings" -q -W error::RuntimeWarning`
   - `.venv/bin/python -m pytest backend/tests -q` (회귀 없음)
   - `.venv/bin/python -W error::RuntimeWarning main.py` 10s 기동 검증
-  - safe-trade 스킬: 모의투자/안전성 확인 절차 준수
+  - safe-trade 스킬: 모의투자/안전성 확인 절차 준수 (주문 경로 수정 시 — 본 세션은 주문 경로 게이트 제거이므로 safe-trade 스킬 검토 대상)
 
 ### 세션 6 — 프론트엔드 API 클라이언트 구조화 오류 처리 + 저장 실패 시 store 미반영
 
@@ -245,4 +246,4 @@
 - `.venv/bin/python -W error::RuntimeWarning main.py` 기동 — 10-30s 대기 후 종료
 - 기동 로그 확인: 암호화 키 상태 로그, 복호화 실패 경고, 브로커 연결 차단 사유
 - 규칙 5-1: `ps aux | grep -E "python|main.py|pytest" | grep -v grep` 잔존 프로세스 0건 확인
-- 실전 거래 검증은 수행하지 않음(테스트 모드 + 연결·주문 차단 상태 기준)
+- 실전 거래 검증은 수행하지 않음(테스트 모드 + 연결 차단·validate() 경고 상태 기준)
