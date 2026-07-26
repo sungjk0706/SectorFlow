@@ -3,18 +3,16 @@
 
 import { shell } from '../main'
 import { stockClassificationStore, computeEditWindowOpenByTime, type StockClassificationState } from '../stores/stockClassificationStore'
-import { hotStore, normalizeStockCode } from '../stores/hotStore'
 import { uiStore } from '../stores/uiStore'
 import { notifyPageActive, notifyPageInactive } from '../api/ws'
 import { api } from '../api/client'
 import { createSettingsManager, type SettingsManager } from '../settings'
 import { toastResult } from '../components/common/toast'
 import { showContextPopup, closeContextPopup } from '../components/common/context-popup'
-import { createDataTable, type ColumnDef, type DataTableApi } from '../components/common/data-table'
+import { type DataTableApi } from '../components/common/data-table'
 import { createSearchInput } from '../components/common/search-input'
 import { createSectorRowEl } from '../components/common/sector-row'
-import { createSolidBtn } from '../components/common/button'
-import { FONT_SIZE, FONT_FAMILY, createStockNameColumn, COLOR } from '../components/common/ui-styles'
+import { FONT_SIZE, FONT_FAMILY, COLOR } from '../components/common/ui-styles'
 import type { PageModule } from '../router'
 import type { StockClassificationMutationResponse } from '../types'
 import {
@@ -27,9 +25,7 @@ import {
 import {
   getAllStocks,
   clearStaging,
-  updateStagingPanel,
   updateStagingChipSectors,
-  getStocksForSector,
   initStagingCallbacks,
   resetStagingCallbacks,
 } from './stock-classification-staging'
@@ -44,6 +40,12 @@ import {
   initMasterCallbacks,
   resetMasterCallbacks,
 } from './stock-classification-master'
+import {
+  buildTripleCenter,
+  updateCenterPanel,
+  initCenterCallbacks,
+  resetCenterCallbacks,
+} from './stock-classification-center'
 
 /* ── 모듈 상태 (P10 SSOT — 모든 가변 상태를 단일 소스로 관리) ── */
 
@@ -149,6 +151,9 @@ const state: StockClassificationPageState = createState()
 // handleMasterRowClick, buildMasterTable, buildSectorManageCard, getActiveSectors, buildMasterRows,
 // updateMasterPanel, updateStatsLabel, onRenameSector, onDeleteSector, onAddSector, buildTripleLeft 는
 // stock-classification-master.ts 로 이관 (F-04 분할 4단계)
+// buildStagingPanel, handleSelectAll, handleDeselectAll, buildDetailTitleRow, buildDetailColumns,
+// handleDetailMouseDown, handleDetailMouseOver, buildDetailTable, buildTripleCenter, updateCenterPanel 는
+// stock-classification-center.ts 로 이관 (F-04 분할 5단계)
 
 /** Task 1.5: Move_Source 결정 — state.stagingSet 우선, 비어있으면 state.selectedStocks, 둘 다 비면 null */
 function getMoveSource(): { source: 'staging' | 'checked'; codes: string[] } | null {
@@ -178,273 +183,6 @@ function setControlsDisabled(disabled: boolean): void {
       el.style.pointerEvents = disabled ? 'none' : 'auto'
     })
   }
-}
-
-/* ── 8.4: tripleCenter — Stock_List_Panel ── */
-
-function buildStagingPanel(): HTMLElement {
-  state.stagingPanelRef = document.createElement('div')
-  Object.assign(state.stagingPanelRef.style, {
-    padding: '8px 12px', marginBottom: '8px',
-    border: '1px solid ' + COLOR.inactiveBg, borderRadius: '6px', background: COLOR.surfaceLight,
-  })
-
-  // Header row: count label + "전체 해제" button
-  const stagingHeader = document.createElement('div')
-  Object.assign(stagingHeader.style, {
-    display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px',
-  })
-
-  state.stagingCountRef = document.createElement('span')
-  Object.assign(state.stagingCountRef.style, { fontSize: FONT_SIZE.small, fontWeight: 'normal', color: COLOR.neutral })
-
-  const stagingClearBtn = createSolidBtn({
-    label: '전체 해제',
-    color: COLOR.tertiary,
-    editControl: true,
-    onClick: () => clearStaging(state),
-  })
-  stagingClearBtn.className = 'staging-clear-btn'
-  Object.assign(stagingClearBtn.style, { padding: '2px 8px', fontSize: FONT_SIZE.small, display: 'none' })
-
-  stagingHeader.appendChild(state.stagingCountRef)
-  stagingHeader.appendChild(stagingClearBtn)
-  state.stagingPanelRef.appendChild(stagingHeader)
-
-  // Chip list container
-  const chipList = document.createElement('div')
-  chipList.className = 'staging-chip-list'
-  Object.assign(chipList.style, { display: 'flex', flexWrap: 'wrap', gap: '4px' })
-  state.stagingPanelRef.appendChild(chipList)
-
-  // Empty state message
-  state.stagingEmptyRef = document.createElement('div')
-  Object.assign(state.stagingEmptyRef.style, {
-    color: COLOR.muted, fontSize: FONT_SIZE.small, textAlign: 'center', padding: '8px 0',
-  })
-  state.stagingEmptyRef.textContent = '검색으로 종목을 추가하세요'
-  state.stagingPanelRef.appendChild(state.stagingEmptyRef)
-
-  updateStagingPanel(state)
-  return state.stagingPanelRef
-}
-
-function handleSelectAll(): void {
-  if (!state.selectedSector) return
-  const stocks = getStocksForSector(state, state.selectedSector)
-  state.selectedStocks.clear()
-  for (const s of stocks) state.selectedStocks.add(s.code)
-  state.anchorRow = stocks.length > 0 ? 0 : -1
-  if (state.detailTableRef) state.detailTableRef.updateRows(stocks)
-  updateAllInlineMoveButtons()
-}
-
-function handleDeselectAll(): void {
-  state.selectedStocks.clear()
-  state.anchorRow = -1
-  if (state.selectedSector && state.detailTableRef) {
-    const stocks = getStocksForSector(state, state.selectedSector)
-    state.detailTableRef.updateRows(stocks)
-  }
-  updateAllInlineMoveButtons()
-}
-
-function buildDetailTitleRow(): HTMLElement {
-  const titleRow = document.createElement('div')
-  Object.assign(titleRow.style, {
-    display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px',
-  })
-
-  state.detailTitleRef = document.createElement('div')
-  Object.assign(state.detailTitleRef.style, {
-    fontSize: FONT_SIZE.section, fontWeight: 'normal', color: COLOR.neutral,
-  })
-  titleRow.appendChild(state.detailTitleRef)
-
-  const btnGroup = document.createElement('div')
-  Object.assign(btnGroup.style, { display: 'flex', gap: '4px' })
-
-  const selectAllBtn = createSolidBtn({
-    label: '전체 선택', color: COLOR.down, editControl: true, onClick: () => handleSelectAll(),
-  })
-  Object.assign(selectAllBtn.style, { padding: '2px 8px', fontSize: FONT_SIZE.small })
-
-  const deselectAllBtn = createSolidBtn({
-    label: '전체 해제', color: COLOR.tertiary, editControl: true, onClick: () => handleDeselectAll(),
-  })
-  Object.assign(deselectAllBtn.style, { padding: '2px 8px', fontSize: FONT_SIZE.small })
-
-  btnGroup.appendChild(selectAllBtn)
-  btnGroup.appendChild(deselectAllBtn)
-  titleRow.appendChild(btnGroup)
-  return titleRow
-}
-
-function buildDetailColumns(): ColumnDef<DetailRow>[] {
-  return [
-    {
-      key: 'code', label: '종목코드', minWidth: 72, maxWidth: 72, align: 'center',
-      cellStyle: { color: COLOR.disabled, fontSize: FONT_SIZE.small },
-      render: (row) => row.code,
-    },
-    createStockNameColumn<DetailRow>(
-      (row: DetailRow) => {
-        const hotState = hotStore.getState()
-        const sectorStock = hotState.sectorStocks[normalizeStockCode(row.code)]
-        return {
-          name: row.name,
-          market_type: sectorStock?.market_type ?? row.market_type,
-          nxt_enable: sectorStock?.nxt_enable ?? row.nxt_enable
-        }
-      }
-    ),
-  ]
-}
-
-/** 드래그 시작 및 단일/다중 클릭 핸들러 */
-function handleDetailMouseDown(e: MouseEvent): void {
-  if (e.button !== 0) return // 좌클릭만 허용
-  const tr = (e.target as HTMLElement).closest('tr')
-  if (!tr || !state.selectedSector) return
-  const clickedCode = tr.dataset.rowKey
-  if (!clickedCode) return
-
-  e.preventDefault()
-  state.isDragging = true
-
-  const stocks = getStocksForSector(state, state.selectedSector)
-  const idx = stocks.findIndex(s => s.code === clickedCode)
-  if (idx < 0) return
-
-  if (e.shiftKey && state.anchorRow >= 0) {
-    const [start, end] = [Math.min(state.anchorRow, idx), Math.max(state.anchorRow, idx)]
-    for (let i = start; i <= end; i++) state.selectedStocks.add(stocks[i].code)
-  } else if (e.ctrlKey || e.metaKey) {
-    if (state.selectedStocks.has(clickedCode)) state.selectedStocks.delete(clickedCode)
-    else state.selectedStocks.add(clickedCode)
-    state.anchorRow = idx
-  } else {
-    state.selectedStocks.clear()
-    state.selectedStocks.add(clickedCode)
-    state.anchorRow = idx
-  }
-
-  if (state.selectedSector) {
-    const updatedStocks = getStocksForSector(state, state.selectedSector)
-    state.detailTableRef!.updateRows(updatedStocks)
-  }
-  updateAllInlineMoveButtons()
-}
-
-/** 드래그 중 영역 선택 */
-function handleDetailMouseOver(e: MouseEvent): void {
-  if (!state.isDragging || !state.selectedSector) return
-  const tr = (e.target as HTMLElement).closest('tr')
-  if (!tr) return
-  const clickedCode = tr.dataset.rowKey
-  if (!clickedCode) return
-
-  const stocks = getStocksForSector(state, state.selectedSector)
-  const idx = stocks.findIndex(s => s.code === clickedCode)
-  if (idx < 0 || state.anchorRow < 0) return
-
-  state.selectedStocks.clear()
-  const [start, end] = [Math.min(state.anchorRow, idx), Math.max(state.anchorRow, idx)]
-  for (let i = start; i <= end; i++) state.selectedStocks.add(stocks[i].code)
-
-  if (state.selectedSector) {
-    const updatedStocks = getStocksForSector(state, state.selectedSector)
-    state.detailTableRef!.updateRows(updatedStocks)
-  }
-  updateAllInlineMoveButtons()
-}
-
-function buildDetailTable(): HTMLElement {
-  state.detailTableRef = createDataTable<DetailRow>({
-    columns: buildDetailColumns(),
-    emptyText: '종목이 없습니다.',
-    stickyHeader: true,
-    keyFn: (row) => row.code,
-    rowStyle: (row) => {
-      if (state.selectedStocks.has(row.code)) {
-        return { cursor: 'pointer', background: COLOR.downBg, transition: '' }
-      }
-      return { cursor: 'pointer', background: '', transition: '' }
-    },
-  })
-
-  state.detailTableRef.el.tabIndex = 0
-
-  // 전역 마우스 업 이벤트로 드래그 상태 해제
-  state.onWindowMouseUp = () => { state.isDragging = false }
-  window.addEventListener('mouseup', state.onWindowMouseUp)
-
-  state.detailTableRef.el.addEventListener('mousedown', handleDetailMouseDown)
-  state.detailTableRef.el.addEventListener('mouseover', handleDetailMouseOver)
-
-  // Esc 키 → 전체 선택 해제
-  state.onDetailKeyDown = (e: KeyboardEvent) => {
-    if (e.key === 'Escape') {
-      state.selectedStocks.clear()
-      state.anchorRow = -1
-      if (state.selectedSector && state.detailTableRef) {
-        const updatedStocks = getStocksForSector(state, state.selectedSector)
-        state.detailTableRef.updateRows(updatedStocks)
-      }
-      updateAllInlineMoveButtons()
-    }
-  }
-  state.detailTableRef.el.addEventListener('keydown', state.onDetailKeyDown)
-  return state.detailTableRef.el
-}
-
-function buildTripleCenter(): void {
-  const center = shell.tripleCenter
-  while (center.firstChild) center.removeChild(center.firstChild)
-  center.style.fontFamily = FONT_FAMILY
-
-  state.centerContentRef = document.createElement('div')
-  center.appendChild(state.centerContentRef)
-  state.centerContentRef.appendChild(buildStagingPanel())
-  state.centerContentRef.appendChild(buildDetailTitleRow())
-  state.centerContentRef.appendChild(buildDetailTable())
-
-  // 초기 빈 상태
-  updateCenterPanel()
-}
-
-function updateCenterPanel(): void {
-  if (!state.centerContentRef || !state.detailTitleRef || !state.detailTableRef) return
-
-  if (state.selectedSector === null) {
-    state.detailTitleRef.textContent = ''
-    state.detailTableRef.el.style.display = 'none'
-    // Hide title row via CSS display
-    const titleRow = state.detailTitleRef.parentElement
-    if (titleRow) titleRow.style.display = 'none'
-    // Show empty message
-    if (!state.centerEmptyRef) {
-      state.centerEmptyRef = document.createElement('div')
-      Object.assign(state.centerEmptyRef.style, { color: COLOR.muted, textAlign: 'center', padding: '40px 0' })
-      state.centerEmptyRef.textContent = '좌측에서 업종을 선택하세요'
-      state.centerContentRef.appendChild(state.centerEmptyRef)
-    }
-    state.centerEmptyRef.style.display = ''
-    return
-  }
-
-  // Hide empty message, show title row + table
-  if (state.centerEmptyRef) state.centerEmptyRef.style.display = 'none'
-  const titleRow = state.detailTitleRef.parentElement
-  if (titleRow) titleRow.style.display = ''
-  state.detailTableRef.el.style.display = ''
-
-  const stocks = getStocksForSector(state, state.selectedSector)
-  state.detailTitleRef.textContent = `${state.selectedSector} 종목 목록 (${stocks.length}개)`
-  state.detailTableRef.updateRows(stocks)
-
-  const storeState = stockClassificationStore.getState()
-  setControlsDisabled(!storeState.editWindowOpen)
 }
 
 /* ── 8.5: tripleRight — Target_Sector_List ── */
@@ -708,7 +446,7 @@ function handleStockDataChange(storeState: StockClassificationState, prev: Stock
   }
 
   updateMasterPanel(state)
-  updateCenterPanel()
+  updateCenterPanel(state)
   updateRightPanel()
   updateStagingChipSectors(state)
 }
@@ -719,7 +457,7 @@ function handleStockClassificationChange(storeState: StockClassificationState, p
     // 첫 호출: 초기 렌더링
     updateStockNameIndex()
     updateMasterPanel(state)
-    updateCenterPanel()
+    updateCenterPanel(state)
     updateRightPanel()
     updateStagingChipSectors(state)
     updateIndicatorBar(state)
@@ -753,10 +491,12 @@ function mount(_container: HTMLElement): void {
   // Staging 분할 모듈에 main 잔류 함수 주입 (순환 참조 해결 — F-04 분할 2단계)
   initStagingCallbacks({ updateAllInlineMoveButtons, updateRightPanel })
   // Master 분할 모듈에 main 잔류 함수 주입 (순환 참조 해결 — F-04 분할 4단계)
-  initMasterCallbacks({ setControlsDisabled, onRowClickUpdatePanels: () => { updateCenterPanel(); updateRightPanel() } })
+  initMasterCallbacks({ setControlsDisabled, onRowClickUpdatePanels: () => { updateCenterPanel(state); updateRightPanel() } })
+  // Center 분할 모듈에 main 잔류 함수 주입 (순환 참조 해결 — F-04 분할 5단계)
+  initCenterCallbacks({ updateAllInlineMoveButtons, setControlsDisabled })
   buildTripleHeader(state)
   buildTripleLeft(state)
-  buildTripleCenter()
+  buildTripleCenter(state)
   buildTripleRight()
 
   state.settingsMgr = createSettingsManager()
@@ -784,7 +524,7 @@ function mount(_container: HTMLElement): void {
   updateStockNameIndex()
   updateIndicatorBar(state)
   updateMasterPanel(state)
-  updateCenterPanel()
+  updateCenterPanel(state)
   updateRightPanel()
 }
 
@@ -795,6 +535,7 @@ function unmount(): void {
   state.mounted = false
   resetStagingCallbacks()
   resetMasterCallbacks()
+  resetCenterCallbacks()
   if (state.unsubCustom) { state.unsubCustom(); state.unsubCustom = null }
   if (state.unsubSse) { state.unsubSse(); state.unsubSse = null }
   if (state.unsubSettings) { state.unsubSettings(); state.unsubSettings = null }
