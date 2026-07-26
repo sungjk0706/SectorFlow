@@ -4,6 +4,7 @@ from __future__ import annotations
 import pytest
 from unittest.mock import patch, AsyncMock
 
+from backend.app.core.encryption import DecryptResult, SecretValueState
 from backend.app.core.settings_store import (
     normalize_stk_cd_key,
     normalize_symbol_override_map,
@@ -823,7 +824,10 @@ class TestLoadIntegratedSystemSettingsForEditing:
             "broker": "kiwoom",
         }
         with patch("backend.app.core.settings_store.load_integrated_system_settings", new=AsyncMock(return_value=flat)), \
-             patch("backend.app.core.encryption.decrypt_value", return_value="decrypted_key"):
+             patch(
+                 "backend.app.core.encryption.decrypt_secret",
+                 return_value=DecryptResult(state=SecretValueState.ENCRYPTED, plaintext="decrypted_key"),
+             ):
             result = await load_integrated_system_settings_for_editing()
             assert result["kiwoom_app_key"] == "decrypted_key"
             assert result["broker"] == "kiwoom"
@@ -837,16 +841,19 @@ class TestLoadIntegratedSystemSettingsForEditing:
             assert result["trade_mode"] == "test"
 
     @pytest.mark.asyncio
-    async def test_decrypt_returns_none_logs_warning(self):
-        """B13-04: 복호화 실패(None) 시 경고 로그 + 빈문자열 (P21 사용자 투명성)."""
+    async def test_decrypt_failed_keeps_cipher_logs_warning(self):
+        """B21-01 세션2: 복호화 실패 시 암호문 유지 + 경고 로그 (빈문자열 폴백 제거 — P20)."""
         flat = {"kiwoom_app_key": "gAAAAencrypted"}
         with patch("backend.app.core.settings_store.load_integrated_system_settings", new=AsyncMock(return_value=flat)), \
-             patch("backend.app.core.encryption.decrypt_value", return_value=None), \
+             patch(
+                 "backend.app.core.encryption.decrypt_secret",
+                 return_value=DecryptResult(state=SecretValueState.DECRYPT_FAILED),
+             ), \
              patch("backend.app.core.settings_file.logger") as mock_logger:
             result = await load_integrated_system_settings_for_editing()
-            assert result["kiwoom_app_key"] == ""
+            assert result["kiwoom_app_key"] == "gAAAAencrypted"
             mock_logger.warning.assert_called_once()
-            assert "복호화 실패" in mock_logger.warning.call_args[0][0]
+            assert "DECRYPT_FAILED" in mock_logger.warning.call_args[0][0]
 
 
 # ── _validate_numeric_fields: daily_summary_days 범위 검증 (FIX-WS-04 6세션) ──

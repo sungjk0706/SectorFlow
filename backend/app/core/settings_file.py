@@ -240,12 +240,11 @@ async def load_selected_settings(keys: set[str]) -> dict:
 
 async def save_selected_settings(data: dict) -> None:
     """지정된 키만 DB에 저장 (전체 설정 덮어쓰기 없이 증분 저장).
-    암호화 필드는 평문인 경우 자동 암호화."""
+    암호화 필드는 _encrypt_field_or_raise() 공통 검사 경유 — 전체 저장 경로와 동일 정책 (B21-01 세션2, P24 중복 제거)."""
     if not data:
         return
 
     from backend.app.db.database import get_db_connection, get_db_lock
-    from backend.app.core.encryption import encrypt_value
 
     bulk_params: list[tuple[str, str, str]] = []
 
@@ -255,9 +254,7 @@ async def save_selected_settings(data: dict) -> None:
         if k.startswith("_broker_specs:") or k.startswith("broker_specs:"):
             continue
         if k in _ENCRYPT_FIELDS and v and not str(v).startswith("gAAAA"):
-            enc = encrypt_value(str(v))
-            if enc:
-                v = enc
+            v = _encrypt_field_or_raise(k, str(v))
         if isinstance(v, bool):
             value_type = "boolean"
             val_str = str(v)
@@ -346,21 +343,44 @@ async def _ensure_broker_specs(db_data: dict) -> None:
 
 
 def _decrypt_encrypt_fields(merged: dict) -> None:
-    """_ENCRYPT_FIELDS의 암호문(gAAAA 접두)을 복호화하여 in-place 치환.
-    복호화 실패(None) 시 빈문자열 폴백하되 경고 로그 (P21 사용자 투명성)."""
-    from backend.app.core.encryption import decrypt_value
+    """_ENCRYPT_FIELDS의 민감값을 상태 기반으로 처리하여 in-place 치환 (B21-01 세션2).
+
+    - gAAAA 접두 암호문 → decrypt_secret() 결과 상태별 처리:
+      - ENCRYPTED → 평문 치환 (정상)
+      - KEY_UNAVAILABLE → 암호문 유지 + 경고 로그 (빈문자열 폴백 제거 — P20)
+      - DECRYPT_FAILED → 암호문 유지 + 경고 로그 (빈문자열 폴백 제거 — P20)
+    - gAAAA 접두 아닌 비어있지 않은 값 → PLAINTEXT_LEGACY 분류 (평문 유지, 자동 마이그레이션 금지 — 설계 6.2)
+    - 빈 값 → 그대로
+
+    평문 값은 로그에 노출하지 않음 (설계 6.2 — 평문 값 UI/로그/저널 새 노출 금지).
+    사용 경로(엔진 설정·텔레그램)의 상태 기반 차단은 세션 4-5에서 연계.
+    """
+    from backend.app.core.encryption import decrypt_secret, SecretValueState
     for enc_field in _ENCRYPT_FIELDS:
         v = merged.get(enc_field)
-        if v and str(v).startswith("gAAAA"):
-            plain = decrypt_value(v)
-            if plain is None:
-                logger.warning(
-                    "[설정] %s 복호화 실패 — 빈문자열로 폴백 (사용자가 자격증명을 다시 입력해야 함). cipher 앞 10자: %s...",
-                    enc_field, str(v)[:10],
-                )
-                merged[enc_field] = ""
-            else:
-                merged[enc_field] = plain
+        if not v:
+            continue
+        v_str = str(v)
+        if not v_str.startswith("gAAAA"):
+            # 평문 레거시 — 자동 마이그레이션·삭제 금지 (설계 6.2). 평문 값은 로그에 노출하지 않음.
+            logger.warning(
+                "[설정] %s 평문 레거시 감지 — 재저장 시 암호화 필요 (PLAINTEXT_LEGACY). 자동 마이그레이션 금지.",
+                enc_field,
+            )
+            continue
+        result = decrypt_secret(v_str)
+        if result.state is SecretValueState.ENCRYPTED and result.plaintext is not None:
+            merged[enc_field] = result.plaintext
+        elif result.state is SecretValueState.KEY_UNAVAILABLE:
+            logger.warning(
+                "[설정] %s 복호화 불가 — 암호화 키 없음/오류 (KEY_UNAVAILABLE). 암호문 유지, 사용 경로 차단 필요.",
+                enc_field,
+            )
+        elif result.state is SecretValueState.DECRYPT_FAILED:
+            logger.warning(
+                "[설정] %s 복호화 실패 — 암호문 손상/다른 키 (DECRYPT_FAILED). 암호문 유지, 재입력 필요.",
+                enc_field,
+            )
 
 
 async def _apply_all_migrations(merged: dict, db_data: dict) -> None:
@@ -429,16 +449,19 @@ def _parse_value(value: str, value_type: str) -> Any:
 
 def _encrypt_field_or_raise(field: str, plain: str) -> str:
     """암호화 필드 평문 → 암호문. 암호화 실패(Fernet 미가용/예외) 시 평문을 그대로 반환하지 않고
-    ValueError 발생 (P20 폴백 금지 + 보안: 평문 저장 차단)."""
-    from backend.app.core.encryption import encrypt_value
-    enc = encrypt_value(str(plain))
-    if enc is None or not str(enc).startswith("gAAAA"):
-        logger.error(
-            "[설정] %s 암호화 실패 — 평문 저장 차단 (P20/보안). Fernet 키 확인 필요.",
-            field, exc_info=True,
-        )
-        raise ValueError(f"암호화 실패 — 평문 저장 차단 (필드: {field})")
-    return enc
+    ValueError 발생 (P20 폴백 금지 + 보안: 평문 저장 차단).
+
+    B21-01 세션2: encrypt_secret() 결과 상태 기반 검사로 전환 (임시 래퍼 의존 제거)."""
+    from backend.app.core.encryption import encrypt_secret, SecretValueState
+    result = encrypt_secret(str(plain))
+    if result.state is SecretValueState.ENCRYPTED and result.ciphertext is not None:
+        return result.ciphertext
+    enc_state = result.state
+    logger.error(
+        "[설정] %s 암호화 실패 (상태: %s) — 평문 저장 차단 (P20/보안). 암호화 키 확인 필요.",
+        field, enc_state.name, exc_info=True,
+    )
+    raise ValueError(f"암호화 실패 — 평문 저장 차단 (필드: {field}, 상태: {enc_state.name})")
 
 
 def _collect_save_params(data: dict) -> tuple[list[tuple[str, str, str]], list[tuple[str, str, str]]]:

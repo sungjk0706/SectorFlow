@@ -3,6 +3,8 @@
 in-memory SQLite를 사용하여 load_integrated_system_settings()와
 save_settings()가 integrated_system_settings 테이블과 정상적으로
 상호작용하는지 검증.
+
+B21-01 세션2: 암호화 상태 모델(encrypt_secret/decrypt_secret) 기반 저장·로드 경로 검증.
 """
 from __future__ import annotations
 
@@ -11,10 +13,16 @@ import aiosqlite
 from unittest.mock import patch, AsyncMock
 
 from backend.app.db import database
+from backend.app.core.encryption import (
+    EncryptResult,
+    DecryptResult,
+    SecretValueState,
+)
 from backend.app.core.settings_file import (
     load_integrated_system_settings,
     load_selected_settings,
     save_settings,
+    save_selected_settings,
     _decrypt_encrypt_fields,
     _encrypt_field_or_raise,
 )
@@ -340,7 +348,8 @@ class TestUpdateSettingsDB:
 
 
 class TestSettingsFileP20Propagation:
-    """P20 폴백 제거: DB/암호화 실패 시 예외 전파 또는 로깅 (B13-01/02/04/11)."""
+    """P20 폴백 제거: DB/암호화 실패 시 예외 전파 또는 로깅 (B13-01/02/04/11).
+    B21-01 세션2: encrypt_secret/decrypt_secret 상태 모델 기반 검증."""
 
     @pytest.mark.asyncio
     async def test_load_selected_settings_propagates_db_error(self, in_memory_db):
@@ -356,30 +365,152 @@ class TestSettingsFileP20Propagation:
             with pytest.raises(RuntimeError, match="DB 에러"):
                 await load_integrated_system_settings()
 
-    def test_decrypt_encrypt_fields_logs_on_failure(self):
-        """B13-04: 복호화 실패(None) 시 경고 로그 + 빈문자열 (P21 사용자 투명성)."""
-        with patch("backend.app.core.encryption.decrypt_value", return_value=None), \
-             patch("backend.app.core.settings_file.logger") as mock_logger:
-            merged = {"kiwoom_app_key": "gAAAAinvalidcipher"}
+    def test_decrypt_encrypt_fields_decrypts_encrypted(self):
+        """B21-01: ENCRYPTED 상태 → 평문 치환 (정상 경로)."""
+        with patch(
+            "backend.app.core.encryption.decrypt_secret",
+            return_value=DecryptResult(state=SecretValueState.ENCRYPTED, plaintext="secret123"),
+        ):
+            merged = {"kiwoom_app_key": "gAAAAencryptedcipher"}
+            _decrypt_encrypt_fields(merged)
+            assert merged["kiwoom_app_key"] == "secret123"
+
+    def test_decrypt_encrypt_fields_key_unavailable_keeps_cipher(self):
+        """B21-01: KEY_UNAVAILABLE → 암호문 유지 + 경고 로그 (빈문자열 폴백 제거 — P20)."""
+        with patch(
+            "backend.app.core.encryption.decrypt_secret",
+            return_value=DecryptResult(state=SecretValueState.KEY_UNAVAILABLE),
+        ), patch("backend.app.core.settings_file.logger") as mock_logger:
+            merged = {"kiwoom_app_key": "gAAAAencryptedcipher"}
+            _decrypt_encrypt_fields(merged)
+            assert merged["kiwoom_app_key"] == "gAAAAencryptedcipher"
+            mock_logger.warning.assert_called_once()
+            assert "KEY_UNAVAILABLE" in mock_logger.warning.call_args[0][0]
+
+    def test_decrypt_encrypt_fields_decrypt_failed_keeps_cipher(self):
+        """B21-01: DECRYPT_FAILED → 암호문 유지 + 경고 로그 (빈문자열 폴백 제거 — P20)."""
+        with patch(
+            "backend.app.core.encryption.decrypt_secret",
+            return_value=DecryptResult(state=SecretValueState.DECRYPT_FAILED),
+        ), patch("backend.app.core.settings_file.logger") as mock_logger:
+            merged = {"kiwoom_app_key": "gAAAAencryptedcipher"}
+            _decrypt_encrypt_fields(merged)
+            assert merged["kiwoom_app_key"] == "gAAAAencryptedcipher"
+            mock_logger.warning.assert_called_once()
+            assert "DECRYPT_FAILED" in mock_logger.warning.call_args[0][0]
+
+    def test_decrypt_encrypt_fields_plaintext_legacy_keeps_plaintext(self):
+        """B21-01: gAAAA 접두 아닌 평문 → PLAINTEXT_LEGACY 분류 (평문 유지, 자동 마이그레이션 금지 — 설계 6.2)."""
+        with patch("backend.app.core.settings_file.logger") as mock_logger:
+            merged = {"kiwoom_app_key": "plaintext_legacy_key"}
+            _decrypt_encrypt_fields(merged)
+            assert merged["kiwoom_app_key"] == "plaintext_legacy_key"
+            mock_logger.warning.assert_called_once()
+            assert "PLAINTEXT_LEGACY" in mock_logger.warning.call_args[0][0]
+
+    def test_decrypt_encrypt_fields_empty_value_unchanged(self):
+        """B21-01: 빈 값 → 그대로 (로깅 없음)."""
+        with patch("backend.app.core.settings_file.logger") as mock_logger:
+            merged = {"kiwoom_app_key": ""}
             _decrypt_encrypt_fields(merged)
             assert merged["kiwoom_app_key"] == ""
-            mock_logger.warning.assert_called_once()
-            assert "복호화 실패" in mock_logger.warning.call_args[0][0]
+            mock_logger.warning.assert_not_called()
 
-    def test_encrypt_field_or_raise_blocks_plaintext(self):
-        """B13-11: 암호화 실패(평문 반환) 시 ValueError — 평문 저장 차단 (P20/보안)."""
-        with patch("backend.app.core.encryption.encrypt_value", return_value="plaintext_not_encrypted"):
+    def test_encrypt_field_or_raise_blocks_key_unavailable(self):
+        """B21-01: KEY_UNAVAILABLE 상태 → ValueError (평문 저장 차단 — P20/보안)."""
+        with patch(
+            "backend.app.core.encryption.encrypt_secret",
+            return_value=EncryptResult(state=SecretValueState.KEY_UNAVAILABLE),
+        ):
             with pytest.raises(ValueError, match="암호화 실패"):
                 _encrypt_field_or_raise("kiwoom_app_key", "plaintext_key")
 
-    def test_encrypt_field_or_raise_blocks_none(self):
-        """B13-11: 암호화 실패(None) 시 ValueError — 평문 저장 차단."""
-        with patch("backend.app.core.encryption.encrypt_value", return_value=None):
+    def test_encrypt_field_or_raise_blocks_decrypt_failed(self):
+        """B21-01: DECRYPT_FAILED 상태(암호화 자체 실패) → ValueError (평문 저장 차단)."""
+        with patch(
+            "backend.app.core.encryption.encrypt_secret",
+            return_value=EncryptResult(state=SecretValueState.DECRYPT_FAILED),
+        ):
+            with pytest.raises(ValueError, match="암호화 실패"):
+                _encrypt_field_or_raise("kiwoom_app_key", "plaintext_key")
+
+    def test_encrypt_field_or_raise_blocks_empty(self):
+        """B21-01: EMPTY 상태(빈 입력) → ValueError (평문 저장 차단)."""
+        with patch(
+            "backend.app.core.encryption.encrypt_secret",
+            return_value=EncryptResult(state=SecretValueState.EMPTY),
+        ):
             with pytest.raises(ValueError, match="암호화 실패"):
                 _encrypt_field_or_raise("kiwoom_app_key", "plaintext_key")
 
     def test_encrypt_field_or_raise_success(self):
-        """B13-11: 암호화 성공(gAAAA 접두) 시 암호문 반환."""
-        with patch("backend.app.core.encryption.encrypt_value", return_value="gAAAAencrypted"):
+        """B21-01: ENCRYPTED 상태 → 암호문 반환 (정상 경로)."""
+        with patch(
+            "backend.app.core.encryption.encrypt_secret",
+            return_value=EncryptResult(state=SecretValueState.ENCRYPTED, ciphertext="gAAAAencrypted"),
+        ):
             result = _encrypt_field_or_raise("kiwoom_app_key", "plaintext_key")
             assert result == "gAAAAencrypted"
+
+
+class TestSaveSelectedSettingsEncryptionPolicy:
+    """B21-01 세션2: 증분 저장 경로가 전체 저장과 동일 fail-closed 정책을 통과하는지 검증 (P24 중복 제거)."""
+
+    @pytest.mark.asyncio
+    async def test_save_selected_settings_blocks_plaintext_when_key_unavailable(self, in_memory_db):
+        """증분 저장: 키 없음 시 평문 민감값 저장 차단 (전체 저장과 동일 정책)."""
+        with patch(
+            "backend.app.core.encryption.encrypt_secret",
+            return_value=EncryptResult(state=SecretValueState.KEY_UNAVAILABLE),
+        ):
+            with pytest.raises(ValueError, match="암호화 실패"):
+                await save_selected_settings({"kiwoom_app_key": "plaintext_key"})
+
+    @pytest.mark.asyncio
+    async def test_save_selected_settings_saves_non_sensitive_without_key(self, in_memory_db):
+        """증분 저장: 비민감 설정은 암호화 키 상태와 무관하게 정상 저장 (P25 격리된 실패)."""
+        await save_selected_settings({"broker": "ls", "sector_max_targets": 5})
+
+        cursor = await in_memory_db.execute(
+            "SELECT value, value_type FROM integrated_system_settings WHERE key = ?",
+            ("broker",),
+        )
+        row = await cursor.fetchone()
+        assert row["value"] == "ls"
+        assert row["value_type"] == "string"
+
+        cursor = await in_memory_db.execute(
+            "SELECT value, value_type FROM integrated_system_settings WHERE key = ?",
+            ("sector_max_targets",),
+        )
+        row = await cursor.fetchone()
+        assert row["value"] == "5"
+        assert row["value_type"] == "number"
+
+    @pytest.mark.asyncio
+    async def test_save_selected_settings_saves_encrypted_ciphertext_as_is(self, in_memory_db):
+        """증분 저장: 이미 암호화된 값(gAAAA 접두)은 재암호화 없이 그대로 저장."""
+        await save_selected_settings({"kiwoom_app_key": "gAAAAexistingcipher"})
+
+        cursor = await in_memory_db.execute(
+            "SELECT value FROM integrated_system_settings WHERE key = ?",
+            ("kiwoom_app_key",),
+        )
+        row = await cursor.fetchone()
+        assert row["value"] == "gAAAAexistingcipher"
+
+    @pytest.mark.asyncio
+    async def test_save_selected_settings_encrypts_plaintext_when_key_available(self, in_memory_db):
+        """증분 저장: 키 available 시 평문 민감값 암호화 후 저장 (정상 경로)."""
+        with patch(
+            "backend.app.core.encryption.encrypt_secret",
+            return_value=EncryptResult(state=SecretValueState.ENCRYPTED, ciphertext="gAAAAnewcipher"),
+        ):
+            await save_selected_settings({"kiwoom_app_key": "plaintext_key"})
+
+        cursor = await in_memory_db.execute(
+            "SELECT value FROM integrated_system_settings WHERE key = ?",
+            ("kiwoom_app_key",),
+        )
+        row = await cursor.fetchone()
+        assert row["value"] == "gAAAAnewcipher"
