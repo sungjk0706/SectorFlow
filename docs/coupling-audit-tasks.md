@@ -37,7 +37,7 @@
 | COUPLING-S2 | P0 | C-02 설정 키 영향 매트릭스 | ☑ | `docs/coupling-settings-impact-matrix.md` 작성 (525줄). DEFAULT_USER_SETTINGS 66키 + DEFAULT_SYSTEM_CONFIG 17키 + 동적 증권사 자격증명 + 파생 키 전체 파이프라인(DB→기본값→정규화→캐시→서비스→API/UI) 매트릭스화. 후속 세션(2026-07-27)에서 P10 SSOT 위반 6건 모두 근본 해결 — #1 `max_daily_loss_limit` 제거(safe-trade), #3 `max_position_size` 제거, #4 `telegram_on` 파생 제거, #5 마켓시간 14키 제거, #6 `boost_order_ratio_side`/`buy_interval_min` 레거시 제거, #2 `max_single_stock_exposure` 매트릭스·ARCHITECTURE.md 정정(살아있는 매수 차단 로직). DB 마이그레이션 4개 추가(17개 레거시 키 DB 삭제). 백엔드 테스트 통과, RuntimeWarning 기동 정상, 잔존 프로세스 0건. |
 | COUPLING-S3 | P1 | C-03 WebSocket 이벤트 계약 인덱스 | ☑ | `docs/coupling-ws-event-contract-index.md` 작성 (575줄). WS 36개 구독 이벤트 + 4개 dead subscription 전수 인덱스화. 3 채널(prices/settings/orders) 구조, 40개 이벤트 producer/consumer/payload/Store 액션/CustomEvent 배칭 매트릭스. 코드 수정 없음(조사·문서만). P16/P21 위반 4건(dead subscription), P23 위반 8건(네이밍 6 + payload 불일치 2), P10/P24 위반 3건(중복 경로), 단일화 우선순위 9건 식별. **후속 세션(2026-07-27)에서 dead subscription 4건 전수 정리 완료** — `bootstrap-stage`(구독+state+action+chip+test 완전 제거, P21 위반 해결), `order-filled`(구독+함수 제거), `engine-reload-complete`/`avg-amt-progress`(구독만 제거, 공유 함수 유지). 검증: typecheck ✓, build ✓ (97 modules), 218 tests ✓ (회귀 0건). |
 | COUPLING-S4 | P0 | C-04 주문 호출 그래프 | ☑ | safe-trade 점검, 주문·리스크 테스트, RuntimeWarning 기동 |
-| COUPLING-S5 | P1 | C-05 파이프라인 경계 | ☑ | `docs/coupling-pipeline-boundary.md` 작성 (608줄). scheduler→pipeline→compute→candidate→notification 단계별 호출 그래프 + 소유 캐시·DB 저장·WS 진행률·주문 후보 side effect 매트릭스. 코드 수정 없음(조사·문서만). P8/P9/P10/P11/P16/P20/P24/P25 점검 완료. 개선 후보 4건 식별(후처리 헬퍼 추출 1순위, 낮은 위험). |
+| COUPLING-S5 | P1 | C-05 파이프라인 경계 | ☑ | `docs/coupling-pipeline-boundary.md` 작성 (608줄). scheduler→pipeline→compute→candidate→notification 단계별 호출 그래프 + 소유 캐시·DB 저장·WS 진행률·주문 후보 side effect 매트릭스. 코드 수정 없음(조사·문서만). P8/P9/P10/P11/P16/P20/P24/P25 점검 완료. 개선 후보 4건 식별(후처리 헬퍼 추출 1순위, 낮은 위험). **후속 세션(2026-07-27)에서 후보 1 후처리 헬퍼 추출 완료** — `_post_recompute_notify(tag)` 헬퍼 신설, `_step7_recompute_and_broadcast`와 `fetch_5d_data_only` 후처리 4줄 중복 제거. 백엔드 2758 passed, RuntimeWarning 기동 정상(118ms), 잔존 프로세스 0건. |
 | COUPLING-S6 | 중간 | C-06 브로커 core 역참조 | ☑ | `docs/coupling-broker-core-backref.md` 작성 (436줄). core→services 역참조 33건(키움 19 + LS 14) + 부수 17건 전수 매트릭스화. 8개 유형 분류(A 상태동기화/B 설정읽기/C 토큰재사용/D ACK전송/E 키움REG빌더/F 순수함수/G WS상태브로드캐스트/H LS전용후처리). P4/P10/P16/P20/P23/P24/P25 점검 완료. 개선 후보 5건 식별(1순위: 키움 REG 빌더 이동, 낮은 위험, P4/P23 동시 개선). 코드 수정 없음(조사·문서만). |
 | COUPLING-S7 | 중간 | C-07 종목코드 정규화 표현 | ☑ | `docs/coupling-stock-code-normalization.md` 작성 (422줄). 종목코드 정규화 4함수(normalize_stk_cd_key/_base_stk_cd/_norm_stk_cd/normalizeStockCode) 입력·출력·용도·계층 매트릭스 + 호출부 전수 조사(25+/1/30+) + 테스트 커버리지 + 통합 가능성 판정. 코드 수정 없음(조사·문서만). 4개 함수 모두 ⊘ 통합 금지 판정 (입력 도메인·출력 계약 다름). 개선 후보 4건 식별(1순위: _base_stk_cd core 이동 + _norm_stk_cd 통합 검토, C-06 후보 2와 중복, 낮음). |
 | COUPLING-S8 | 중간 | C-08 Store·페이지 직접 결합 | ☑ | producer/consumer 대조, 프론트 테스트, typecheck/build·브라우저 |
@@ -207,9 +207,12 @@
 
 ### 세션 COUPLING-S5 — C-05 스케줄러·파이프라인·실시간 엔진 경계
 
-**상태:** ☑ 완료 (호출 그래프·매트릭스 문서 작성)
+**상태:** ☑ 완료 (호출 그래프·매트릭스 문서 작성 + 후속 후보 1 후처리 헬퍼 추출 완료)
 **대상 원칙:** P8/P9 경계 보존, P10 SSOT, P11 이벤트 기반 처리, P16 살아있는 경로, P20 폴백 금지, P24 단순성, P25 격리된 실패
-**결과:** `docs/coupling-pipeline-boundary.md`에 단계별 호출 그래프 + side effect 매트릭스 작성. 코드 수정 없음(조사·문서만).
+**결과:** `docs/coupling-pipeline-boundary.md`에 단계별 호출 그래프 + side effect 매트릭스 작성. 코드 수정 없음(조사·문서만). 후속 세션(2026-07-27)에서 후보 1 후처리 헬퍼 추출 완료.
+- 후보 1 완료 내역: `_post_recompute_notify(tag)` 헬퍼 신설. `_step7_recompute_and_broadcast`와 `fetch_5d_data_only` 후처리 4줄 중복(수신율 갱신 → sector-stocks-refresh → recompute_sector_summary_now)을 헬퍼 호출로 전환. try/except + warning 로깅 패턴도 헬퍼로 통합 (P25 격리).
+- 검증: 백엔드 2758 passed (회귀 0건), RuntimeWarning 기동 정상 (118ms, Traceback 0건), 잔존 프로세스 0건.
+- 잔여 후보 3건(후보 2 현행 유지 적합, 후보 3·4 C-09 범위와 중복) — 별도 승인 시 진행.
 - 시스템 기동/종료 순서 고정 (app.py lifespan): initialize_queues → start_gateway_loop → 설정 로드 → start_engine → start_daily_time_scheduler.
 - 호출 그래프 12단계: [A] 시간 이벤트 → [B] 페이즈 전환 부작용 → [C] WS 구독 / [D] 업종 재계산 / [E] WS 구독 해지 / [F] 확정 다운로드 → [G] 장마감 파이프라인 7단계 → [H] 실시간 틱 Compute Engine → [I] 업종 재계산 루프(Phase 1/2) → [J] 매수 후보 실행 → [K] 화면 전송 → [L] 알림 워커.
 - 소유 캐시 17개 필드 매트릭스 (단일 writer/다중 writer/멱등성 가드 분류).
