@@ -27,6 +27,7 @@ from backend.app.services.engine_account_notify import (
 )
 from backend.app.services.engine_account_broadcast import (
     _build_lightweight_payload_for_profit_overview,
+    _broadcast_account_to_pages,
 )
 
 
@@ -245,6 +246,88 @@ class TestBuildLightweightPayload:
         assert "stk_cd" in pos
         assert "extra" not in pos
         assert result["removed_codes"] == ["000660"]
+
+
+# ── _broadcast_account_to_pages — 페이지별 이벤트 분리 (P23) ──────────────────────
+
+class TestBroadcastAccountToPages:
+    """account-update / account-summary-update 이벤트 분리 전송 검증 (P23 일관성)."""
+
+    @pytest.mark.asyncio
+    async def test_profit_overview_only_sends_summary_update(self):
+        """수익현황만 활성 → account-summary-update 경량화 이벤트 전송."""
+        from unittest.mock import MagicMock
+        with patch("backend.app.services.engine_account_broadcast._safe_broadcast", new_callable=AsyncMock) as mock_safe, \
+             patch("backend.app.web.ws_manager.ws_manager") as mock_wsm:
+            mock_wsm.get_active_pages = MagicMock(return_value={"profit-overview"})
+            mock_wm_broadcast = AsyncMock()
+            mock_wsm.broadcast_to_pages = mock_wm_broadcast
+            changed = [{"stk_cd": "005930", "stk_nm": "삼성전자", "qty": 10, "cur_price": 80000}]
+            snapshot = {"deposit": 5000000, "total_eval_amount": 800000, "position_count": 1}
+            await _broadcast_account_to_pages(changed, [], snapshot, {"profit-overview"})
+            # account-summary-update 전송 검증
+            assert mock_wm_broadcast.await_count == 1
+            event_name = mock_wm_broadcast.call_args.args[0]
+            assert event_name == "account-summary-update"
+            target_pages = mock_wm_broadcast.call_args.args[2]
+            assert target_pages == {"profit-overview"}
+            # account-update 폴백 미호출
+            mock_safe.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_sell_position_active_sends_account_update(self):
+        """매도포지션 활성 → account-update 전체 payload 이벤트 전송."""
+        from unittest.mock import MagicMock
+        with patch("backend.app.services.engine_account_broadcast._safe_broadcast", new_callable=AsyncMock) as mock_safe, \
+             patch("backend.app.web.ws_manager.ws_manager") as mock_wsm:
+            mock_wsm.get_active_pages = MagicMock(return_value={"sell-position"})
+            mock_wm_broadcast = AsyncMock()
+            mock_wsm.broadcast_to_pages = mock_wm_broadcast
+            changed = [{"stk_cd": "005930", "stk_nm": "삼성전자", "qty": 10, "cur_price": 80000, "pnl_rate": 5.2}]
+            snapshot = {"deposit": 5000000, "total_eval_amount": 800000, "position_count": 1}
+            await _broadcast_account_to_pages(changed, [], snapshot, {"sell-position"})
+            assert mock_wm_broadcast.await_count == 1
+            event_name = mock_wm_broadcast.call_args.args[0]
+            assert event_name == "account-update"
+            target_pages = mock_wm_broadcast.call_args.args[2]
+            assert target_pages == {"sell-position"}
+            mock_safe.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_both_pages_active_sends_account_update(self):
+        """두 페이지 모두 활성 → account-update 전체 payload (수익현황도 전체 수신)."""
+        from unittest.mock import MagicMock
+        with patch("backend.app.services.engine_account_broadcast._safe_broadcast", new_callable=AsyncMock) as mock_safe, \
+             patch("backend.app.web.ws_manager.ws_manager") as mock_wsm:
+            mock_wsm.get_active_pages = MagicMock(return_value={"profit-overview", "sell-position"})
+            mock_wm_broadcast = AsyncMock()
+            mock_wsm.broadcast_to_pages = mock_wm_broadcast
+            changed = [{"stk_cd": "005930", "stk_nm": "삼성전자", "qty": 10, "cur_price": 80000}]
+            snapshot = {"deposit": 5000000, "total_eval_amount": 800000, "position_count": 1}
+            await _broadcast_account_to_pages(changed, [], snapshot, {"profit-overview", "sell-position"})
+            assert mock_wm_broadcast.await_count == 1
+            event_name = mock_wm_broadcast.call_args.args[0]
+            assert event_name == "account-update"
+            target_pages = mock_wm_broadcast.call_args.args[2]
+            assert target_pages == {"sell-position", "profit-overview"}
+            mock_safe.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_no_active_page_fallback_account_update(self):
+        """활성 페이지 없음 → account-update 전체 payload 폴백 (_safe_broadcast)."""
+        from unittest.mock import MagicMock
+        with patch("backend.app.services.engine_account_broadcast._safe_broadcast", new_callable=AsyncMock) as mock_safe, \
+             patch("backend.app.web.ws_manager.ws_manager") as mock_wsm:
+            mock_wsm.get_active_pages = MagicMock(return_value=set())
+            mock_wm_broadcast = AsyncMock()
+            mock_wsm.broadcast_to_pages = mock_wm_broadcast
+            changed = [{"stk_cd": "005930", "stk_nm": "삼성전자", "qty": 10, "cur_price": 80000}]
+            snapshot = {"deposit": 5000000, "total_eval_amount": 800000, "position_count": 1}
+            await _broadcast_account_to_pages(changed, [], snapshot, set())
+            mock_wm_broadcast.assert_not_awaited()
+            mock_safe.assert_awaited_once()
+            event_name = mock_safe.call_args.args[0]
+            assert event_name == "account-update"
 
 
 # ── broadcast_engine_status_ws ────────────────────────────────────────────────────

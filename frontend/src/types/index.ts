@@ -326,8 +326,22 @@ export interface AccountUpdateEvent {
   snapshot: AccountSnapshot;
   changed_positions?: Position[];
   removed_codes?: string[];
-  // Legacy full snapshot (backward compat)
-  positions?: Position[];
+}
+
+/**
+ * account-summary-update 이벤트 — 수익현황 페이지 전용 경량화 payload (P23 일관성).
+ * 백엔드 `_build_lightweight_payload_for_profit_overview`와 계약 일치:
+ * - snapshot: 7필드 경량화 (deposit, orderable, accumulated_investment, initial_deposit,
+ *   total_eval_amount, total_pnl, total_pnl_rate)
+ * - changed_positions: _POSITION_CMP_KEYS 최소 필드만 (stk_cd, stk_nm, qty, avg_price,
+ *   buy_amount, buy_amt, total_fee, tax, cur_price, buy_date)
+ * - position_count: 보유 종목 수
+ */
+export interface AccountSummaryUpdateEvent {
+  snapshot: Partial<AccountSnapshot>;
+  position_count: number;
+  changed_positions?: Partial<Position>[];
+  removed_codes?: string[];
 }
 
 // ── Sector Custom 관련 타입 ──

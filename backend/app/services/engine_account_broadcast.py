@@ -1,8 +1,11 @@
 # -*- coding: utf-8 -*-
-"""계좌 상태 account-update WS 브로드캐스트 — 페이지별 페이로드 분리.
+"""계좌 상태 WS 브로드캐스트 — 페이지별 이벤트 분리 (P23 일관성).
 
-체결·잔고·실시간 시세 변경 시 delta 방식으로 전송하며, 활성 페이지(수익현황/매도포지션)에
-따라 경량화 페이로드 또는 전체 페이로드를 선택적으로 전송한다.
+체결·잔고·실시간 시세 변경 시 delta 방식으로 전송하며, 활성 페이지에 따라
+별도 이벤트로 분리하여 전송한다 (각 이벤트 단일 payload 계약 — P23).
+- 수익현황 페이지 활성 → `account-summary-update` (경량화 payload: snapshot 7필드 + 보유종목 최소 필드)
+- 매도포지션 페이지 활성 → `account-update` (전체 payload: snapshot 전체 + 보유종목 전체 필드)
+- 활성 페이지 없음 → `account-update` (전체 payload, 폴백)
 """
 from __future__ import annotations
 import logging
@@ -20,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 
 async def broadcast_account_update(positions: list[dict], snapshot: dict, reason: str | None = None) -> None:
-    """체결·잔고·실시간 시세 변경 시 → WS account-update (delta 방식, 페이지별 페이로드 분리)."""
+    """체결·잔고·실시간 시세 변경 시 → WS account-update / account-summary-update (delta 방식, 페이지별 이벤트 분리)."""
     changed_positions, removed_codes = _compute_position_delta(positions)
     snapshot_changed = not _snap_equal(snapshot, notify_cache.snapshot_sent)
     if not changed_positions and not removed_codes and not snapshot_changed:
@@ -35,21 +38,26 @@ async def broadcast_account_update(positions: list[dict], snapshot: dict, reason
 
 
 async def _broadcast_account_to_pages(changed_positions, removed_codes, snapshot, active_pages) -> None:
-    """활성 페이지에 맞춰 account-update 페이로드 전송 (수익현황 경량화 / 매도포지션 전체)."""
+    """활성 페이지에 맞춰 이벤트 분리 전송 (P23 — 각 이벤트 단일 payload 계약).
+
+    - 수익현황만 활성 → `account-summary-update` (경량화 payload)
+    - 매도포지션 활성 (또는 두 페이지 모두 활성) → `account-update` (전체 payload)
+    - 활성 페이지 없음 → `account-update` (전체 payload, 폴백)
+    """
     from backend.app.web.ws_manager import ws_manager
     profit_overview_active = "profit-overview" in active_pages
     sell_position_active = "sell-position" in active_pages
 
-    # 수익현황 페이지만 활성: 경량화 페이로드 전송
+    # 수익현황 페이지만 활성: account-summary-update 경량화 이벤트 전송
     if profit_overview_active and not sell_position_active:
         lightweight_payload = _build_lightweight_payload_for_profit_overview(snapshot, changed_positions, removed_codes)
         try:
-            await ws_manager.broadcast_to_pages("account-update", lightweight_payload, {"profit-overview"})
+            await ws_manager.broadcast_to_pages("account-summary-update", lightweight_payload, {"profit-overview"})
         except Exception as e:
             logger.warning("[시스템] 수익현황 경량화 페이로드 전송 실패: %s", e, exc_info=True)
         return
 
-    # sell-position 페이지 활성 또는 두 페이지 모두 활성: 전체 페이로드 전송
+    # sell-position 페이지 활성 또는 두 페이지 모두 활성: account-update 전체 페이로드 전송
     payload = {
         "snapshot": dict(snapshot),
         "changed_positions": changed_positions,

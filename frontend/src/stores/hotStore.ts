@@ -7,6 +7,7 @@ import type {
   SectorScoreRow,
   AccountSnapshot,
   AccountUpdateEvent,
+  AccountSummaryUpdateEvent,
   SectorScoresEvent,
   RealDataEvent,
 } from '../types'
@@ -131,69 +132,8 @@ function scheduleTickFlush(): void {
 
 /* ── 실시간 데이터 액션 함수 ── */
 
-/* ── account-update: 계좌·보유종목 갱신 (delta 지원) ── */
+/* ── account-update: 계좌·보유종목 갱신 — 전체 payload (매도포지션/폴백) ── */
 export function applyAccountUpdate(data: AccountUpdateEvent): void {
-  // 경량화 페이로드 (수익현황 전용): position_count + changed_positions(최소 필드) 처리
-  if ('position_count' in data) {
-    const positionCount = (data as { position_count?: number }).position_count ?? 0
-    const incomingSnap = data.snapshot
-    const prevAccount = hotStore.getState().account
-    const snapSame = incomingSnap && prevAccount
-      && incomingSnap.deposit === prevAccount.deposit
-      && incomingSnap.orderable === prevAccount.orderable
-      && incomingSnap.total_eval_amount === prevAccount.total_eval_amount
-      && incomingSnap.total_pnl === prevAccount.total_pnl
-      && incomingSnap.total_pnl_rate === prevAccount.total_pnl_rate
-      && incomingSnap.accumulated_investment === prevAccount.accumulated_investment
-      && incomingSnap.initial_deposit === prevAccount.initial_deposit
-
-    // changed_positions (최소 필드) + removed_codes 처리
-    const changed = (data as { changed_positions?: Position[] }).changed_positions
-    const removed = (data as { removed_codes?: string[] }).removed_codes
-
-    if (changed && changed.length > 0 || removed && removed.length > 0) {
-      hotStore.setState((state) => {
-        const positions = [...state.positions]
-        // removed_codes: 역순 splice 제거
-        if (removed && removed.length > 0) {
-          const removedSet = new Set(removed.map(c => normalizeStockCode(c)))
-          const indices: number[] = []
-          for (let i = 0; i < positions.length; i++) {
-            if (removedSet.has(normalizeStockCode(positions[i].stk_cd))) indices.push(i)
-          }
-          for (let i = indices.length - 1; i >= 0; i--) {
-            positions.splice(indices[i], 1)
-          }
-        }
-        // changed_positions: 인덱스 찾아 merge (최소 필드만 덮어쓰고 나머지는 기존 값 유지)
-        if (changed) {
-          for (const pos of changed) {
-            const idx = positions.findIndex(p => normalizeStockCode(p.stk_cd) === normalizeStockCode(pos.stk_cd))
-            if (idx >= 0) {
-              // 최소 필드 병합: 기존 position에 새 값만 덮어쓰기
-              const existing = positions[idx]
-              positions[idx] = { ...existing, ...pos }
-            } else {
-              positions.push(pos)
-            }
-          }
-        }
-        rebuildPositionIndex(positions)
-        return {
-          account: snapSame ? prevAccount : (incomingSnap ?? prevAccount),
-          positions,
-          positionCount,
-        }
-      })
-    } else {
-      hotStore.setState({
-        account: snapSame ? prevAccount : (incomingSnap ?? prevAccount),
-        positionCount,
-      })
-    }
-    return
-  }
-
   if (data.changed_positions) {
     const changed = data.changed_positions ?? []
     const removed = data.removed_codes ?? []
@@ -244,30 +184,72 @@ export function applyAccountUpdate(data: AccountUpdateEvent): void {
     })
     return
   }
-  const incomingPos = data.positions ?? []
-  const prevPos = hotStore.getState().positions
-  const positionsSame = prevPos.length === incomingPos.length && prevPos.every((p, i) => {
-    const n = incomingPos[i]
-    return p.stk_cd === n.stk_cd && p.qty === n.qty
-      && p.avg_price === n.avg_price
-      && p.cur_price === n.cur_price && p.pnl_rate === n.pnl_rate
-  })
-  const incomingSnap = data.snapshot ?? null
-  const prevSnap = hotStore.getState().account
-  const snapSame = incomingSnap && prevSnap
-    && incomingSnap.total_buy_amount === prevSnap.total_buy_amount
-    && incomingSnap.total_eval_amount === prevSnap.total_eval_amount
-    && incomingSnap.total_pnl === prevSnap.total_pnl
-    && incomingSnap.total_pnl_rate === prevSnap.total_pnl_rate
-    && incomingSnap.deposit === prevSnap.deposit
-    && incomingSnap.orderable === prevSnap.orderable
-  const updates: Partial<HotState> = {}
-  if (!snapSame) updates.account = incomingSnap
-  if (!positionsSame) {
-    updates.positions = incomingPos
-    rebuildPositionIndex(incomingPos)
+  // changed_positions 없음: snapshot만 갱신 (P20 — 빈 데이터 폴백 금지, snapshot 정상 경로)
+  if (data.snapshot) hotStore.setState({ account: data.snapshot })
+}
+
+/* ── account-summary-update: 계좌·보유종목 갱신 — 경량화 payload (수익현황 전용) ── */
+export function applyAccountSummaryUpdate(data: AccountSummaryUpdateEvent): void {
+  const positionCount = data.position_count ?? 0
+  const incomingSnap = data.snapshot
+  const prevAccount = hotStore.getState().account
+  const snapSame = incomingSnap && prevAccount
+    && incomingSnap.deposit === prevAccount.deposit
+    && incomingSnap.orderable === prevAccount.orderable
+    && incomingSnap.total_eval_amount === prevAccount.total_eval_amount
+    && incomingSnap.total_pnl === prevAccount.total_pnl
+    && incomingSnap.total_pnl_rate === prevAccount.total_pnl_rate
+    && incomingSnap.accumulated_investment === prevAccount.accumulated_investment
+    && incomingSnap.initial_deposit === prevAccount.initial_deposit
+
+  // 경량화 snapshot은 Partial<AccountSnapshot> (7필드) — 기존 account와 merge하여 full 유지 (P10 SSOT, P22 정합성)
+  const mergedAccount = snapSame
+    ? prevAccount
+    : (prevAccount ? { ...prevAccount, ...incomingSnap } : { ...incomingSnap } as AccountSnapshot)
+
+  const changed = data.changed_positions
+  const removed = data.removed_codes
+
+  if ((changed && changed.length > 0) || (removed && removed.length > 0)) {
+    hotStore.setState((state) => {
+      const positions = [...state.positions]
+      // removed_codes: 역순 splice 제거
+      if (removed && removed.length > 0) {
+        const removedSet = new Set(removed.map(c => normalizeStockCode(c)))
+        const indices: number[] = []
+        for (let i = 0; i < positions.length; i++) {
+          if (removedSet.has(normalizeStockCode(positions[i].stk_cd))) indices.push(i)
+        }
+        for (let i = indices.length - 1; i >= 0; i--) {
+          positions.splice(indices[i], 1)
+        }
+      }
+      // changed_positions: 인덱스 찾아 merge (최소 필드만 덮어쓰고 나머지는 기존 값 유지)
+      if (changed) {
+        for (const pos of changed) {
+          const idx = positions.findIndex(p => normalizeStockCode(p.stk_cd) === normalizeStockCode(pos.stk_cd))
+          if (idx >= 0) {
+            // 최소 필드 병합: 기존 position에 새 값만 덮어쓰기
+            const existing = positions[idx]
+            positions[idx] = { ...existing, ...pos }
+          } else {
+            positions.push(pos as Position)
+          }
+        }
+      }
+      rebuildPositionIndex(positions)
+      return {
+        account: mergedAccount,
+        positions,
+        positionCount,
+      }
+    })
+  } else {
+    hotStore.setState({
+      account: mergedAccount,
+      positionCount,
+    })
   }
-  if (Object.keys(updates).length > 0) hotStore.setState(updates)
 }
 
 /* ── real-data: 키움 Raw FID를 직접 파싱하여 상태 갱신 (무결성 보장) ── */

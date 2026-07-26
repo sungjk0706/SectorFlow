@@ -5,6 +5,7 @@ import type { WSClient } from './api/ws'
 import { getCurrentPage } from './api/ws'
 import {
   applyAccountUpdate,
+  applyAccountSummaryUpdate,
   applyRealData,
   applyOrderbookUpdate,
   applyProgramUpdate,
@@ -43,6 +44,7 @@ import {
 } from './stores/uiStore'
 import type {
   AccountUpdateEvent,
+  AccountSummaryUpdateEvent,
   AppSettings,
   SectorStock,
   StockClassificationChangedEvent,
@@ -82,6 +84,10 @@ export function bindWSToStore(
 
   pricesClient.onEvent('account-update', (data) => {
     applyAccountUpdate(data as AccountUpdateEvent)
+  })
+
+  pricesClient.onEvent('account-summary-update', (data) => {
+    applyAccountSummaryUpdate(data as AccountSummaryUpdateEvent)
   })
 
 

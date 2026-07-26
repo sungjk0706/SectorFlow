@@ -8,11 +8,13 @@ import {
   applyRealData,
   applyOrderbookUpdate,
   applyProgramUpdate,
+  applyAccountUpdate,
+  applyAccountSummaryUpdate,
   flushTickBatch,
   rebuildBuyTargetIndex,
   type HotState,
 } from '../../src/stores/hotStore'
-import type { SectorStock, RealDataEvent } from '../../src/types'
+import type { SectorStock, RealDataEvent, Position } from '../../src/types'
 
 /** 테스트용 초기 상태 — buyTargets와 sectorStocks에 동일 종목이 실시간 필드 포함 */
 function makeInitialHotState(): HotState {
@@ -723,6 +725,117 @@ describe('hotStore — applyRealData 갱신 계약 + rAF 배칭 (세션 7)', () 
       window.removeEventListener('real-data-tick', realHandler)
       window.removeEventListener('orderbook-tick', orderbookHandler)
       window.removeEventListener('program-tick', programHandler)
+    })
+  })
+})
+
+describe('hotStore — account-update / account-summary-update 이벤트 분리 (COUPLING-S3)', () => {
+  beforeEach(() => {
+    resetHotState()
+  })
+
+  describe('applyAccountUpdate — 전체 payload (매도포지션/폴백)', () => {
+    it('changed_positions 전체 교체 + position_count 갱신', () => {
+      const initialPos: Position = {
+        stk_cd: '005930', stk_nm: '삼성전자', qty: 10, avg_price: 70000,
+        cur_price: 70000, buy_amt: 700000, pnl_rate: 0, buy_date: '20260720',
+      }
+      hotStore.setState({ positions: [initialPos], positionCount: 1 })
+
+      applyAccountUpdate({
+        snapshot: { total_buy_amount: 700000, total_sell_amount: 0, total_eval_amount: 800000, total_pnl: 100000, total_pnl_rate: 14.29, deposit: 5000000, trade_mode: 'test', position_count: 1 },
+        changed_positions: [{ stk_cd: '005930', stk_nm: '삼성전자', qty: 10, avg_price: 70000, cur_price: 80000, buy_amt: 700000, pnl_rate: 14.29, buy_date: '20260720' }],
+        removed_codes: [],
+      })
+
+      const state = hotStore.getState()
+      expect(state.positions[0].cur_price).toBe(80000)
+      expect(state.positions[0].pnl_rate).toBe(14.29)
+      expect(state.positionCount).toBe(1)
+    })
+
+    it('removed_codes 처리 — 보유종목 제거', () => {
+      const posA: Position = { stk_cd: '005930', stk_nm: '삼성전자', qty: 10, avg_price: 70000, cur_price: 80000, buy_amt: 700000, pnl_rate: 14.29, buy_date: '20260720' }
+      const posB: Position = { stk_cd: '000660', stk_nm: 'SK하이닉스', qty: 5, avg_price: 120000, cur_price: 130000, buy_amt: 600000, pnl_rate: 8.33, buy_date: '20260721' }
+      hotStore.setState({ positions: [posA, posB], positionCount: 2 })
+
+      applyAccountUpdate({
+        snapshot: { total_buy_amount: 1300000, total_sell_amount: 0, total_eval_amount: 1450000, total_pnl: 150000, total_pnl_rate: 11.54, deposit: 5000000, trade_mode: 'test', position_count: 1 },
+        changed_positions: [],
+        removed_codes: ['000660'],
+      })
+
+      const state = hotStore.getState()
+      expect(state.positions.length).toBe(1)
+      expect(state.positions[0].stk_cd).toBe('005930')
+      expect(state.positionCount).toBe(1)
+    })
+
+    it('changed_positions/removed_codes 모두 빈 경우 snapshot만 갱신', () => {
+      hotStore.setState({ account: null })
+      applyAccountUpdate({
+        snapshot: { total_buy_amount: 0, total_sell_amount: 0, total_eval_amount: 0, total_pnl: 0, total_pnl_rate: 0, deposit: 5000000, trade_mode: 'test', position_count: 0 },
+        changed_positions: [],
+        removed_codes: [],
+      })
+      expect(hotStore.getState().account?.deposit).toBe(5000000)
+    })
+  })
+
+  describe('applyAccountSummaryUpdate — 경량화 payload (수익현황 전용)', () => {
+    it('position_count + snapshot 갱신 (changed/removed 없음)', () => {
+      hotStore.setState({ account: null, positionCount: 0 })
+      applyAccountSummaryUpdate({
+        snapshot: { deposit: 5000000, orderable: 4000000, total_eval_amount: 800000, total_pnl: 100000, total_pnl_rate: 14.29 },
+        position_count: 2,
+        changed_positions: [],
+        removed_codes: [],
+      })
+      const state = hotStore.getState()
+      expect(state.positionCount).toBe(2)
+      expect(state.account?.deposit).toBe(5000000)
+      expect(state.account?.total_eval_amount).toBe(800000)
+    })
+
+    it('changed_positions 최소 필드 merge — 기존 position의 나머지 필드 유지', () => {
+      const existing: Position = {
+        stk_cd: '005930', stk_nm: '삼성전자', qty: 10, avg_price: 70000,
+        cur_price: 70000, buy_amt: 700000, pnl_rate: 0, buy_date: '20260720',
+      }
+      hotStore.setState({ positions: [existing], positionCount: 1 })
+
+      // 경량화: cur_price만 갱신 (pnl_rate는 빠짐 — 기존 값 유지)
+      applyAccountSummaryUpdate({
+        snapshot: { deposit: 5000000, total_eval_amount: 800000, total_pnl: 100000, total_pnl_rate: 14.29 },
+        position_count: 1,
+        changed_positions: [{ stk_cd: '005930', cur_price: 80000 }],
+        removed_codes: [],
+      })
+
+      const pos = hotStore.getState().positions[0]
+      expect(pos.cur_price).toBe(80000)
+      // 기존 필드 유지 (merge 방식)
+      expect(pos.qty).toBe(10)
+      expect(pos.avg_price).toBe(70000)
+      expect(pos.stk_nm).toBe('삼성전자')
+    })
+
+    it('removed_codes 처리 — 보유종목 제거', () => {
+      const posA: Position = { stk_cd: '005930', stk_nm: '삼성전자', qty: 10, avg_price: 70000, cur_price: 80000, buy_amt: 700000, pnl_rate: 14.29, buy_date: '20260720' }
+      const posB: Position = { stk_cd: '000660', stk_nm: 'SK하이닉스', qty: 5, avg_price: 120000, cur_price: 130000, buy_amt: 600000, pnl_rate: 8.33, buy_date: '20260721' }
+      hotStore.setState({ positions: [posA, posB], positionCount: 2 })
+
+      applyAccountSummaryUpdate({
+        snapshot: { deposit: 5000000, total_eval_amount: 800000, total_pnl: 100000, total_pnl_rate: 14.29 },
+        position_count: 1,
+        changed_positions: [],
+        removed_codes: ['000660'],
+      })
+
+      const state = hotStore.getState()
+      expect(state.positions.length).toBe(1)
+      expect(state.positions[0].stk_cd).toBe('005930')
+      expect(state.positionCount).toBe(1)
     })
   })
 })
