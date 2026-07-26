@@ -37,7 +37,7 @@
 | COUPLING-S2 | P0 | C-02 설정 키 영향 매트릭스 | ☑ | `docs/coupling-settings-impact-matrix.md` 작성 (525줄). DEFAULT_USER_SETTINGS 66키 + DEFAULT_SYSTEM_CONFIG 17키 + 동적 증권사 자격증명 + 파생 키 전체 파이프라인(DB→기본값→정규화→캐시→서비스→API/UI) 매트릭스화. 코드 수정 없음(조사·문서만). P10 SSOT 위반 후보 6건, P21 투명성 후보 1건, 검증 누락 키 다수, 단일화 우선순위 5건 식별. |
 | COUPLING-S3 | P1 | C-03 WebSocket 이벤트 계약 인덱스 | ☑ | `docs/coupling-ws-event-contract-index.md` 작성 (575줄). WS 36개 구독 이벤트 + 4개 dead subscription 전수 인덱스화. 3 채널(prices/settings/orders) 구조, 40개 이벤트 producer/consumer/payload/Store 액션/CustomEvent 배칭 매트릭스. 코드 수정 없음(조사·문서만). P16/P21 위반 4건(dead subscription), P23 위반 8건(네이밍 6 + payload 불일치 2), P10/P24 위반 3건(중복 경로), 단일화 우선순위 9건 식별. |
 | COUPLING-S4 | P0 | C-04 주문 호출 그래프 | ☑ | safe-trade 점검, 주문·리스크 테스트, RuntimeWarning 기동 |
-| COUPLING-S5 | P1 | C-05 파이프라인 경계 | ☐ | 파이프라인·스케줄러 테스트, 전체 백엔드 테스트, RuntimeWarning 기동 |
+| COUPLING-S5 | P1 | C-05 파이프라인 경계 | ☑ | `docs/coupling-pipeline-boundary.md` 작성 (608줄). scheduler→pipeline→compute→candidate→notification 단계별 호출 그래프 + 소유 캐시·DB 저장·WS 진행률·주문 후보 side effect 매트릭스. 코드 수정 없음(조사·문서만). P8/P9/P10/P11/P16/P20/P24/P25 점검 완료. 개선 후보 4건 식별(후처리 헬퍼 추출 1순위, 낮은 위험). |
 | COUPLING-S6 | 중간 | C-06 브로커 core 역참조 | ☐ | import 방향·계약 대조, 브로커·WS 테스트, RuntimeWarning 기동 |
 | COUPLING-S7 | 중간 | C-07 종목코드 정규화 표현 | ☐ | 입력/출력 경계 테스트, 백엔드 테스트, typecheck/build |
 | COUPLING-S8 | 중간 | C-08 Store·페이지 직접 결합 | ☐ | producer/consumer 대조, 프론트 테스트, typecheck/build·브라우저 |
@@ -206,8 +206,20 @@
 
 ### 세션 COUPLING-S5 — C-05 스케줄러·파이프라인·실시간 엔진 경계
 
-**상태:** ☐ 미시작
+**상태:** ☑ 완료 (호출 그래프·매트릭스 문서 작성)
 **대상 원칙:** P8/P9 경계 보존, P10 SSOT, P11 이벤트 기반 처리, P16 살아있는 경로, P20 폴백 금지, P24 단순성, P25 격리된 실패
+**결과:** `docs/coupling-pipeline-boundary.md`에 단계별 호출 그래프 + side effect 매트릭스 작성. 코드 수정 없음(조사·문서만).
+- 시스템 기동/종료 순서 고정 (app.py lifespan): initialize_queues → start_gateway_loop → 설정 로드 → start_engine → start_daily_time_scheduler.
+- 호출 그래프 12단계: [A] 시간 이벤트 → [B] 페이즈 전환 부작용 → [C] WS 구독 / [D] 업종 재계산 / [E] WS 구독 해지 / [F] 확정 다운로드 → [G] 장마감 파이프라인 7단계 → [H] 실시간 틱 Compute Engine → [I] 업종 재계산 루프(Phase 1/2) → [J] 매수 후보 실행 → [K] 화면 전송 → [L] 알림 워커.
+- 소유 캐시 17개 필드 매트릭스 (단일 writer/다중 writer/멱등성 가드 분류).
+- DB 저장 9건 매트릭스 (stock_5d_bars / master_stocks_table / system_state_cache, get_db_lock 트랜잭션).
+- WS 진행률 confirmed-progress 11건 (step 1~5, 스레드풀 안전 call_soon_threadsafe).
+- 큐 인터페이스 3종 (tick/broadcast/control) + 제어 신호 5종 (UPDATE_CONFIG/RECOMPUTE_SECTOR/sector_recompute/DYNAMIC_REG/DYNAMIC_UNREG).
+- P11 준수: call_later 단일 타이머, _receive_rate_event.wait(), ws_window_changed_event.wait(), 폴링 0건.
+- P25 준수: schedule_engine_task 태스크 격리, 아이템별 try/except, finally 정리, _timetable_event_fired finally에서 다음 예약.
+- 파이프라인 경로에서 evaluate_buy_candidates 호출 없음 — _step7_recompute_and_broadcast는 recompute_sector_summary_now만 호출, 매수 후보 평가는 실시간 틱 경로의 _flush_sector_recompute_impl에서만 (P24 단순성 — 순수 계산+알림 분리).
+- 개선 후보 4건: (1) _step7↔fetch_5d_data_only 후처리 헬퍼 추출(P24, 낮음), (2) confirmed_done 쓰기 경리 정리(P10, 낮음, 현행 유지 적합), (3) market_close_pipeline.py 분할(P24, 중간, C-09 중복), (4) daily_time_scheduler.py 분할(P24, 중간, C-09 중복).
+- 변경 금지 항목 10건 식별 (_apply_market_phase 단일 경로, call_later 단일 타이머, asyncio.Queue 3종, recompute_sector_summary_now 매수 미호출, qry_dt 직전 거래일 기준, confirmed_refresh_running_confirmed 가드, _TIMETABLE 빌드 보장, schedule_engine_task 격리, _broadcast_confirmed_progress 스레드풀 안전, WS 구독/연결 관심사 분리).
 
 #### 대상 코드
 
