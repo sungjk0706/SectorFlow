@@ -10,6 +10,7 @@ import {
   applyOrderbookUpdate,
   applyProgramUpdate,
   applyBuyTargetsUpdate,
+  applyBuyTargetsDelta,
   applySectorStocksRefresh,
   applySectorStocksDelta,
   applyRealtimeReset,
@@ -17,10 +18,8 @@ import {
   applyBuyHistoryUpdate,
   applyDailySummaryUpdate,
   applySectorScores,
-  rebuildBuyTargetIndex,
   hotStore,
   applyInitialSnapshotHot,
-  normalizeStockCode,
 } from './stores/hotStore'
 import {
   applySettingsChanged,
@@ -105,51 +104,7 @@ export function bindWSToStore(
   })
 
   pricesClient.onEvent('buy-targets-delta', (data) => {
-    const { added, removed, changed } = data as { added: SectorStock[]; removed: string[]; changed: SectorStock[] }
-    hotStore.setState((state) => {
-      let buyTargets = state.buyTargets
-      if (removed && removed.length > 0) {
-        const removedSet = new Set(removed.map(c => normalizeStockCode(c)))
-        buyTargets = buyTargets.filter((t: SectorStock) => !removedSet.has(normalizeStockCode(t.code)))
-      }
-      if (changed && changed.length > 0) {
-        buyTargets = buyTargets === state.buyTargets ? [...buyTargets] : buyTargets
-        for (const item of changed) {
-          const idx = buyTargets.findIndex((t: SectorStock) => normalizeStockCode(t.code) === normalizeStockCode(item.code))
-          if (idx >= 0) {
-            // 아키텍처 원칙 — sectorStocks가 실시간 데이터 단일 소스
-            const sectorStock = state.sectorStocks[normalizeStockCode(item.code)]
-            buyTargets[idx] = {
-              ...item,
-              cur_price: sectorStock?.cur_price,
-              change: sectorStock?.change,
-              change_rate: sectorStock?.change_rate,
-              strength: sectorStock?.strength,
-              trade_amount: sectorStock?.trade_amount,
-            }
-          }
-        }
-      }
-      if (added && added.length > 0) {
-        // 아키텍처 원칙 — sectorStocks가 실시간 데이터 단일 소스
-        const addedWithRealtime = added.map(item => {
-          const sectorStock = state.sectorStocks[normalizeStockCode(item.code)]
-          const result = {
-            ...item,
-            cur_price: sectorStock?.cur_price,
-            change: sectorStock?.change,
-            change_rate: sectorStock?.change_rate,
-            strength: sectorStock?.strength,
-            trade_amount: sectorStock?.trade_amount,
-          }
-          return result
-        })
-        buyTargets = buyTargets === state.buyTargets ? [...buyTargets, ...addedWithRealtime] : [...buyTargets, ...addedWithRealtime]
-      }
-      if (buyTargets === state.buyTargets) return state
-      rebuildBuyTargetIndex(buyTargets)
-      return { buyTargets }
-    })
+    applyBuyTargetsDelta(data as { added: SectorStock[]; removed: string[]; changed: SectorStock[] })
   })
 
   pricesClient.onEvent('buy-history-append', (data) => {

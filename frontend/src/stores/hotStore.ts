@@ -567,6 +567,61 @@ export function applyBuyTargetsUpdate(data: { buy_targets: SectorStock[] }): voi
   }
 }
 
+/* ── buy-targets-delta: 매수후보 증분 갱신 (added/removed/changed) ── */
+// P10(SSOT) + P22(데이터 정합성): added/changed 종목의 실시간 필드는 sectorStocks 기준으로
+// 재결합하여 단일 소스 일관성 유지. applyBuyTargetsUpdate의 결합 패턴과 동일 (P23 일관성).
+// binding.ts 인라인 45줄 → action 추출 (P23/P24, COUPLING-S8 후속).
+export function applyBuyTargetsDelta(data: {
+  added?: SectorStock[]
+  removed?: string[]
+  changed?: SectorStock[]
+}): void {
+  const { added, removed, changed } = data
+  hotStore.setState((state) => {
+    let buyTargets = state.buyTargets
+    if (removed && removed.length > 0) {
+      const removedSet = new Set(removed.map(c => normalizeStockCode(c)))
+      buyTargets = buyTargets.filter((t: SectorStock) => !removedSet.has(normalizeStockCode(t.code)))
+    }
+    if (changed && changed.length > 0) {
+      buyTargets = buyTargets === state.buyTargets ? [...buyTargets] : buyTargets
+      for (const item of changed) {
+        const idx = buyTargets.findIndex((t: SectorStock) => normalizeStockCode(t.code) === normalizeStockCode(item.code))
+        if (idx >= 0) {
+          // 아키텍처 원칙 — sectorStocks가 실시간 데이터 단일 소스
+          const sectorStock = state.sectorStocks[normalizeStockCode(item.code)]
+          buyTargets[idx] = {
+            ...item,
+            cur_price: sectorStock?.cur_price,
+            change: sectorStock?.change,
+            change_rate: sectorStock?.change_rate,
+            strength: sectorStock?.strength,
+            trade_amount: sectorStock?.trade_amount,
+          }
+        }
+      }
+    }
+    if (added && added.length > 0) {
+      // 아키텍처 원칙 — sectorStocks가 실시간 데이터 단일 소스
+      const addedWithRealtime = added.map(item => {
+        const sectorStock = state.sectorStocks[normalizeStockCode(item.code)]
+        return {
+          ...item,
+          cur_price: sectorStock?.cur_price,
+          change: sectorStock?.change,
+          change_rate: sectorStock?.change_rate,
+          strength: sectorStock?.strength,
+          trade_amount: sectorStock?.trade_amount,
+        }
+      })
+      buyTargets = buyTargets === state.buyTargets ? [...buyTargets, ...addedWithRealtime] : [...buyTargets, ...addedWithRealtime]
+    }
+    if (buyTargets === state.buyTargets) return state
+    rebuildBuyTargetIndex(buyTargets)
+    return { buyTargets }
+  })
+}
+
 /* ── sector-scores: 업종 점수·상태 갱신 (delta 머지) ── */
 export function applySectorScores(data: SectorScoresEvent): void {
   if (data.delta && data.changed_scores) {
