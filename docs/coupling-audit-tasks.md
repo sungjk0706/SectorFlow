@@ -33,7 +33,7 @@
 
 | 세션 | 우선순위 | 대상 | 계획 상태 | 핵심 검증 |
 |---|---|---|---|---|
-| COUPLING-S1 | P0 | C-01 `engine_state` 상태 소유권 | ☐ | 참조·writer 대조, 백엔드 대상 테스트, RuntimeWarning 기동 |
+| COUPLING-S1 | P0 | C-01 `engine_state` 상태 소유권 | ☑ | 69개 속성 owner/readers/writers 매트릭스 작성(`docs/coupling-engine-state-matrix.md`). 코드 수정 없음(조사·문서만). 후속 단일화 1순위: `sector_summary_cache` (7곳 writer). docstring 대조 1건 불일치(`positions`의 `kiwoom_account_parsing` 누락). |
 | COUPLING-S2 | P0 | C-02 설정 키 영향 매트릭스 | ☐ | 설정 관련 테스트, 백엔드 전체 테스트, 프론트 typecheck/build |
 | COUPLING-S3 | P1 | C-03 WebSocket 이벤트 계약 인덱스 | ☐ | producer/consumer 전수 검색, WS·Store 관련 테스트, typecheck/build |
 | COUPLING-S4 | P0 | C-04 주문 호출 그래프 | ☐ | safe-trade 점검, 주문·리스크 테스트, RuntimeWarning 기동 |
@@ -49,8 +49,13 @@
 
 ### 세션 COUPLING-S1 — C-01 `engine_state` 상태 소유권 매트릭스
 
-**상태:** ☐ 미시작
+**상태:** ☑ 완료 (매트릭스 문서 작성)
 **대상 원칙:** P10 SSOT, P16 살아있는 경로, P23 일관성, P24 단순성, P25 격리된 실패
+**결과:** `docs/coupling-engine-state-matrix.md`에 69개 속성의 owner/readers/writers/생명주기 매트릭스 작성. 코드 수정 없음(조사·문서만).
+- 단일 writer 약 40개, 자연스러운 산재 13개, 단일화 후보 9개, 거래 관련 산재(변경 금지) 3개, dead code 후보 3개.
+- 단일화 1순위 후보: `sector_summary_cache` (7곳 writer, 거래 비관련, docstring "가장 분산도 높음").
+- docstring 대조 1건 불일치: `positions`의 `kiwoom_account_parsing.py:126` 누락 (세션 10 조사 시 누락).
+- 후속 세션에서 `sector_summary_cache` 1개만 별도 승인 후 단일화 진행 권장.
 
 #### 대상 코드
 
