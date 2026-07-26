@@ -961,8 +961,14 @@ async def _step5_download_daily_confirmed(
     return fetched, failed, cached
 
 
-async def _step7_recompute_and_broadcast(tag: str) -> None:
-    """7단계: 업종순위 재계산 + 실시간 통신 전송."""
+async def _post_recompute_notify(tag: str) -> None:
+    """확정 데이터 반영 후 수신율 갱신 + 업종순위 재계산 + 실시간 화면 전송 (P24 단일 SSOT).
+
+    _step7_recompute_and_broadcast와 fetch_5d_data_only 후처리의 공통 후처리.
+    순서: 수신율 갱신 → sector-stocks-refresh → recompute_sector_summary_now.
+    sectorStocks가 먼저 갱신되어야 buy-targets-delta merge 시 최신 데이터 참조 가능.
+    실패 시 파이프라인 전체 중단 차단 (P25 격리된 실패) — warning 로깅 후 진행.
+    """
     try:
         from backend.app.services.sector_data_provider import recompute_sector_summary_now
         from backend.app.services.engine_account_notify import notify_desktop_sector_stocks_refresh
@@ -975,6 +981,11 @@ async def _step7_recompute_and_broadcast(tag: str) -> None:
         logger.info("%s 업종순위 재계산 + 실시간 화면 전송 완료", tag)
     except Exception as _ws_err:
         logger.warning("%s 업종순위 재계산 실패: %s", tag, _ws_err, exc_info=True)
+
+
+async def _step7_recompute_and_broadcast(tag: str) -> None:
+    """7단계: 업종순위 재계산 + 실시간 통신 전송 — _post_recompute_notify 위임."""
+    await _post_recompute_notify(tag)
 
 
 def _reset_confirmed_refresh_running() -> None:
@@ -1399,22 +1410,8 @@ async def fetch_5d_data_only() -> dict:
         await _run_post_confirmed_pipeline(eligible_codes=set(all_codes))
 
         # 업종순위 재계산 (내부에서 notify_desktop_sector_scores + notify_buy_targets_update 호출)
-        # 순서: sector-stocks-refresh → recompute_sector_summary_now
-        # sectorStocks가 먼저 갱신되어야 buy-targets-delta merge 시 최신 데이터 참조 가능
-        try:
-            from backend.app.services.sector_data_provider import recompute_sector_summary_now
-            from backend.app.services.engine_account_notify import (
-                notify_desktop_sector_stocks_refresh,
-            )
-            # 확정 데이터 반영 후 수신율 갱신 — change_rate, trade_amount 기준 100% 산출 (P21 투명성, P22 정합성)
-            from backend.app.pipelines.pipeline_compute import _calculate_receive_rate, _send_receive_rate, get_current_receive_rate
-            await _calculate_receive_rate()
-            await _send_receive_rate(get_current_receive_rate())
-            await notify_desktop_sector_stocks_refresh(force=True)
-            await recompute_sector_summary_now()
-            logger.info("[다운로드] 업종순위 재계산 + 실시간 화면 전송 완료")
-        except Exception as _ws_err:
-            logger.warning("[다운로드] 업종순위 재계산 실패: %s", _ws_err, exc_info=True)
+        # 순서·격리는 _post_recompute_notify 헬퍼에 캡슐화 (P24 단일 SSOT)
+        await _post_recompute_notify("[다운로드]")
 
         return {"fetched": fetched, "failed": failed, "cached": False}
     finally:
