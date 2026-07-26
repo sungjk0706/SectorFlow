@@ -10,7 +10,6 @@ export interface AccountSnapshot {
   orderable?: number;
   initial_deposit?: number;
   accumulated_investment?: number;  // 테스트모드: 누적투자금 (초기투자금 + 충전금액)
-  price_source?: string;
   trade_mode: string;
   position_count?: number;
 }
@@ -21,13 +20,8 @@ export interface Position {
   qty: number;
   avg_price: number;
   cur_price: number;
-  eval_amount?: number;
-  eval_amt?: number;
   buy_amt: number;
-  buy_amount?: number;
-  pnl_amount?: number;
   pnl_rate: number;
-  market_type?: string;
   nxt_enable?: boolean;
   buy_date: string;
   sectorStock?: SectorStock;
@@ -67,18 +61,6 @@ export interface SectorStock {
   high_5d?: number;  // 0 = 원천 부재/미다운로드 (5거래일 일봉 전), >0 = 유효 고가
   program_net_buy?: number | null;  // null/undefined = 프로그램 순매수 미수신
   news_boost?: number;  // 뉴스 호재 가산점 (0 = 미부여, >0 = 부여됨)
-}
-
-export interface RadarStock {
-  code: string;
-  name: string;
-  cur_price: number;
-  change_rate: number;
-  status: string;
-  sector?: string;
-  strength?: number;
-  market_type?: string;
-  nxt_enable?: boolean;
 }
 
 // BuyTarget 제거: 매수후보 테이블은 SectorStock 타입 사용 (단일 소스 진리)
@@ -258,12 +240,6 @@ export interface SaveResult {
   error?: string;
 }
 
-export interface SectionProps {
-  settings: AppSettings;
-  onSave: (data: Record<string, unknown>) => Promise<SaveResult>;
-  onEditingChange: (editing: boolean) => void;
-}
-
 export interface SectorScoreRow {
   rank: number;
   sector: string;
@@ -281,16 +257,6 @@ export interface SectorStatus {
   total_stocks: number;
   max_targets?: number;
   ranked_sectors_count?: number;
-}
-
-// SSE 이벤트 페이로드
-export interface TradePriceEvent {
-  code: string;
-  price: number;
-  change?: number;
-  change_rate?: number;
-  strength?: number | string;
-  trade_amount?: number;
 }
 
 export interface SectorScoresEvent {
@@ -327,12 +293,6 @@ export interface AccountUpdateEvent {
   positions?: Position[];
 }
 
-export interface WsSubscribeStatusEvent {
-  _v: number;
-  index_subscribed: boolean;
-  quote_subscribed: boolean;
-}
-
 // ── Sector Custom 관련 타입 ──
 
 export interface StockClassificationChangedEvent {
@@ -351,17 +311,6 @@ export interface StockClassificationChangedEvent {
     market_type?: string;
     nxt_enable?: boolean;
   }>;
-}
-
-export interface StockClassificationResponse {
-  custom_data: {
-    sectors: Record<string, string>;
-    stock_moves: Record<string, string>;
-  };
-  merged_sectors: string[];
-  edit_window_open: boolean;
-  no_sector_count?: number;
-  filter_summary?: string;
 }
 
 export interface StockClassificationMutationResponse {

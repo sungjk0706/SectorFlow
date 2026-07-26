@@ -936,22 +936,22 @@ SectorFlow 전체 코드베이스를 `ARCHITECTURE.md`에 정의된 P1~P25, 총 
 
 ### 세션 F-07: P3 — 타입 및 유틸
 > **우선순위**: P3 (타입 정의 및 유틸)  
-> **파일**: 대형 1개 + 중형 1개 + 소형 3개  
+> **파일**: 대형 1개 + 중형 1개 + 소형 2개 (sliderConvert.ts는 이전 세션에서 제거됨, audit에만 잔존)  
 > **대상 원칙**: P10, P16, P23, P24
 
 | 파일 | 줄 수 | 규모 | 점검 완료 |
 |------|-------|------|----------|
-| `types/index.ts` | 321 | 대형 | ☐ |
-| `types/event.ts` | 165 | 중형 | ☐ |
-| `utils/settings-save.ts` | 78 | 중형 | ☐ |
-| `utils/settings-page.ts` | 54 | 소형 | ☐ |
-| `utils/sliderConvert.ts` | 9 | 소형 | ☐ |
+| `types/index.ts` | 372→328 | 대형 | ☑ (F07-01: 미사용 타입 5개 제거 RadarStock/SectionProps/TradePriceEvent/WsSubscribeStatusEvent/StockClassificationResponse + Position 미사용 optional 5개 제거 eval_amount/eval_amt/buy_amount/pnl_amount/market_type + AccountSnapshot price_source 제거) |
+| `types/event.ts` | 165 | 중형 | ☑ (protobuf 자동생성 DO NOT EDIT, ws.ts에서 활용 — 수정 금지) |
+| `utils/settings-save.ts` | 78 | 중형 | ☑ (16건 사용, 이상 없음) |
+| `utils/settings-page.ts` | 54 | 소형 | ☑ (25건 사용, 이상 없음) |
+| ~~`utils/sliderConvert.ts`~~ | — | — | 파일 부재 (이전 세션 제거, audit 잔존 정리) |
 
 **원칙 체크리스트**:
-- [ ] P10: 타입 정의가 백엔드 모델과 일치함 (SSOT 관점)
-- [ ] P16: 미사용 타입/유틸 함수 없음
-- [ ] P23: 용어 사전 준수, 에러/비동기/네이밍/상수 패턴 파일 간 일관
-- [ ] P24: 더 단순한 대체 가능성, 불필요한 추상화, 길어지는 코드의 분할 검토와 복잡도 참고 지표
+- [x] P10: 타입 정의가 백엔드 모델과 일치함 (SSOT 관점) — 준수 (필드명 백엔드 JSON 계약 반영)
+- [x] P16: 미사용 타입/유틸 함수 없음 — 해결 (F07-01 미사용 타입 5개 + Position 미사용 필드 5개 + AccountSnapshot 미사용 필드 1개 제거)
+- [x] P23: 용어 사전 준수, 에러/비동기/네이밍/상수 패턴 파일 간 일관 — 준수 (데이터 계약 필드명, UI 텍스트 아님)
+- [x] P24: 더 단순한 대체 가능성, 불필요한 추상화, 길어지는 코드의 분할 검토와 복잡도 참고 지표 — 준수
 
 ---
 
@@ -1151,6 +1151,7 @@ SectorFlow 전체 코드베이스를 `ARCHITECTURE.md`에 정의된 P1~P25, 총 
 | F05-10 | F-05 | `profit-detail.ts:325-628` `mount()` | P24 | HIGH | 단일 함수 ~303줄 — P24 기준 50줄의 6배 | 해결 (F-05-b 1/2세션: 9개 헬퍼 함수로 분할, 모두 50줄 이하) |
 | F05-11 | F-05 | `profit-overview.ts:521-551` `applyDateRange` | P19 | MEDIUM | async 날짜 범위 조회에 레이스 가드 없음 — 빠른 연속 클릭 시 구식 응답이 날짜 범위 덮어씌움 | 해결 (F-05-a: `_applyDateRangeSeq` 시퀀스 가드) |
 | F05-12 | F-05 | `profit-detail.ts:48,289` | P16/P24 | LOW | `drilldownCols` 모듈 변수 불필요 + `displayRows`는 `rows`의 별칭 | 해결 (F-05-b 1/2세션: 지역 변수화 + 별칭 제거 + import 정리) |
+| F07-01 | F-07 | `types/index.ts:72-82, 261-265, 287-294, 330-334, 356-365, 24-30, 13` | P16/P24 | MEDIUM | 미사용 타입 5개 (RadarStock/SectionProps/TradePriceEvent/WsSubscribeStatusEvent/StockClassificationResponse) + Position 미사용 optional 필드 5개 (eval_amount/eval_amt/buy_amount/pnl_amount/market_type) + AccountSnapshot 미사용 필드 1개 (price_source) — 정의만 존재, 사용 0건 (전 frontend/src + tests grep 확인) | 해결 (F-07 세션: 타입 5개 + Position 필드 5개 + AccountSnapshot 필드 1개 제거, typecheck/build/184 tests 통과) |
 
 ---
 
@@ -1189,18 +1190,18 @@ SectorFlow 전체 코드베이스를 `ARCHITECTURE.md`에 정의된 P1~P25, 총 
 | F-04 | P2 | 설정 페이지 | ☐ 미시작 |
 | F-05 | P3 | 수익 페이지 | ☑ 완료 (F-05-a 7건 P10/P19/P20/P23 + F-05-b 1/2·2/2세션 F05-09/10/12 + F-05-c F05-08 + F-05-a 추가 세션 profit-overview.ts 742줄→4개 파일 분할 175/62/219/377줄 + renderSectorStockPnl 146줄→5개 함수 분할 + F-05-b profit-detail.ts 674줄→4개 파일 분할 166/52/215/326줄) |
 | F-06 | P3 | 공통 컴포넌트 | ☑ 완료 (F-06-a F06-07/08 dead code + F-06-b F06-06 + F-06-c F06-10/11/12 용어/색상 + F-06-d F06-10 잔존 2곳 + F-06-e F06-01 data-table.ts 1045→176/454/454줄 + F-06-f F06-02 setting-row.ts 분할 + F-06-g F06-03 ui-styles.ts 581→252/211/148줄) |
-| F-07 | P3 | 타입 및 유틸 | ☐ 미시작 |
+| F-07 | P3 | 타입 및 유틸 | ☑ 완료 (F07-01 미사용 타입 5개 제거 RadarStock/SectionProps/TradePriceEvent/WsSubscribeStatusEvent/StockClassificationResponse + Position 미사용 optional 5개 제거 eval_amount/eval_amt/buy_amount/pnl_amount/market_type + AccountSnapshot price_source 제거, sliderConvert.ts 파일 부재 정리, typecheck/build/184 tests 통과) |
 
 ### 진행률
 
 | 항목 | 카운트 |
 |------|--------|
 | 전체 세션 | 30 |
-| 완료 | 26 (B-01~B-12, B-14~B-23, F-01, F-02, F-05, F-06) |
+| 완료 | 27 (B-01~B-12, B-14~B-23, F-01, F-02, F-05, F-06, F-07) |
 | 진행 중 | 1 (F-03 부분완료 — 6건 해결 종결 + F03-07-A/B + F03-08 + F03-09 + F03-10 해결, 잔여 보류 1건) |
-| 미시작 | 3 (B-13 부분완료, F-04 부분완료, F-07) |
-| 발견된 문제 | 101 (79 + F05-01~12 + F03-07~10 보류 4 + F-03 해결 6) |
-| 해결된 문제 | 92 (70 + F05-01~06, F05-11, F05-10, F05-12, F05-09, F05-07 + F-03 6건 + F03-07-A/B 2건 + F03-08 + F03-09 + F03-10) |
+| 미시작 | 2 (B-13 부분완료, F-04 부분완료) |
+| 발견된 문제 | 102 (101 + F07-01) |
+| 해결된 문제 | 93 (92 + F07-01) |
 | 보류된 문제 | 2 (B21-01, F03-07-C) |
 
 ---

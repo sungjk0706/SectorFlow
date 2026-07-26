@@ -87,13 +87,13 @@
 | F-04 | P2 | 설정 페이지 | 5 | ☐ | 분할 권장 (F-04-a 5건 + F-04-b 4건 + F-04-c 4건 + F-04-d 2건 + F-04-e 11건 해결, 잔여 파일 분할 별도) |
 | F-05 | P3 | 수익 페이지 | 3 | ☑ | 완료 (F-05-a 7건 + F-05-b 1/2·2/2 F05-09/10/12 + F-05-c F05-08 + F-05-a 추가 세션 profit-overview.ts 742줄→4개 파일 분할 175/62/219/377줄 + renderSectorStockPnl 146줄→5개 함수 분할 + F-05-b profit-detail.ts 674줄→4개 파일 분할 166/52/215/326줄 + F05-07 해결 F-06-c/d) |
 | F-06 | P3 | 공통 컴포넌트 | 25 | ☑ | 완료 (F-06-a F06-07/08 + F-06-b F06-06 + F-06-c F06-10/11/12 + F-06-d F06-10 잔존 2곳 + F-06-e F06-01 data-table.ts 1045→176/454/454줄 + F-06-f F06-02 setting-row.ts + F-06-g F06-03 ui-styles.ts 581→252/211/148줄) |
-| F-07 | P3 | 타입 및 유틸 | 5 | ☐ | |
+| F-07 | P3 | 타입 및 유틸 | 5 | ☑ | 완료 (F07-01 미사용 타입 5개 + Position 미사용 필드 5개 + AccountSnapshot 미사용 필드 1개 제거, sliderConvert.ts 파일 부재 정리, typecheck/build/184 tests 통과) |
 
-**진행률**: 30/30 세션 완료 (100%). B-10 완료 (B-10-a 11건 + B-10-b 7건, B10-02는 B-14 이월). B-11 완료 (B-11-a 8건 + B-11-b 4건). B-13 부분 완료 (3건 해결 B13-01/02/05, 잔여 5건 보류 LOW/INFO). B-14 완료 (B-14-a 6건 + B-14-b 2건). B-15 완료 (B-15-a 7건 + B-15-b 7건). B-23 완료 (테스트 품질 점검). F-02 완료 (7건 P16/P23/P24). F-03 부분완료 (6건 해결 종결 + F03-07-A/B 해결, 잔여 보류 3건 F03-07-C/08/09/10). F-04 완료 (F-04-a 5건 + F-04-b 4건 + F-04-c 4건 + F-04-d 2건 + F-04-e 11건 해결, 잔여 파일 분할 별도). F-05 완료 (F-05-a 7건 P10/P19/P20/P23 + F-05-b 1/2·2/2 F05-09/10/12 + F-05-c F05-08 + F-05-a 추가 세션 profit-overview.ts 742줄→4개 파일 분할 + renderSectorStockPnl 146줄→5개 함수 분할 + F-05-b profit-detail.ts 674줄→4개 파일 분할 + F05-07 해결 F-06-c/d). F-06 완료 (F-06-a/b/c/d/e/f/g — F06-01/02/03 대형 파일 3개 분할 + F06-06/07/08 dead code + F06-10/11/12 용어/색상). 백엔드 #3 완료 (accumulated_investment 누락 수정 P22). 잔여: B-13 보류 5건 (LOW/INFO) + B21-01 보류 (사용자 승인 대기) + F-03 보류 3건 (F03-07-C/08/09/10) + F-04 잔여 파일 분할 + F-07 미시작.
+**진행률**: 30/30 세션 완료 (100%). B-10 완료 (B-10-a 11건 + B-10-b 7건, B10-02는 B-14 이월). B-11 완료 (B-11-a 8건 + B-11-b 4건). B-13 부분 완료 (3건 해결 B13-01/02/05, 잔여 5건 보류 LOW/INFO). B-14 완료 (B-14-a 6건 + B-14-b 2건). B-15 완료 (B-15-a 7건 + B-15-b 7건). B-23 완료 (테스트 품질 점검). F-02 완료 (7건 P16/P23/P24). F-03 부분완료 (6건 해결 종결 + F03-07-A/B 해결, 잔여 보류 3건 F03-07-C/08/09/10). F-04 완료 (F-04-a 5건 + F-04-b 4건 + F-04-c 4건 + F-04-d 2건 + F-04-e 11건 해결, 잔여 파일 분할 별도). F-05 완료 (F-05-a 7건 P10/P19/P20/P23 + F-05-b 1/2·2/2 F05-09/10/12 + F-05-c F05-08 + F-05-a 추가 세션 profit-overview.ts 742줄→4개 파일 분할 + renderSectorStockPnl 146줄→5개 함수 분할 + F-05-b profit-detail.ts 674줄→4개 파일 분할 + F05-07 해결 F-06-c/d). F-06 완료 (F-06-a/b/c/d/e/f/g — F06-01/02/03 대형 파일 3개 분할 + F06-06/07/08 dead code + F06-10/11/12 용어/색상). F-07 완료 (F07-01 미사용 타입 5개 + Position 미사용 필드 5개 + AccountSnapshot 미사용 필드 1개 제거, sliderConvert.ts 파일 부재 정리). 백엔드 #3 완료 (accumulated_investment 누락 수정 P22). 잔여: B-13 보류 5건 (LOW/INFO) + B21-01 보류 (사용자 승인 대기) + F-03 보류 3건 (F03-07-C/08/09/10) + F-04 잔여 파일 분할.
 
 ---
 
-## 3. 세션별 실행 태스크 (잔여 4세션: B-13 부분완료, F-03 부분완료, F-04 부분완료, F-07 미시작)
+## 3. 세션별 실행 태스크 (잔여 3세션: B-13 부분완료, F-03 부분완료, F-04 부분완료)
 
 > 각 세션은 아래 4블록으로 구성:
 > 1. **대상 파일** (실측 줄 수)
@@ -970,24 +970,26 @@
 
 ### 세션 F-07: P3 — 타입 및 유틸
 
-**대상 파일** (5개, 총 651줄)
-- [ ] `frontend/src/types/index.ts` (350줄, 대형)
-- [ ] `frontend/src/types/event.ts` (165줄, 중형)
-- [ ] `frontend/src/utils/settings-save.ts` (78줄, 중형)
-- [ ] `frontend/src/utils/settings-page.ts` (54줄, 소형)
-- [ ] `frontend/src/utils/sliderConvert.ts` (9줄, 소형)
+**대상 파일** (4개 — sliderConvert.ts는 이전 세션에서 제거됨, audit에만 잔존)
+- [x] `frontend/src/types/index.ts` (372→328줄, 대형) — F07-01 해결
+- [x] `frontend/src/types/event.ts` (165줄, 중형) — protobuf 자동생성 DO NOT EDIT, ws.ts 활용 (수정 금지)
+- [x] `frontend/src/utils/settings-save.ts` (78줄, 중형) — 이상 없음 (16건 사용)
+- [x] `frontend/src/utils/settings-page.ts` (54줄, 소형) — 이상 없음 (25건 사용)
+- ~~`frontend/src/utils/sliderConvert.ts`~~ — 파일 부재 (이전 세션 제거, audit 잔존 정리)
 
 **대상 원칙**: P10, P16, P23, P24
 
 **조사 체크리스트**
-- [ ] P10: 타입 정의가 백엔드 모델과 일치함 (SSOT 관점)
-- [ ] P16: 미사용 타입/유틸 함수 없음
-- [ ] P23: 용어 사전 준수, 패턴 일관
-- [ ] P24: 단순성 기준
+- [x] P10: 타입 정의가 백엔드 모델과 일치함 (SSOT 관점) — 준수 (필드명 백엔드 JSON 계약 반영)
+- [x] P16: 미사용 타입/유틸 함수 없음 — 해결 (F07-01 미사용 타입 5개 + Position 미사용 필드 5개 + AccountSnapshot 미사용 필드 1개 제거)
+- [x] P23: 용어 사전 준수, 패턴 일관 — 준수 (데이터 계약 필드명, UI 텍스트 아님)
+- [x] P24: 단순성 기준 — 준수
 
 **검증**
-- [ ] `npm run build` 성공 (tsc 타입체크)
-- [ ] 잔여 미사용 타입 / 유틸 grep 추가 인스턴스 없음
+- [x] `npm run typecheck` 성공 (exit 0)
+- [x] `npm run build` 성공 (655ms, exit 0)
+- [x] `npm run test` 성공 (10 files / 184 tests passed)
+- [x] 잔여 미사용 타입 / 유틸 grep 추가 인스턴스 없음
 
 ---
 
