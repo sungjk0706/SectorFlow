@@ -38,13 +38,13 @@ function buildHeaderLeft(): HTMLElement {
   const btn1 = createSolidBtn({
     label: '⬇️ 일봉차트 시세 다운로드',
     color: COLOR.success,
-    hoverColor: '#157347',
+    hoverColor: COLOR.successHover,
     onClick: (e) => onTriggerConfirmedDownload(e),
   })
   const btn2 = createSolidBtn({
     label: '⬇️ 5거래일 일봉차트 거래대금,고가 다운로드',
     color: COLOR.success,
-    hoverColor: '#157347',
+    hoverColor: COLOR.successHover,
     onClick: (e) => onTrigger5dDownload(e),
   })
 

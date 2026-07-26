@@ -35,7 +35,7 @@
 | DUP-S3 | 중간 | D-03 HTTP Mock 헬퍼 | ☑ | 대상 테스트, 백엔드 전체 테스트 |
 | DUP-S4 | 중간 | D-04 금액 변환 표시 | ☑ | 관련 프론트엔드 테스트, typecheck, build, 화면 대조 |
 | DUP-S5 | 낮음~중간 | D-05 `CellWithPrevContent` 타입 | ☑ | typecheck, build |
-| DUP-S6 | 낮음 | D-06 색상값 반복 | ☐ | typecheck, build, 화면 색상 대조 |
+| DUP-S6 | 낮음 | D-06 색상값 반복 | ☑ | typecheck, build, 화면 색상 대조 |
 
 ---
 
@@ -251,8 +251,19 @@
 
 ### 세션 DUP-S6 — D-06 색상값 중복 검토 및 의미 보존
 
-**상태:** ☐ 미시작
-**대상 원칙:** P23 공통 색상 자산, P24 단순성, P21 사용자 표시 일관성
+**상태:** ☑ 완료 (2026-07-26)
+**대상 원칙:** P10 SSOT, P23 공통 색상 자산, P24 단순성, P21 사용자 표시 일관성
+
+#### 완료 요약
+
+- `frontend/src/components/common/ui-styles.ts` COLOR 팔레트에 `successHover: '#157347'` 추가 (successLight 다음 줄, success 계열 색상 그룹화 유지). 주석: "success 버튼 호버 (진한 초록)".
+- `frontend/src/pages/stock-classification-header.ts` line 41, 47의 `hoverColor: '#157347'` 2회 → `hoverColor: COLOR.successHover`로 전환. COLOR는 이미 line 19에서 import 되어 있어 추가 import 불필요.
+- 의미 분석: `#157347`은 `COLOR.success`(`#2e7d32`)의 진한 hover 변형. 두 사용처는 동일 시각적 의미(success 버튼 hover)·동일 수명주기(같은 헤더의 두 다운로드 버튼) → 통합 대상 확정.
+- 통합하지 않은 항목 (D-06 수정내용 4번 준수): `header.ts`의 bootstrap chip 색상(`#f3e5f5`/`#6a1b9a`)은 보라색 계열로 의미·수명주기 완전히 상이 → 전역화하지 않음.
+- `createSolidBtn` 호출부 7곳 중 `sector-row.ts:42`만 `COLOR.success` 사용하되 hoverColor 미지정(hover 효과 없음) → 현재 `successHover`는 stock-classification-header.ts 2곳에서만 사용되나, button.ts의 `hoverColor` 매개변수 설계와 success 계열 패턴 일관성(P23)을 고려해 COLOR 팔레트로 SSOT화. dead code 아님(P16 — 2곳 실사용).
+- 사용자 화면 표시 변화 없음 (P21 — 동일 색상 `#157347` 유지, 색상값 변경 없이 참조 방식만 통합).
+- 백엔드·거래 실행 경로·DB·테스트 영향 없음 (프론트엔드 색상 상수만).
+- 검증: typecheck 통과, build 성공 (97 modules, 1.84s), 잔존 `#157347` grep 결과 코드 1곳만 남음 (ui-styles.ts SSOT 정의 본인). docs의 역사적 기록(duplication-audit-tasks.md/plan.md)은 유지.
 
 #### 대상 코드
 

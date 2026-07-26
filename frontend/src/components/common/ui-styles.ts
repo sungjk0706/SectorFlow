@@ -50,6 +50,7 @@ export const COLOR = {
   neutral:      '#333',     // 보합/기본 텍스트
   success:      '#2e7d32',  // 성공/통과/연결 (초록)
   successLight: '#a5d6a7',
+  successHover: '#157347',  // success 버튼 호버 (진한 초록)
   warning:      '#e65100',  // 경고/주의 (주황)
   warningLight: '#ffcc80',
   kosdaq:       '#d63384',  // 코스닥 종목명 (핑크)
