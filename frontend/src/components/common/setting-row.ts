@@ -22,7 +22,7 @@ export const TEXT_INPUT_WIDTH = 220
 export const SPIN_BUTTON_WIDTH = 22
 export const SUFFIX_GAP = 0
 // suffix 고정폭 — 모든 단위("%", "점", "개", "초", "회", "원", "만원", "억원")가 동일 너비 차지 → 정렬 통일 (P23 일관성)
-export const SUFFIX_WIDTH = 36
+export const SUFFIX_WIDTH = 24
 // 입력 그룹 공통 너비 — 숫자/금액 입력란과 select가 동일한 오른쪽 기준 사용 (P23 일관성)
 export const CONTROL_WIDTH = INPUT_WIDTH + SPIN_BUTTON_WIDTH + SUFFIX_GAP + SUFFIX_WIDTH
 // select는 NumInput/MoneyInput과 동일한 오른쪽 끝 정렬을 유지 (P23 일관성)
