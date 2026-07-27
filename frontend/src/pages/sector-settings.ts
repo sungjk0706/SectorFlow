@@ -6,7 +6,7 @@ import { hotStore } from '../stores/hotStore'
 import { type SettingsManager } from '../settings'
 import { initSettingsPage, startSettingsSubscription, destroySettingsPage } from '../utils/settings-page'
 import type { AutoSaveHelper } from '../utils/settings-save'
-import { createSettingRow, createNumInput, RIGHT_WRAP_GAP } from '../components/common/setting-row'
+import { createSettingRow, createNumInput, RIGHT_WRAP_GAP, RIGHT_WRAP_MARGIN } from '../components/common/setting-row'
 import { createDualLabelSlider, type DualLabelSliderHandle } from '../components/common/create-slider'
 import { createProgressBar, type ProgressBarHandle } from '../components/common/progress-bar'
 import { createMarketCountRow, type MarketCountRowHandle } from '../components/common/market-count-row'
@@ -202,7 +202,7 @@ function createBonusSliderBlock(key: string, label: string | string[], infoText:
   }
   labelRow.appendChild(labelSpan)
   const rightWrap = document.createElement('span')
-  Object.assign(rightWrap.style, { display: 'inline-flex', alignItems: 'center', gap: RIGHT_WRAP_GAP + 'px', flexShrink: '0', marginLeft: 'auto' })
+  Object.assign(rightWrap.style, { display: 'inline-flex', alignItems: 'center', gap: RIGHT_WRAP_GAP + 'px', flexShrink: '0', marginLeft: 'auto', marginRight: RIGHT_WRAP_MARGIN + 'px' })
   rightWrap.appendChild(createInfoTooltip(infoText))
   rightWrap.appendChild(input.el)
   labelRow.appendChild(rightWrap)
@@ -355,7 +355,7 @@ function buildMaxTargetsSection(root: HTMLElement): void {
   maxTargetsStatusEl = document.createElement('span')
   Object.assign(maxTargetsStatusEl.style, { flex: '1', fontSize: FONT_SIZE.label, color: COLOR.tertiary, display: 'flex', alignItems: 'center', justifyContent: 'center', whiteSpace: 'nowrap' })
   const rightWrap = document.createElement('div')
-  Object.assign(rightWrap.style, { display: 'inline-flex', alignItems: 'center', gap: RIGHT_WRAP_GAP + 'px', flexShrink: '0', marginLeft: 'auto' })
+  Object.assign(rightWrap.style, { display: 'inline-flex', alignItems: 'center', gap: RIGHT_WRAP_GAP + 'px', flexShrink: '0', marginLeft: 'auto', marginRight: RIGHT_WRAP_MARGIN + 'px' })
   rightWrap.appendChild(createInfoTooltip('업종 순위 상위 N개 업종을 매수 대상으로 선정합니다. 0 = 매수 대상 0개(매수 안 함). 범위: 0~100개.'))
   rightWrap.appendChild(maxTargetsInput.el)
   maxTargetsRow.appendChild(maxTargetsLabel)

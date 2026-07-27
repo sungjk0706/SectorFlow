@@ -7,7 +7,7 @@
 
 import { COLOR, FONT_SIZE, FONT_WEIGHT, setDisabled } from './ui-styles'
 import { createInfoTooltip } from './info-tooltip'
-import { RIGHT_WRAP_GAP } from './setting-row'
+import { RIGHT_WRAP_GAP, RIGHT_WRAP_MARGIN } from './setting-row'
 
 /* ── ON/OFF 토글 버튼 ──────────────────────────────────────── */
 export function createToggleBtn(options: {
@@ -196,7 +196,7 @@ export function createSettingToggleRow(options: {
   }
 
   const right = document.createElement('span')
-  right.style.cssText = `display:inline-flex;align-items:center;gap:${RIGHT_WRAP_GAP}px;margin-left:auto;`
+  right.style.cssText = `display:inline-flex;align-items:center;gap:${RIGHT_WRAP_GAP}px;margin-left:auto;margin-right:${RIGHT_WRAP_MARGIN}px;`
 
   if (options.infoText) {
     right.appendChild(createInfoTooltip(options.infoText))

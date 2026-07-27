@@ -29,6 +29,8 @@ export const CONTROL_WIDTH = INPUT_WIDTH + SPIN_BUTTON_WIDTH + SUFFIX_GAP + SUFF
 export const SELECT_WIDTH = CONTROL_WIDTH
 // rightWrap 간격 — ⓘ↔입력란↔suffix 그룹 내 통일 간격 (P23 일관성, P24 단순성)
 export const RIGHT_WRAP_GAP = 2
+// rightWrap 우측 여백 — 그룹 전체를 패널 우측에서 2px 띄움 (P23 일관성)
+export const RIGHT_WRAP_MARGIN = 2
 
 /* ── Enter → 다음 포커스 이동 헬퍼 ─────────────────────────── */
 export function focusNext(el: HTMLElement) {
@@ -166,7 +168,7 @@ export function createSettingRow(label: string | HTMLElement, child: HTMLElement
   }
   div.appendChild(labelSpan)
 
-  // infoText: 입력란 좌측에 ⓘ 툴팁 배치 — 그룹(ⓘ+입력란+suffix)을 우측 정렬로 통일 (P23 일관성)
+  // infoText: 입력란 좌측에 ⓘ 툴팁 배치 — 그룹(ⓘ+입력란+suffix)을 우측 정렬 + 우측 여백 통일 (P23 일관성)
   const rightWrap = document.createElement('span')
   if (opts?.infoText) {
     Object.assign(rightWrap.style, {
@@ -175,6 +177,7 @@ export function createSettingRow(label: string | HTMLElement, child: HTMLElement
       gap: `${RIGHT_WRAP_GAP}px`,
       flexShrink: '0',
       marginLeft: 'auto',
+      marginRight: `${RIGHT_WRAP_MARGIN}px`,
     })
     rightWrap.appendChild(createInfoTooltip(opts.infoText))
     if (opts?.rangeText) {
@@ -186,7 +189,7 @@ export function createSettingRow(label: string | HTMLElement, child: HTMLElement
     rightWrap.appendChild(child)
     div.appendChild(rightWrap)
   } else if (opts?.rangeText) {
-    Object.assign(rightWrap.style, { display: 'flex', alignItems: 'center', gap: `${RIGHT_WRAP_GAP}px`, marginLeft: 'auto' })
+    Object.assign(rightWrap.style, { display: 'flex', alignItems: 'center', gap: `${RIGHT_WRAP_GAP}px`, marginLeft: 'auto', marginRight: `${RIGHT_WRAP_MARGIN}px` })
     const rangeSpan = document.createElement('span')
     Object.assign(rangeSpan.style, { fontSize: FONT_SIZE.small, color: COLOR.tertiary, whiteSpace: 'nowrap' })
     rangeSpan.textContent = opts.rangeText
@@ -194,7 +197,7 @@ export function createSettingRow(label: string | HTMLElement, child: HTMLElement
     rightWrap.appendChild(child)
     div.appendChild(rightWrap)
   } else {
-    Object.assign(child.style, { marginLeft: 'auto' })
+    Object.assign(child.style, { marginLeft: 'auto', marginRight: `${RIGHT_WRAP_MARGIN}px` })
     div.appendChild(child)
   }
   return div
