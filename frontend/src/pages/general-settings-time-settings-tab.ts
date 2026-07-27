@@ -6,7 +6,7 @@
 // Step 2(탭 재분류): 자동매수/매도 토글을 자동매매 탭에서 이관 — 시간+토글 통합 행 (설계서 3.2).
 // 토글 OFF 시에도 시간 입력 활성화 유지 (설계서 2-1, P24 탭 간 의존성 최소화, P21 안내 문구로 보완).
 
-import { createToggleBtn, createNumInput, createSettingRow } from '../components/common/setting-row'
+import { createNumInput, createSettingRow, createSettingToggleRow } from '../components/common/setting-row'
 import { sectionTitle, createDescText, parseHM, createTimeSlot, updateTimeSlotDisplay } from '../components/common/settings-common'
 import { createTimePairInput } from '../components/common/time-pair-input'
 import { FONT_SIZE, FONT_WEIGHT, COLOR, setDisabled } from '../components/common/ui-styles'
@@ -32,12 +32,6 @@ function wrapTimeRowWithWarn(row: HTMLElement, warnEl: HTMLElement): HTMLElement
 }
 
 function buildBuyTimeRow(state: GeneralSettingsState): HTMLElement {
-  const row = document.createElement('div')
-  Object.assign(row.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, borderBottom: GS.rowBorder })
-  const label = document.createElement('span')
-  Object.assign(label.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
-  label.textContent = '자동매수 시간'
-  row.appendChild(label)
   const buyStart = String(state.vals.buy_time_start ?? '09:00')
   const buyEnd = String(state.vals.buy_time_end ?? '15:20')
   // 행 하단 경고 메시지 영역 (P21 투명성 — 순서 위반 시 지속 표시, P23 createDescText 위치와 일치)
@@ -60,30 +54,23 @@ function buildBuyTimeRow(state: GeneralSettingsState): HTMLElement {
     }
   }, (msg) => { warnEl.textContent = msg })
   state.buyTimeHandle = handle
-  // 토글 통합 행 — 자동매매 탭에서 이관 (설계서 3.2): [시간쌍 입력] [토글]
-  const right = document.createElement('span')
-  right.style.cssText = 'display:flex;align-items:center;gap:10px;'
-  right.appendChild(tpWrap)
-  state.autoBuyToggle = createToggleBtn({ on: !!state.vals.auto_buy_on, onClick: async () => {
-    const next = !state.vals.auto_buy_on
-    state.vals.auto_buy_on = next; state.autoBuyToggle!.setOn(next)
-    const res = await state.settingsMgr!.saveSection({ auto_buy_on: next })
-    toastResult(res)
-    if (!res.ok) { state.vals.auto_buy_on = !next; state.autoBuyToggle!.setOn(!next) }
-  }})
-  right.appendChild(createHolidayBadge())
-  right.appendChild(state.autoBuyToggle.el)
-  row.appendChild(right)
-  return wrapTimeRowWithWarn(row, warnEl)
+  const r = createSettingToggleRow({
+    label: '자동매수 시간',
+    toggleOn: !!state.vals.auto_buy_on,
+    disableControlsOnToggle: false,
+    controls: [tpWrap, createHolidayBadge()],
+    onToggle: async next => {
+      state.vals.auto_buy_on = next
+      const res = await state.settingsMgr!.saveSection({ auto_buy_on: next })
+      toastResult(res)
+      if (!res.ok) { state.vals.auto_buy_on = !next; r.toggle.setOn(!next) }
+    },
+  })
+  state.autoBuyToggle = r.toggle
+  return wrapTimeRowWithWarn(r.el, warnEl)
 }
 
 function buildSellTimeRow(state: GeneralSettingsState): HTMLElement {
-  const row = document.createElement('div')
-  Object.assign(row.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, borderBottom: GS.rowBorder })
-  const label = document.createElement('span')
-  Object.assign(label.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
-  label.textContent = '자동매도 시간'
-  row.appendChild(label)
   const sellStart = String(state.vals.sell_time_start ?? '09:00')
   const sellEnd = String(state.vals.sell_time_end ?? '15:20')
   // 행 하단 경고 메시지 영역 (P21 투명성 — 순서 위반 시 지속 표시, P23 createDescText 위치와 일치)
@@ -106,21 +93,20 @@ function buildSellTimeRow(state: GeneralSettingsState): HTMLElement {
     }
   }, (msg) => { warnEl.textContent = msg })
   state.sellTimeHandle = handle
-  // 토글 통합 행 — 자동매매 탭에서 이관 (설계서 3.2): [시간쌍 입력] [토글]
-  const right = document.createElement('span')
-  right.style.cssText = 'display:flex;align-items:center;gap:10px;'
-  right.appendChild(tpWrap)
-  state.autoSellToggle = createToggleBtn({ on: !!state.vals.auto_sell_on, onClick: async () => {
-    const next = !state.vals.auto_sell_on
-    state.vals.auto_sell_on = next; state.autoSellToggle!.setOn(next)
-    const res = await state.settingsMgr!.saveSection({ auto_sell_on: next })
-    toastResult(res)
-    if (!res.ok) { state.vals.auto_sell_on = !next; state.autoSellToggle!.setOn(!next) }
-  }})
-  right.appendChild(createHolidayBadge())
-  right.appendChild(state.autoSellToggle.el)
-  row.appendChild(right)
-  return wrapTimeRowWithWarn(row, warnEl)
+  const r = createSettingToggleRow({
+    label: '자동매도 시간',
+    toggleOn: !!state.vals.auto_sell_on,
+    disableControlsOnToggle: false,
+    controls: [tpWrap, createHolidayBadge()],
+    onToggle: async next => {
+      state.vals.auto_sell_on = next
+      const res = await state.settingsMgr!.saveSection({ auto_sell_on: next })
+      toastResult(res)
+      if (!res.ok) { state.vals.auto_sell_on = !next; r.toggle.setOn(!next) }
+    },
+  })
+  state.autoSellToggle = r.toggle
+  return wrapTimeRowWithWarn(r.el, warnEl)
 }
 
 function buildTimetableRow(state: GeneralSettingsState, labelText: string, key: 'timetable.realtime_reset' | 'timetable.ws_prestart' | 'timetable.krx_pre_subscribe', defaultTime: string): HTMLElement {
@@ -145,16 +131,6 @@ function buildTimetableRow(state: GeneralSettingsState, labelText: string, key: 
 }
 
 function buildConfirmedDownloadRow(state: GeneralSettingsState): HTMLElement {
-  const row = document.createElement('div')
-  Object.assign(row.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, borderBottom: GS.rowBorder })
-  const label = document.createElement('span')
-  Object.assign(label.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal, whiteSpace: 'nowrap' })
-  label.textContent = '일봉차트 자동다운로드'
-  row.appendChild(label)
-
-  const right = document.createElement('span')
-  right.style.cssText = 'display:flex;align-items:center;gap:10px;'
-
   const [cdh, cdm] = parseHM(String(state.vals['timetable.confirmed_download'] ?? '20:40'))
   state.confirmedDlH = cdh; state.confirmedDlM = cdm
   state.confirmedDlSlot = createTimeSlot(state.confirmedDlH, state.confirmedDlM, (h, m) => {
@@ -162,26 +138,26 @@ function buildConfirmedDownloadRow(state: GeneralSettingsState): HTMLElement {
     const [origH, origM] = parseHM(String(state.vals['timetable.confirmed_download'] ?? '20:40'))
     scheduleTimetableSave('timetable.confirmed_download', `${h}:${m}`, () => { state.confirmedDlH = origH; state.confirmedDlM = origM; updateTimeSlotDisplay(state.confirmedDlSlot!, origH, origM) })
   })
-  right.appendChild(state.confirmedDlSlot)
 
   const dlOn = state.vals.scheduler_market_close_on !== false
-  state.confirmedDlToggle = createToggleBtn({ on: dlOn, onClick: async () => {
-    const next = !state.confirmedDlToggle!.isOn()
-    state.confirmedDlToggle!.setOn(next)
-    setDisabled(state.confirmedDlSlot!, !next)
-    state.vals.scheduler_market_close_on = next
-    const res = await state.settingsMgr!.saveSection({ scheduler_market_close_on: next })
-    toastResult(res)
-    if (!res.ok) {
-      state.vals.scheduler_market_close_on = !next
-      state.confirmedDlToggle!.setOn(!next)
-      setDisabled(state.confirmedDlSlot!, next)
-    }
-  }})
-  right.appendChild(state.confirmedDlToggle.el)
-  row.appendChild(right)
-  setDisabled(state.confirmedDlSlot, !dlOn)
-  return row
+  const r = createSettingToggleRow({
+    label: '일봉차트 자동다운로드',
+    toggleOn: dlOn,
+    disableControlsOnToggle: true,
+    controls: [state.confirmedDlSlot],
+    onToggle: async next => {
+      state.vals.scheduler_market_close_on = next
+      const res = await state.settingsMgr!.saveSection({ scheduler_market_close_on: next })
+      toastResult(res)
+      if (!res.ok) {
+        state.vals.scheduler_market_close_on = !next
+        r.toggle.setOn(!next)
+        setDisabled(r.controls, next)
+      }
+    },
+  })
+  state.confirmedDlToggle = r.toggle
+  return r.el
 }
 
 function buildFixedTimesBox(): HTMLElement {

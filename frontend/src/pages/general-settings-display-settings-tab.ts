@@ -2,29 +2,24 @@
 // 일반설정 — 화면 설정 탭 (Step 2 신설, P21/P24)
 // 자동매매 탭에서 이관: 실시간 현재가 플래시 효과 토글
 
-import { createToggleBtn } from '../components/common/setting-row'
+import { createSettingToggleRow } from '../components/common/setting-row'
 import { sectionTitle, createDescText } from '../components/common/settings-common'
-import { FONT_WEIGHT } from '../components/common/ui-styles'
 import { toastResult } from '../components/common/toast'
-import { type GeneralSettingsState, GS, state } from './general-settings-shared'
+import { type GeneralSettingsState, state } from './general-settings-shared'
 
 function buildUiFlashRow(state: GeneralSettingsState): HTMLElement {
-  const row = document.createElement('div')
-  Object.assign(row.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, borderBottom: GS.rowBorder })
-  const label = document.createElement('span')
-  Object.assign(label.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
-  label.textContent = '실시간 현재가 플래시 효과'
-  row.appendChild(label)
-  state.uiFlashToggle = createToggleBtn({ on: false, onClick: async () => {
-    const next = !state.vals.ui_price_flash_on
-    state.vals.ui_price_flash_on = next
-    state.uiFlashToggle!.setOn(next)
-    const res = await state.settingsMgr!.saveSection({ ui_price_flash_on: next })
-    toastResult(res)
-    if (!res.ok) { state.vals.ui_price_flash_on = !next; state.uiFlashToggle!.setOn(!next) }
-  }})
-  row.appendChild(state.uiFlashToggle.el)
-  return row
+  const r = createSettingToggleRow({
+    label: '실시간 현재가 플래시 효과',
+    toggleOn: false,
+    onToggle: async next => {
+      state.vals.ui_price_flash_on = next
+      const res = await state.settingsMgr!.saveSection({ ui_price_flash_on: next })
+      toastResult(res)
+      if (!res.ok) { state.vals.ui_price_flash_on = !next; r.toggle.setOn(!next) }
+    },
+  })
+  state.uiFlashToggle = r.toggle
+  return r.el
 }
 
 export function renderDisplaySettingsTab(state: GeneralSettingsState, container: HTMLElement): void {

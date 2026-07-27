@@ -5,7 +5,8 @@
  * 포함: createToggleBtn, createRadioGroup, createToggleLabelControlsRow
  */
 
-import { COLOR, FONT_SIZE, setDisabled } from './ui-styles'
+import { COLOR, FONT_SIZE, FONT_WEIGHT, setDisabled } from './ui-styles'
+import { createInfoTooltip } from './info-tooltip'
 import { createSettingRow } from './setting-row'
 
 /* ── ON/OFF 토글 버튼 ──────────────────────────────────────── */
@@ -203,4 +204,71 @@ export function createToggleLabelControlsRow(options: {
     style: options.rowStyle,
   })
   return { el, toggle, controls }
+}
+
+/* ── 라벨 + 컨트롤 + 오른쪽 토글 행 ───────────────────────── */
+// 일반설정 탭에서 토글 위치/간격 통일용 (P23 일관성)
+export function createSettingToggleRow(options: {
+  label: string
+  toggleOn: boolean
+  onToggle: (next: boolean) => void
+  controls?: HTMLElement[]
+  infoText?: string
+  disableControlsOnToggle?: boolean
+  initialDisabled?: boolean
+  rowStyle?: Partial<CSSStyleDeclaration>
+}): {
+  el: HTMLElement
+  toggle: ReturnType<typeof createToggleBtn>
+  controls: HTMLElement
+} {
+  const row = document.createElement('div')
+  Object.assign(row.style, {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '10px 0',
+    borderBottom: '1px solid ' + COLOR.borderLight,
+  })
+  if (options.rowStyle) Object.assign(row.style, options.rowStyle)
+
+  const labelSpan = document.createElement('span')
+  Object.assign(labelSpan.style, { fontSize: FONT_SIZE.settingsLabel, fontWeight: FONT_WEIGHT.normal })
+  labelSpan.textContent = options.label
+  row.appendChild(labelSpan)
+
+  const controls = document.createElement('span')
+  controls.style.cssText = 'display:inline-flex;align-items:center;gap:10px;'
+
+  const right = document.createElement('span')
+  right.style.cssText = 'display:inline-flex;align-items:center;gap:10px;'
+
+  if (options.infoText) {
+    right.appendChild(createInfoTooltip(options.infoText))
+  }
+
+  if (options.controls) {
+    for (const c of options.controls) controls.appendChild(c)
+  }
+
+  let toggle: ReturnType<typeof createToggleBtn>
+  toggle = createToggleBtn({ on: options.toggleOn, onClick: () => {
+    const next = !toggle.isOn()
+    toggle.setOn(next)
+    if (options.disableControlsOnToggle) {
+      setDisabled(controls, !next)
+    }
+    options.onToggle(next)
+  }})
+
+  right.appendChild(controls)
+  right.appendChild(toggle.el)
+
+  const initDisabled = options.initialDisabled ?? (options.disableControlsOnToggle ? !options.toggleOn : false)
+  if (options.disableControlsOnToggle && options.controls) {
+    setDisabled(controls, initDisabled)
+  }
+
+  row.appendChild(right)
+  return { el: row, toggle, controls }
 }

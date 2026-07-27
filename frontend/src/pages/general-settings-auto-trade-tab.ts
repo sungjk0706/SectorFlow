@@ -2,7 +2,7 @@
 // 일반설정 — 자동매매 탭 (F-04 분할, P24 단순성)
 // general-settings.ts에서 이관. Step 2: 토글→시간 설정 탭 이관, 상태 배지 추가, 뉴스/화면 섹션→각 탭 이관.
 
-import { createToggleBtn, createMoneyInput, createNumInput, createToggleLabelControlsRow } from '../components/common/setting-row'
+import { createMoneyInput, createNumInput, createSettingToggleRow } from '../components/common/setting-row'
 import { sectionTitle, createDescText } from '../components/common/settings-common'
 import { FONT_WEIGHT, setDisabled, COLOR, FONT_SIZE } from '../components/common/ui-styles'
 import { toastResult } from '../components/common/toast'
@@ -10,20 +10,15 @@ import { type GeneralSettingsState, GS, createHolidayBadge, updateHolidayBadges,
 
 /* ── 자동매매 탭 ── */
 function buildMasterToggleRow(state: GeneralSettingsState): HTMLElement {
-  const row = document.createElement('div')
-  Object.assign(row.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, borderBottom: GS.rowBorder })
-  const label = document.createElement('span')
-  Object.assign(label.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
-  label.textContent = '자동매매'
-  row.appendChild(label)
-
-  const right = document.createElement('span')
-  right.style.cssText = 'display:flex;align-items:center;'
-  right.appendChild(createHolidayBadge())
-  state.masterToggle = createToggleBtn({ on: false, onClick: () => handleMasterToggle(state) })
-  right.appendChild(state.masterToggle.el)
-  row.appendChild(right)
-  return row
+  const r = createSettingToggleRow({
+    label: '자동매매',
+    toggleOn: false,
+    disableControlsOnToggle: false,
+    controls: [createHolidayBadge()],
+    onToggle: () => handleMasterToggle(state),
+  })
+  state.masterToggle = r.toggle
+  return r.el
 }
 
 // 자동매수 상태 배지 — 읽기 전용 (Step 2: 토글은 시간 설정 탭으로 이관, P21 투명성)
@@ -76,26 +71,24 @@ function updateStatusBadge(badge: HTMLElement, on: boolean): void {
 }
 
 function buildRiskManagerMasterRow(state: GeneralSettingsState): HTMLElement {
-  const row = document.createElement('div')
-  Object.assign(row.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, borderBottom: GS.rowBorder })
-  const label = document.createElement('span')
-  Object.assign(label.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
-  label.textContent = '매매 안전장치'
-  row.appendChild(label)
   state.riskManagerChildren = document.createElement('div')
-  state.riskManagerToggle = createToggleBtn({ on: false, onClick: async () => {
-    const next = !state.vals.risk_manager_on
-    state.vals.risk_manager_on = next; state.riskManagerToggle!.setOn(next)
-    setDisabled(state.riskManagerChildren!, !next)
-    const res = await state.settingsMgr!.saveSection({ risk_manager_on: next })
-    toastResult(res)
-    if (!res.ok) {
-      state.vals.risk_manager_on = !next; state.riskManagerToggle!.setOn(!next)
-      setDisabled(state.riskManagerChildren!, next)
-    }
-  }})
-  row.appendChild(state.riskManagerToggle.el)
-  return row
+  const r = createSettingToggleRow({
+    label: '매매 안전장치',
+    toggleOn: false,
+    onToggle: async next => {
+      state.vals.risk_manager_on = next
+      setDisabled(state.riskManagerChildren!, !next)
+      const res = await state.settingsMgr!.saveSection({ risk_manager_on: next })
+      toastResult(res)
+      if (!res.ok) {
+        state.vals.risk_manager_on = !next
+        r.toggle.setOn(!next)
+        setDisabled(state.riskManagerChildren!, next)
+      }
+    },
+  })
+  state.riskManagerToggle = r.toggle
+  return r.el
 }
 
 function buildDailyLossRow(state: GeneralSettingsState): void {
@@ -110,17 +103,18 @@ function buildDailyLossRow(state: GeneralSettingsState): void {
     },
     step: 10000, min: -1000000000, max: 0, name: 'daily_loss_limit',
   })
-  const r = createToggleLabelControlsRow({
-    labelText: '일일 손실 한도 (원)',
+  const r = createSettingToggleRow({
+    label: '일일 손실 한도 (원)',
     infoText: '당일 누적 손실이 이 값 이하이면 매매 중단. -10억~0원, 기본 -50만원.',
     toggleOn: true,
+    disableControlsOnToggle: true,
+    controls: [state.dailyLossInput.el],
     onToggle: async next => {
       state.vals.daily_loss_limit_on = next
       const res = await state.settingsMgr!.saveSection({ daily_loss_limit_on: next })
       toastResult(res)
       if (!res.ok) state.vals.daily_loss_limit_on = !next
     },
-    controlsChild: state.dailyLossInput.el,
   })
   state.dailyLossToggle = r.toggle; state.dailyLossControls = r.controls
   state.riskManagerChildren!.appendChild(r.el)
@@ -138,17 +132,18 @@ function buildDailyLossRateRow(state: GeneralSettingsState): void {
     },
     step: 0.1, min: -100, max: 0, name: 'daily_loss_rate_limit',
   })
-  const r = createToggleLabelControlsRow({
-    labelText: '일일 손실률 한도 (%)',
+  const r = createSettingToggleRow({
+    label: '일일 손실률 한도 (%)',
     infoText: '당일 누적 손실률이 이 값 이하이면 매매 중단. -100%~0%, 기본 -5%.',
     toggleOn: false,
+    disableControlsOnToggle: true,
+    controls: [state.dailyLossRateInput.el],
     onToggle: async next => {
       state.vals.daily_loss_rate_limit_on = next
       const res = await state.settingsMgr!.saveSection({ daily_loss_rate_limit_on: next })
       toastResult(res)
       if (!res.ok) state.vals.daily_loss_rate_limit_on = !next
     },
-    controlsChild: state.dailyLossRateInput.el,
   })
   state.dailyLossRateToggle = r.toggle; state.dailyLossRateControls = r.controls
   state.riskManagerChildren!.appendChild(r.el)
@@ -166,56 +161,53 @@ function buildConsecLossRow(state: GeneralSettingsState): void {
     },
     step: 1, min: 1, max: 100, name: 'consecutive_loss_limit',
   })
-  const r = createToggleLabelControlsRow({
-    labelText: '연속 손실 횟수 한도 (회)',
+  const r = createSettingToggleRow({
+    label: '연속 손실 횟수 한도 (회)',
     infoText: '연속 손실 횟수가 이 값 이상이면 매매 중단. 1~100회, 기본 3회.',
     toggleOn: false,
+    disableControlsOnToggle: true,
+    controls: [state.consecLossInput.el],
     onToggle: async next => {
       state.vals.consecutive_loss_limit_on = next
       const res = await state.settingsMgr!.saveSection({ consecutive_loss_limit_on: next })
       toastResult(res)
       if (!res.ok) state.vals.consecutive_loss_limit_on = !next
     },
-    controlsChild: state.consecLossInput.el,
   })
   state.consecLossToggle = r.toggle; state.consecLossControls = r.controls
   state.riskManagerChildren!.appendChild(r.el)
 }
 
 function buildRiskBlockBuyRow(state: GeneralSettingsState): HTMLElement {
-  const row = document.createElement('div')
-  Object.assign(row.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, paddingLeft: '20px', borderBottom: GS.rowBorder })
-  const label = document.createElement('span')
-  Object.assign(label.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
-  label.textContent = '안전장치 조건 충족 시 매수 차단'
-  row.appendChild(label)
-  state.riskBlockBuyToggle = createToggleBtn({ on: true, onClick: async () => {
-    const next = !state.vals.risk_block_buy_on
-    state.vals.risk_block_buy_on = next; state.riskBlockBuyToggle!.setOn(next)
-    const res = await state.settingsMgr!.saveSection({ risk_block_buy_on: next })
-    toastResult(res)
-    if (!res.ok) { state.vals.risk_block_buy_on = !next; state.riskBlockBuyToggle!.setOn(!next) }
-  }})
-  row.appendChild(state.riskBlockBuyToggle.el)
-  return row
+  const r = createSettingToggleRow({
+    label: '안전장치 조건 충족 시 매수 차단',
+    toggleOn: true,
+    rowStyle: { paddingLeft: '20px' },
+    onToggle: async next => {
+      state.vals.risk_block_buy_on = next
+      const res = await state.settingsMgr!.saveSection({ risk_block_buy_on: next })
+      toastResult(res)
+      if (!res.ok) { state.vals.risk_block_buy_on = !next; r.toggle.setOn(!next) }
+    },
+  })
+  state.riskBlockBuyToggle = r.toggle
+  return r.el
 }
 
 function buildRiskBlockSellRow(state: GeneralSettingsState): HTMLElement {
-  const row = document.createElement('div')
-  Object.assign(row.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, paddingLeft: '20px', borderBottom: GS.rowBorder })
-  const label = document.createElement('span')
-  Object.assign(label.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
-  label.textContent = '안전장치 조건 충족 시 매도 차단'
-  row.appendChild(label)
-  state.riskBlockSellToggle = createToggleBtn({ on: false, onClick: async () => {
-    const next = !state.vals.risk_block_sell_on
-    state.vals.risk_block_sell_on = next; state.riskBlockSellToggle!.setOn(next)
-    const res = await state.settingsMgr!.saveSection({ risk_block_sell_on: next })
-    toastResult(res)
-    if (!res.ok) { state.vals.risk_block_sell_on = !next; state.riskBlockSellToggle!.setOn(!next) }
-  }})
-  row.appendChild(state.riskBlockSellToggle.el)
-  return row
+  const r = createSettingToggleRow({
+    label: '안전장치 조건 충족 시 매도 차단',
+    toggleOn: false,
+    rowStyle: { paddingLeft: '20px' },
+    onToggle: async next => {
+      state.vals.risk_block_sell_on = next
+      const res = await state.settingsMgr!.saveSection({ risk_block_sell_on: next })
+      toastResult(res)
+      if (!res.ok) { state.vals.risk_block_sell_on = !next; r.toggle.setOn(!next) }
+    },
+  })
+  state.riskBlockSellToggle = r.toggle
+  return r.el
 }
 
 function buildRiskManagerChildren(state: GeneralSettingsState): HTMLElement {

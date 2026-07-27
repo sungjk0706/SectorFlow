@@ -2,7 +2,7 @@
 // 일반설정 — 텔레그램 탭 (F-04 분할, P24 단순성)
 // general-settings.ts에서 이관. 순수 이동, 동작 변경 없음.
 
-import { createToggleBtn, createTextInput } from '../components/common/setting-row'
+import { createTextInput, createSettingToggleRow } from '../components/common/setting-row'
 import { createActionButton } from '../components/common/button'
 import { createDataTable, type ColumnDef } from '../components/common/data-table'
 import { extractDirty, MASKED_FIELDS } from '../settings'
@@ -20,20 +20,18 @@ const TELE_LABELS: Record<string, string> = { telegram_chat_id: '채팅 ID', tel
 const TELE_SECRET_KEYS = ['telegram_bot_token_test', 'telegram_bot_token_real'] as const
 
 function buildTeleToggleRow(state: GeneralSettingsState): HTMLElement {
-  const row = document.createElement('div')
-  Object.assign(row.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, borderBottom: GS.rowBorder })
-  const label = document.createElement('span')
-  Object.assign(label.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
-  label.textContent = '텔레그램 알림'
-  row.appendChild(label)
-  state.teleToggle = createToggleBtn({ on: false, onClick: async () => {
-    const next = !state.vals.tele_on; state.vals.tele_on = next; state.teleToggle!.setOn(next)
-    const res = await state.settingsMgr!.saveSection({ tele_on: next })
-    toastResult(res)
-    if (!res.ok) { state.vals.tele_on = !next; state.teleToggle!.setOn(!next) }
-  }})
-  row.appendChild(state.teleToggle.el)
-  return row
+  const r = createSettingToggleRow({
+    label: '텔레그램 알림',
+    toggleOn: false,
+    onToggle: async next => {
+      state.vals.tele_on = next
+      const res = await state.settingsMgr!.saveSection({ tele_on: next })
+      toastResult(res)
+      if (!res.ok) { state.vals.tele_on = !next; r.toggle.setOn(!next) }
+    },
+  })
+  state.teleToggle = r.toggle
+  return r.el
 }
 
 function buildTeleInputRows(state: GeneralSettingsState, container: HTMLElement): void {
