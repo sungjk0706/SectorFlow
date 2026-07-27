@@ -6,7 +6,19 @@ import { pnlColor, fmtWon, fmtComma, createStockNameColumn, createCodeCell, crea
 import { hotStore, normalizeStockCode } from '../stores/hotStore'
 import type { DailyDrilldownRow } from './profit-shared'
 
-/* ── 매수 컬럼 (7개) ── */
+/* ── 매수 reason 파싱 — "업종자동매수 업종={sector} 순위={rank}" (P20 폴백 금지, 빈 값 그대로) ── */
+const _BUY_REASON_SECTOR = /업종=([^ ]+)/
+const _BUY_REASON_RANK = /순위=(\d+)/
+function parseBuyReasonSector(reason: unknown): string {
+  const m = _BUY_REASON_SECTOR.exec(String(reason ?? ''))
+  return m ? m[1] : ''
+}
+function parseBuyReasonRank(reason: unknown): string {
+  const m = _BUY_REASON_RANK.exec(String(reason ?? ''))
+  return m ? m[1] : ''
+}
+
+/* ── 매수 컬럼 (9개) ── */
 export const BUY_COLS: ColumnDef<Record<string, unknown>>[] = [
   { key: 'no', label: '순번', align: 'center', type: 'seq', render: (_, i) => String(i + 1) },
   { key: 'datetime', label: '일시', align: 'center', type: 'datetime', render: r => { const d = String(r.date ?? ''); const t = String(r.time ?? ''); const dd = d.length >= 10 ? d.slice(5, 7) + '/' + d.slice(8, 10) : d; return dd + (t ? ' ' + t : '') } },
@@ -22,6 +34,9 @@ export const BUY_COLS: ColumnDef<Record<string, unknown>>[] = [
       }
     }
   ),
+  { key: 'sector', label: '업종', align: 'left', type: 'sector', render: r => parseBuyReasonSector(r.reason),
+    cellStyle: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } },
+  { key: 'buy_rank', label: '매수순위', align: 'center', type: 'rank', render: r => parseBuyReasonRank(r.reason) },
   { key: 'price', label: '매수가', align: 'right', type: 'buy_price', render: r => createNumberCell(Number(r.price ?? 0)) },
   { key: 'qty', label: '수량', align: 'right', type: 'qty', render: r => createNumberCell(Number(r.qty ?? 0)) },
   { key: 'total_amt', label: '매수 지출(수수료 포함)', align: 'right', type: 'total_amt', render: r => fmtWon(Number(r.total_amt ?? 0)) },
