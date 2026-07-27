@@ -2,7 +2,7 @@
 
 > 작성일: 2026-07-26
 > 기준 계획서: `docs/coupling-audit-plan.md` C-07, 실행 태스크: `docs/coupling-audit-tasks.md` COUPLING-S7
-> 상태: ☑ 완료 (조사·매트릭스 문서만 작성, 코드 수정 없음)
+> 상태: ☑ 완료 (조사·매트릭스 문서 작성 + 후속 `_base_stk_cd`·`_real_item_stk_cd` core 이동 완료)
 > 대상 원칙: P10 SSOT, P16 살아있는 경로, P20 입력 오류 의미 보존, P22 데이터 정합성, P23 용어·타입 일관성, P24 단순성
 
 ---
@@ -14,9 +14,11 @@
 | 함수 | 파일:줄 | 계층 | 언어 |
 |------|---------|------|------|
 | `normalize_stk_cd_key(code)` | `backend/app/core/settings_store.py:25` | core | Python |
-| `_base_stk_cd(stk_cd)` | `backend/app/services/engine_symbol_utils.py:50` | services | Python |
+| `_base_stk_cd(stk_cd)` | `backend/app/core/symbol_utils.py:17` (이동: services/engine_symbol_utils.py:50 → core) | core | Python |
 | `_norm_stk_cd(stk_cd)` | `backend/app/services/data_manager.py:11` | services | Python |
 | `normalizeStockCode(code)` | `frontend/src/stores/hotStore.ts:15` | frontend | TypeScript |
+
+> **후속 이동 (2026-07-27)**: `_base_stk_cd`와 `_real_item_stk_cd`(및 private helpers 3종 `_dict_get_fid`/`_fid9001_to_stk_cd`/`_parse_real_item_field`)가 `services/engine_symbol_utils.py`에서 `core/symbol_utils.py`로 이동됨 (C-06 후보 2, P10 SSOT). `engine_symbol_utils.py`는 재수출로 기존 호출부·테스트 patch 경로 유지 (P16). 본 문서의 줄 번호는 조사 시점(이동 전) 기준.
 
 ### 1.2 조사 방법
 

@@ -9,8 +9,7 @@
 전역 엔진 상태 없음 — 동일 입력에 동일 출력만 보장.
 """
 from __future__ import annotations
-from backend.app.core.symbol_utils import _base_stk_cd
-from backend.app.services.engine_symbol_utils import _real_item_stk_cd
+from backend.app.core.symbol_utils import _base_stk_cd, _real_item_stk_cd
 from backend.app.services.engine_ws_parsing import _parse_fid10_price
 
 

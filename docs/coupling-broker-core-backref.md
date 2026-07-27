@@ -183,7 +183,7 @@ auto_trading_effective              sector_mapping.py / stock_classification_dat
 | `connector_manager.py` | 111 | `engine_ws_reg.restore_subscriptions_after_reconnect` | D | 재연결 복원 — services 오케스트레이션 위임 (정방향에 가까움) |
 | `kiwoom_providers.py` | 32 | `engine_state.state.broker_rest_apis` | C | AuthProvider 생성 시 REST API 재사용/초기화 |
 | `ls_providers.py` | 20 | `engine_state.state.broker_rest_apis` | C | AuthProvider 생성 시 REST API 재사용/초기화 |
-| `kiwoom_account_parsing.py` | 12 | `engine_symbol_utils._base_stk_cd, _real_item_stk_cd` | F | 키움 REST/REAL04 파싱 — 순수 함수 역참조 |
+| `kiwoom_account_parsing.py` | 12 | `symbol_utils._base_stk_cd, _real_item_stk_cd` | F | 키움 REST/REAL04 파싱 — core 순수 함수 (C-06 해소: `_base_stk_cd`·`_real_item_stk_cd` core 이동 완료) |
 | `kiwoom_account_parsing.py` | 13 | `engine_ws_parsing._parse_fid10_price` | F | 키움 REAL04 가격 파싱 — 순수 함수 역참조 |
 | `kiwoom_order.py` | 63 | `daily_time_scheduler.get_nxt_trde_tp` | H | NXT 장외 시간대 trde_tp 조정 — 스케줄러 시간표 기반 |
 | `engine_settings.py` | 109 | `engine_state.state.integrated_system_settings_cache._credential_states` | B | 자격증명 상태 조회 |

@@ -5,10 +5,17 @@ from __future__ import annotations
 
 engine_service에서 분리된 순수 함수만 둔다 (로직·입출력 동일 유지).
 
-`_base_stk_cd`는 core/symbol_utils.py로 이동됨 (P10 SSOT, C-06 역참조 해소).
-본 모듈에서 재수출하여 기존 호출부·테스트 patch 경로 유지 (P16 살아있는 경로).
+`_base_stk_cd`·`_real_item_stk_cd`(및 그 private helpers 3종)는 core/symbol_utils.py로
+이동됨 (P10 SSOT, C-06 역참조 해소). 본 모듈에서 재수출하여 기존 호출부·테스트 patch
+경로를 유지 (P16 살아있는 경로).
 """
-from backend.app.core.symbol_utils import _base_stk_cd
+from backend.app.core.symbol_utils import (
+    _base_stk_cd,
+    _dict_get_fid,
+    _fid9001_to_stk_cd,
+    _parse_real_item_field,
+    _real_item_stk_cd,
+)
 
 
 def is_nxt_enabled(stk_cd: str) -> bool:
@@ -49,68 +56,3 @@ def get_stock_market(stk_cd: str) -> str | None:
     if stock:
         return stock.get("market")
     return None
-
-
-def _dict_get_fid(d: dict | None, fid: str):
-    """JSON 키가 '9001' 또는 정수 9001 인 경우 모두 조회."""
-    if not isinstance(d, dict):
-        return None
-    if fid in d:
-        return d[fid]
-    try:
-        ik = int(str(fid).strip())
-    except (ValueError, TypeError):
-        return None
-    return d.get(ik)
-
-
-def _fid9001_to_stk_cd(vals: dict) -> str:
-    """REAL values(또는 item 루트)에서 FID 9001 -> 6자리 종목코드."""
-    if not isinstance(vals, dict):
-        return ""
-    v = _dict_get_fid(vals, "9001")
-    if v is None or str(v).strip() == "":
-        return ""
-    return _base_stk_cd(str(v))
-
-
-def _parse_real_item_field(item_field) -> str:
-    """REAL 항목 상위 필드 item -- ['263750'] 또는 '263750'·계좌번호 등."""
-    if item_field is None:
-        return ""
-    if isinstance(item_field, (list, tuple)) and len(item_field) > 0:
-        return str(item_field[0] or "").strip()
-    return str(item_field).strip()
-
-
-def _real_item_stk_cd(item: dict, vals: dict) -> str:
-    """
-    REAL 체결·호가 등 -- values 의 FID 9001 우선, 없으면 item·루트 보조 필드.
-    키움은 체결(01/0B)에서 item 만 채우고 values 에 9001 이 없는 경우가 있다.
-    item 루트에 9001·jmcode·stk_cd 가 오는 페이로드도 수용한다.
-    숫자 7자리 초과는 계좌번호 등으로 보고 해당 후보만 스킵.
-    """
-    if isinstance(vals, dict):
-        cd = _fid9001_to_stk_cd(vals)
-        if cd:
-            return cd
-    if not isinstance(item, dict):
-        return ""
-    cd = _fid9001_to_stk_cd(item)
-    if cd:
-        return cd
-    for k in ("jmcode", "stk_cd", "code", "종목코드"):
-        alt = item.get(k)
-        if alt is not None and str(alt).strip():
-            return _base_stk_cd(str(alt))
-    if isinstance(item.get("values"), dict):
-        cd = _fid9001_to_stk_cd(item["values"])
-        if cd:
-            return cd
-    raw = _parse_real_item_field(item.get("item"))
-    if not raw:
-        return ""
-    s = str(raw).strip().upper()
-    if s.isdigit() and len(s) > 6:
-        return ""
-    return _base_stk_cd(raw)
