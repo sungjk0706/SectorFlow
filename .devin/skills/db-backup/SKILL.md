@@ -16,7 +16,7 @@ allowed-tools:
 ### 1. 앱 종료
 - 백엔드가 실행 중이면 먼저 안전 종료 (`kill -15 <PID>`)
 - `lsof -ti:8000` 등으로 프로세스 확인
-- 종료 후 잔존 프로세스 0건 확인 (AGENTS.md 섹션3 규칙 5-1 준수)
+- 종료 후 잔존 프로세스 0건 확인 (AGENTS.md 0-1-3 준수)
 
 ### 2. 백업 파일 생성
 ```bash
@@ -54,9 +54,9 @@ cp "${LATEST}-wal.backup" "backend/data/stocks.db-wal" 2>/dev/null || true
 ⚠️ DB 백업이 확인되기 전에는 절대 마이그레이션/스키마 변경/테이블 삭제를 진행하지 마라.
 
 ### 6. 백업 파일 삭제 (마이그레이션 검증 완료 시 — AGENTS.md 섹션3 규칙 10 (2)항 준수)
-마이그레이션/스키마 변경 작업 완료 후 런타임 검증(AGENTS.md 규칙 5) 이상 없으면, 생성한 타임스탬프 백업 파일을 삭제.
+마이그레이션/스키마 변경 작업 완료 후 런타임 검증(AGENTS.md 0-1-2 표준 검증 절차) 이상 없으면, 생성한 타임스탬프 백업 파일을 삭제.
 - **삭제 조건**: 마이그레이션 후 런타임 기동 정상 + 핵심 데이터 조회 이상 없음 확인 후
-- **삭제 대상**: `backend/data/stocks.db.*.backup`, `backend/data/stocks.db-shm.*.backup`, `backend/data/stocks.db-wal.*.backup` (원본 `.db` 파일 절대 삭제 금지 — Safety Rule 1)
+- **삭제 대상**: `backend/data/stocks.db.*.backup`, `backend/data/stocks.db-shm.*.backup`, `backend/data/stocks.db-wal.*.backup` (원본 `.db` 파일 절대 삭제 금지 — 안전 규칙 1)
 - **승인**: 삭제 전 사용자 승인 필수 (AGENTS.md 규칙 0 — 파일 삭제는 코드 제거와 동일 취급)
 - **커밋**: 삭제는 다음 커밋에 포함하거나 검증 완료 보고 시 사용자 승인 후 별도 삭제
 

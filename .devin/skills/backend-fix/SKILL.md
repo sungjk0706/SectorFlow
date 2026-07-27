@@ -80,7 +80,7 @@ py_compile 통과와 pytest 통과는 런타임 동작을 보장하지 않음. �
 ```bash
 kill <PID>
 ```
-- 잔존 프로세스 확인 및 완전 종료는 AGENTS.md 섹션3 규칙 5-1 준수 (세션 종료 전 0건 확인까지 필수)
+- 잔존 프로세스 확인 및 완전 종료는 AGENTS.md 0-1-3 준수 (세션 종료 전 0건 확인까지 필수)
 
 ### 5. 테스트 실행 (필요한 경우)
 ```bash
@@ -89,7 +89,7 @@ python -m pytest backend/tests/[파일명] -v --timeout=15 --timeout-method=sign
 - `timeout_method = signal` 필수 — `thread` 방식은 asyncio C-level wait를 interrupt하지 못해 hang 시 프로세스가 영구 블록됨
 - `pytest.ini`에 전역 설정되어 있으므로 CLI에서 생략 가능
 - hang 감지 시 즉시 강제 종료
-- 잔존 프로세스 정리는 AGENTS.md 섹션3 규칙 5-1 준수
+- 잔존 프로세스 정리는 AGENTS.md 0-1-3 준수
 
 #### 5-1. 자동 hang 체크 원칙 (에이전트 필수 — 수동 개입 금지)
 - 10초마다 `command_status`로 진행 상태 자동 체크
@@ -133,8 +133,8 @@ python -m pytest backend/tests/[파일명] -v --timeout=15 --timeout-method=sign
 - `Blocking: false` + `WaitMsBeforeAsync: 20000` — hang 감지 시 명령 취소 가능
 - 또는 subprocess + `proc.wait(timeout=N)` + `proc.kill()` 패턴 사용
 
-#### 5-5. 검증 자동화 루프(하네스) — AGENTS.md 섹션3 규칙 4-4 준수
-정적 검증(섹션 3) + 런타임 기동(섹션 4) + 테스트(섹션 5) 중 실패 시 통과까지 자동 반복. 상세 절차·중단 조건·0-1 관계는 AGENTS.md 규칙 4-4 본문 참조. 종료 조건: py_compile + pytest + 런타임 기동(`-W error::RuntimeWarning`) 전부 pass + 잔존 프로세스 0건(규칙 5-1). 섹션 6 보고에 루프 결과 명시.
+#### 5-5. 검증 자동화 루프(하네스) — AGENTS.md 0-1-2 검증 자동화 루프 준수
+정적 검증(섹션 3) + 런타임 기동(섹션 4) + 테스트(섹션 5) 중 실패 시 통과까지 자동 반복. 상세 절차·중단 조건·0-1 관계는 AGENTS.md 0-1-2 검증 자동화 루프 본문 참조. 종료 조건: py_compile + pytest + 런타임 기동(`-W error::RuntimeWarning`) 전부 pass + 잔존 프로세스 0건(0-1-3). 섹션 6 보고에 루프 결과 명시.
 
 ### 6. 보고
 > **사용자 보고 의무 (AGENTS.md 섹션3 규칙 0-8 준수)**: 모든 보고는 UI 기준 일반 용어 + P10~P25 부합 여부 명시. 위반 시 규칙 0-6 동일 강제성.
@@ -147,7 +147,7 @@ python -m pytest backend/tests/[파일명] -v --timeout=15 --timeout-method=sign
 ## 주의사항
 - 아키텍처 원칙 관련 수정은 런타임 기동 검증 생략 금지
 - asyncio, 이벤트 루프, 비동기 큐, WebSocket 관련 수정은 특히 주의
-- 잔존 프로세스 0건 확인까지가 완료 기준 (AGENTS.md 섹션3 규칙 5-1)
+- 잔존 프로세스 0건 확인까지가 완료 기준 (AGENTS.md 0-1-3)
 
 ## 작업 중 발견 문제 기록 의무
 - 메인 작업 도중 발견한 아키텍처 위반(P원칙), 오류, 잠재적 버그, dead code, 폴백 패턴, 아키텍처 원칙에 부합하는 더 나은 구조(개선점) 등은 즉시 `HANDOVER.md` "미해결 문제" 섹션에 기록 (파일:줄, 위반/부합 원칙 번호, 증상/개선내용). 사용자 승인 불필요 — 발견 즉시 기록. 상세 규칙은 AGENTS.md 섹션4 규칙 9 참조.
