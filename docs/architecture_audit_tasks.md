@@ -70,7 +70,7 @@
 | B-10 | P1 | 엔진 계좌/서비스 | 4 | ☑ | 완료 (B-10-a 11건 + B-10-b 7건 = 18건, B10-02는 B-14 이월) |
 | B-11 | P1 | 파이프라인 (Compute/Gateway) | 2 | ☑ | 완료 (B-11-a 8건 + B-11-b 4건 = 12건) |
 | B-12 | P2 | DB 계층 | 4 | ☑ | 9건 수정 |
-| B-13 | P2 | 설정 관리 | 5 | ☑ | 부분 완료 (3건 해결 B13-01/02/05, 잔여 5건 보류 LOW/INFO) |
+| B-13 | P2 | 설정 관리 | 5 | ☑ | 부분 완료 (6건 해결 B13-01/02/03/04/05/07, 잔여 2건 보류 LOW/INFO B13-06/08) |
 | B-14 | P2 | Broker 추상화 (공통) | 7 | ☑ | 완료 (B-14-a 6건 + B-14-b 2건 = 8건) |
 | B-15 | P2 | 증권사 구현: 키움 | 5 | ☑ | 완료 (B-15-a 7건 + B-15-b 7건 = 14건) |
 | B-16 | P2 | 증권사 구현: LS | 3 | ☑ | 분할 권장 (완료) |
@@ -83,17 +83,17 @@
 | B-23 | P3 | 테스트 품질 점검 | 67 | ☑ | 완료 (B-23-a 메타 점검, B-23-b 대형 9개, B-23-c 중형 20개, B-23-d 소형 36개 점검 완료) |
 | F-01 | P0 | 통신 계층 및 상태 관리 | 8 | ☑ | 10건 수정 |
 | **F-02** | **P1** | **진입점, 라우팅, 레이아웃** | 6 | ☑ | 완료 (7건 P16/P23/P24) |
-| F-03 | P2 | 핵심 매매 페이지 | 6 | ◐ | 부분완료 (6건 해결 종결 + F03-07-A/B 해결, 잔여 보류 3건: F03-07-C/08/09/10) |
-| F-04 | P2 | 설정 페이지 | 5 | ☐ | 분할 권장 (F-04-a 5건 + F-04-b 4건 + F-04-c 4건 + F-04-d 2건 + F-04-e 11건 해결, 잔여 파일 분할 별도) |
+| F-03 | P2 | 핵심 매매 페이지 | 6 | ☑ | 완료 (6건 해결 종결 + F03-07-A/B/C + F03-08/09/10 해결 완료) |
+| F-04 | P2 | 설정 페이지 | 5 | ☑ | 완료 (F-04-a 5건 + F-04-b 4건 + F-04-c 4건 + F-04-d 2건 + F-04-e 11건 = 26건 해결 + stock-classification.ts 1617→363줄 6단계 분할 + general-settings.ts 분할 Step 1 완료) |
 | F-05 | P3 | 수익 페이지 | 3 | ☑ | 완료 (F-05-a 7건 + F-05-b 1/2·2/2 F05-09/10/12 + F-05-c F05-08 + F-05-a 추가 세션 profit-overview.ts 742줄→4개 파일 분할 175/62/219/377줄 + renderSectorStockPnl 146줄→5개 함수 분할 + F-05-b profit-detail.ts 674줄→4개 파일 분할 166/52/215/326줄 + F05-07 해결 F-06-c/d) |
 | F-06 | P3 | 공통 컴포넌트 | 25 | ☑ | 완료 (F-06-a F06-07/08 + F-06-b F06-06 + F-06-c F06-10/11/12 + F-06-d F06-10 잔존 2곳 + F-06-e F06-01 data-table.ts 1045→176/454/454줄 + F-06-f F06-02 setting-row.ts + F-06-g F06-03 ui-styles.ts 581→252/211/148줄) |
 | F-07 | P3 | 타입 및 유틸 | 5 | ☑ | 완료 (F07-01 미사용 타입 5개 + Position 미사용 필드 5개 + AccountSnapshot 미사용 필드 1개 제거, sliderConvert.ts 파일 부재 정리, typecheck/build/184 tests 통과) |
 
-**진행률**: 30/30 세션 완료 (100%). B-10 완료 (B-10-a 11건 + B-10-b 7건, B10-02는 B-14 이월). B-11 완료 (B-11-a 8건 + B-11-b 4건). B-13 부분 완료 (3건 해결 B13-01/02/05, 잔여 5건 보류 LOW/INFO). B-14 완료 (B-14-a 6건 + B-14-b 2건). B-15 완료 (B-15-a 7건 + B-15-b 7건). B-23 완료 (테스트 품질 점검). F-02 완료 (7건 P16/P23/P24). F-03 부분완료 (6건 해결 종결 + F03-07-A/B 해결, 잔여 보류 3건 F03-07-C/08/09/10). F-04 완료 (F-04-a 5건 + F-04-b 4건 + F-04-c 4건 + F-04-d 2건 + F-04-e 11건 해결, 잔여 파일 분할 별도). F-05 완료 (F-05-a 7건 P10/P19/P20/P23 + F-05-b 1/2·2/2 F05-09/10/12 + F-05-c F05-08 + F-05-a 추가 세션 profit-overview.ts 742줄→4개 파일 분할 + renderSectorStockPnl 146줄→5개 함수 분할 + F-05-b profit-detail.ts 674줄→4개 파일 분할 + F05-07 해결 F-06-c/d). F-06 완료 (F-06-a/b/c/d/e/f/g — F06-01/02/03 대형 파일 3개 분할 + F06-06/07/08 dead code + F06-10/11/12 용어/색상). F-07 완료 (F07-01 미사용 타입 5개 + Position 미사용 필드 5개 + AccountSnapshot 미사용 필드 1개 제거, sliderConvert.ts 파일 부재 정리). 백엔드 #3 완료 (accumulated_investment 누락 수정 P22). 잔여: B-13 보류 5건 (LOW/INFO) + B21-01 보류 (사용자 승인 대기) + F-03 보류 3건 (F03-07-C/08/09/10) + F-04 잔여 파일 분할.
+**진행률**: 30/30 세션 완료 (100%). B-10 완료 (B-10-a 11건 + B-10-b 7건, B10-02는 B-14 이월). B-11 완료 (B-11-a 8건 + B-11-b 4건). B-13 부분 완료 (6건 해결 B13-01/02/03/04/05/07, 잔여 2건 보류 LOW/INFO B13-06/08). B-14 완료 (B-14-a 6건 + B-14-b 2건). B-15 완료 (B-15-a 7건 + B-15-b 7건). B-23 완료 (테스트 품질 점검). F-02 완료 (7건 P16/P23/P24). F-03 완료 (6건 해결 종결 + F03-07-A/B/C + F03-08/09/10 해결 완료). F-04 완료 (F-04-a 5건 + F-04-b 4건 + F-04-c 4건 + F-04-d 2건 + F-04-e 11건 = 26건 해결 + stock-classification.ts 1617→363줄 6단계 분할 + general-settings.ts 분할 Step 1 완료). F-05 완료 (F-05-a 7건 P10/P19/P20/P23 + F-05-b 1/2·2/2 F05-09/10/12 + F-05-c F05-08 + F-05-a 추가 세션 profit-overview.ts 742줄→4개 파일 분할 + renderSectorStockPnl 146줄→5개 함수 분할 + F-05-b profit-detail.ts 674줄→4개 파일 분할 + F05-07 해결 F-06-c/d). F-06 완료 (F-06-a/b/c/d/e/f/g — F06-01/02/03 대형 파일 3개 분할 + F06-06/07/08 dead code + F06-10/11/12 용어/색상). F-07 완료 (F07-01 미사용 타입 5개 + Position 미사용 필드 5개 + AccountSnapshot 미사용 필드 1개 제거, sliderConvert.ts 파일 부재 정리). 백엔드 #3 완료 (accumulated_investment 누락 수정 P22). 잔여: B-13 보류 2건 (LOW/INFO B13-06/08, 보류 권장) + B21-01 보류 (사용자 승인 대기).
 
 ---
 
-## 3. 세션별 실행 태스크 (잔여 3세션: B-13 부분완료, F-03 부분완료, F-04 부분완료)
+## 3. 세션별 실행 태스크 (잔여 1세션: B-13 부분완료 — LOW/INFO 2건 보류 권장)
 
 > 각 세션은 아래 4블록으로 구성:
 > 1. **대상 파일** (실측 줄 수)
@@ -213,7 +213,7 @@
 
 ### 세션 B-13: P2 — 설정 관리
 
-> **부분 완료 (2026-07-22)**: 3건 해결 (B13-01/02/05) — MEDIUM 2건 + LOW 1건 (P4). 잔여 5건 보류 (B13-03/04/06/07/08 — LOW/INFO 등급). 별도 세션에서 추가 수정 가능.
+> **부분 완료 (2026-07-22~27)**: 6건 해결 (B13-01/02/03/04/05/07) — MEDIUM 2건 + LOW 4건. 잔여 2건 보류 (B13-06/08 — LOW/INFO 등급, 보류 권장). 별도 세션에서 추가 수정 가능하나 현재 구조 유지 권장.
 
 **대상 파일** (5개, 총 1387줄)
 - [x] `backend/app/core/settings_file.py` (440줄→428줄, B13-01 update_settings 삭제)
@@ -807,35 +807,30 @@
 
 ---
 
-### 세션 F-03: P2 — 핵심 매매 페이지 (업종순위/매수후보/보유종목) ◐ 부분완료
+### 세션 F-03: P2 — 핵심 매매 페이지 (업종순위/매수후보/보유종목) ☑ 완료
 
-> 완료 6건은 본 세션에서 종결. 잔여 보류 1건만 아래에 명시 (F03-07-C: 사용자 결정 대기).
+> 완료 6건은 본 세션에서 종결. 보류 4건(F03-07-C/08/09/10) 전부 해결 완료.
 
 **대상 원칙**: P5, P10, P16, P19, P21, P22, P23, P24
 
-**보류 항목 (1건)** — 각 항목별 조사·수정은 별도 세션에서 진행:
-
-| ID | 원칙 | 파일 | 상세 | 비고 |
-|----|------|------|------|------|
-| F03-07-C | P20/P22 | `frontend/src/pages/sell-position.ts` | `sectorStock?.cur_price ?? p.cur_price` (62/76줄) — sectorStock null 처리 | 사용자 설계 로직 — C-1/C-2/유지 중 사용자 결정 대기 |
-
-**완료된 보류 항목 (3건)**:
+**완료된 보류 항목 (4건)**:
 
 | ID | 원칙 | 상세 | 완료 내역 |
 |----|------|------|-----------|
+| F03-07-C | P20/P22 | `pages/sell-position.ts` `sectorStock?.cur_price ?? p.cur_price` 폴백 — sectorStock null 처리 | 완료 (C-1 채택, 커밋 `78d9a93` 2026-07-26) — 폴백 제거 + null 시 `'-'` 빈 셀 표시 (P20/P21/P23). 이후 `26c4092`에서 `computePositionValuation` SSOT 추출로 sell-position/profit-shared 공식 통합 |
 | F03-08 | P24 | 파일 500줄 초과 — 분할 검토 | 완료 (sector-stock.ts 655→441줄 + sector-stock-rows.ts 신규 231줄, buy-target.ts 539→401줄 + buy-target-columns.ts 신규 157줄) |
 | F03-09 | P24 | 50줄 초과 함수 점검 — 함수 분할 검토 | 완료 (1~3차 총 6개 함수 분할: sector-stock connectedCallback, buy-target updateBadges/mount, sell-position mount, profit-shared createSummaryCards/renderAccountVals) |
 | F03-10 | P23 | 유틸 함수 위치 점검 — 공통 자산 이동 검토 | 완료 (A: filterStocksBySearch → utils/stock-search.ts 이동. B: getLocalToday → utils/date.ts 이동 + getLocalMonthStart 추가 + sell-position/profit-overview-date/canvas-profit-chart 중복 제거. C: buy-target compareBuyTargets comparator 헬퍼 추출) |
 
 ---
 
-### 세션 F-04: P2 — 설정 페이지 (매수/매도/일반/업종/종목분류)
+### 세션 F-04: P2 — 설정 페이지 (매수/매도/일반/업종/종목분류) ☑ 완료
 
-> **분할 권장**: 총 3145줄. F-04-a (stock-classification 1617줄) / F-04-b (general-settings 1421줄 + buy-settings 424 + sell-settings 174 + sector-settings 509) 분할 권장. **F-04 완료** (a~e 서브세션 모두 완료, 잔여 파일 분할 별도).
+> **분할 완료**: 총 3145줄. F-04-a (stock-classification 1617줄) / F-04-b (general-settings 1421줄 + buy-settings 424 + sell-settings 174 + sector-settings 509). **F-04 완료** (a~e 서브세션 26건 위반 해결 + stock-classification.ts 1617→363줄 6단계 파일 분할 + general-settings.ts 분할 Step 1 완료, 잔여 없음).
 
 **대상 파일** (5개, 총 3145줄)
-- [x] `frontend/src/pages/stock-classification.ts` (1617→1618줄, F-04-a 5건 + F-04-e 4건 함수 분할 완료, 파일 분할 잔여)
-- [x] `frontend/src/pages/general-settings.ts` (1421→1390줄, F-04-b 4건 + F-04-e 7건 함수 분할 완료, 파일 분할 잔여)
+- [x] `frontend/src/pages/stock-classification.ts` (1617→363줄, F-04-a 5건 + F-04-e 4건 함수 분할 + 6단계 파일 분할 완료 — shared/staging/header/master/center/right)
+- [x] `frontend/src/pages/general-settings.ts` (1421→1390줄, F-04-b 4건 + F-04-e 7건 함수 분할 + 파일 분할 Step 1 완료)
 - [x] `frontend/src/pages/buy-settings.ts` (424→452줄, F-04-c 4건 해결 완료)
 - [x] `frontend/src/pages/sell-settings.ts` (174→181줄, F-04-c 4건 해결 완료)
 - [x] `frontend/src/pages/sector-settings.ts` (509→466줄, F-04-d 2건 해결 완료)
@@ -850,7 +845,7 @@
 - [x] P19: 설정 저장 비동기 처리 누락 없음 — F-04-a 해결 (F04-10)
 - [x] P21: 설정 변경 결과가 UI에 즉시 반영됨 — F-04-b 해결 (F04-23 거래일 알림)
 - [x] P23: 용어 사전 준수, 패턴 일관 — F-04-e 해결 (syncToggleInputRow 공통 패턴 추출, buildTimetableRow 중복 제거, F04-16 fuzzy 검색 중복 해결)
-- [x] P24: 단순성 기준 — F-04-e 해결 (함수 11개 50줄 이하 분할, 파일 분할은 잔여)
+- [x] P24: 단순성 기준 — F-04-e 해결 (함수 11개 50줄 이하 분할) + stock-classification.ts 1617→363줄 6단계 파일 분할 + general-settings.ts 분할 Step 1 완료
 
 **검증**
 - [x] `npm run build` 성공 (F-04-e: 2.20s, exit code 0)

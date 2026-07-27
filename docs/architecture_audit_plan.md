@@ -453,29 +453,30 @@ SectorFlow 전체 코드베이스를 `ARCHITECTURE.md`에 정의된 P1~P25, 총 
 
 ---
 
-### 세션 B-13: P2 — 설정 관리
+### 세션 B-13: P2 — 설정 관리 ◐ 부분 완료
 > **우선순위**: P2 (설정 기반, 하위 계층 선행)  
 > **파일**: 대형 1개 + 중형 2개 + 소형 1개  
-> **대상 원칙**: P2, P6, P10, P12, P13, P17, P20, P23, P24
+> **대상 원칙**: P2, P6, P10, P12, P13, P17, P20, P23, P24  
+> **상태**: 6건 해결 (B13-01/02/03/04/05/07), 잔여 2건 보류 (B13-06/08 — LOW/INFO, 보류 권장).
 
 | 파일 | 줄 수 | 규모 | 점검 완료 |
 |------|-------|------|----------|
-| `core/settings_file.py` | 430 | 대형 | ☐ |
-| `core/settings_store.py` | 251 | 대형 | ☐ |
-| `core/engine_settings.py` | 214 | 대형 | ☐ |
-| `core/settings_defaults.py` | 148 | 중형 | ☐ |
-| `core/trade_mode.py` | 39 | 소형 | ☐ |
+| `core/settings_file.py` | 428 | 대형 | ☑ (B13-01 update_settings 삭제) |
+| `core/settings_store.py` | 362 | 대형 | ☑ (B13-02 dead code 삭제 + B13-07 함수 분할) |
+| `core/engine_settings.py` | 341 | 대형 | ☑ (B13-03 SSOT + B13-04 kiwoom 기본값 + B13-05 분기 제거 + B13-07 함수 분할) |
+| `core/settings_defaults.py` | 180 | 중형 | ☑ (위반 없음) |
+| `core/trade_mode.py` | 39 | 소형 | ☑ (위반 없음) |
 
 **원칙 체크리스트**:
-- [ ] P2: DB I/O async def
-- [ ] P6: SQLite, Raw SQL
-- [ ] P10: `integrated_system_settings_cache` SSOT
-- [ ] P12: DB 연결 싱글톤
-- [ ] P13: 설정 메모리 상주, 틱 연산에서 DB 조회 없음
-- [ ] P17: 플래그 단일 소스 (`auto_buy_on` 등)
-- [ ] P20: 폴백/silent except 없음
-- [ ] P23: 용어 사전 준수, 에러/비동기/네이밍/상수 패턴 파일 간 일관
-- [ ] P24: 더 단순한 대체 가능성, 불필요한 추상화, 길어지는 코드의 분할 검토와 복잡도 참고 지표
+- [x] P2: DB I/O async def — 준수
+- [x] P6: SQLite, Raw SQL — 준수
+- [x] P10: `integrated_system_settings_cache` SSOT — B13-03 해결 (기본값 61곳 SSOT 위반 근본 해결)
+- [x] P12: DB 연결 싱글톤 — 준수
+- [x] P13: 설정 메모리 상주, 틱 연산에서 DB 조회 없음 — 준수
+- [x] P17: 플래그 단일 소스 (`auto_buy_on` 등) — 준수
+- [x] P20: 폴백/silent except 없음 — 준수
+- [x] P23: 용어 사전 준수, 에러/비동기/네이밍/상수 패턴 파일 간 일관 — 준수
+- [x] P24: 더 단순한 대체 가능성, 불필요한 추상화, 길어지는 코드의 분할 검토와 복잡도 참고 지표 — B13-07 해결 (함수 50줄 초과 2곳 분할)
 
 ---
 
@@ -830,47 +831,43 @@ SectorFlow 전체 코드베이스를 `ARCHITECTURE.md`에 정의된 P1~P25, 총 
 
 ### 세션 F-03: P2 — 핵심 매매 페이지 (업종순위/매수후보/보유종목) ◐ 부분완료
 > **우선순위**: P2 (핵심 매매 UI)
-> **상태**: 6건 해결 종결 (P16/P19/P23/P24). 잔여 보류 1건만 아래 명시 (F03-07-C: 사용자 결정 대기).
+> **상태**: 6건 해결 종결 (P16/P19/P23/P24) + F03-07-A/B/C + F03-08/09/10 해결 완료.
 > **대상 원칙**: P5, P10, P16, P19, P21, P22, P23, P24
 
-**보류 항목 (1건)** — 각 항목별 조사·수정은 별도 세션에서 진행:
-
-| ID | 원칙 | 파일 | 상세 | 비고 |
-|----|------|------|------|------|
-| F03-07-C | P20/P22 | `pages/sell-position.ts` | `sectorStock?.cur_price ?? p.cur_price` (62/76줄) — sectorStock null 처리 | 사용자 설계 로직 — C-1/C-2/유지 중 사용자 결정 대기 |
-
-**완료된 보류 항목 (3건)**:
+**완료된 보류 항목 (4건)**:
 
 | ID | 원칙 | 상세 | 완료 내역 |
 |----|------|------|-----------|
+| F03-07-C | P20/P22 | `pages/sell-position.ts` `sectorStock?.cur_price ?? p.cur_price` 폴백 — sectorStock null 처리 | 완료 (C-1 채택, 커밋 `78d9a93` 2026-07-26) — 폴백 제거 + null 시 `'-'` 빈 셀 표시 (P20/P21/P23). `computePositionValuation` SSOT로 통합 (이후 `26c4092`에서 sell-position/profit-shared 공식 통합) |
 | F03-08 | P24 | 파일 500줄 초과 — 분할 검토 | 완료 (sector-stock.ts 655→441줄 + sector-stock-rows.ts 신규 231줄, buy-target.ts 539→401줄 + buy-target-columns.ts 신규 157줄) |
 | F03-09 | P24 | 50줄 초과 함수 점검 — 함수 분할 검토 | 완료 (1~3차 총 6개 함수 분할) |
 | F03-10 | P23 | 유틸 함수 위치 점검 — 공통 자산 이동 검토 | 완료 (A: filterStocksBySearch → utils/stock-search.ts. B: getLocalToday → utils/date.ts + getLocalMonthStart + 중복 3건 제거. C: buy-target compareBuyTargets comparator 헬퍼 추출) |
 
 ---
 
-### 세션 F-04: P2 — 설정 페이지 (매수/매도/일반/업종/종목분류)
+### 세션 F-04: P2 — 설정 페이지 (매수/매도/일반/업종/종목분류) ☑ 완료
 > **우선순위**: P2 (설정 UI)  
 > **파일**: 대형 3개 + 중형 2개  
-> **대상 원칙**: P10, P13, P16, P17, P19, P21, P23, P24
+> **대상 원칙**: P10, P13, P16, P17, P19, P21, P23, P24  
+> **상태**: F-04-a 5건 + F-04-b 4건 + F-04-c 4건 + F-04-d 2건 + F-04-e 11건 = 26건 위반 해결 + stock-classification.ts 1617→363줄 6단계 파일 분할 + general-settings.ts 분할 Step 1 완료.
 
 | 파일 | 줄 수 | 규모 | 점검 완료 |
 |------|-------|------|----------|
-| `pages/stock-classification.ts` | 1555 | 초대형 | ☐ |
-| `pages/general-settings.ts` | 999 | 대형 | ☐ |
-| `pages/buy-settings.ts` | 344 | 대형 | ☐ |
-| `pages/sell-settings.ts` | 139 | 중형 | ☐ |
-| `pages/sector-settings.ts` | 307 | 대형 | ☐ |
+| `pages/stock-classification.ts` | 363 (분할 후) | 초대형 | ☑ (1617→363줄, 6단계 분할 — shared/staging/header/master/center/right) |
+| `pages/general-settings.ts` | 1390 (분할 후) | 대형 | ☑ (1421→1390줄, 분할 Step 1 완료) |
+| `pages/buy-settings.ts` | 452 | 대형 | ☑ (F-04-c 4건 해결) |
+| `pages/sell-settings.ts` | 181 | 중형 | ☑ (F-04-c 4건 해결) |
+| `pages/sector-settings.ts` | 466 | 대형 | ☑ (F-04-d 2건 해결) |
 
 **원칙 체크리스트**:
-- [ ] P10: 설정값이 Store를 통해 백엔드 SSOT와 동기화됨
-- [ ] P13: 설정 변경 시 백엔드 캐시 갱신 경로 확인
-- [ ] P16: dead code/미사용 설정 항목 없음
-- [ ] P17: 플래그 토글이 단일 경로로 백엔드에 전달됨
-- [ ] P19: 설정 저장 비동기 처리 누락 없음
-- [ ] P21: 설정 변경 결과가 UI에 즉시 반영됨
-- [ ] P23: 용어 사전 준수, 에러/비동기/네이밍/상수 패턴 파일 간 일관
-- [ ] P24: 더 단순한 대체 가능성, 불필요한 추상화, 길어지는 코드의 분할 검토와 복잡도 참고 지표
+- [x] P10: 설정값이 Store를 통해 백엔드 SSOT와 동기화됨 — 준수
+- [x] P13: 설정 변경 시 백엔드 캐시 갱신 경로 확인 — 준수
+- [x] P16: dead code/미사용 설정 항목 없음 — F-04-a 해결 (F04-08/F04-11), F-04-e unused 변수 6개 제거
+- [x] P17: 플래그 토글이 단일 경로로 백엔드에 전달됨 — 준수
+- [x] P19: 설정 저장 비동기 처리 누락 없음 — F-04-a 해결 (F04-10)
+- [x] P21: 설정 변경 결과가 UI에 즉시 반영됨 — F-04-b 해결 (F04-23 거래일 알림)
+- [x] P23: 용어 사전 준수, 에러/비동기/네이밍/상수 패턴 파일 간 일관 — F-04-e 해결 (syncToggleInputRow 공통 패턴 추출, buildTimetableRow 중복 제거, F04-16 fuzzy 검색 중복 해결)
+- [x] P24: 더 단순한 대체 가능성, 불필요한 추상화, 길어지는 코드의 분할 검토와 복잡도 참고 지표 — F-04-e 해결 (함수 11개 50줄 이하 분할) + stock-classification.ts 6단계 파일 분할 + general-settings.ts 분할 Step 1
 
 ---
 
@@ -1186,8 +1183,8 @@ SectorFlow 전체 코드베이스를 `ARCHITECTURE.md`에 정의된 P1~P25, 총 
 | B-23 | P3 | 테스트 품질 점검 | ☑ 완료 (B-23-a 메타 점검 + B-23-b 대형 9개 + B-23-c 중형 20개 + B-23-d 소형 36개 점검 완료 — 점검만, 수정은 별도 세션) |
 | F-01 | P0 | 통신 계층 및 상태 관리 | ☑ 완료 (10건 수정, V-02 해결, 112 tests passed) |
 | F-02 | P1 | 진입점, 라우팅, 레이아웃 | ☑ 완료 (7건 P16/P23/P24, npm run build + typecheck 통과) |
-| F-03 | P2 | 핵심 매매 페이지 | ◐ 부분완료 (6건 해결 종결 + F03-07-A/B 해결, 잔여 보류 3건 F03-07-C/08/09/10) |
-| F-04 | P2 | 설정 페이지 | ☐ 미시작 |
+| F-03 | P2 | 핵심 매매 페이지 | ☑ 완료 (6건 해결 종결 + F03-07-A/B/C + F03-08/09/10 해결 완료) |
+| F-04 | P2 | 설정 페이지 | ☑ 완료 (F-04-a 5건 + F-04-b 4건 + F-04-c 4건 + F-04-d 2건 + F-04-e 11건 = 26건 해결 + stock-classification.ts 1617→363줄 6단계 파일 분할 + general-settings.ts 분할 Step 1 완료) |
 | F-05 | P3 | 수익 페이지 | ☑ 완료 (F-05-a 7건 P10/P19/P20/P23 + F-05-b 1/2·2/2세션 F05-09/10/12 + F-05-c F05-08 + F-05-a 추가 세션 profit-overview.ts 742줄→4개 파일 분할 175/62/219/377줄 + renderSectorStockPnl 146줄→5개 함수 분할 + F-05-b profit-detail.ts 674줄→4개 파일 분할 166/52/215/326줄) |
 | F-06 | P3 | 공통 컴포넌트 | ☑ 완료 (F-06-a F06-07/08 dead code + F-06-b F06-06 + F-06-c F06-10/11/12 용어/색상 + F-06-d F06-10 잔존 2곳 + F-06-e F06-01 data-table.ts 1045→176/454/454줄 + F-06-f F06-02 setting-row.ts 분할 + F-06-g F06-03 ui-styles.ts 581→252/211/148줄) |
 | F-07 | P3 | 타입 및 유틸 | ☑ 완료 (F07-01 미사용 타입 5개 제거 RadarStock/SectionProps/TradePriceEvent/WsSubscribeStatusEvent/StockClassificationResponse + Position 미사용 optional 5개 제거 eval_amount/eval_amt/buy_amount/pnl_amount/market_type + AccountSnapshot price_source 제거, sliderConvert.ts 파일 부재 정리, typecheck/build/184 tests 통과) |
@@ -1197,12 +1194,12 @@ SectorFlow 전체 코드베이스를 `ARCHITECTURE.md`에 정의된 P1~P25, 총 
 | 항목 | 카운트 |
 |------|--------|
 | 전체 세션 | 30 |
-| 완료 | 27 (B-01~B-12, B-14~B-23, F-01, F-02, F-05, F-06, F-07) |
-| 진행 중 | 1 (F-03 부분완료 — 6건 해결 종결 + F03-07-A/B + F03-08 + F03-09 + F03-10 해결, 잔여 보류 1건) |
-| 미시작 | 2 (B-13 부분완료, F-04 부분완료) |
+| 완료 | 29 (B-01~B-12, B-14~B-23, F-01, F-02, F-03, F-04, F-05, F-06, F-07) |
+| 진행 중 | 0 |
+| 미시작 | 1 (B-13 부분완료 — LOW/INFO 2건 보류 권장 B13-06/08) |
 | 발견된 문제 | 102 (101 + F07-01) |
-| 해결된 문제 | 93 (92 + F07-01) |
-| 보류된 문제 | 2 (B21-01, F03-07-C) |
+| 해결된 문제 | 94 (93 + F03-07-C) |
+| 보류된 문제 | 1 (B21-01) |
 
 ---
 
