@@ -20,7 +20,7 @@ import { type TagChipHandle } from '../components/common/tag-chip'
 import { createRadioGroup } from '../components/common/setting-row'
 import type { TimePairInputHandle } from '../components/common/time-pair-input'
 import { toastResult } from '../components/common/toast'
-import { COLOR, FONT_SIZE } from '../components/common/ui-styles'
+import { COLOR, FONT_SIZE, RADIUS } from '../components/common/ui-styles'
 
 /* ── 탭 ID ── */
 export type TabId = 'auto-trade' | 'time-settings' | 'news-settings' | 'display-settings' | 'telegram' | 'account-manage' | 'api-settings'
@@ -214,7 +214,7 @@ export function shouldForceOff(): boolean {
 
 export function createHolidayBadge(): HTMLElement {
   const span = document.createElement('span')
-  Object.assign(span.style, { fontSize: FONT_SIZE.chip, color: COLOR.up, background: COLOR.upBg, borderRadius: '4px', padding: '1px 6px', marginLeft: '6px', fontWeight: 'normal', display: 'none' })
+  Object.assign(span.style, { fontSize: FONT_SIZE.chip, color: COLOR.up, background: COLOR.upBg, borderRadius: RADIUS.xs, padding: '1px 6px', marginLeft: '6px', fontWeight: 'normal', display: 'none' })
   span.textContent = '비거래일'
   state.holidayBadgeEls.push(span)
   return span

@@ -9,7 +9,7 @@
  * - 컨트롤: setting-row-controls.ts (createToggleBtn, createRadioGroup, createSettingToggleRow)
  */
 
-import { COLOR, FONT_SIZE } from './ui-styles'
+import { COLOR, FONT_SIZE, RADIUS } from './ui-styles'
 import { createInfoTooltip } from './info-tooltip'
 
 // 분할된 모듈 re-export — 외부 import 경로 유지 (4개 설정 페이지)
@@ -55,7 +55,7 @@ export function applyInputBase(el: HTMLInputElement, extraStyle?: Partial<CSSSty
     width: `${INPUT_WIDTH}px`,
     boxSizing: 'border-box',
     padding: '4px 8px',
-    borderRadius: '4px',
+    borderRadius: RADIUS.xs,
     border: '1px solid ' + COLOR.border,
     textAlign: 'right',
     fontSize: '13px',
@@ -90,7 +90,7 @@ export function createSpinButtons(input: HTMLInputElement, onUp: () => void, onD
   Object.assign(wrap.style, {
     display: 'flex',
     flexDirection: 'column',
-    borderRadius: '0 4px 4px 0',
+    borderRadius: `0 ${RADIUS.xs} ${RADIUS.xs} 0`,
     overflow: 'hidden',
   })
   // mousedown 시 버튼 포커스 및 INPUT blur 방지 + INPUT 포커스 보장
@@ -102,7 +102,7 @@ export function createSpinButtons(input: HTMLInputElement, onUp: () => void, onD
   const upBtn = document.createElement('button')
   applySpinBtn(upBtn)
   upBtn.style.borderBottom = 'none'
-  upBtn.style.borderTopRightRadius = '4px'
+  upBtn.style.borderTopRightRadius = RADIUS.xs
   upBtn.textContent = '▲'
   upBtn.addEventListener('click', () => {
     try { onUp() } catch (e) { console.error('[SpinBtn] up error', e) }
@@ -110,7 +110,7 @@ export function createSpinButtons(input: HTMLInputElement, onUp: () => void, onD
 
   const downBtn = document.createElement('button')
   applySpinBtn(downBtn)
-  downBtn.style.borderBottomRightRadius = '4px'
+  downBtn.style.borderBottomRightRadius = RADIUS.xs
   downBtn.textContent = '▼'
   downBtn.addEventListener('click', () => {
     try { onDown() } catch (e) { console.error('[SpinBtn] down error', e) }

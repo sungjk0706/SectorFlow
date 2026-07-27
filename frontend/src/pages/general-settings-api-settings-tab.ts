@@ -6,7 +6,7 @@ import { createRadioGroup } from '../components/common/setting-row'
 import { sectionTitle, createDescText } from '../components/common/settings-common'
 import { createActionButton } from '../components/common/button'
 import { showConfirmDialog, showAlertDialog } from '../components/common/dialog'
-import { FONT_WEIGHT, COLOR, createDarkInput } from '../components/common/ui-styles'
+import { FONT_WEIGHT, COLOR, RADIUS, createDarkInput } from '../components/common/ui-styles'
 import { extractDirty } from '../settings'
 import { focusNext } from '../components/common/setting-row'
 import {
@@ -47,7 +47,7 @@ export function renderApiSettingsTab(state: GeneralSettingsState, container: HTM
     const isActive = state.activeApiTab === tab.id
     Object.assign(btn.style, {
       padding: '6px 12px', cursor: 'pointer', border: '1px solid ' + COLOR.borderDark, background: isActive ? COLOR.hoverBg : COLOR.white,
-      borderRadius: '4px', fontSize: GS.label, color: isActive ? COLOR.neutral : COLOR.tertiary,
+      borderRadius: RADIUS.xs, fontSize: GS.label, color: isActive ? COLOR.neutral : COLOR.tertiary,
     })
     btn.textContent = tab.label
     btn.addEventListener('click', () => { state.activeApiTab = tab.id; refreshApiTabContent(state) })
@@ -111,7 +111,7 @@ function createSecretStatusBadge(status: string): HTMLElement {
   const msg = SECRET_FIELD_STATUS_MESSAGES[status as keyof typeof SECRET_FIELD_STATUS_MESSAGES]
   Object.assign(badge.style, {
     padding: '4px 10px', fontSize: '11px', color: msg?.color ?? COLOR.tertiary,
-    background: msg?.bg ?? 'transparent', borderRadius: '4px', marginBottom: '4px',
+    background: msg?.bg ?? 'transparent', borderRadius: RADIUS.xs, marginBottom: '4px',
   })
   badge.textContent = msg?.text ?? ''
   badge.dataset.status = status
@@ -122,7 +122,7 @@ function buildApiSaveRow(state: GeneralSettingsState, fields: { key: string }[])
   const btnRow = document.createElement('div')
   Object.assign(btnRow.style, { textAlign: 'right', margin: GS.saveMargin })
   const saveBtn = createActionButton({
-    label: '저장', variant: 'warning', padding: GS.btnPad, borderRadius: '4px', fontSize: GS.label,
+    label: '저장', variant: 'warning', padding: GS.btnPad, borderRadius: RADIUS.xs, fontSize: GS.label,
     onClick: async () => {
       const keys = fields.map(f => f.key)
       const orig: Record<string, unknown> = {}

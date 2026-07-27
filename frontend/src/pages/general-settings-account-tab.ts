@@ -7,7 +7,7 @@ import { sectionTitle, createDescText } from '../components/common/settings-comm
 import { createActionButton } from '../components/common/button'
 import { showConfirmDialog, showAlertDialog, showCustomDialog } from '../components/common/dialog'
 import { showSaveToast } from '../components/common/toast'
-import { FONT_SIZE, COLOR } from '../components/common/ui-styles'
+import { FONT_SIZE, COLOR, RADIUS } from '../components/common/ui-styles'
 import { api } from '../api/client'
 import { applyTestDataResetCompleted } from '../stores/uiStore'
 import { type GeneralSettingsState, GS } from './general-settings-shared'
@@ -87,7 +87,7 @@ function buildTestVirtualInputRow(state: GeneralSettingsState, inputState: { inp
   row.appendChild(state.depositInput.el)
 
   const chargeBtn = createActionButton({
-    label: '투자금충전', variant: 'secondary', padding: '7px 12px', borderRadius: '4px', fontSize: GS.label,
+    label: '투자금충전', variant: 'secondary', padding: '7px 12px', borderRadius: RADIUS.xs, fontSize: GS.label,
     onClick: async () => {
       if (inputState.inputAmount <= 0) return
       try {
@@ -106,7 +106,7 @@ function buildTestVirtualSaveRow(state: GeneralSettingsState, inputState: { inpu
   const row = document.createElement('div')
   Object.assign(row.style, { display: 'flex', justifyContent: 'flex-end', margin: GS.saveMargin })
   const btn = createActionButton({
-    label: '투자금 변경', variant: 'secondary', padding: '7px 16px', borderRadius: '4px', fontSize: GS.label,
+    label: '투자금 변경', variant: 'secondary', padding: '7px 16px', borderRadius: RADIUS.xs, fontSize: GS.label,
     onClick: async () => {
       const res = await state.settingsMgr!.saveSection({ test_virtual_deposit: inputState.inputAmount, test_virtual_balance: inputState.inputAmount })
       showSaveToast(res.ok ? 'saved' : 'error')
@@ -133,7 +133,7 @@ function buildTestVirtualResetWrap(): HTMLElement {
   const wrap = document.createElement('div')
   Object.assign(wrap.style, { borderTop: '1px solid ' + COLOR.borderLight, padding: GS.rowPad })
   const resetBtn = createActionButton({
-    label: '🔴 테스트 데이터 전체 초기화', variant: 'danger', padding: '8px 18px', borderRadius: '4px', fontSize: GS.label,
+    label: '🔴 테스트 데이터 전체 초기화', variant: 'danger', padding: '8px 18px', borderRadius: RADIUS.xs, fontSize: GS.label,
     onClick: async () => {
       const confirmed = await showConfirmDialog({
         title: '테스트 데이터 초기화',

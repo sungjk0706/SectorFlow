@@ -5,7 +5,7 @@
  * 포함: createToggleBtn, createRadioGroup, createSettingToggleRow
  */
 
-import { COLOR, FONT_SIZE, FONT_WEIGHT, setDisabled } from './ui-styles'
+import { COLOR, FONT_SIZE, FONT_WEIGHT, RADIUS, SHADOW, setDisabled } from './ui-styles'
 import { createInfoTooltip } from './info-tooltip'
 import { RIGHT_WRAP_GAP, RIGHT_WRAP_MARGIN } from './setting-row'
 
@@ -24,7 +24,7 @@ export function createToggleBtn(options: {
     position: 'relative',
     width: '44px',
     height: '24px',
-    borderRadius: '12px',
+    borderRadius: RADIUS.xl,
     border: 'none',
     padding: '0',
     transition: 'background 0.2s',
@@ -36,9 +36,9 @@ export function createToggleBtn(options: {
     top: '2px',
     width: '20px',
     height: '20px',
-    borderRadius: '50%',
+    borderRadius: RADIUS.pill,
     background: COLOR.white,
-    boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+    boxShadow: SHADOW.card,
     transition: 'left 0.2s',
   })
   btn.appendChild(knob)

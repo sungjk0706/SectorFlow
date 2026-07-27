@@ -13,7 +13,7 @@ import { createDataTable, type ColumnDef } from '../components/common/data-table
 import { createSearchInput } from '../components/common/search-input'
 import { createSolidBtn } from '../components/common/button'
 import { createStepLabel } from '../components/common/settings-common'
-import { FONT_SIZE, FONT_FAMILY, FONT_WEIGHT, createStockNameColumn, COLOR } from '../components/common/ui-styles'
+import { FONT_SIZE, FONT_FAMILY, FONT_WEIGHT, createStockNameColumn, COLOR, RADIUS } from '../components/common/ui-styles'
 import type { StockClassificationMutationResponse } from '../types'
 import {
   handleMutationResult,
@@ -231,7 +231,7 @@ function renderCountCell(row: MasterRow): HTMLElement | string {
     Object.assign(badge.style, {
       background: COLOR.up,
       color: COLOR.white,
-      borderRadius: '50%',
+      borderRadius: RADIUS.pill,
       fontSize: FONT_SIZE.chip,
       minWidth: '18px',
       height: '18px',

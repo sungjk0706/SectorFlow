@@ -2,7 +2,7 @@
 // 수익 상세 페이지 — mount 헬퍼 함수들 + 초기화 + rAF/구독 (F-05 분할, P24 단순성)
 // profit-detail.ts에서 이관. 순수 이동, 동작 변경 없음.
 
-import { FONT_SIZE, COLOR } from '../components/common/ui-styles'
+import { FONT_SIZE, COLOR, RADIUS, SHADOW } from '../components/common/ui-styles'
 import { createSearchInput } from '../components/common/search-input'
 import { createTabBar, createToggleSelectBtn } from '../components/common/button'
 import { createDateRangeInput, type DateRangeInputApi } from '../components/common/date-range-input'
@@ -202,7 +202,7 @@ export function buildStatRow(state: ProfitDetailState): HTMLDivElement {
   const statRow = document.createElement('div')
   Object.assign(statRow.style, { display: 'flex', gap: '8px', padding: '6px 4px', borderTop: '1px solid ' + COLOR.borderLight, flex: 'none' })
 
-  const STAT_STYLE = `flex:1;background:${COLOR.surfaceLight};border:1px solid ${COLOR.borderLight};border-radius:4px;padding:4px 8px;display:flex;flex-direction:column;align-items:center;gap:2px;`
+  const STAT_STYLE = `flex:1;background:${COLOR.surfaceLight};border:1px solid ${COLOR.borderLight};border-radius:${RADIUS.xs};box-shadow:${SHADOW.card};padding:4px 8px;display:flex;flex-direction:column;align-items:center;gap:2px;`
   const STAT_LABELS = ['총 건수', '당일 매수 지출(수수료 포함)', '당일 매도 수령(실수령)', '실현손익', '수익률', '승률']
   const statEls: HTMLSpanElement[] = []
   state.statCardEls = []

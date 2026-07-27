@@ -4,7 +4,7 @@
 
 import { createMoneyInput, createNumInput, createSettingToggleRow } from '../components/common/setting-row'
 import { sectionTitle, createDescText } from '../components/common/settings-common'
-import { FONT_WEIGHT, setDisabled, COLOR, FONT_SIZE } from '../components/common/ui-styles'
+import { FONT_WEIGHT, setDisabled, COLOR, FONT_SIZE, RADIUS } from '../components/common/ui-styles'
 import { toastResult } from '../components/common/toast'
 import { type GeneralSettingsState, GS, createHolidayBadge, updateHolidayBadges, state } from './general-settings-shared'
 
@@ -51,7 +51,7 @@ function buildAutoSellBadgeRow(state: GeneralSettingsState): HTMLElement {
 function createStatusBadge(): HTMLElement {
   const badge = document.createElement('span')
   Object.assign(badge.style, {
-    fontSize: FONT_SIZE.chip, borderRadius: '4px', padding: '1px 8px',
+    fontSize: FONT_SIZE.chip, borderRadius: RADIUS.xs, padding: '1px 8px',
     fontWeight: FONT_WEIGHT.normal, cursor: 'default', userSelect: 'none',
   })
   return badge

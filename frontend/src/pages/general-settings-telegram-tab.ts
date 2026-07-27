@@ -7,7 +7,7 @@ import { createActionButton } from '../components/common/button'
 import { createDataTable, type ColumnDef } from '../components/common/data-table'
 import { extractDirty, MASKED_FIELDS } from '../settings'
 import { toastResult, showSaveToast } from '../components/common/toast'
-import { FONT_WEIGHT, COLOR } from '../components/common/ui-styles'
+import { FONT_WEIGHT, COLOR, RADIUS } from '../components/common/ui-styles'
 import {
   type GeneralSettingsState, GS,
   SECRET_FIELD_STATUS_MESSAGES, mapEncryptionErrorMessage,
@@ -69,7 +69,7 @@ function createTeleStatusBadge(status: string): HTMLElement {
   const msg = SECRET_FIELD_STATUS_MESSAGES[status as keyof typeof SECRET_FIELD_STATUS_MESSAGES]
   Object.assign(badge.style, {
     padding: '4px 10px', fontSize: '11px', color: msg?.color ?? COLOR.tertiary,
-    background: msg?.bg ?? 'transparent', borderRadius: '4px', marginBottom: '4px',
+    background: msg?.bg ?? 'transparent', borderRadius: RADIUS.xs, marginBottom: '4px',
   })
   badge.textContent = msg?.text ?? ''
   badge.dataset.status = status

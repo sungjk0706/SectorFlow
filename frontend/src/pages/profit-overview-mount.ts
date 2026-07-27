@@ -5,7 +5,7 @@
 import { createProfitChart } from '../components/canvas-profit-chart'
 import { createSectorDonut } from '../components/canvas-sector-donut'
 import { globalSettingsManager } from '../settings'
-import { FONT_SIZE, FONT_WEIGHT, COLOR } from '../components/common/ui-styles'
+import { FONT_SIZE, FONT_WEIGHT, COLOR, RADIUS } from '../components/common/ui-styles'
 import { createActionButton } from '../components/common/button'
 import { sectionTitle } from '../components/common/settings-common'
 import { ACCOUNT_LABELS_REAL, ACCOUNT_LABELS_TEST } from '../components/common/account-labels'
@@ -169,7 +169,7 @@ export function buildLowerSection(): HTMLDivElement {
     label: '상세 분석 보기 →',
     variant: 'secondary',
     padding: '10px 24px',
-    borderRadius: '6px',
+    borderRadius: RADIUS.sm,
     onClick: () => { location.hash = '#/profit-detail' },
   })
   Object.assign(detailBtn.style, {

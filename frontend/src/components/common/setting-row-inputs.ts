@@ -5,7 +5,7 @@
  * 포함: createNumInput, createMoneyInput, createTextInput, createSelect
  */
 
-import { COLOR } from './ui-styles'
+import { COLOR, RADIUS } from './ui-styles'
 import { TEXT_INPUT_WIDTH, SELECT_WIDTH, focusNext, applyInputBase, createSpinButtons, createSuffix } from './setting-row'
 import { showToast } from './toast'
 
@@ -297,7 +297,7 @@ export function createSelect(options: {
   Object.assign(select.style, {
     width: options.width ?? `${SELECT_WIDTH}px`,
     padding: '4px 8px',
-    borderRadius: '4px',
+    borderRadius: RADIUS.xs,
     border: '1px solid ' + COLOR.border,
     fontSize: '13px',
     boxSizing: 'border-box',

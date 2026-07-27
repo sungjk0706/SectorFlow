@@ -7,7 +7,7 @@ import { stockClassificationStore } from '../stores/stockClassificationStore'
 import { hotStore, normalizeStockCode } from '../stores/hotStore'
 import { createDataTable, type ColumnDef } from '../components/common/data-table'
 import { createSolidBtn } from '../components/common/button'
-import { FONT_SIZE, FONT_FAMILY, createStockNameColumn, COLOR } from '../components/common/ui-styles'
+import { FONT_SIZE, FONT_FAMILY, createStockNameColumn, COLOR, RADIUS } from '../components/common/ui-styles'
 import type { DetailRow } from './stock-classification-shared'
 import {
   clearStaging,
@@ -39,7 +39,7 @@ function buildStagingPanel(state: StockClassificationPageState): HTMLElement {
   state.stagingPanelRef = document.createElement('div')
   Object.assign(state.stagingPanelRef.style, {
     padding: '8px 12px', marginBottom: '8px',
-    border: '1px solid ' + COLOR.inactiveBg, borderRadius: '6px', background: COLOR.surfaceLight,
+    border: '1px solid ' + COLOR.inactiveBg, borderRadius: RADIUS.sm, background: COLOR.surfaceLight,
   })
 
   // Header row: count label + "전체 해제" button

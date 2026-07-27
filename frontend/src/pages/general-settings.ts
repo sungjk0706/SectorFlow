@@ -20,7 +20,7 @@ import { startSettingsSubscription, destroySettingsPage } from '../utils/setting
 import { showSaveToast } from '../components/common/toast'
 import { createCardTitle } from '../components/common/card-title'
 import { createTabBar } from '../components/common/button'
-import { COLOR, FONT_SIZE } from '../components/common/ui-styles'
+import { COLOR, FONT_SIZE, RADIUS } from '../components/common/ui-styles'
 import { api } from '../api/client'
 import type { AppSettings } from '../types'
 import {
@@ -48,7 +48,7 @@ function renderEncryptionBanner(): HTMLElement {
   // 상태 라인 (키 상태별 색상·문구 — 설계 7.2)
   const statusLine = document.createElement('div')
   Object.assign(statusLine.style, {
-    padding: '8px 12px', borderRadius: '6px', fontSize: FONT_SIZE.desc, fontWeight: '500',
+    padding: '8px 12px', borderRadius: RADIUS.sm, fontSize: FONT_SIZE.desc, fontWeight: '500',
   })
   wrap.appendChild(statusLine)
 
@@ -56,7 +56,7 @@ function renderEncryptionBanner(): HTMLElement {
   const guide = document.createElement('div')
   Object.assign(guide.style, {
     padding: '6px 12px', fontSize: FONT_SIZE.desc, color: COLOR.tertiary,
-    background: COLOR.neutralBg, borderRadius: '6px', marginTop: '6px',
+    background: COLOR.neutralBg, borderRadius: RADIUS.sm, marginTop: '6px',
   })
   guide.textContent = ENCRYPTION_KEY_BACKUP_GUIDE
   wrap.appendChild(guide)

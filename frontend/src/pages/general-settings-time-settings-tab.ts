@@ -9,7 +9,7 @@
 import { createNumInput, createSettingRow, createSettingToggleRow } from '../components/common/setting-row'
 import { sectionTitle, createDescText, parseHM, createTimeSlot, updateTimeSlotDisplay } from '../components/common/settings-common'
 import { createTimePairInput } from '../components/common/time-pair-input'
-import { FONT_SIZE, FONT_WEIGHT, COLOR, setDisabled } from '../components/common/ui-styles'
+import { FONT_SIZE, FONT_WEIGHT, COLOR, RADIUS, setDisabled } from '../components/common/ui-styles'
 import { toastResult } from '../components/common/toast'
 import { type GeneralSettingsState, GS, scheduleTimetableSave, createHolidayBadge, state } from './general-settings-shared'
 
@@ -175,7 +175,7 @@ function buildFixedTimesBox(): HTMLElement {
   Object.assign(box.style, {
     margin: '8px 0 0', padding: '8px 10px',
     background: COLOR.surface, border: '1px solid ' + COLOR.borderLight,
-    borderRadius: '6px', fontSize: FONT_SIZE.desc, color: COLOR.tertiary,
+    borderRadius: RADIUS.sm, fontSize: FONT_SIZE.desc, color: COLOR.tertiary,
   })
   const title = document.createElement('div')
   Object.assign(title.style, { fontWeight: FONT_WEIGHT.normal, color: COLOR.neutral, marginBottom: '4px' })

@@ -4,7 +4,7 @@
 
 import { toastResult } from '../components/common/toast'
 import { showAlertDialog } from '../components/common/dialog'
-import { COLOR } from '../components/common/ui-styles'
+import { COLOR, RADIUS, SHADOW } from '../components/common/ui-styles'
 import type { StockClassificationMutationResponse } from '../types'
 
 /* ── 행 데이터 타입 ── */
@@ -50,7 +50,8 @@ export function parseBatchInput(input: string): string[] {
 export function cardWrap(): HTMLElement {
   const div = document.createElement('div')
   Object.assign(div.style, {
-    background: COLOR.white, border: '1px solid ' + COLOR.borderDark, borderRadius: '8px',
+    background: COLOR.white, border: '1px solid ' + COLOR.borderDark, borderRadius: RADIUS.md,
+    boxShadow: SHADOW.card,
     padding: '16px', marginBottom: '12px',
   })
   return div

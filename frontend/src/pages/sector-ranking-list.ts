@@ -4,7 +4,7 @@
 
 import { hotStore } from '../stores/hotStore'
 import { uiStore, setSelectedSector } from '../stores/uiStore'
-import { FONT_WEIGHT, FONT_SIZE, COLOR, fmtMillionsToBillion } from '../components/common/ui-styles'
+import { FONT_WEIGHT, FONT_SIZE, COLOR, RADIUS, fmtMillionsToBillion } from '../components/common/ui-styles'
 import { createCardTitle } from '../components/common/card-title'
 import { createDataTable, type DataTableApi, type ColumnDef } from '../components/common/data-table'
 import { getMaxTargetsStatusEl, getMaxTargetsSumEl } from './sector-settings'
@@ -86,7 +86,7 @@ function renderScoreBar(row: SectorScoreRow): HTMLElement {
     width: '100%',
     height: '5px',
     background: COLOR.borderLight,
-    borderRadius: '3px',
+    borderRadius: RADIUS.xs,
     overflow: 'hidden',
   })
 
@@ -101,7 +101,7 @@ function renderScoreBar(row: SectorScoreRow): HTMLElement {
     height: '100%',
     width: `${barPct}%`,
     background: barBackground,
-    borderRadius: '3px',
+    borderRadius: RADIUS.xs,
   })
   barOuter.appendChild(barInner)
 

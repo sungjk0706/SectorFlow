@@ -12,7 +12,7 @@
 
 import { stockClassificationStore } from '../stores/stockClassificationStore'
 import { showSaveToast } from '../components/common/toast'
-import { COLOR, FONT_SIZE, FONT_FAMILY } from '../components/common/ui-styles'
+import { COLOR, FONT_SIZE, FONT_FAMILY, RADIUS } from '../components/common/ui-styles'
 import type { StockClassificationPageState } from './stock-classification'
 
 /* ── 순환 참조 해결: main 잔류 함수 callback ── */
@@ -73,7 +73,7 @@ export function createChip(state: StockClassificationPageState, code: string): H
   chip.setAttribute('data-code', code)
   Object.assign(chip.style, {
     display: 'inline-flex', alignItems: 'center', gap: '4px',
-    padding: '2px 8px', borderRadius: '12px',
+    padding: '2px 8px', borderRadius: RADIUS.xl,
     background: COLOR.downBg, fontSize: FONT_SIZE.small,
     fontFamily: FONT_FAMILY, cursor: 'default',
   })

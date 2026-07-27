@@ -4,7 +4,7 @@
  * updateTimeSlotDisplay, createTimeDropdown(+createGridPanel+createFineAdjust), createTimePairInput
  */
 
-import { FONT_SIZE, FONT_WEIGHT, COLOR } from './ui-styles'
+import { FONT_SIZE, FONT_WEIGHT, COLOR, RADIUS, SHADOW } from './ui-styles'
 
 /* ── 상수 ── */
 const HOURS = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'))
@@ -85,7 +85,7 @@ export function createTimeSlot(
   const display = document.createElement('span')
   Object.assign(display.style, {
     display: 'inline-flex', alignItems: 'center', gap: '1px',
-    background: COLOR.surface, border: '1px solid ' + COLOR.inactiveBg, borderRadius: '6px',
+    background: COLOR.surface, border: '1px solid ' + COLOR.inactiveBg, borderRadius: RADIUS.sm,
     padding: '4px 8px', cursor: 'pointer', fontVariantNumeric: 'tabular-nums',
     fontSize: FONT_SIZE.label, userSelect: 'none',
   })
@@ -136,8 +136,8 @@ function createTimeDropdown(
     top: `${rect.bottom + 4}px`,
     left: `${rect.left}px`,
     zIndex: '10000',
-    background: COLOR.white, border: '1px solid ' + COLOR.borderGrid, borderRadius: '8px',
-    boxShadow: '0 4px 16px rgba(0,0,0,0.12)', width: '240px',
+    background: COLOR.white, border: '1px solid ' + COLOR.borderGrid, borderRadius: RADIUS.md,
+    boxShadow: SHADOW.popup, width: '240px',
   })
 
   let currentTab: 'hour' | 'minute' = 'hour'
@@ -208,7 +208,7 @@ function createGridPanel(
     const isActive = item === value
     Object.assign(btn.style, {
       width: '36px', height: '30px', display: 'flex', alignItems: 'center', justifyContent: 'center',
-      border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: FONT_SIZE.badge,
+      border: 'none', borderRadius: RADIUS.sm, cursor: 'pointer', fontSize: FONT_SIZE.badge,
       fontVariantNumeric: 'tabular-nums',
       background: isActive ? `${COLOR.down}` : 'transparent',
       color: isActive ? COLOR.white : `${COLOR.code}`,
@@ -232,7 +232,7 @@ function createFineAdjust(minute: string, onChange: (m: string) => void): HTMLEl
   Object.assign(wrap.style, { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '4px 0', borderTop: '1px solid ' + COLOR.borderLight })
 
   const decBtn = document.createElement('button'); decBtn.type = 'button'
-  Object.assign(decBtn.style, { width: '28px', height: '24px', border: '1px solid ' + COLOR.borderDark, borderRadius: '4px', background: COLOR.surface, cursor: 'pointer', fontSize: FONT_SIZE.badge })
+  Object.assign(decBtn.style, { width: '28px', height: '24px', border: '1px solid ' + COLOR.borderDark, borderRadius: RADIUS.xs, background: COLOR.surface, cursor: 'pointer', fontSize: FONT_SIZE.badge })
   decBtn.textContent = '−1'
 
   const label = document.createElement('span')
@@ -240,7 +240,7 @@ function createFineAdjust(minute: string, onChange: (m: string) => void): HTMLEl
   label.textContent = minute
 
   const incBtn = document.createElement('button'); incBtn.type = 'button'
-  Object.assign(incBtn.style, { width: '28px', height: '24px', border: '1px solid ' + COLOR.borderDark, borderRadius: '4px', background: COLOR.surface, cursor: 'pointer', fontSize: FONT_SIZE.badge })
+  Object.assign(incBtn.style, { width: '28px', height: '24px', border: '1px solid ' + COLOR.borderDark, borderRadius: RADIUS.xs, background: COLOR.surface, cursor: 'pointer', fontSize: FONT_SIZE.badge })
   incBtn.textContent = '+1'
 
   decBtn.addEventListener('click', () => {

@@ -1,7 +1,7 @@
 // frontend/src/pages/profit-shared.ts
 // 수익현황 페이지 공통 모듈 — profit-overview.ts와 profit-detail.ts가 공유하는 로직
 
-import { FONT_SIZE, FONT_WEIGHT, pnlColor, fmtWon, COLOR, computeWeightedRate } from '../components/common/ui-styles'
+import { FONT_SIZE, FONT_WEIGHT, pnlColor, fmtWon, COLOR, RADIUS, SHADOW, computeWeightedRate } from '../components/common/ui-styles'
 import { normalizeStockCode } from '../stores/hotStore'
 import { getLocalToday } from '../utils/date'
 import type { AccountSnapshot, Position, SectorStock } from '../types'
@@ -68,7 +68,7 @@ export interface SummaryCardCallbacks {
   onTotalClick?: () => void
 }
 
-const SUMMARY_CARD_STYLE = `flex:1;background:${COLOR.surfaceLight};border:1px solid ${COLOR.borderLight};border-radius:6px;padding:6px 12px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;`
+const SUMMARY_CARD_STYLE = `flex:1;background:${COLOR.surfaceLight};border:1px solid ${COLOR.borderLight};border-radius:${RADIUS.sm};box-shadow:${SHADOW.card};padding:6px 12px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;`
 const SUMMARY_CARD_TITLES = ['당일 손익', '전일 손익', '5거래일 손익', '당월 손익', '누적 손익']
 
 /** 요약 카드 1개 DOM 생성. 실패 시 null 반환 (P25 격리 + P22 인덱스 정합성 — 호출부에서 더미 push). */

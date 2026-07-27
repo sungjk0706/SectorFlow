@@ -10,7 +10,7 @@ import { createCardTitle } from '../components/common/card-title'
 import { createActionButton } from '../components/common/button'
 import { createSearchInput } from '../components/common/search-input'
 import { createMarketCountRow, type MarketCountRowHandle } from '../components/common/market-count-row'
-import { FONT_SIZE, FONT_WEIGHT, COLOR } from '../components/common/ui-styles'
+import { FONT_SIZE, FONT_WEIGHT, COLOR, RADIUS } from '../components/common/ui-styles'
 import { type SectorStock, DEFAULT_SECTOR_MAX_TARGETS } from '../types'
 import { filterStocksBySearch } from '../utils/stock-search'
 import {
@@ -185,7 +185,7 @@ class SectorStockTable extends HTMLElement {
       marginBottom: '8px',
       padding: '6px 12px',
       background: COLOR.downBg,
-      borderRadius: '6px',
+      borderRadius: RADIUS.sm,
       border: '1px solid ' + COLOR.down,
     })
     const badgeLabel = document.createElement('span')
@@ -198,7 +198,7 @@ class SectorStockTable extends HTMLElement {
       variant: 'secondary',
       fontSize: FONT_SIZE.badge,
       padding: '2px 8px',
-      borderRadius: '4px',
+      borderRadius: RADIUS.xs,
       onClick: () => setSelectedSector(null),
     })
     Object.assign(clearBtn.style, {
@@ -221,7 +221,7 @@ class SectorStockTable extends HTMLElement {
       marginBottom: '8px',
       padding: '6px 12px',
       background: COLOR.warningBg,
-      borderRadius: '6px',
+      borderRadius: RADIUS.sm,
       border: '1px solid ' + COLOR.warning,
       fontSize: FONT_SIZE.badge,
       color: COLOR.warning,
