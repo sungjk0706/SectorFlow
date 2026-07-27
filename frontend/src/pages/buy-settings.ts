@@ -390,10 +390,10 @@ function buildRebuySection(root: HTMLElement): void {
 function buildBuyIntervalSection(root: HTMLElement): void {
   root.appendChild(sectionTitle('매수 주문 간격'))
   {
-    buyIntervalInput = createNumInput({ value: 30, onChange: v => { const orig = Number(vals.buy_interval_sec); vals.buy_interval_sec = v; saveHelper!.autoSave('buy_interval_sec', v, () => { vals.buy_interval_sec = orig; buyIntervalInput!.setValue(orig) }) }, step: 5, min: 5, max: 300, suffix: '초', name: 'buy_interval_sec' })
+    buyIntervalInput = createNumInput({ value: 30, onChange: v => { const orig = Number(vals.buy_interval_sec); vals.buy_interval_sec = v; saveHelper!.autoSave('buy_interval_sec', v, () => { vals.buy_interval_sec = orig; buyIntervalInput!.setValue(orig) }) }, step: 1, min: 1, max: 300, suffix: '초', name: 'buy_interval_sec' })
     const r = createSettingToggleRow({
       label: '주문 간격',
-      infoText: '매수 주문 사이 대기 시간. 5초 단위, 5~300초, 기본 30초',
+      infoText: '매수 주문 사이 대기 시간. 1초 단위, 1~300초, 기본 30초',
       toggleOn: false,
       onToggle: next => { vals.buy_interval_on = next; saveHelper!.saveImmediate({ buy_interval_on: next }) },
       disableControlsOnToggle: true,

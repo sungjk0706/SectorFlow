@@ -105,7 +105,7 @@ DEFAULT_USER_SETTINGS: dict[str, Any] = {
      "sector_bonus_relative_strength_slider": 0,
      "sector_bonus_trade_amount_slider": 0,
 
-     # 주문 간격 (매수/매도 각각, 초 단위, 5~300, 5초 단위, 기본 30초)
+     # 주문 간격 (매수/매도 각각, 초 단위, 1~300, 1초 단위, 기본 30초)
      "buy_interval_on": False,
      "buy_interval_sec": 30,
      "sell_interval_on": False,
