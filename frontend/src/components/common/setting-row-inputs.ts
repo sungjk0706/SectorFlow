@@ -6,7 +6,7 @@
  */
 
 import { COLOR } from './ui-styles'
-import { TEXT_INPUT_WIDTH, INPUT_GROUP_SHIFT, SELECT_WIDTH, focusNext, applyInputBase, createSpinButtons, createSuffix } from './setting-row'
+import { TEXT_INPUT_WIDTH, SELECT_WIDTH, focusNext, applyInputBase, createSpinButtons, createSuffix } from './setting-row'
 import { showToast } from './toast'
 
 /* ── 숫자 입력 문자열 검증 (P22 데이터 정합성) ────────────────
@@ -24,7 +24,6 @@ function createInputGroup(input: HTMLInputElement, spinBtns: HTMLElement): HTMLS
   Object.assign(group.style, {
     display: 'inline-flex',
     alignItems: 'stretch',
-    transform: `translateX(${INPUT_GROUP_SHIFT}px)`,
   })
   group.appendChild(input)
   group.appendChild(spinBtns)
@@ -285,7 +284,7 @@ export function createTextInput(options: {
 }
 
 /* ── 드롭다운 셀렉트 (공통 스타일) ─────────────────────────── */
-// select는 이동량만큼 폭을 줄여 NumInput/MoneyInput 행과 오른쪽 끝 정렬 통일 (P23 일관성)
+// select는 NumInput/MoneyInput과 동일한 오른쪽 끝 정렬을 유지 (P23 일관성)
 export function createSelect(options: {
   items: { value: string; label: string }[]
   value: string
@@ -297,7 +296,6 @@ export function createSelect(options: {
   if (options.name) select.setAttribute('data-name', options.name)
   Object.assign(select.style, {
     width: options.width ?? `${SELECT_WIDTH}px`,
-    transform: `translateX(${INPUT_GROUP_SHIFT}px)`,
     padding: '4px 8px',
     borderRadius: '4px',
     border: '1px solid ' + COLOR.border,

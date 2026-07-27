@@ -21,14 +21,14 @@ export const INPUT_WIDTH = 70
 export const TEXT_INPUT_WIDTH = 220
 export const SPIN_BUTTON_WIDTH = 22
 export const SUFFIX_GAP = 0
-export const INPUT_GROUP_SHIFT = 16
 // suffix 고정폭 — 모든 단위("%", "점", "개", "초", "회", "원", "만원", "억원")가 동일 너비 차지 → 정렬 통일 (P23 일관성)
 export const SUFFIX_WIDTH = 36
 // 입력 그룹 공통 너비 — 숫자/금액 입력란과 select가 동일한 오른쪽 기준 사용 (P23 일관성)
 export const CONTROL_WIDTH = INPUT_WIDTH + SPIN_BUTTON_WIDTH + SUFFIX_GAP + SUFFIX_WIDTH
-export const SELECT_WIDTH = CONTROL_WIDTH - INPUT_GROUP_SHIFT
-// rightWrap 고정폭 — ⓘ 툴팁(16 + 자체 여백 4) + gap(6) + 컨트롤(130) = 156px (P23 일관성)
-export const RIGHT_WRAP_WIDTH = 156
+// select는 NumInput/MoneyInput과 동일한 오른쪽 끝 정렬을 유지 (P23 일관성)
+export const SELECT_WIDTH = CONTROL_WIDTH
+// rightWrap 고정폭 — ⓘ 툴팁(16 + 자체 여백 4) + gap(6) + 컨트롤(128) = 154px (P23 일관성)
+export const RIGHT_WRAP_WIDTH = 154
 
 /* ── Enter → 다음 포커스 이동 헬퍼 ─────────────────────────── */
 export function focusNext(el: HTMLElement) {
