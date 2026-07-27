@@ -1118,6 +1118,9 @@ async def _update_layout_cache(
     - 부적격이 된 종목은 레이아웃에서 제거된다.
     - stock_classification.json의 최신 업종 매핑이 전체 종목에 적용된다.
     - 업종 헤더가 없는 종목("미분류")도 레이아웃에 포함된다.
+
+    sector_stock_layout 원본 SSOT: master_stocks_table의 sector 컬럼에서 파생 (P22 데이터 정합성).
+    본 함수가 런타임 파생 경로 중 하나 — 장마감 파이프라인에서 DB 매핑 기반으로 재구성.
     """
     # sector_layout 캐시 저장 삭제 (전종목 마스터 테이블 sector 컬럼으로 대체)
 

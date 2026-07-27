@@ -79,7 +79,9 @@ async def refresh_engine_integrated_system_settings_cache(user_id: str | None = 
         old_min_amt = engine_state.state.integrated_system_settings_cache["sector_min_trade_amt"] if engine_state.state.integrated_system_settings_cache else 0.0
 
         fresh = await get_engine_settings(load_user if load_user else None)
-        # 런타임 전용 상태 보존 (build_engine_settings_dict 결과에 없는 캐시 B 전용 런타임 상태)
+        # 런타임 전용 상태 보존 — DB에 저장되지 않는 파생 데이터 (P22 데이터 정합성).
+        # sector_stock_layout 원본 SSOT: master_stocks_cache의 sector 필드에서 파생
+        # (engine_cache._load_preboot_cache / market_close_pipeline._rebuild_sector_layout).
         _RUNTIME_ONLY_KEYS = ("sector_stock_layout",)
         preserved = {
             k: engine_state.state.integrated_system_settings_cache.get(k)

@@ -599,6 +599,132 @@ class TestRiskManagerSettingsValidation:
                 assert saved[k] == v
 
 
+# ── 매매·가상잔고 설정 범위 검증 (COUPLING-S2 잔여 — P20/P22) ──
+
+class TestTradeAndVirtualBalanceValidation:
+    """매매·가상잔고 키 범위 검증 (P20/P22 — 범위 위반 시 422 차단).
+    후안 B 부호 규칙 — 상승/익절은 양수 (P23 일관성)."""
+
+    @pytest.mark.asyncio
+    async def test_rejects_negative_buy_block_rise_pct(self):
+        """buy_block_rise_pct 음수 입력 시 ValueError (양수만 허용 — 후안 B 부호 규칙)."""
+        with patch("backend.app.core.settings_store.load_selected_settings", new=AsyncMock(return_value={})), \
+             patch("backend.app.core.settings_store.save_selected_settings", new=AsyncMock()) as mock_save:
+            with pytest.raises(ValueError, match="buy_block_rise_pct는 0.0~100.0 사이여야 합니다"):
+                await apply_settings_updates({"buy_block_rise_pct": -7.0})
+            mock_save.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_rejects_negative_tp_val(self):
+        """tp_val 음수 입력 시 ValueError (양수만 허용 — 0=비활성)."""
+        with patch("backend.app.core.settings_store.load_selected_settings", new=AsyncMock(return_value={})), \
+             patch("backend.app.core.settings_store.save_selected_settings", new=AsyncMock()) as mock_save:
+            with pytest.raises(ValueError, match="tp_val는 0.0~100.0 사이여야 합니다"):
+                await apply_settings_updates({"tp_val": -5.0})
+            mock_save.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_rejects_negative_ts_start_val(self):
+        """ts_start_val 음수 입력 시 ValueError (양수만 허용 — 0=비활성)."""
+        with patch("backend.app.core.settings_store.load_selected_settings", new=AsyncMock(return_value={})), \
+             patch("backend.app.core.settings_store.save_selected_settings", new=AsyncMock()) as mock_save:
+            with pytest.raises(ValueError, match="ts_start_val는 0.0~100.0 사이여야 합니다"):
+                await apply_settings_updates({"ts_start_val": -3.0})
+            mock_save.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_rejects_negative_sell_offset(self):
+        """sell_offset 음수 입력 시 ValueError (0 이상만 허용)."""
+        with patch("backend.app.core.settings_store.load_selected_settings", new=AsyncMock(return_value={})), \
+             patch("backend.app.core.settings_store.save_selected_settings", new=AsyncMock()) as mock_save:
+            with pytest.raises(ValueError, match="sell_offset는 0~100000 사이여야 합니다"):
+                await apply_settings_updates({"sell_offset": -1})
+            mock_save.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_rejects_negative_sell_custom_qty(self):
+        """sell_custom_qty 음수 입력 시 ValueError (0 이상만 허용)."""
+        with patch("backend.app.core.settings_store.load_selected_settings", new=AsyncMock(return_value={})), \
+             patch("backend.app.core.settings_store.save_selected_settings", new=AsyncMock()) as mock_save:
+            with pytest.raises(ValueError, match="sell_custom_qty는 0~10000000 사이여야 합니다"):
+                await apply_settings_updates({"sell_custom_qty": -10})
+            mock_save.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_rejects_negative_max_daily_total_buy_amt(self):
+        """max_daily_total_buy_amt 음수 입력 시 ValueError (0 이상만 허용)."""
+        with patch("backend.app.core.settings_store.load_selected_settings", new=AsyncMock(return_value={})), \
+             patch("backend.app.core.settings_store.save_selected_settings", new=AsyncMock()) as mock_save:
+            with pytest.raises(ValueError, match="max_daily_total_buy_amt는 0~1000000000000 사이여야 합니다"):
+                await apply_settings_updates({"max_daily_total_buy_amt": -1000})
+            mock_save.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_rejects_negative_test_virtual_deposit(self):
+        """test_virtual_deposit 음수 입력 시 ValueError (0 이상만 허용)."""
+        with patch("backend.app.core.settings_store.load_selected_settings", new=AsyncMock(return_value={})), \
+             patch("backend.app.core.settings_store.save_selected_settings", new=AsyncMock()) as mock_save:
+            with pytest.raises(ValueError, match="test_virtual_deposit는 0~1000000000000 사이여야 합니다"):
+                await apply_settings_updates({"test_virtual_deposit": -1})
+            mock_save.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_rejects_negative_test_virtual_balance(self):
+        """test_virtual_balance 음수 입력 시 ValueError (0 이상만 허용)."""
+        with patch("backend.app.core.settings_store.load_selected_settings", new=AsyncMock(return_value={})), \
+             patch("backend.app.core.settings_store.save_selected_settings", new=AsyncMock()) as mock_save:
+            with pytest.raises(ValueError, match="test_virtual_balance는 0~1000000000000 사이여야 합니다"):
+                await apply_settings_updates({"test_virtual_balance": -1})
+            mock_save.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_rejects_non_float_buy_block_rise_pct(self):
+        """buy_block_rise_pct 숫자가 아닌 값 입력 시 ValueError."""
+        with patch("backend.app.core.settings_store.load_selected_settings", new=AsyncMock(return_value={})), \
+             patch("backend.app.core.settings_store.save_selected_settings", new=AsyncMock()) as mock_save:
+            with pytest.raises(ValueError, match="buy_block_rise_pct는 숫자여야 합니다"):
+                await apply_settings_updates({"buy_block_rise_pct": "abc"})
+            mock_save.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_rejects_non_int_sell_offset(self):
+        """sell_offset 정수가 아닌 값 입력 시 ValueError."""
+        with patch("backend.app.core.settings_store.load_selected_settings", new=AsyncMock(return_value={})), \
+             patch("backend.app.core.settings_store.save_selected_settings", new=AsyncMock()) as mock_save:
+            with pytest.raises(ValueError, match="sell_offset는 정수여야 합니다"):
+                await apply_settings_updates({"sell_offset": "abc"})
+            mock_save.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_accepts_valid_trade_and_virtual_balance_values(self):
+        """유효한 경계값 저장 성공 (P20 — 0/양수 유효값 허용)."""
+        valid_cases = [
+            ("buy_block_rise_pct", 0.0),           # 하한 경계 (0 포함 — 차단 미설정)
+            ("buy_block_rise_pct", 100.0),         # 상한 경계
+            ("tp_val", 0.0),                       # 하한 경계 (0 포함 — 익절 미설정)
+            ("tp_val", 100.0),                     # 상한 경계
+            ("ts_start_val", 0.0),                 # 하한 경계 (0 포함 — T/S 미설정)
+            ("ts_start_val", 100.0),               # 상한 경계
+            ("sell_offset", 0),                    # 하한 경계 (0=비활성)
+            ("sell_offset", 100_000),              # 상한 경계
+            ("sell_custom_qty", 0),                # 하한 경계 (0=비활성)
+            ("sell_custom_qty", 10_000_000),       # 상한 경계
+            ("max_daily_total_buy_amt", 0),        # 하한 경계 (0=비활성)
+            ("max_daily_total_buy_amt", 1_000_000_000_000),  # 상한 경계
+            ("test_virtual_deposit", 0),           # 하한 경계
+            ("test_virtual_deposit", 1_000_000_000_000),     # 상한 경계
+            ("test_virtual_balance", 0),           # 하한 경계
+            ("test_virtual_balance", 1_000_000_000_000),     # 상한 경계
+        ]
+        for k, v in valid_cases:
+            with patch("backend.app.core.settings_store.load_selected_settings", new=AsyncMock(return_value={})), \
+                 patch("backend.app.core.settings_store.save_selected_settings", new=AsyncMock()) as mock_save:
+                result = await apply_settings_updates({k: v})
+                assert k in result
+                saved = mock_save.call_args[0][0]
+                assert saved[k] == v
+
+
 # ── build_masked_settings_dict (async) ──────────────────────────────
 
 class TestBuildMaskedSettingsDict:

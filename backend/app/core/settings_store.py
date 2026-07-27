@@ -155,6 +155,21 @@ _RISK_FLOAT_KEYS = {
     "buy_block_fall_pct": (-100.0, 0.0),            # 종목 하락률 매수차단 (음수만 허용)
 }
 
+# 매매·가상잔고 설정 검증 (P20/P22) — 범위 검증
+# 후안 B 부호 규칙 — 상승/익절은 양수 (P23 일관성)
+_TRADE_FLOAT_KEYS = {
+    "buy_block_rise_pct": (0.0, 100.0),             # 상승률 매수차단 (양수만, 0=비활성)
+    "tp_val": (0.0, 100.0),                         # 익절 상승률 (양수만, 0=비활성)
+    "ts_start_val": (0.0, 100.0),                   # 추적 시작 상승률 (양수만, 0=비활성)
+}
+_TRADE_INT_KEYS = {
+    "sell_offset": (0, 100_000),                    # 매도 호가 오프셋 (0=비활성)
+    "sell_custom_qty": (0, 10_000_000),             # 매도 수량 (0=비활성)
+    "max_daily_total_buy_amt": (0, 1_000_000_000_000),  # 일일 최대 매수 금액 (0=비활성)
+    "test_virtual_deposit": (0, 1_000_000_000_000),     # 가상 예수금
+    "test_virtual_balance": (0, 1_000_000_000_000),     # 가상 잔고
+}
+
 
 def _compute_select_keys(data: dict) -> set[str]:
     """변경 대상 키 + broker 키 + 타임테이블 그룹 키를 SELECT 대상으로 수집.
@@ -230,7 +245,7 @@ def _validate_numeric_fields(data: dict) -> None:
         if _n < 1 or _n > 1000:
             raise ValueError("구독 한도는 1~1000 사이여야 합니다")
 
-    for _k, (_lo, _hi) in _RISK_INT_KEYS.items():
+    for _k, (_lo, _hi) in {**_RISK_INT_KEYS, **_TRADE_INT_KEYS}.items():
         if _k in data:
             try:
                 _n = int(data[_k])
@@ -238,7 +253,7 @@ def _validate_numeric_fields(data: dict) -> None:
                 raise ValueError(f"{_k}는 정수여야 합니다")
             if _n < _lo or _n > _hi:
                 raise ValueError(f"{_k}는 {_lo}~{_hi} 사이여야 합니다")
-    for _k, (_lo, _hi) in _RISK_FLOAT_KEYS.items():
+    for _k, (_lo, _hi) in {**_RISK_FLOAT_KEYS, **_TRADE_FLOAT_KEYS}.items():
         if _k in data:
             try:
                 _f = float(data[_k])

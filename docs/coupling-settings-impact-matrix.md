@@ -4,7 +4,7 @@
 > 세션: COUPLING-S2 (C-02)
 > 기준 파일: `backend/app/core/settings_defaults.py`, `backend/app/core/settings_file.py`, `backend/app/core/settings_store.py`, `backend/app/core/engine_settings.py`, `backend/app/services/engine_config.py`, `backend/app/services/engine_state.py`
 > 원칙: P10 SSOT, P20 폴백 금지, P21 사용자 투명성, P22 데이터 정합성, P23 일관성, P24 단순성
-> 상태: 조사 전수 완료 + COUPLING-S2 후속 수정 완료 (2026-07-27 — #3~#6/#2 5건 처리)
+> 상태: 조사 전수 완료 + COUPLING-S2 후속 수정 완료 (2026-07-27 — #3~#6/#2 5건 처리) + COUPLING-S2 잔여 3건 완료 (2026-07-27 — #1/#2/#5 단일화 우선순위 항목)
 
 ---
 
@@ -485,9 +485,9 @@ export const MASKED_FIELDS = new Set([
 
 | 항목 | 비고 |
 |------|------|
-| `confirmed_data_broker` PATCH 후처리 누락 | 변경 시 재기동 필요하나 디스패처 분기 없음, 사용자 안내 없음 (P21) |
-| 수치 범위 검증 누락 키 | `buy_block_rise_pct`(양수만 허용해야 하나 검증 없음), `tp_val`, `ts_start_val`, `sell_offset`, `sell_custom_qty`, `max_daily_total_buy_amt`, `max_single_stock_exposure`, `max_position_size`, `test_virtual_deposit`, `test_virtual_balance` |
-| `sector_stock_layout` 원본 SSOT 미명확 | DB 저장 안 됨, `_RUNTIME_ONLY_KEYS` 보존, 런타임 전용 — 원본이 어디인지 문서화 필요 |
+| ~~`confirmed_data_broker` PATCH 후처리 누락~~ | **해결 완료** — `_handle_broker_change` 감지 조건 확장, 변경 시 엔진 재기동 (P21) |
+| ~~수치 범위 검증 누락 키~~ | **해결 완료** — `_TRADE_FLOAT_KEYS` + `_TRADE_INT_KEYS` 추가 (8개 키 범위 검증) |
+| ~~`sector_stock_layout` 원본 SSOT 미명확~~ | **해결 완료** — 원본 SSOT는 `master_stocks_cache`의 sector 필드, 코드 주석에 명확화 (P22) |
 | `ui_price_flash_on` 정규화 누락 | `build_engine_settings_dict()` 미포함, 백엔드 캐시 read 없음 — 프론트 전용 키인지 정규화 누락인지 확인 필요 |
 | `daily_summary_days` 정규화 누락 | `build_engine_settings_dict()` 미포함, 캐시 read 3곳 — 정규화 통과 경로 확인 필요 |
 | GET `/api/settings` 캐시 미사용 | 매 요청 DB 직접 로드, 캐시와 일시적 불일치 가능 (저장 직후 GET 시) |
@@ -504,11 +504,11 @@ export const MASKED_FIELDS = new Set([
 
 | 순위 | 항목 | 위험도 | 비고 | 상태 |
 |------|------|--------|------|------|
-| 1 | `sector_stock_layout` 원본 SSOT 명확화 | 중간 | 런타임 전용 키의 원본 소재 문서화 또는 DB 저장 경로 정비 | ☐ |
-| 2 | `confirmed_data_broker` PATCH 후처리 추가 | 중간 | P21 투명성 — 변경 시 사용자 안내 또는 자동 재기동 | ☐ |
+| 1 | `sector_stock_layout` 원본 SSOT 명확화 | 중간 | 런타임 파생 데이터 — 원본 SSOT는 `master_stocks_cache`의 sector 필드. 코드 주석에 SSOT 명확화 (settings_defaults/engine_config/engine_cache/market_close_pipeline). P22 준수 — 파생 데이터는 원본에서 파생. | ☑ 완료 |
+| 2 | `confirmed_data_broker` PATCH 후처리 추가 | 중간 | P21 투명성 — `_handle_broker_change` 감지 조건을 `{"broker", "confirmed_data_broker"}`로 확장, 변경 시 엔진 재기동 (broker와 동일 패턴, P23 일관성). | ☑ 완료 |
 | 3 | `max_daily_loss_limit` 제거 (safe-trade) / `max_single_stock_exposure` 유지+정정 / `max_position_size` 제거 | 낮음 | `max_position_size` 제거 완료, `max_single_stock_exposure` 정정 완료, `max_daily_loss_limit` 제거 완료 (safe-trade 절차 적용) | ☑ 완료 |
 | 4 | `tele_on` / `telegram_on` 중복 제거 | 낮음 | `telegram_on` 파생 제거 + `telegram_bot.py` dead key 제거 + `get_settings_snapshot()` 호환 채움 제거 | ☑ 완료 |
-| 5 | 수치 범위 검증 누락 키 추가 | 낮음 | `_validate_numeric_fields` 확장 | ☐ |
+| 5 | 수치 범위 검증 누락 키 추가 | 낮음 | `_validate_numeric_fields` 확장 — `_TRADE_FLOAT_KEYS`(buy_block_rise_pct/tp_val/ts_start_val, 0~100) + `_TRADE_INT_KEYS`(sell_offset/sell_custom_qty/max_daily_total_buy_amt/test_virtual_deposit/test_virtual_balance, 0~상한) 추가. 후안 B 부호 규칙 준수 (상승/익절 양수). | ☑ 완료 |
 
 > 본 세션은 매트릭스 작성까지만 수행. 위 후속 항목은 각각 별도 세션에서 승인 후 진행 권장. 거래 관련 산재(`trading.py`의 `time_scheduler_on` write)는 COUPLING-S1과 동일하게 변경 금지 범주.
 
@@ -520,9 +520,10 @@ export const MASKED_FIELDS = new Set([
 
 **핵심 발견**:
 1. 파이프라인 6단계(DB → 기본값 → 정규화 → 캐시 → 서비스 → API/UI) 중 **정규화 단계**가 가장 복잡 — 9개 `_build_*` 그룹이 rename/derive/마이그레이션 추론 분기를 수행.
-2. **P10 SSOT 위반 후보 6건** 식별 (중복 의미·dead read·레거시 잔존).
-3. **P21 투명성 후보 1건** (`confirmed_data_broker` 변경 시 사용자 안내 없음).
-4. **검증 누락 키 다수** 식별 (수치 범위 검증 미존재).
-5. 캐시 소비자 28개 파일이 `integrated_system_settings_cache` 직접 참조 — 거래 관련 산재 1건(`trading.py`의 `time_scheduler_on` write)은 COUPLING-S1과 동일 변경 금지.
+2. **P10 SSOT 위반 후보 6건** 식별 (중복 의미·dead read·레거시 잔존) — 전부 해결 완료.
+3. **P21 투명성 후보 1건** (`confirmed_data_broker` 변경 시 사용자 안내 없음) — 해결 완료 (`_handle_broker_change` 감지 조건 확장, 엔진 재기동).
+4. **검증 누락 키 다수** 식별 (수치 범위 검증 미존재) — 해결 완료 (`_TRADE_FLOAT_KEYS` + `_TRADE_INT_KEYS` 8개 키 추가).
+5. `sector_stock_layout` 원본 SSOT 명확화 — 해결 완료 (런타임 파생 데이터, 원본은 `master_stocks_cache`의 sector 필드, P22 준수).
+6. 캐시 소비자 28개 파일이 `integrated_system_settings_cache` 직접 참조 — 거래 관련 산재 1건(`trading.py`의 `time_scheduler_on` write)은 COUPLING-S1과 동일 변경 금지.
 
-**코드 수정 없음** (조사·매트릭스 문서만 작성). 백엔드·거래 실행 경로·DB·테스트 영향 없음. 검증: 매트릭스는 정적 대조 기반(코드 미수정이므로 런타임 검증 생략). 후속 단일화는 위 5개 우선순위 항목 중 1개만 별도 승인 후 진행 권장.
+**COUPLING-S2 전체 완료** — 단일화 우선순위 5개 항목(#1~#5) 전부 해결. 백엔드 테스트 2779 passed (회귀 0건) + 런타임 기동 검증 pass (RuntimeWarning 0건).

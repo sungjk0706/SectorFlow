@@ -94,6 +94,11 @@ DEFAULT_USER_SETTINGS: dict[str, Any] = {
      "sector_min_trade_amt": 0.0,
      "sector_max_targets": 3,
      "sector_sort_keys": ["score"],
+     # 런타임 파생 데이터 — DB에 저장되지 않음 (P22 데이터 정합성).
+     # 원본 SSOT: master_stocks_cache(종목 DB 로드 결과)의 sector 필드.
+     # 파생 경로: engine_cache._load_preboot_cache(기동 시 자동 구성) /
+     #           market_close_pipeline._rebuild_sector_layout(장마감 재구성).
+     # 캐시 갱신 시 _RUNTIME_ONLY_KEYS 보존 (engine_config.refresh_engine_integrated_system_settings_cache).
      "sector_stock_layout": [],
      # 업종 점수 3단계 가산점 슬라이더 (-100~+100, 기본값 0) — 조정 만점 = 업종 수 × (1 + slider/100)
      "sector_bonus_rise_ratio_slider": 0,

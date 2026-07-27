@@ -31,6 +31,7 @@ async def _load_caches_preboot(settings: dict) -> None:
         engine_state.state.master_stocks_cache = _cached_snapshot
 
         # ── 업종 레이아웃 자동 구성 (engine_bootstrap.py에서 이동) ──
+        # sector_stock_layout 원본 SSOT: master_stocks_cache(_cached_snapshot)의 sector 필드에서 파생 (P22).
         from collections import defaultdict
         from itertools import chain
 

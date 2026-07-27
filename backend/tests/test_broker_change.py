@@ -5,6 +5,7 @@
 2. test_cancel_all_dynamic_unreg_timers — 타이머 취소 + set 클리어 + 플래그 리셋
 3. test_broker_change_sequence_order — stop_engine이 reset_router보다 먼저 실행됨을 검증
 4. test_sync_dynamic_subscriptions_after_broker_change — broker 변경 후 DYNAMIC_REG 발행 검증
+5. test_confirmed_data_broker_change_triggers_restart — confirmed_data_broker 변경 시 엔진 재기동 (P21)
 
 의존성: state, engine_lifecycle, engine_sector_confirm, engine_service, broker_factory
 → 모두 mock으로 대체 (conftest hang 방지 원칙 준수)
@@ -250,6 +251,67 @@ class TestBrokerChangeSequenceOrder:
             await apply_settings_change({"broker"})
 
         reset_router_called.assert_called_once()
+
+
+# ── 3-1. confirmed_data_broker 변경 시에도 동일 재기동 경로 (P21) ──
+
+class TestConfirmedDataBrokerChangeTriggersRestart:
+    """confirmed_data_broker 변경 시 broker와 동일하게 엔진 재기동 (P21 사용자 투명성).
+    engine_loop._get_all_tokens_async에서 토큰 발급 대상에 포함되므로 재기동 필요."""
+
+    @pytest.mark.asyncio
+    async def test_confirmed_data_broker_change_triggers_restart(self):
+        """confirmed_data_broker 단독 변경 시 stop→reset→start 재기동 경로 실행."""
+        call_order: list[str] = []
+
+        async def fake_stop_engine():
+            call_order.append("stop_engine")
+
+        def fake_reset_broker_session_state():
+            call_order.append("reset_broker_session_state")
+
+        def fake_reset_router():
+            call_order.append("reset_router")
+
+        async def fake_start_engine():
+            call_order.append("start_engine")
+
+        with (
+            patch("backend.app.services.engine_service.is_engine_running", return_value=True),
+            patch("backend.app.services.engine_lifecycle.stop_engine", new=AsyncMock(side_effect=fake_stop_engine)),
+            patch("backend.app.services.engine_lifecycle.reset_broker_session_state", side_effect=fake_reset_broker_session_state),
+            patch("backend.app.services.engine_lifecycle.start_engine", new=AsyncMock(side_effect=fake_start_engine)),
+            patch("backend.app.core.broker_factory.reset_router", side_effect=fake_reset_router),
+            patch("backend.app.services.engine_service.refresh_engine_integrated_system_settings_cache", new=AsyncMock()),
+            patch("backend.app.services.engine_account_notify.notify_desktop_header_refresh", new=AsyncMock()),
+            patch("backend.app.services.engine_account_notify.notify_desktop_settings_toggled", new=AsyncMock()),
+        ):
+            from backend.app.services.engine_service import apply_settings_change
+            await apply_settings_change({"confirmed_data_broker"})
+
+        assert call_order == ["stop_engine", "reset_broker_session_state", "reset_router", "start_engine"]
+
+    @pytest.mark.asyncio
+    async def test_confirmed_data_broker_no_change_no_restart(self):
+        """confirmed_data_broker 미포함 변경 시 재기동 경로 미실행 (일반 브로드캐스트 경로)."""
+        async def fake_stop_engine():
+            pytest.fail("stop_engine should not be called for unrelated changes")
+
+        with (
+            patch("backend.app.services.engine_service.is_engine_running", return_value=True),
+            patch("backend.app.services.engine_lifecycle.stop_engine", new=AsyncMock(side_effect=fake_stop_engine)),
+            patch("backend.app.services.engine_service.refresh_engine_integrated_system_settings_cache", new=AsyncMock()),
+            patch("backend.app.services.engine_account_notify.notify_desktop_header_refresh", new=AsyncMock()),
+            patch("backend.app.services.engine_account_notify.notify_desktop_settings_toggled", new=AsyncMock()),
+            patch("backend.app.services.engine_service._apply_virtual_balance_change", new=AsyncMock()),
+            patch("backend.app.services.engine_service._apply_5d_download_toggle", new=AsyncMock()),
+            patch("backend.app.services.engine_service._apply_time_schedule_change", new=AsyncMock()),
+            patch("backend.app.services.engine_service._apply_timetable_change", new=AsyncMock()),
+            patch("backend.app.services.engine_service._apply_sector_ui_change", new=AsyncMock()),
+            patch("backend.app.services.engine_service._apply_telegram_toggle", new=AsyncMock()),
+        ):
+            from backend.app.services.engine_service import apply_settings_change
+            await apply_settings_change({"sector_min_trade_amt"})
 
 
 # ── 4. sync_dynamic_subscriptions — broker 변경 후 DYNAMIC_REG 발행 ──
