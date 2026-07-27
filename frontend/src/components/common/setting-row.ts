@@ -20,7 +20,7 @@ export * from './setting-row-controls'
 export const INPUT_WIDTH = 70
 export const TEXT_INPUT_WIDTH = 220
 export const SPIN_BUTTON_WIDTH = 22
-export const SUFFIX_GAP = 0
+export const SUFFIX_GAP = 4
 // suffix 고정폭 — 모든 단위("%", "점", "개", "초", "회", "원", "만원", "억원")가 동일 너비 차지 → 정렬 통일 (P23 일관성)
 export const SUFFIX_WIDTH = 24
 // 입력 그룹 공통 너비 — 숫자/금액 입력란과 select가 동일한 오른쪽 기준 사용 (P23 일관성)
@@ -29,8 +29,8 @@ export const CONTROL_WIDTH = INPUT_WIDTH + SPIN_BUTTON_WIDTH + SUFFIX_GAP + SUFF
 export const SELECT_WIDTH = CONTROL_WIDTH
 // rightWrap 간격 — ⓘ↔입력란↔suffix 그룹 내 통일 간격 (P23 일관성, P24 단순성)
 export const RIGHT_WRAP_GAP = 2
-// rightWrap 우측 여백 — 그룹 전체를 패널 우측에서 2px 띄움 (P23 일관성)
-export const RIGHT_WRAP_MARGIN = 2
+// rightWrap 우측 여백 — 패널 padding이 그룹 우측 여백을 제공 (P23 일관성)
+export const RIGHT_WRAP_MARGIN = 0
 
 /* ── Enter → 다음 포커스 이동 헬퍼 ─────────────────────────── */
 export function focusNext(el: HTMLElement) {
@@ -132,7 +132,7 @@ export function createSuffix(text: string): HTMLSpanElement {
     color: COLOR.tertiary,
     fontSize: FONT_SIZE.small,
     whiteSpace: 'nowrap',
-    textAlign: 'left',
+    textAlign: 'right',
     alignSelf: 'center',
     flexShrink: '0',
     width: `${SUFFIX_WIDTH}px`,
