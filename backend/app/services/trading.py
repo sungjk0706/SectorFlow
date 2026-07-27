@@ -72,6 +72,34 @@ BUY_GLOBAL_REJECT_REASONS: frozenset[str] = frozenset({
     BUY_REJECT_ORDER_FAIL,
 })
 
+# ── 매수 차단 사유 → UI "원인" 컬럼 표시 텍스트 (P10 SSOT, P21 사용자 투명성) ──
+# buy_order_executor에서 bt.reason 설정 시 사용. 매핑 없음 = 표시 생략.
+BUY_REJECT_REASON_TEXT: dict[str, str] = {
+    BUY_REJECT_MAX_HOLDING:       "최대 보유종목 초과",
+    BUY_REJECT_DAILY_LIMIT:       "일일 매수한도 초과",
+    BUY_REJECT_BUY_AMT_ZERO:      "종목당 한도 0",
+    BUY_REJECT_RISK_CASH:         "예수금 부족",
+    BUY_REJECT_DAILY_STATE:       "일일 상태 오류",
+    BUY_REJECT_RISK_CIRCUIT:      "서킷브레이커",
+    BUY_REJECT_RISK_LOSS:         "일일 손실 한도",
+    BUY_REJECT_RISK_LOSS_RATE:    "일일 손실률 한도",
+    BUY_REJECT_RISK_CONSEC_LOSS:  "연속 손실 한도",
+    BUY_REJECT_RISK_SINGLE:       "단일 종목 비중 초과",
+    BUY_REJECT_SYMBOL_LIMIT:      "종목당 한도 초과",
+    BUY_REJECT_OPEN_ORDER:        "미체결 주문 존재",
+    BUY_REJECT_SIGNAL_INTERVAL:   "연속신호 차단",
+    BUY_REJECT_QTY_ZERO:          "매수수량 0",
+    BUY_REJECT_ORDER_FAIL:        "주문 전송 실패",
+    BUY_REJECT_TEST_CASH:         "테스트 잔고 부족",
+    BUY_REJECT_AUTO_BUY_OFF:      "자동매수 OFF",
+    BUY_REJECT_REALTIME_LATENCY:  "실시간 지연",
+    BUY_REJECT_TIME_BLOCKED:      "체결 불가 시간대",
+    BUY_REJECT_REBUY:             "재매수 차단",
+    BUY_REJECT_PRICE_ZERO:        "현재가 0",
+    BUY_REJECT_RISE_GUARD:        "상승률 가드",
+    BUY_REJECT_FALL_GUARD:        "하락률 가드",
+}
+
 
 def _map_risk_reason_to_code(risk_reason: str) -> str:
     """RiskManager 거부 사유 문자열 → 사유코드 매핑 (P23 일관성).

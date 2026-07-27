@@ -13,6 +13,8 @@ from backend.app.services.buy_order_executor import evaluate_buy_candidates
 from backend.app.services.trading import (
     BUY_REJECT_RISE_GUARD, BUY_REJECT_AUTO_BUY_OFF, BUY_REJECT_QTY_ZERO,
     BUY_REJECT_RISK_LOSS_RATE, BUY_REJECT_RISK_CONSEC_LOSS,
+    BUY_REJECT_MAX_HOLDING, BUY_REJECT_DAILY_LIMIT, BUY_REJECT_RISK_CASH,
+    BUY_REJECT_BUY_AMT_ZERO, BUY_REJECT_REASON_TEXT,
 )
 from backend.app.domain.models import StockScore, SectorSummary, BuyTarget
 
@@ -84,10 +86,12 @@ def fresh_state():
 
 @pytest.fixture
 def reset_cash_gate():
-    """_cash_insufficient 플래그 및 스냅샷 초기화."""
+    """_cash_insufficient 플래그 및 스냅샷 초기화 + notify_buy_targets_update mock."""
     buy_order_executor._cash_insufficient = False
     buy_order_executor._last_global_snapshot = None
-    yield
+    with patch("backend.app.services.engine_account_notify.notify_buy_targets_update",
+               new_callable=AsyncMock) as _mock_notify:
+        yield _mock_notify
     buy_order_executor._cash_insufficient = False
     buy_order_executor._last_global_snapshot = None
 
@@ -929,3 +933,170 @@ class TestMultiRankBuyAlgorithm:
             mock_rm.return_value.get_withdrawable_deposit.side_effect = [10_000_000, 10_000_000, 0]
             await evaluate_buy_candidates()
         assert fresh_state.auto_trade.execute_buy.await_count == 1
+
+
+# ── 차단 사유 bt.reason 기록 (P21 사용자 투명성) ──────────────────────────────
+
+class TestRejectReasonRecording:
+    """execute_buy 차단 시 bt.reason에 사유 텍스트 기록 + WS delta 전송 검증."""
+
+    def _two_pass_targets(self):
+        s1 = _stock(code="A001", cur_price=70_000)
+        s2 = _stock(code="A002", cur_price=70_000)
+        return SectorSummary(
+            sectors=[],
+            buy_targets=[
+                BuyTarget(rank=1, sector_rank=1, stock=s1),
+                BuyTarget(rank=2, sector_rank=1, stock=s2),
+            ],
+            blocked_targets=[],
+            version=1,
+        )
+
+    @pytest.mark.asyncio
+    async def test_max_holding_sets_reason_on_all(self, fresh_state, reset_cash_gate):
+        """최대 보유종목 초과 → 모든 guard_pass 후보 bt.reason = "최대 보유종목 초과"."""
+        fresh_state.integrated_system_settings_cache = _default_settings(max_stock_cnt=1)
+        with patch("backend.app.services.engine_state.state", fresh_state), \
+             patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
+                   return_value=[{"qty": 1}, {"qty": 2}]):
+            await evaluate_buy_candidates()
+        ss = fresh_state.sector_summary_cache
+        for bt in ss.buy_targets:
+            if bt.stock.guard_pass:
+                assert bt.reason == BUY_REJECT_REASON_TEXT[BUY_REJECT_MAX_HOLDING]
+        reset_cash_gate.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_buy_amt_zero_sets_reason_on_all(self, fresh_state, reset_cash_gate):
+        """종목당 한도 0 → 모든 guard_pass 후보 bt.reason = "종목당 한도 0"."""
+        fresh_state.integrated_system_settings_cache = _default_settings(buy_amt=0)
+        with patch("backend.app.services.engine_state.state", fresh_state), \
+             patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
+                   return_value=[]):
+            await evaluate_buy_candidates()
+        ss = fresh_state.sector_summary_cache
+        for bt in ss.buy_targets:
+            if bt.stock.guard_pass:
+                assert bt.reason == BUY_REJECT_REASON_TEXT[BUY_REJECT_BUY_AMT_ZERO]
+
+    @pytest.mark.asyncio
+    async def test_daily_limit_sets_reason_on_all(self, fresh_state, reset_cash_gate):
+        """일일 매수한도 초과 → 모든 guard_pass 후보 bt.reason = "일일 매수한도 초과"."""
+        fresh_state.integrated_system_settings_cache = _default_settings(
+            max_daily_total_buy_on=True, max_daily_total_buy_amt=5_000_000,
+        )
+        fresh_state.auto_trade._daily_buy_spent = 5_000_000
+        with patch("backend.app.services.engine_state.state", fresh_state), \
+             patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
+                   return_value=[]):
+            await evaluate_buy_candidates()
+        ss = fresh_state.sector_summary_cache
+        for bt in ss.buy_targets:
+            if bt.stock.guard_pass:
+                assert bt.reason == BUY_REJECT_REASON_TEXT[BUY_REJECT_DAILY_LIMIT]
+
+    @pytest.mark.asyncio
+    async def test_cash_zero_sets_reason_on_all(self, fresh_state, reset_cash_gate):
+        """예수금 부족 → 모든 guard_pass 후보 bt.reason = "예수금 부족"."""
+        with patch("backend.app.services.engine_state.state", fresh_state), \
+             patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
+                   return_value=[]), \
+             patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm:
+            mock_rm.return_value.get_withdrawable_deposit.return_value = 0
+            await evaluate_buy_candidates()
+        ss = fresh_state.sector_summary_cache
+        for bt in ss.buy_targets:
+            if bt.stock.guard_pass:
+                assert bt.reason == BUY_REJECT_REASON_TEXT[BUY_REJECT_RISK_CASH]
+
+    @pytest.mark.asyncio
+    async def test_per_stock_reject_sets_reason_on_current(self, fresh_state, reset_cash_gate):
+        """종목별 차단(상승률 가드) → 해당 종목 bt.reason만 기록, 차순위는 빈 값 유지."""
+        fresh_state.sector_summary_cache = self._two_pass_targets()
+        # 1순위 종목별 차단, 2순위 성공
+        fresh_state.auto_trade.execute_buy = AsyncMock(
+            side_effect=[(False, BUY_REJECT_RISE_GUARD), (True, "")]
+        )
+        with patch("backend.app.services.engine_state.state", fresh_state), \
+             patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
+                   return_value=[]), \
+             patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm, \
+             patch("backend.app.services.daily_time_scheduler.is_order_blocked_by_time", return_value=False):
+            mock_rm.return_value.get_withdrawable_deposit.return_value = 10_000_000
+            await evaluate_buy_candidates()
+        ss = fresh_state.sector_summary_cache
+        # 1순위(A001)만 차단 사유 기록
+        bt1 = ss.buy_targets[0]
+        bt2 = ss.buy_targets[1]
+        assert bt1.reason == BUY_REJECT_REASON_TEXT[BUY_REJECT_RISE_GUARD]
+        # 2순위(A002)는 매수 성공 → reason 빈 값 유지
+        assert bt2.reason == ""
+
+    @pytest.mark.asyncio
+    async def test_global_reject_sets_reason_on_current(self, fresh_state, reset_cash_gate):
+        """전체 차단(자동매수 OFF) → 해당 종목 bt.reason 기록 후 루프 종료."""
+        fresh_state.sector_summary_cache = self._two_pass_targets()
+        fresh_state.auto_trade.execute_buy = AsyncMock(return_value=(False, BUY_REJECT_AUTO_BUY_OFF))
+        with patch("backend.app.services.engine_state.state", fresh_state), \
+             patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
+                   return_value=[]), \
+             patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm, \
+             patch("backend.app.services.daily_time_scheduler.is_order_blocked_by_time", return_value=False):
+            mock_rm.return_value.get_withdrawable_deposit.return_value = 10_000_000
+            await evaluate_buy_candidates()
+        ss = fresh_state.sector_summary_cache
+        bt1 = ss.buy_targets[0]
+        assert bt1.reason == BUY_REJECT_REASON_TEXT[BUY_REJECT_AUTO_BUY_OFF]
+        # notify 호출 확인
+        reset_cash_gate.assert_awaited()
+
+    @pytest.mark.asyncio
+    async def test_successful_buy_does_not_set_reason(self, fresh_state, reset_cash_gate):
+        """매수 성공 → bt.reason 빈 값 유지, notify 호출 안 됨."""
+        fresh_state.auto_trade.execute_buy = AsyncMock(return_value=(True, ""))
+        with patch("backend.app.services.engine_state.state", fresh_state), \
+             patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
+                   return_value=[]), \
+             patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm, \
+             patch("backend.app.services.daily_time_scheduler.is_order_blocked_by_time", return_value=False):
+            mock_rm.return_value.get_withdrawable_deposit.return_value = 10_000_000
+            await evaluate_buy_candidates()
+        ss = fresh_state.sector_summary_cache
+        for bt in ss.buy_targets:
+            if bt.stock.guard_pass:
+                assert bt.reason == ""
+        # 매수 성공 시에는 루프 내 notify 호출 없음
+        reset_cash_gate.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_qty_zero_cash_zero_sets_reason(self, fresh_state, reset_cash_gate):
+        """QTY_ZERO + 잔액 0 → 해당 종목 bt.reason = "매수수량 0" 기록 후 루프 종료."""
+        fresh_state.sector_summary_cache = self._two_pass_targets()
+        fresh_state.auto_trade.execute_buy = AsyncMock(return_value=(False, BUY_REJECT_QTY_ZERO))
+        with patch("backend.app.services.engine_state.state", fresh_state), \
+             patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
+                   return_value=[]), \
+             patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm, \
+             patch("backend.app.services.daily_time_scheduler.is_order_blocked_by_time", return_value=False):
+            mock_rm.return_value.get_withdrawable_deposit.side_effect = [10_000_000, 0]
+            await evaluate_buy_candidates()
+        ss = fresh_state.sector_summary_cache
+        bt1 = ss.buy_targets[0]
+        assert bt1.reason == BUY_REJECT_REASON_TEXT[BUY_REJECT_QTY_ZERO]

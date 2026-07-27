@@ -24,6 +24,24 @@ def invalidate_buy_snapshot() -> None:
     _last_global_snapshot = None
 
 
+async def _mark_all_reject_reasons(ss, reason_code: str) -> None:
+    """전역 차단 사유를 모든 guard_pass 매수 후보 bt.reason에 기록 후 WS delta 전송 (P21).
+
+    사전 체크 전역 차단(max_holding, daily_limit 등) 시 호출 —
+    모든 매수 후보가 동일 사유로 차단됨을 UI "원인" 컬럼에 표시.
+    매핑 없는 사유코드는 silently skip (P20 — 빈 값으로 덮지 않음).
+    """
+    from backend.app.services.trading import BUY_REJECT_REASON_TEXT
+    text = BUY_REJECT_REASON_TEXT.get(reason_code, "")
+    if not text:
+        return
+    for bt in ss.buy_targets:
+        if bt.stock.guard_pass:
+            bt.reason = text
+    from backend.app.services.engine_account_notify import notify_buy_targets_update
+    await notify_buy_targets_update()
+
+
 def _refresh_buyable_prices(ss, available: int, effective_buy_amt: int | None, is_test: bool) -> set[str]:
     """매수 가능 종목 집합 재계산 (P10 SSOT — execute_buy 내부와 동일 기준).
 
@@ -103,11 +121,13 @@ async def evaluate_buy_candidates() -> None:
         _pos_for_cnt = state.positions
     _holding_cnt = sum(1 for p in _pos_for_cnt if int(p.get("qty", 0)) > 0)
     if _max_limit_on and _holding_cnt >= _max_limit:
+        await _mark_all_reject_reasons(ss, "max_holding")
         return
 
     _buy_amt = int(state.integrated_system_settings_cache["buy_amt"])
     _buy_amt_on = bool(state.integrated_system_settings_cache.get("buy_amt_on", True))
     if _buy_amt_on and _buy_amt <= 0:
+        await _mark_all_reject_reasons(ss, "buy_amt_zero")
         return
 
     _max_daily = int(state.integrated_system_settings_cache["max_daily_total_buy_amt"])
@@ -116,9 +136,11 @@ async def evaluate_buy_candidates() -> None:
     if _max_daily_on and _max_daily > 0:
         if state.auto_trade._daily_buy_spent is None:
             logger.critical("[매매] 일일 매수 상태 로드 실패 — 매수 시도 중단")
+            await _mark_all_reject_reasons(ss, "daily_state")
             return
         _daily_remain = _max_daily - state.auto_trade._daily_buy_spent
         if _daily_remain <= 0:
+            await _mark_all_reject_reasons(ss, "daily_limit")
             return
 
     # ── 주문가능 금액 사전 체크 (매수 시도 전 조기 차단) ────────────────
@@ -138,6 +160,7 @@ async def evaluate_buy_candidates() -> None:
     if _available <= 0:
         _cash_insufficient = True
         logger.info("[매매] 주문가능 금액 0원 — 매수 시도 중단")
+        await _mark_all_reject_reasons(ss, "risk_cash")
         return
     _cash_insufficient = False
 
@@ -180,9 +203,11 @@ async def evaluate_buy_candidates() -> None:
     # 전체 차단 시 break
     # 잔액 0·최대 보유수·일일 한도 도달 시 break
     from backend.app.services.trading import (
-        BUY_REJECT_QTY_ZERO, BUY_GLOBAL_REJECT_REASONS,
+        BUY_REJECT_QTY_ZERO, BUY_GLOBAL_REJECT_REASONS, BUY_REJECT_REASON_TEXT,
     )
     from backend.app.services.risk_manager import get_risk_manager as _get_rm
+
+    _reason_changed = False  # bt.reason 변경 추적 — 루프 종료 후 notify 1회 호출 (P21)
 
     for bt in ss.buy_targets:
         s = bt.stock
@@ -215,6 +240,10 @@ async def evaluate_buy_candidates() -> None:
                 break  # ← 1건 매수 후 루프 종료 (건별 간격)
             else:
                 # 실패 사유 분류
+                _reject_text = BUY_REJECT_REASON_TEXT.get(_reason, "")
+                if _reject_text and bt.reason != _reject_text:
+                    bt.reason = _reject_text
+                    _reason_changed = True
                 if _reason == BUY_REJECT_QTY_ZERO:
                     # 잔액 0이면 전체 차단, 단가 비싸면 종목별 차단
                     if _get_rm().get_withdrawable_deposit() <= 0:
@@ -233,3 +262,8 @@ async def evaluate_buy_candidates() -> None:
         except Exception as e:
             logger.warning("[매매] 매수 실행 오류 %s: %s — 차순위 시도 중단", s.code, e, exc_info=True)
             break  # 예외 시 안전 종료
+
+    # ── 차단 사유 변경 시 WS delta 전송 (P21 사용자 투명성) ──
+    if _reason_changed:
+        from backend.app.services.engine_account_notify import notify_buy_targets_update
+        await notify_buy_targets_update()
