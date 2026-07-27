@@ -117,7 +117,7 @@ function buildSellTypeSection(root: HTMLElement): void {
   tsDropRow = createSettingRow('추적 고점대비 하락률 (%)', tsDropValInput.el, { infoText: '추적 시작 후 고점 대비 하락률이 이 값 이하이면 매도. -100%~0%, 기본 -2%' })
   {
     const r = createToggleLabelControlsRow({
-      labelText: '고점추적매도 (시작상승률%)',
+      labelText: ['고점추적매도', '(시작상승률%)'],
       infoText: '고점 대비 하락 추적 매도. 시작 상승률 도달 시 추적 시작. 0~100%',
       toggleOn: false,
       onToggle: next => { vals.ts_apply = next; saveHelper!.saveImmediate({ ts_apply: next }) },
