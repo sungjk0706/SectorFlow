@@ -6,7 +6,7 @@
  */
 
 import { COLOR } from './ui-styles'
-import { TEXT_INPUT_WIDTH, focusNext, applyInputBase, createSpinButtons } from './setting-row'
+import { TEXT_INPUT_WIDTH, focusNext, applyInputBase, createSpinButtons, createSuffix } from './setting-row'
 import { showToast } from './toast'
 
 /* ── 숫자 입력 문자열 검증 (P22 데이터 정합성) ────────────────
@@ -27,6 +27,7 @@ export function createNumInput(options: {
   min?: number          // ▼ 버튼 하한 (기본 0 — 대부분 설정값은 음수 무의미)
   max?: number          // ▲ 버튼 상한 (기본 Infinity — 상한 없음)
   name?: string
+  suffix?: string       // 입력란 우측 단위 표시 (예: "%", "점", "개", "초")
   style?: Partial<CSSStyleDeclaration>
 }) {
   let currentValue = options.value
@@ -89,6 +90,7 @@ export function createNumInput(options: {
 
   wrap.appendChild(input)
   wrap.appendChild(spinBtns)
+  if (options.suffix) wrap.appendChild(createSuffix(options.suffix))
 
   function setValue(v: number) {
     currentValue = v
@@ -112,6 +114,7 @@ export function createMoneyInput(options: {
   min?: number          // ▼ 버튼 하한 (기본 0 — 양수 전용 사용처 호환)
   max?: number          // ▲ 버튼 상한 (기본 Infinity — 상한 없음)
   name?: string
+  suffix?: string       // 입력란 우측 단위 표시 (예: "원")
   style?: Partial<CSSStyleDeclaration>
 }) {
   let currentValue = options.value
@@ -186,6 +189,7 @@ export function createMoneyInput(options: {
 
   wrap.appendChild(input)
   wrap.appendChild(spinBtns)
+  if (options.suffix) wrap.appendChild(createSuffix(options.suffix))
 
   function setValue(v: number) {
     currentValue = v

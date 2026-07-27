@@ -201,7 +201,7 @@ function buildSubscribeMaxRow(state: GeneralSettingsState): HTMLElement {
   const initMax = Number(state.vals['subscribe.max_0b_count'] ?? 200) || 200
   state.subscribeMaxInput = createNumInput({
     value: initMax,
-    min: 1, max: 1000, step: 10,
+    min: 1, max: 1000, step: 10, suffix: '개',
     name: 'subscribe.max_0b_count',
     onChange: async (v) => {
       if (!state.settingsMgr) return

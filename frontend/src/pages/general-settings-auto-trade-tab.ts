@@ -100,10 +100,10 @@ function buildDailyLossRow(state: GeneralSettingsState): void {
       toastResult(res)
       if (!res.ok) { state.vals.daily_loss_limit = orig; state.dailyLossInput!.setValue(orig) }
     },
-    step: 10000, min: -1000000000, max: 0, name: 'daily_loss_limit',
+    step: 10000, min: -1000000000, max: 0, suffix: '원', name: 'daily_loss_limit',
   })
   const r = createSettingToggleRow({
-    label: '일일 손실 한도 (원)',
+    label: '일일 손실 한도',
     infoText: '당일 누적 손실이 이 값 이하이면 매매 중단. -10억~0원, 기본 -50만원.',
     toggleOn: true,
     disableControlsOnToggle: true,
@@ -129,10 +129,10 @@ function buildDailyLossRateRow(state: GeneralSettingsState): void {
       toastResult(res)
       if (!res.ok) { state.vals.daily_loss_rate_limit = orig; state.dailyLossRateInput!.setValue(orig) }
     },
-    step: 0.1, min: -100, max: 0, name: 'daily_loss_rate_limit',
+    step: 0.1, min: -100, max: 0, suffix: '%', name: 'daily_loss_rate_limit',
   })
   const r = createSettingToggleRow({
-    label: '일일 손실률 한도 (%)',
+    label: '일일 손실률 한도',
     infoText: '당일 누적 손실률이 이 값 이하이면 매매 중단. -100%~0%, 기본 -5%.',
     toggleOn: false,
     disableControlsOnToggle: true,
@@ -158,10 +158,10 @@ function buildConsecLossRow(state: GeneralSettingsState): void {
       toastResult(res)
       if (!res.ok) { state.vals.consecutive_loss_limit = orig; state.consecLossInput!.setValue(orig) }
     },
-    step: 1, min: 1, max: 100, name: 'consecutive_loss_limit',
+    step: 1, min: 1, max: 100, suffix: '회', name: 'consecutive_loss_limit',
   })
   const r = createSettingToggleRow({
-    label: '연속 손실 횟수 한도 (회)',
+    label: '연속 손실 횟수 한도',
     infoText: '연속 손실 횟수가 이 값 이상이면 매매 중단. 1~100회, 기본 3회.',
     toggleOn: false,
     disableControlsOnToggle: true,

@@ -80,10 +80,10 @@ function buildTestVirtualInputRow(state: GeneralSettingsState, inputState: { inp
   Object.assign(row.style, { display: 'flex', alignItems: 'center', gap: '8px', padding: GS.rowPad })
   const label = document.createElement('span')
   Object.assign(label.style, { fontSize: GS.label, whiteSpace: 'nowrap' })
-  label.textContent = '금액입력(원):'
+  label.textContent = '금액입력:'
   row.appendChild(label)
 
-  state.depositInput = createMoneyInput({ value: inputState.inputAmount, onChange: v => { inputState.inputAmount = Math.max(0, v) }, style: { width: '160px' } as unknown as Partial<CSSStyleDeclaration>, name: 'deposit_amount' })
+  state.depositInput = createMoneyInput({ value: inputState.inputAmount, onChange: v => { inputState.inputAmount = Math.max(0, v) }, suffix: '원', style: { width: '160px' } as unknown as Partial<CSSStyleDeclaration>, name: 'deposit_amount' })
   row.appendChild(state.depositInput.el)
 
   const chargeBtn = createActionButton({

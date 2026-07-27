@@ -6,7 +6,7 @@ import { hotStore } from '../stores/hotStore'
 import { type SettingsManager } from '../settings'
 import { initSettingsPage, startSettingsSubscription, destroySettingsPage } from '../utils/settings-page'
 import type { AutoSaveHelper } from '../utils/settings-save'
-import { createSettingRow, createNumInput } from '../components/common/setting-row'
+import { createSettingRow, createNumInput, RIGHT_WRAP_WIDTH } from '../components/common/setting-row'
 import { createDualLabelSlider, type DualLabelSliderHandle } from '../components/common/create-slider'
 import { createProgressBar, type ProgressBarHandle } from '../components/common/progress-bar'
 import { createMarketCountRow, type MarketCountRowHandle } from '../components/common/market-count-row'
@@ -175,7 +175,7 @@ function createBonusSliderBlock(key: string, label: string | string[], infoText:
 } {
   let slider: DualLabelSliderHandle | null = null
   const input = createNumInput({
-    value: 0, min: -100, max: 100, step: 1, name: key,
+    value: 0, min: -100, max: 100, step: 1, suffix: '%', name: key,
     onChange: v => { const orig = currentVals[key]; slider?.setValue(v); onNumChange(key, v, () => { currentVals[key] = orig; input.setValue(orig); slider?.setValue(orig); _updateMaxScoreDisplay() }); _updateMaxScoreDisplay() },
   })
   slider = createDualLabelSlider({
@@ -202,7 +202,7 @@ function createBonusSliderBlock(key: string, label: string | string[], infoText:
   }
   labelRow.appendChild(labelSpan)
   const rightWrap = document.createElement('span')
-  Object.assign(rightWrap.style, { display: 'inline-flex', alignItems: 'center', gap: '6px', flexShrink: '0', width: '150px' })
+  Object.assign(rightWrap.style, { display: 'inline-flex', alignItems: 'center', gap: '6px', flexShrink: '0', width: RIGHT_WRAP_WIDTH + 'px' })
   rightWrap.appendChild(createInfoTooltip(infoText))
   rightWrap.appendChild(input.el)
   labelRow.appendChild(rightWrap)
@@ -222,14 +222,14 @@ function createBonusSliderBlock(key: string, label: string | string[], infoText:
 // ① 종목 필터 — 5거래일 평균 거래대금 이하 차단
 function buildFilterSection(root: HTMLElement): void {
   root.appendChild(createStepLabel('①', '5거래일 평균 거래대금 이하 차단'))
-  minTradeAmtInput = createNumInput({ value: 0, onChange: v => { const orig = currentVals.sector_min_trade_amt; onNumChange('sector_min_trade_amt', v, () => { currentVals.sector_min_trade_amt = orig; minTradeAmtInput!.setValue(orig) }) }, step: 1, min: 1, max: 100_000, name: 'sector_min_trade_amt' })
+  minTradeAmtInput = createNumInput({ value: 0, onChange: v => { const orig = currentVals.sector_min_trade_amt; onNumChange('sector_min_trade_amt', v, () => { currentVals.sector_min_trade_amt = orig; minTradeAmtInput!.setValue(orig) }) }, step: 1, min: 1, max: 100_000, suffix: '억원', name: 'sector_min_trade_amt' })
   root.appendChild(createSettingRow('최소 거래대금', minTradeAmtInput.el, { infoText: '5거래일 평균 거래대금이 이 값(억 원 단위) 미만인 종목은 업종 순위 계산에서 제외됩니다. 범위: 1~100,000 (1억~10조원).' }))
 }
 
 // ② 업종순위 — 임계치 입력 + 상태 라벨 (KRX/NXT 진행 바는 별도 섹션)
 function buildThresholdSection(root: HTMLElement): void {
   root.appendChild(createStepLabel('②', '업종순위: 수신율 기반 계산'))
-  thresholdInput = createNumInput({ value: 70, onChange: v => { const orig = currentVals.sector_start_threshold_pct; onNumChange('sector_start_threshold_pct', v, () => { currentVals.sector_start_threshold_pct = orig; thresholdInput!.setValue(orig) }) }, step: 1, min: 0, max: 100, name: 'sector_start_threshold_pct' })
+  thresholdInput = createNumInput({ value: 70, onChange: v => { const orig = currentVals.sector_start_threshold_pct; onNumChange('sector_start_threshold_pct', v, () => { currentVals.sector_start_threshold_pct = orig; thresholdInput!.setValue(orig) }) }, step: 1, min: 0, max: 100, suffix: '%', name: 'sector_start_threshold_pct' })
 
   const _initialRate = uiStore.getState().receiveRate
   const _initialThreshold = uiStore.getState().settings?.sector_start_threshold_pct ?? 70
@@ -295,7 +295,7 @@ function buildReceiveProgressSection(root: HTMLElement): void {
 // ③ 업종 컷오프 — 업종 내 상승비율 이하 차단
 function buildCutoffSection(root: HTMLElement): void {
   root.appendChild(createStepLabel('③', '업종 내 상승비율 이하 차단'))
-  minRiseRatioInput = createNumInput({ value: 0, onChange: v => { const orig = currentVals.sector_min_rise_ratio_pct; onNumChange('sector_min_rise_ratio_pct', v, () => { currentVals.sector_min_rise_ratio_pct = orig; minRiseRatioInput!.setValue(orig) }) }, step: 1, min: 0, max: 100, name: 'sector_min_rise_ratio_pct' })
+  minRiseRatioInput = createNumInput({ value: 0, onChange: v => { const orig = currentVals.sector_min_rise_ratio_pct; onNumChange('sector_min_rise_ratio_pct', v, () => { currentVals.sector_min_rise_ratio_pct = orig; minRiseRatioInput!.setValue(orig) }) }, step: 1, min: 0, max: 100, suffix: '%', name: 'sector_min_rise_ratio_pct' })
   root.appendChild(createSettingRow('업종내 종목 상승비율', minRiseRatioInput.el, { infoText: '업종 내 상승 종목 비율이 이 값 미만인 업종은 순위에서 제외됩니다(컷오프). 범위: 0~100%.' }))
 }
 
@@ -345,7 +345,7 @@ function buildBonusSection(root: HTMLElement): void {
 // ⑤ 매수 대상 — 최대 매수 대상 업종수 설정 + 상위 N 업종 종목 합계 보조 줄 (P21 투명성)
 function buildMaxTargetsSection(root: HTMLElement): void {
   root.appendChild(createStepLabel('⑤', '최대 매수 대상 업종수 설정'))
-  maxTargetsInput = createNumInput({ value: 0, onChange: v => { const orig = currentVals.sector_max_targets; onNumChange('sector_max_targets', v, () => { currentVals.sector_max_targets = orig; maxTargetsInput!.setValue(orig) }) }, step: 1, min: 0, max: 100, name: 'sector_max_targets' })
+  maxTargetsInput = createNumInput({ value: 0, onChange: v => { const orig = currentVals.sector_max_targets; onNumChange('sector_max_targets', v, () => { currentVals.sector_max_targets = orig; maxTargetsInput!.setValue(orig) }) }, step: 1, min: 0, max: 100, suffix: '개', name: 'sector_max_targets' })
 
   const maxTargetsRow = document.createElement('div')
   Object.assign(maxTargetsRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px solid ' + COLOR.borderLight })
@@ -355,7 +355,7 @@ function buildMaxTargetsSection(root: HTMLElement): void {
   maxTargetsStatusEl = document.createElement('span')
   Object.assign(maxTargetsStatusEl.style, { flex: '1', fontSize: FONT_SIZE.label, color: COLOR.tertiary, display: 'flex', alignItems: 'center', justifyContent: 'center', whiteSpace: 'nowrap' })
   const rightWrap = document.createElement('div')
-  Object.assign(rightWrap.style, { display: 'inline-flex', alignItems: 'center', gap: '6px', flexShrink: '0', width: '150px' })
+  Object.assign(rightWrap.style, { display: 'inline-flex', alignItems: 'center', gap: '6px', flexShrink: '0', width: RIGHT_WRAP_WIDTH + 'px' })
   rightWrap.appendChild(createInfoTooltip('업종 순위 상위 N개 업종을 매수 대상으로 선정합니다. 0 = 매수 대상 0개(매수 안 함). 범위: 0~100개.'))
   rightWrap.appendChild(maxTargetsInput.el)
   maxTargetsRow.appendChild(maxTargetsLabel)

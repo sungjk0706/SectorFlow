@@ -45,7 +45,7 @@ function buildNewsTtlRow(state: GeneralSettingsState): HTMLElement {
   const initTtl = Number(state.vals.news_boost_ttl_sec ?? 300) || 300
   state.newsTtlInput = createNumInput({
     value: initTtl,
-    min: 0, max: 3600, step: 60,
+    min: 0, max: 3600, step: 60, suffix: '초',
     name: 'news_boost_ttl_sec',
     onChange: async (v) => {
       if (!state.settingsMgr) return
@@ -57,7 +57,7 @@ function buildNewsTtlRow(state: GeneralSettingsState): HTMLElement {
       else { state.vals.news_boost_ttl_sec = orig; state.newsTtlInput?.setValue(orig) }
     },
   })
-  return createSettingRow('뉴스 가산점 유지 시간(초)', state.newsTtlInput.el, {
+  return createSettingRow('뉴스 가산점 유지 시간', state.newsTtlInput.el, {
     infoText: '뉴스 호재 감지 시 부여된 매수 가산점이 유지되는 시간. 0~3600초, 기본 300초(5분).',
   })
 }

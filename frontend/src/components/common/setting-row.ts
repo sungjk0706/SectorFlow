@@ -19,6 +19,9 @@ export * from './setting-row-controls'
 /* ── 공통 너비 상수 ────────────────────────────────────────── */
 export const INPUT_WIDTH = 80
 export const TEXT_INPUT_WIDTH = 220
+// rightWrap 고정폭 — ⓘ 툴팁 + 입력란(80) + 스핀(22) + suffix 정렬 통일 (P23 일관성)
+// suffix 추가로 150→180px 확장 (suffix 최대 32px + gap 6px 여유)
+export const RIGHT_WRAP_WIDTH = 180
 
 /* ── Enter → 다음 포커스 이동 헬퍼 ─────────────────────────── */
 export function focusNext(el: HTMLElement) {
@@ -108,6 +111,23 @@ export function createSpinButtons(input: HTMLInputElement, onUp: () => void, onD
   return wrap
 }
 
+/* ── 입력란 우측 단위 표시 (suffix) ─────────────────────────── */
+// createNumInput/createMoneyInput에서 호출. 스핀 버튼 우측에 단위 텍스트 배치.
+// 색상/폰트는 rangeText와 동일 패턴 (P23 일관성).
+export function createSuffix(text: string): HTMLSpanElement {
+  const span = document.createElement('span')
+  Object.assign(span.style, {
+    marginLeft: '6px',
+    color: COLOR.tertiary,
+    fontSize: FONT_SIZE.small,
+    whiteSpace: 'nowrap',
+    alignSelf: 'center',
+    flexShrink: '0',
+  })
+  span.textContent = text
+  return span
+}
+
 
 /* ── 설정 행: 레이블 왼쪽 — 입력란 오른쪽 (한 줄) ──────────── */
 // rangeText(입력란 좌측 안내) + infoText(입력란 좌측 ⓘ 툴팁) 옵션.
@@ -144,7 +164,7 @@ export function createSettingRow(label: string | HTMLElement, child: HTMLElement
       alignItems: 'center',
       gap: '6px',
       flexShrink: '0',
-      width: '150px',
+      width: `${RIGHT_WRAP_WIDTH}px`,
     })
     rightWrap.appendChild(createInfoTooltip(opts.infoText))
     if (opts?.rangeText) {
