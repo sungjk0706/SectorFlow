@@ -27,7 +27,6 @@ export function createInfoTooltip(text: string): HTMLElement {
     color: COLOR.neutral,
     cursor: 'pointer',
     userSelect: 'none',
-    marginLeft: '4px',
     flexShrink: '0',
   })
 

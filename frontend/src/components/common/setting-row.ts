@@ -27,8 +27,8 @@ export const SUFFIX_WIDTH = 36
 export const CONTROL_WIDTH = INPUT_WIDTH + SPIN_BUTTON_WIDTH + SUFFIX_GAP + SUFFIX_WIDTH
 // select는 NumInput/MoneyInput과 동일한 오른쪽 끝 정렬을 유지 (P23 일관성)
 export const SELECT_WIDTH = CONTROL_WIDTH
-// rightWrap 고정폭 — ⓘ 툴팁(16 + 자체 여백 4) + gap(6) + 컨트롤(128) = 154px (P23 일관성)
-export const RIGHT_WRAP_WIDTH = 154
+// rightWrap 간격 — ⓘ↔입력란↔suffix 그룹 내 통일 간격 (P23 일관성, P24 단순성)
+export const RIGHT_WRAP_GAP = 2
 
 /* ── Enter → 다음 포커스 이동 헬퍼 ─────────────────────────── */
 export function focusNext(el: HTMLElement) {
@@ -130,7 +130,7 @@ export function createSuffix(text: string): HTMLSpanElement {
     color: COLOR.tertiary,
     fontSize: FONT_SIZE.small,
     whiteSpace: 'nowrap',
-    textAlign: 'right',
+    textAlign: 'left',
     alignSelf: 'center',
     flexShrink: '0',
     width: `${SUFFIX_WIDTH}px`,
@@ -166,16 +166,15 @@ export function createSettingRow(label: string | HTMLElement, child: HTMLElement
   }
   div.appendChild(labelSpan)
 
-  // infoText: 입력란 좌측에 ⓘ 툴팁 배치 — 모든 페이지 동일 위치·간격 통일 (P23 일관성)
-  // 우측 영역 고정폭으로 아이콘과 입력란 왼쪽을 세로 일직선으로 맞춤.
+  // infoText: 입력란 좌측에 ⓘ 툴팁 배치 — 그룹(ⓘ+입력란+suffix)을 우측 정렬로 통일 (P23 일관성)
   const rightWrap = document.createElement('span')
   if (opts?.infoText) {
     Object.assign(rightWrap.style, {
       display: 'inline-flex',
       alignItems: 'center',
-      gap: '6px',
+      gap: `${RIGHT_WRAP_GAP}px`,
       flexShrink: '0',
-      width: `${RIGHT_WRAP_WIDTH}px`,
+      marginLeft: 'auto',
     })
     rightWrap.appendChild(createInfoTooltip(opts.infoText))
     if (opts?.rangeText) {
@@ -187,7 +186,7 @@ export function createSettingRow(label: string | HTMLElement, child: HTMLElement
     rightWrap.appendChild(child)
     div.appendChild(rightWrap)
   } else if (opts?.rangeText) {
-    Object.assign(rightWrap.style, { display: 'flex', alignItems: 'center', gap: '6px' })
+    Object.assign(rightWrap.style, { display: 'flex', alignItems: 'center', gap: `${RIGHT_WRAP_GAP}px`, marginLeft: 'auto' })
     const rangeSpan = document.createElement('span')
     Object.assign(rangeSpan.style, { fontSize: FONT_SIZE.small, color: COLOR.tertiary, whiteSpace: 'nowrap' })
     rangeSpan.textContent = opts.rangeText
@@ -195,6 +194,7 @@ export function createSettingRow(label: string | HTMLElement, child: HTMLElement
     rightWrap.appendChild(child)
     div.appendChild(rightWrap)
   } else {
+    Object.assign(child.style, { marginLeft: 'auto' })
     div.appendChild(child)
   }
   return div
