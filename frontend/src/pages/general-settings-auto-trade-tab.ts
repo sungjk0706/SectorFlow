@@ -100,11 +100,11 @@ function buildDailyLossRow(state: GeneralSettingsState): void {
       toastResult(res)
       if (!res.ok) { state.vals.daily_loss_limit = orig; state.dailyLossInput!.setValue(orig) }
     },
-    step: 10000, min: -1000000000, max: 0, suffix: '원', name: 'daily_loss_limit',
+    step: 1, min: -1000000000, max: 0, unit: 'manwon', name: 'daily_loss_limit',
   })
   const r = createSettingToggleRow({
     label: '일일 손실 한도',
-    infoText: '당일 누적 손실이 이 값 이하이면 매매 중단. -10억~0원, 기본 -50만원.',
+    infoText: '당일 누적 손실이 이 값 이하이면 매매 중단. -100,000~0만원(=-10억~0원), 기본 -50만원.',
     toggleOn: true,
     disableControlsOnToggle: true,
     controls: [state.dailyLossInput.el],

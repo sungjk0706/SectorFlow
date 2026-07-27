@@ -311,7 +311,7 @@ function buildBuyAmountSection(root: HTMLElement): void {
   root.appendChild(createSettingRow('매수 주문 유형', createFixedValue('시장가')))
 
   // 일일 최대 매수 금액 (토글 + 금액 입력)
-  maxDailyInput = createMoneyInput({ value: 0, onChange: v => { const orig = Number(vals.max_daily_total_buy_amt); vals.max_daily_total_buy_amt = v; saveHelper!.autoSave('max_daily_total_buy_amt', v, () => { vals.max_daily_total_buy_amt = orig; maxDailyInput!.setValue(orig) }) }, min: 0, max: 1_000_000_000, suffix: '원', name: 'max_daily_total_buy_amt' })
+  maxDailyInput = createMoneyInput({ value: 0, onChange: v => { const orig = Number(vals.max_daily_total_buy_amt); vals.max_daily_total_buy_amt = v; saveHelper!.autoSave('max_daily_total_buy_amt', v, () => { vals.max_daily_total_buy_amt = orig; maxDailyInput!.setValue(orig) }) }, min: 0, max: 1_000_000_000, unit: 'manwon', name: 'max_daily_total_buy_amt' })
   {
     const r = createSettingToggleRow({
       label: '전체 일일 한도',
@@ -345,7 +345,7 @@ function buildRebuySection(root: HTMLElement): void {
   root.appendChild(sectionTitle('동일 종목 재매수 제어'))
 
   // 종목당 일일 최대 매수 금액 (토글 + 입력)
-  buyAmtInput = createMoneyInput({ value: 0, onChange: v => { const orig = Number(vals.buy_amt); vals.buy_amt = v; saveHelper!.autoSave('buy_amt', v, () => { vals.buy_amt = orig; buyAmtInput!.setValue(orig) }) }, min: 0, max: 1_000_000_000, suffix: '원', name: 'buy_amt' })
+  buyAmtInput = createMoneyInput({ value: 0, onChange: v => { const orig = Number(vals.buy_amt); vals.buy_amt = v; saveHelper!.autoSave('buy_amt', v, () => { vals.buy_amt = orig; buyAmtInput!.setValue(orig) }) }, min: 0, max: 1_000_000_000, unit: 'manwon', name: 'buy_amt' })
   {
     const r = createSettingToggleRow({
       label: '종목당 일일 한도',

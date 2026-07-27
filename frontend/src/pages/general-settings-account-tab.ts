@@ -83,7 +83,7 @@ function buildTestVirtualInputRow(state: GeneralSettingsState, inputState: { inp
   label.textContent = '금액입력:'
   row.appendChild(label)
 
-  state.depositInput = createMoneyInput({ value: inputState.inputAmount, onChange: v => { inputState.inputAmount = Math.max(0, v) }, suffix: '원', style: { width: '160px' } as unknown as Partial<CSSStyleDeclaration>, name: 'deposit_amount' })
+  state.depositInput = createMoneyInput({ value: inputState.inputAmount, onChange: v => { inputState.inputAmount = Math.max(0, v) }, unit: 'manwon', name: 'deposit_amount' })
   row.appendChild(state.depositInput.el)
 
   const chargeBtn = createActionButton({

@@ -17,11 +17,18 @@ export * from './setting-row-inputs'
 export * from './setting-row-controls'
 
 /* ── 공통 너비 상수 ────────────────────────────────────────── */
-export const INPUT_WIDTH = 80
+export const INPUT_WIDTH = 70
 export const TEXT_INPUT_WIDTH = 220
-// rightWrap 고정폭 — ⓘ 툴팁 + 입력란(80) + 스핀(22) + suffix 정렬 통일 (P23 일관성)
-// suffix 추가로 150→180px 확장 (suffix 최대 32px + gap 6px 여유)
-export const RIGHT_WRAP_WIDTH = 180
+export const SPIN_BUTTON_WIDTH = 22
+export const SUFFIX_GAP = 0
+export const INPUT_GROUP_SHIFT = 16
+// suffix 고정폭 — 모든 단위("%", "점", "개", "초", "회", "원", "만원", "억원")가 동일 너비 차지 → 정렬 통일 (P23 일관성)
+export const SUFFIX_WIDTH = 36
+// 입력 그룹 공통 너비 — 숫자/금액 입력란과 select가 동일한 오른쪽 기준 사용 (P23 일관성)
+export const CONTROL_WIDTH = INPUT_WIDTH + SPIN_BUTTON_WIDTH + SUFFIX_GAP + SUFFIX_WIDTH
+export const SELECT_WIDTH = CONTROL_WIDTH - INPUT_GROUP_SHIFT
+// rightWrap 고정폭 — ⓘ 툴팁(16 + 자체 여백 4) + gap(6) + 컨트롤(130) = 156px (P23 일관성)
+export const RIGHT_WRAP_WIDTH = 156
 
 /* ── Enter → 다음 포커스 이동 헬퍼 ─────────────────────────── */
 export function focusNext(el: HTMLElement) {
@@ -44,6 +51,7 @@ export function applyInputBase(el: HTMLInputElement, extraStyle?: Partial<CSSSty
   el.spellcheck = false
   Object.assign(el.style, {
     width: `${INPUT_WIDTH}px`,
+    boxSizing: 'border-box',
     padding: '4px 8px',
     borderRadius: '4px',
     border: '1px solid ' + COLOR.border,
@@ -61,7 +69,7 @@ function applySpinBtn(btn: HTMLButtonElement) {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    width: '22px',
+    width: `${SPIN_BUTTON_WIDTH}px`,
     height: '50%',
     border: '1px solid ' + COLOR.border,
     background: COLOR.surface,
@@ -114,15 +122,18 @@ export function createSpinButtons(input: HTMLInputElement, onUp: () => void, onD
 /* ── 입력란 우측 단위 표시 (suffix) ─────────────────────────── */
 // createNumInput/createMoneyInput에서 호출. 스핀 버튼 우측에 단위 텍스트 배치.
 // 색상/폰트는 rangeText와 동일 패턴 (P23 일관성).
+// SUFFIX_WIDTH 고정폭 적용 — 모든 단위가 동일 너비 차지하여 입력란 정렬 통일 (P23 일관성, P24 단순성).
 export function createSuffix(text: string): HTMLSpanElement {
   const span = document.createElement('span')
   Object.assign(span.style, {
-    marginLeft: '6px',
+    marginLeft: `${SUFFIX_GAP}px`,
     color: COLOR.tertiary,
     fontSize: FONT_SIZE.small,
     whiteSpace: 'nowrap',
+    textAlign: 'right',
     alignSelf: 'center',
     flexShrink: '0',
+    width: `${SUFFIX_WIDTH}px`,
   })
   span.textContent = text
   return span

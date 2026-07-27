@@ -6,7 +6,7 @@
  */
 
 import { COLOR } from './ui-styles'
-import { TEXT_INPUT_WIDTH, focusNext, applyInputBase, createSpinButtons, createSuffix } from './setting-row'
+import { TEXT_INPUT_WIDTH, INPUT_GROUP_SHIFT, SELECT_WIDTH, focusNext, applyInputBase, createSpinButtons, createSuffix } from './setting-row'
 import { showToast } from './toast'
 
 /* ── 숫자 입력 문자열 검증 (P22 데이터 정합성) ────────────────
@@ -17,6 +17,18 @@ import { showToast } from './toast'
  */
 function _isValidNumericInput(s: string): boolean {
   return s === '' || /^-?\d*\.?\d*$/.test(s)
+}
+
+function createInputGroup(input: HTMLInputElement, spinBtns: HTMLElement): HTMLSpanElement {
+  const group = document.createElement('span')
+  Object.assign(group.style, {
+    display: 'inline-flex',
+    alignItems: 'stretch',
+    transform: `translateX(${INPUT_GROUP_SHIFT}px)`,
+  })
+  group.appendChild(input)
+  group.appendChild(spinBtns)
+  return group
 }
 
 /* ── 숫자 입력란 (커스텀 스핀 버튼) ────────────────────────── */
@@ -38,6 +50,7 @@ export function createNumInput(options: {
   const wrap = document.createElement('div')
   wrap.style.display = 'flex'
   wrap.style.alignItems = 'stretch'
+  void wrap
 
   const input = document.createElement('input')
   input.type = 'text'
@@ -88,8 +101,7 @@ export function createNumInput(options: {
     () => { currentValue = Math.round(Math.max(minVal, currentValue - numStep) * 100) / 100; input.value = String(currentValue); try { options.onChange(currentValue) } catch (e) { console.error('[NumInput] spin down onChange error', e) } },
   )
 
-  wrap.appendChild(input)
-  wrap.appendChild(spinBtns)
+  wrap.appendChild(createInputGroup(input, spinBtns))
   if (options.suffix) wrap.appendChild(createSuffix(options.suffix))
 
   function setValue(v: number) {
@@ -107,18 +119,24 @@ export function createNumInput(options: {
 }
 
 /* ── 금액 입력란 (콤마 포맷 + 커스텀 스핀 버튼, 음수 지원) ─── */
+// unit: 'manwon' 지원 — 내부 currentValue·onChange·setValue는 원 단위 SSOT 유지(백엔드와 일관),
+// 표시/편집만 만원 단위로 변환 (P10 SSOT, P21 투명성, P23 일관성).
 export function createMoneyInput(options: {
-  value: number
-  onChange: (v: number) => void
-  step?: number
-  min?: number          // ▼ 버튼 하한 (기본 0 — 양수 전용 사용처 호환)
-  max?: number          // ▲ 버튼 상한 (기본 Infinity — 상한 없음)
+  value: number                 // 원 단위 (백엔드 SSOT)
+  onChange: (v: number) => void // 원 단위로 전달
+  step?: number                 // 표시 단위 기준 스핀 증분 (won 기본 10000원, manwon 기본 1만원)
+  min?: number                  // ▼ 버튼 하한 (원 단위, 기본 0 — 양수 전용 사용처 호환)
+  max?: number                  // ▲ 버튼 상한 (원 단위, 기본 Infinity — 상한 없음)
   name?: string
-  suffix?: string       // 입력란 우측 단위 표시 (예: "원")
+  suffix?: string               // 입력란 우측 단위 표시 (won 기본 "원", manwon 기본 "만원")
+  unit?: 'won' | 'manwon'       // 표시/편집 단위 (기본 'won')
   style?: Partial<CSSStyleDeclaration>
 }) {
+  const unit = options.unit ?? 'won'
+  const isManwon = unit === 'manwon'
   let currentValue = options.value
-  const step = options.step ?? 10000
+  // 표시 단위 기준 step — manwon은 1만원 단위가 자연스러움 (사용처에서 원 단위 step 전달 시 *10000으로 환산)
+  const step = isManwon ? (options.step ?? 1) * 10000 : (options.step ?? 10000)
   const minVal = options.min ?? 0
   const maxVal = options.max ?? Infinity
 
@@ -126,16 +144,25 @@ export function createMoneyInput(options: {
   function fmtMoney(v: number): string {
     return v === 0 ? '0' : v.toLocaleString()
   }
+  // 원 단위 → 표시 단위 변환 (manwon: 10000배 축소)
+  function toDisplay(v: number): number {
+    return isManwon ? v / 10000 : v
+  }
+  // 표시 단위 입력 → 원 단위 변환 (manwon: 10000배 확대)
+  function toValue(display: number): number {
+    return isManwon ? display * 10000 : display
+  }
 
   const wrap = document.createElement('div')
   wrap.style.display = 'flex'
   wrap.style.alignItems = 'stretch'
+  void wrap
 
   const input = document.createElement('input')
   input.type = 'text'
   input.inputMode = 'numeric'
   if (options.name) input.setAttribute('data-name', options.name)
-  input.value = fmtMoney(currentValue)
+  input.value = fmtMoney(toDisplay(currentValue))
   applyInputBase(input, {
     borderRight: 'none',
     borderTopRightRadius: '0',
@@ -144,38 +171,40 @@ export function createMoneyInput(options: {
   } as Partial<CSSStyleDeclaration>)
 
   input.addEventListener('focus', () => {
-    // 포커스 시 콤마 제거 → 순수 숫자로 편집 가능
-    input.value = currentValue !== 0 ? String(currentValue) : ''
+    // 포커스 시 콤마 제거 → 순수 숫자로 편집 가능 (표시 단위 기준)
+    const disp = toDisplay(currentValue)
+    input.value = disp !== 0 ? String(disp) : ''
   })
   input.addEventListener('input', () => {
     // 콤마 제거 후 형식 검증 (createNumInput과 동일 패턴, P10/P23)
     const stripped = input.value.replace(/,/g, '')
     if (!_isValidNumericInput(stripped)) {
-      input.value = fmtMoney(currentValue)
+      input.value = fmtMoney(toDisplay(currentValue))
       showToast('warning', '올바른 값을 입력하세요 (숫자만 입력 가능)')
       return
     }
     if (stripped === '' || stripped === '-' || stripped === '-.' || stripped === '.') {
       return
     }
-    const parsed = Number(stripped)
-    if (!isFinite(parsed)) {
-      input.value = fmtMoney(currentValue)
+    const parsedDisplay = Number(stripped)
+    if (!isFinite(parsedDisplay)) {
+      input.value = fmtMoney(toDisplay(currentValue))
       showToast('warning', '올바른 값을 입력하세요')
       return
     }
-    // 실시간 clamp — 범위 밖 값 입력 즉시 보정 (createNumInput과 동일 패턴, P10/P23)
+    // 표시 단위 → 원 단위 변환 후 clamp (원 단위 SSOT 기준)
+    const parsed = toValue(parsedDisplay)
     const clamped = Math.min(maxVal, Math.max(minVal, parsed))
     currentValue = clamped
-    // 보정된 경우에만 DOM 갱신 — 범위 내 타이핑 시 커서 위치 보존
+    // 보정된 경우에만 DOM 갱신 — 범위 내 타이핑 시 커서 위치 보존 (표시 단위로 표시)
     if (clamped !== parsed) {
-      input.value = String(clamped)
+      input.value = String(toDisplay(clamped))
     }
     try { options.onChange(clamped) } catch (e) { console.error('[MoneyInput] onChange error', e) }
   })
   input.addEventListener('blur', () => {
-    // 포커스 해제 시 콤마 포맷 복원
-    input.value = fmtMoney(currentValue)
+    // 포커스 해제 시 콤마 포맷 복원 (표시 단위)
+    input.value = fmtMoney(toDisplay(currentValue))
   })
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') { e.preventDefault(); focusNext(input) }
@@ -183,19 +212,19 @@ export function createMoneyInput(options: {
 
   const spinBtns = createSpinButtons(
     input,
-    () => { currentValue = Math.min(maxVal, currentValue + step); input.value = fmtMoney(currentValue); try { options.onChange(currentValue) } catch (e) { console.error('[MoneyInput] spin up onChange error', e) } },
-    () => { currentValue = Math.max(minVal, currentValue - step); input.value = fmtMoney(currentValue); try { options.onChange(currentValue) } catch (e) { console.error('[MoneyInput] spin down onChange error', e) } },
+    () => { currentValue = Math.min(maxVal, currentValue + step); input.value = fmtMoney(toDisplay(currentValue)); try { options.onChange(currentValue) } catch (e) { console.error('[MoneyInput] spin up onChange error', e) } },
+    () => { currentValue = Math.max(minVal, currentValue - step); input.value = fmtMoney(toDisplay(currentValue)); try { options.onChange(currentValue) } catch (e) { console.error('[MoneyInput] spin down onChange error', e) } },
   )
 
-  wrap.appendChild(input)
-  wrap.appendChild(spinBtns)
-  if (options.suffix) wrap.appendChild(createSuffix(options.suffix))
+  wrap.appendChild(createInputGroup(input, spinBtns))
+  const suffixText = options.suffix ?? (isManwon ? '만원' : undefined)
+  if (suffixText) wrap.appendChild(createSuffix(suffixText))
 
   function setValue(v: number) {
     currentValue = v
     // 포커스 중이면 DOM 값 덮어쓰지 않음 (사용자 편집 보호)
     if (document.activeElement === input) return
-    input.value = fmtMoney(v)
+    input.value = fmtMoney(toDisplay(v))
   }
 
   function getValue(): number {
@@ -256,6 +285,7 @@ export function createTextInput(options: {
 }
 
 /* ── 드롭다운 셀렉트 (공통 스타일) ─────────────────────────── */
+// select는 이동량만큼 폭을 줄여 NumInput/MoneyInput 행과 오른쪽 끝 정렬 통일 (P23 일관성)
 export function createSelect(options: {
   items: { value: string; label: string }[]
   value: string
@@ -266,7 +296,8 @@ export function createSelect(options: {
   const select = document.createElement('select')
   if (options.name) select.setAttribute('data-name', options.name)
   Object.assign(select.style, {
-    width: options.width ?? '121px',
+    width: options.width ?? `${SELECT_WIDTH}px`,
+    transform: `translateX(${INPUT_GROUP_SHIFT}px)`,
     padding: '4px 8px',
     borderRadius: '4px',
     border: '1px solid ' + COLOR.border,
