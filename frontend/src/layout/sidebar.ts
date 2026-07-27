@@ -3,6 +3,17 @@
 
 import { FONT_SIZE, FONT_WEIGHT, COLOR } from '../components/common/ui-styles'
 
+let shimmerInjected = false
+
+function ensureShimmerKeyframes(): void {
+  if (shimmerInjected) return
+  const style = document.createElement('style')
+  style.textContent =
+    '@keyframes sidebar-shimmer { 0% { background-position: 200% center; } 100% { background-position: -200% center; } }'
+  document.head.appendChild(style)
+  shimmerInjected = true
+}
+
 const MENU = [
   { path: '#/sector-ranking', label: '업종순위', icon: '📊' },
   { path: '#/buy-settings', label: '매수후보', icon: '💰' },
@@ -22,6 +33,8 @@ export function createSidebar(onNavigate: (path: string) => void): {
   setActive(path: string): void
   setBadge(path: string, count: number): void
 } {
+  ensureShimmerKeyframes()
+
   const nav = document.createElement('nav')
   nav.style.cssText =
     `width:120px;min-width:120px;background:${COLOR.surface};border-right:1px solid ${COLOR.borderDark};display:flex;flex-direction:column;padding:12px 0;`
@@ -57,18 +70,12 @@ export function createSidebar(onNavigate: (path: string) => void): {
   footer.style.cssText =
     `margin-top:auto;padding:16px 0 12px 0;text-align:center;`
 
-  const builtBy = document.createElement('span')
-  builtBy.style.cssText =
-    `font-size:${FONT_SIZE.label};color:${COLOR.muted};font-weight:${FONT_WEIGHT.normal};`
-  builtBy.textContent = 'Built by '
+  const footerText = document.createElement('span')
+  footerText.style.cssText =
+    `display:inline-block;font-size:${FONT_SIZE.label};color:${COLOR.muted};font-weight:${FONT_WEIGHT.normal};background:linear-gradient(110deg, ${COLOR.muted} 46%, rgba(255,255,255,1.0) 50%, ${COLOR.muted} 54%);background-size:300% 100%;-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;animation:sidebar-shimmer 8s linear infinite;will-change:background-position;`
+  footerText.textContent = 'Built by J.K'
 
-  const initials = document.createElement('span')
-  initials.style.cssText =
-    `font-size:${FONT_SIZE.label};color:${COLOR.tertiary};font-weight:${FONT_WEIGHT.semibold};`
-  initials.textContent = 'J.K'
-
-  footer.appendChild(builtBy)
-  footer.appendChild(initials)
+  footer.appendChild(footerText)
   nav.appendChild(footer)
 
   function setActive(path: string): void {
