@@ -7,12 +7,12 @@ import type { UIState } from '../stores/uiStore'
 import { clearCircuitBreakerOpen, clearOrderTimeBlocked, clearRiskBlockStatus, clearTestCashFailed, clearPositionBuildFailed, clearDegradedMode } from '../stores/uiStore'
 import type { IndexData } from '../types'
 import { BROKER_LABELS } from '../components/common/broker-badge'
-import { COLOR } from '../components/common/ui-styles'
+import { COLOR, RADIUS, BLUR, SURFACE_ALPHA } from '../components/common/ui-styles'
 
 // ── 스타일 상수 ──
 
 const CHIP_STYLE =
-  'padding:3px 8px;border-radius:10px;font-size:10px;font-weight:600;cursor:default;white-space:nowrap;'
+  `padding:3px 8px;border-radius:${RADIUS.lg};font-size:10px;font-weight:600;cursor:default;white-space:nowrap;`
 
 const PHASE_STYLE: Record<string, { bg: string; color: string }> = {
   /* 장중(거래 가능) — 초록 */
@@ -259,7 +259,7 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
 
   const header = document.createElement('header')
   header.style.cssText =
-    `box-sizing:border-box;padding:4px 16px;border-bottom:1px solid ${COLOR.borderDark};display:flex;gap:8px;align-items:center;flex-wrap:nowrap;flex-shrink:0;height:40px;min-height:40px;max-height:40px;overflow-x:auto;overflow-y:hidden;`
+    `box-sizing:border-box;padding:4px 16px;background:${SURFACE_ALPHA.toolbar};backdrop-filter:${BLUR.toolbar};-webkit-backdrop-filter:${BLUR.toolbar};border-bottom:1px solid ${COLOR.borderDark};display:flex;gap:8px;align-items:center;flex-wrap:nowrap;flex-shrink:0;height:40px;min-height:40px;max-height:40px;overflow-x:auto;overflow-y:hidden;`
 
   // 로고
   const logo = document.createElement('strong')

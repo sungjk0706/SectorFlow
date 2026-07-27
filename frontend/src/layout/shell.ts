@@ -1,5 +1,5 @@
 // frontend/src/layout/shell.ts
-// 앱 전체 레이아웃 셸 — 100vh flex column: 헤더(40px) + 본문(사이드바 160px + 콘텐츠)
+// 앱 전체 레이아웃 셸 — 100vh flex column: 헤더(40px) + 본문(사이드바 120px + 콘텐츠)
 
 import { createHeader } from './header'
 import { createSidebar } from './sidebar'
@@ -22,7 +22,7 @@ export function createLayoutShell(): {
 } {
   // ── 루트 컨테이너 ──
   const root = document.createElement('div')
-  root.style.cssText = 'height:100vh;display:flex;flex-direction:column;overflow:hidden;'
+  root.style.cssText = `height:100vh;display:flex;flex-direction:column;overflow:hidden;background:${COLOR.white};`
 
   // ── 헤더 ──
   const header = createHeader()

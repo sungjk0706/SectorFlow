@@ -1,7 +1,7 @@
 // frontend/src/layout/sidebar.ts
 // 사이드바 네비게이션 — 8개 메뉴 항목, 활성 경로 시각적 강조(책갈피 스타일), 숫자 배지
 
-import { FONT_SIZE, FONT_WEIGHT, COLOR } from '../components/common/ui-styles'
+import { FONT_SIZE, FONT_WEIGHT, COLOR, RADIUS, SHADOW, BLUR, SURFACE_ALPHA } from '../components/common/ui-styles'
 
 let shimmerInjected = false
 
@@ -37,7 +37,7 @@ export function createSidebar(onNavigate: (path: string) => void): {
 
   const nav = document.createElement('nav')
   nav.style.cssText =
-    `width:120px;min-width:120px;background:${COLOR.surface};border-right:1px solid ${COLOR.borderDark};display:flex;flex-direction:column;padding:12px 0;`
+    `width:120px;min-width:120px;background:${SURFACE_ALPHA.toolbar};backdrop-filter:${BLUR.toolbar};-webkit-backdrop-filter:${BLUR.toolbar};border-right:1px solid ${COLOR.borderDark};display:flex;flex-direction:column;padding:12px 0;`
 
 
 
@@ -87,9 +87,9 @@ export function createSidebar(onNavigate: (path: string) => void): {
         ? `3px solid ${ACTIVE_COLOR}`
         : '3px solid transparent'
       // 책갈피 스타일 — 선택 메뉴만 우측 모서리 둥글게 + 은은한 그림자 (비선택은 평평)
-      a.style.borderTopRightRadius = isActive ? '12px' : '0'
-      a.style.borderBottomRightRadius = isActive ? '12px' : '0'
-      a.style.boxShadow = isActive ? '2px 2px 6px rgba(0,0,0,0.08)' : 'none'
+      a.style.borderTopRightRadius = isActive ? RADIUS.xl : '0'
+      a.style.borderBottomRightRadius = isActive ? RADIUS.xl : '0'
+      a.style.boxShadow = isActive ? SHADOW.sidebarActive : SHADOW.none
     }
   }
 
