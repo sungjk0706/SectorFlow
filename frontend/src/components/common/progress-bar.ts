@@ -2,7 +2,7 @@
 // 진행률 바 공통 컴포넌트 — header.ts 인라인 패턴 추출 (P23 일관성)
 // 사용처: header.ts (백그라운드 다운로드), sector-settings.ts (수신율)
 
-import { COLOR } from './ui-styles'
+import { COLOR, RADIUS } from './ui-styles'
 
 export interface ProgressBarHandle {
   el: HTMLElement
@@ -62,7 +62,7 @@ export function createProgressBar(
     flex: '1',
     height,
     background: COLOR.neutralBg,
-    borderRadius: '4px',
+    borderRadius: RADIUS.xs,
     overflow: 'visible',
   })
 
@@ -75,7 +75,7 @@ export function createProgressBar(
     height: '100%',
     width: '0%',
     background: color,
-    borderRadius: '4px',
+    borderRadius: RADIUS.xs,
     transition: 'width 0.3s ease, background 0.3s ease',
   })
   bar.appendChild(fill)

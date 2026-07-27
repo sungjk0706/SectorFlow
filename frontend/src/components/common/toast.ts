@@ -1,5 +1,5 @@
 // frontend/src/components/common/toast.ts — 공통 토스트 알림 시스템
-import { COLOR, hexToRgba } from './ui-styles'
+import { COLOR, hexToRgba, RADIUS, SHADOW, BLUR } from './ui-styles'
 
 export type ToastType = 'success' | 'error' | 'warning' | 'info'
 
@@ -56,15 +56,15 @@ function addToast(t: Toast, duration?: number) {
   
   Object.assign(div.style, {
     padding: '10px 18px',
-    borderRadius: '10px',
+    borderRadius: RADIUS.lg,
     fontSize: '12px',
     fontWeight: '500',
     background: cfg.bg,
     color: cfg.color,
     border: `1px solid ${cfg.border}`,
-    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.08)',
-    backdropFilter: 'blur(8px)',
-    webkitBackdropFilter: 'blur(8px)',
+    boxShadow: SHADOW.popup,
+    backdropFilter: BLUR.overlay,
+    webkitBackdropFilter: BLUR.overlay,
     animation: 'toast-in 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards',
     display: 'flex',
     alignItems: 'center',

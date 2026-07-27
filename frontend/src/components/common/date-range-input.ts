@@ -1,6 +1,6 @@
 // 공통 기간 선택 입력 컴포넌트 — 시작/종료 날짜 한 쌍
 
-import { COLOR, FONT_SIZE } from './ui-styles'
+import { COLOR, FONT_SIZE, RADIUS } from './ui-styles'
 
 export interface DateRangeInputOptions {
   from?: string
@@ -51,7 +51,7 @@ export function createDateRangeInput(options: DateRangeInputOptions): DateRangeI
     padding: compact ? '4px 6px' : '6px 8px',
     fontSize: compact ? FONT_SIZE.label : FONT_SIZE.body,
     border: `1px solid ${COLOR.borderLight}`,
-    borderRadius: '4px',
+    borderRadius: RADIUS.xs,
     color: COLOR.code,
     minWidth: compact ? '100px' : '120px',
     boxSizing: 'border-box',
@@ -68,7 +68,7 @@ export function createDateRangeInput(options: DateRangeInputOptions): DateRangeI
     padding: compact ? '4px 6px' : '6px 8px',
     fontSize: compact ? FONT_SIZE.label : FONT_SIZE.body,
     border: `1px solid ${COLOR.borderLight}`,
-    borderRadius: '4px',
+    borderRadius: RADIUS.xs,
     color: COLOR.code,
     minWidth: compact ? '100px' : '120px',
     boxSizing: 'border-box',

@@ -1,5 +1,5 @@
 // frontend/src/components/common/create-slider.ts
-import { COLOR, FONT_SIZE } from './ui-styles'
+import { COLOR, FONT_SIZE, RADIUS } from './ui-styles'
 // 슬라이더 공통 컴포넌트 — <input type="range"> 팩토리
 
 export interface SliderOptions {
@@ -47,7 +47,7 @@ export function createSlider(opts: SliderOptions = {}): SliderHandle {
     width: '100%',
     cursor: 'pointer',
     height: '6px',
-    borderRadius: '3px',
+    borderRadius: RADIUS.xs,
     WebkitAppearance: 'none',
     appearance: 'none',
   })

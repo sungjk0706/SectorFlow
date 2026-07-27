@@ -10,7 +10,7 @@
  * P23(일관된 통일성) + P24(단순성) + P25(격리된 실패) 준수.
  */
 
-import { FONT_SIZE, FONT_WEIGHT, COLOR } from './ui-styles'
+import { FONT_SIZE, FONT_WEIGHT, COLOR, RADIUS } from './ui-styles'
 
 export interface TagChipHandle {
   /** 루트 요소 (설정 행에 appendChild) */
@@ -52,7 +52,7 @@ export function createTagChip(options: {
     fontSize: FONT_SIZE.body,
     padding: '4px 8px',
     border: '1px solid ' + COLOR.border,
-    borderRadius: '4px',
+    borderRadius: RADIUS.xs,
     background: COLOR.white,
     color: COLOR.neutral,
     width: '160px',
@@ -67,7 +67,7 @@ export function createTagChip(options: {
     fontSize: FONT_SIZE.label,
     padding: '4px 12px',
     border: '1px solid ' + COLOR.up,
-    borderRadius: '4px',
+    borderRadius: RADIUS.xs,
     background: COLOR.upBg,
     color: COLOR.up,
     cursor: 'pointer',
@@ -112,7 +112,7 @@ export function createTagChip(options: {
         color: COLOR.up,
         background: COLOR.upBg,
         border: '1px solid ' + COLOR.up,
-        borderRadius: '12px',
+        borderRadius: RADIUS.xl,
         padding: '2px 8px 2px 10px',
         whiteSpace: 'nowrap',
       })

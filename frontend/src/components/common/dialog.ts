@@ -1,5 +1,5 @@
 // frontend/src/components/common/dialog.ts — 공통 모달 다이얼로그 시스템 (Facade 패턴)
-import { COLOR } from './ui-styles'
+import { COLOR, RADIUS, SHADOW, BLUR, SURFACE_ALPHA } from './ui-styles'
 import { createActionButton, type ActionVariant } from './button'
 
 /* ── 공개 타입 ── */
@@ -55,7 +55,7 @@ function ensureDialogKeyframes() {
     style.textContent = `
       @keyframes dialog-backdrop-in {
         from { background: rgba(0, 0, 0, 0); backdrop-filter: blur(0px); -webkit-backdrop-filter: blur(0px); }
-        to { background: rgba(0, 0, 0, 0.4); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
+        to { background: ${SURFACE_ALPHA.overlay}; backdrop-filter: ${BLUR.overlay}; -webkit-backdrop-filter: ${BLUR.overlay}; }
       }
       @keyframes dialog-box-in {
         from { opacity: 0; transform: scale(0.96) translateY(8px); }
@@ -70,15 +70,17 @@ function ensureDialogKeyframes() {
 
 function applyBoxStyle(box: HTMLElement) {
   Object.assign(box.style, {
-    background: COLOR.white,
-    borderRadius: '12px',
+    background: SURFACE_ALPHA.panel,
+    backdropFilter: BLUR.panel,
+    webkitBackdropFilter: BLUR.panel,
+    borderRadius: RADIUS.xl,
     padding: '20px 24px',
     minWidth: '280px',
     maxWidth: '520px',
     width: 'fit-content',
     maxHeight: '80vh',
     overflow: 'auto',
-    boxShadow: '0 12px 36px rgba(0, 0, 0, 0.16)',
+    boxShadow: SHADOW.modal,
     fontFamily: 'inherit',
     boxSizing: 'border-box',
     animation: 'dialog-box-in 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards',

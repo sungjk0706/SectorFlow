@@ -1,5 +1,5 @@
 // frontend/src/components/common/context-popup.ts — 마우스 위치 기반 컨텍스트 팝업
-import { FONT_SIZE, COLOR } from './ui-styles'
+import { FONT_SIZE, COLOR, RADIUS, SHADOW } from './ui-styles'
 import { createActionButton } from './button'
 
 /* ── 타입 ── */
@@ -105,8 +105,8 @@ export function showContextPopup(options: ContextPopupOptions): Promise<ContextP
       zIndex: '10001',
       minWidth: '220px',
       maxWidth: '320px',
-      borderRadius: '8px',
-      boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
+      borderRadius: RADIUS.md,
+      boxShadow: SHADOW.popup,
       background: COLOR.white,
       padding: '12px',
       fontFamily: 'inherit',
@@ -143,7 +143,7 @@ export function showContextPopup(options: ContextPopupOptions): Promise<ContextP
         width: '100%',
         padding: '6px 8px',
         border: '1px solid ' + COLOR.border,
-        borderRadius: '4px',
+        borderRadius: RADIUS.xs,
         fontSize: FONT_SIZE.body,
         marginBottom: '12px',
         boxSizing: 'border-box',
@@ -176,7 +176,7 @@ export function showContextPopup(options: ContextPopupOptions): Promise<ContextP
       variant: 'secondary',
       customColor: confirmColor,
       padding: '5px 14px',
-      borderRadius: '4px',
+      borderRadius: RADIUS.xs,
       onClick: () => {
         if (options.type === 'input') {
           cleanup({ confirmed: true, value: inputEl!.value })
@@ -191,7 +191,7 @@ export function showContextPopup(options: ContextPopupOptions): Promise<ContextP
       variant: 'secondary',
       customColor: COLOR.toggleOff,
       padding: '5px 14px',
-      borderRadius: '4px',
+      borderRadius: RADIUS.xs,
       onClick: () => cleanup({ confirmed: false }),
     })
 

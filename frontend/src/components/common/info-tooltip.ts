@@ -8,7 +8,7 @@
  *         outside-click 닫기 패턴 (createTimeDropdown) — 마우스 외부 클릭 시 닫기.
  */
 
-import { COLOR, FONT_SIZE } from './ui-styles'
+import { COLOR, FONT_SIZE, RADIUS, SHADOW } from './ui-styles'
 import { clampPosition } from './context-popup'
 
 export function createInfoTooltip(text: string): HTMLElement {
@@ -41,10 +41,10 @@ export function createInfoTooltip(text: string): HTMLElement {
         zIndex: '10001',
         maxWidth: '280px',
         padding: '8px 10px',
-        borderRadius: '6px',
+        borderRadius: RADIUS.sm,
         background: COLOR.white,
         border: '1px solid ' + COLOR.borderDark,
-        boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
+        boxShadow: SHADOW.popup,
         fontSize: FONT_SIZE.desc,
         color: COLOR.code,
         lineHeight: '1.4',

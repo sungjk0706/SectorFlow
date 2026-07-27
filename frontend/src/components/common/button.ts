@@ -3,7 +3,7 @@
  * 액션 버튼, solid 컬러 버튼, 탭 바, 토글 선택 버튼을 한 곳에서 관리.
  */
 
-import { FONT_SIZE, FONT_WEIGHT, COLOR, FONT_FAMILY } from './ui-styles'
+import { FONT_SIZE, FONT_WEIGHT, COLOR, FONT_FAMILY, RADIUS } from './ui-styles'
 
 /* ── 액션 버튼 variant ── */
 
@@ -42,7 +42,7 @@ export function createActionButton(options: ActionButtonOptions): HTMLButtonElem
     variant = 'secondary',
     fontSize = FONT_SIZE.label,
     padding = '7px 18px',
-    borderRadius = '6px',
+    borderRadius = RADIUS.sm,
     disabled = false,
     dataAttr,
     customColor,
@@ -140,7 +140,7 @@ export function createSolidBtn(options: SolidButtonOptions): HTMLButtonElement {
   Object.assign(btn.style, {
     padding,
     border: 'none',
-    borderRadius: '4px',
+    borderRadius: RADIUS.xs,
     background: color,
     color: COLOR.white,
     cursor: 'pointer',
@@ -223,7 +223,7 @@ export function createTabBar(options: TabBarOptions): { el: HTMLElement; buttons
       border: boxed
         ? `1px solid ${active ? activeColor : COLOR.border}`
         : 'none',
-      borderRadius: boxed ? '4px' : '0',
+      borderRadius: boxed ? RADIUS.xs : '0',
       background: boxed
         ? (active ? COLOR.downBg : 'transparent')
         : 'transparent',
@@ -315,7 +315,7 @@ export function createToggleSelectBtn(options: ToggleSelectButtonOptions): { el:
     Object.assign(btn.style, {
       padding,
       fontSize,
-      borderRadius: '4px',
+      borderRadius: RADIUS.xs,
       cursor: 'pointer',
       border: isActive ? `2px solid ${activeColor}` : `${inactiveBorderWidth} solid ${activeColor}`,
       background: isActive ? activeBg : COLOR.white,

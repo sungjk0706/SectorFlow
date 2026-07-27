@@ -1,6 +1,6 @@
 // 공통 검색 입력 컴포넌트 — 이벤트 기반, 디바운스 없음 (워크룰 준수)
 
-import { COLOR, FONT_SIZE, FONT_WEIGHT } from './ui-styles'
+import { COLOR, FONT_SIZE, FONT_WEIGHT, RADIUS } from './ui-styles'
 
 export interface SearchInputOptions {
   placeholder?: string
@@ -49,7 +49,7 @@ export function createSearchInput(options: SearchInputOptions): {
     padding: compact ? '2px 4px' : '4px 26px 4px 26px',
     fontSize: compact ? FONT_SIZE.label : FONT_SIZE.body,
     border: `1px solid ${borderColor}`,
-    borderRadius: '4px',
+    borderRadius: RADIUS.xs,
     outline: 'none',
     color: COLOR.code,
   })

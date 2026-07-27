@@ -1,4 +1,4 @@
-import { COLOR } from './ui-styles'
+import { COLOR, RADIUS } from './ui-styles'
 
 /** 증권사별 고유 색상 */
 export const BROKER_COLORS: Record<string, string> = {
@@ -22,7 +22,7 @@ export function createBrokerBadge(broker: string, onClick?: () => void): HTMLEle
     display: 'inline-flex',
     alignItems: 'center',
     padding: '2px 8px',
-    borderRadius: '10px',
+    borderRadius: RADIUS.lg,
     fontSize: '0.7em',
     fontWeight: 'normal',
     color: COLOR.white,

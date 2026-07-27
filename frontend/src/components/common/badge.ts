@@ -11,7 +11,7 @@
  * P23(일관된 통일성) + P24(단순성) + P10(SSOT) 준수.
  */
 
-import { FONT_SIZE, FONT_WEIGHT, COLOR } from './ui-styles'
+import { FONT_SIZE, FONT_WEIGHT, COLOR, RADIUS } from './ui-styles'
 
 export type BadgeStatus = 'normal' | 'near' | 'hit' | 'warn'
 
@@ -76,7 +76,7 @@ export function createBadge(label: string, unit: string): BadgeHandle {
     textOverflow: 'ellipsis',
     fontSize: FONT_SIZE.body,
     padding: '4px 12px',
-    borderRadius: '4px',
+    borderRadius: RADIUS.xs,
     background: COLOR.neutralBg,
     gap: '8px',
   })
