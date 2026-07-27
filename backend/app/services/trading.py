@@ -455,14 +455,14 @@ class AutoTradeManager:
             from backend.app.services.engine_strategy_core import reserve_test_buy_power
             _check_price = int(order_price) if order_price > 0 else int(current_price)
             _check_price = dry_run.estimate_fill_price(_check_price, "BUY")
-            ok, reason, _reserved_cost = await reserve_test_buy_power(
+            ok, _reject_reason, _reserved_cost = await reserve_test_buy_power(
                 _check_price, buy_qty, self._daily_buy_spent,
             )
             if not ok:
-                logger.info("[매매] 매수 거부: %s (%s)", stk_cd, reason)
+                logger.info("[매매] 매수 거부: %s (%s)", stk_cd, _reject_reason)
                 self._buy_state[stk_cd]["has_open_buy"] = False
                 # P21(사용자 투명성): 테스트 예수금 검증 실패를 화면에 알림 — 헤더 칩 "⚠ 테스트 잔고 부족"
-                await _broadcast_test_cash_failed(stk_cd=stk_cd, reason=reason)
+                await _broadcast_test_cash_failed(stk_cd=stk_cd, reason=_reject_reason)
                 return False, BUY_REJECT_TEST_CASH
 
         # ── 테스트모드 가드: 테스트모드면 실전 서버에 절대 주문 안 보냄 ─────────
