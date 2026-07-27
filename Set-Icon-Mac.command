@@ -37,4 +37,4 @@ else
 fi
 
 echo ""
-echo "완료. Finder에서 아이콘이 파도 모양으로 바뀌었는지 확인해 보세요."
+echo "완료. Finder에서 SectorFlow 아이콘이 정상적으로 적용되었는지 확인해 보세요."

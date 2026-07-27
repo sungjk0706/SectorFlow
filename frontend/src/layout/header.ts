@@ -7,7 +7,7 @@ import type { UIState } from '../stores/uiStore'
 import { clearCircuitBreakerOpen, clearOrderTimeBlocked, clearRiskBlockStatus, clearTestCashFailed, clearPositionBuildFailed, clearDegradedMode } from '../stores/uiStore'
 import type { IndexData } from '../types'
 import { BROKER_LABELS } from '../components/common/broker-badge'
-import { COLOR, RADIUS, BLUR, SURFACE_ALPHA } from '../components/common/ui-styles'
+import { COLOR, RADIUS, BLUR, SURFACE_ALPHA, FONT_WEIGHT } from '../components/common/ui-styles'
 
 // ── 스타일 상수 ──
 
@@ -259,12 +259,24 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
 
   const header = document.createElement('header')
   header.style.cssText =
-    `box-sizing:border-box;padding:4px 16px;background:${SURFACE_ALPHA.toolbar};backdrop-filter:${BLUR.toolbar};-webkit-backdrop-filter:${BLUR.toolbar};border-bottom:1px solid ${COLOR.borderDark};display:flex;gap:8px;align-items:center;flex-wrap:nowrap;flex-shrink:0;height:40px;min-height:40px;max-height:40px;overflow-x:auto;overflow-y:hidden;`
+    `box-sizing:border-box;padding:6px 16px;background:${SURFACE_ALPHA.toolbar};backdrop-filter:${BLUR.toolbar};-webkit-backdrop-filter:${BLUR.toolbar};border-bottom:1px solid ${COLOR.borderDark};display:flex;gap:8px;align-items:center;flex-wrap:nowrap;flex-shrink:0;height:52px;min-height:52px;max-height:52px;overflow-x:auto;overflow-y:hidden;`
 
   // 로고
-  const logo = document.createElement('strong')
-  logo.style.marginRight = '4px'
-  logo.textContent = '🌊 SectorFlow'
+  const logo = document.createElement('div')
+  logo.style.cssText =
+    `display:inline-flex;align-items:center;gap:8px;margin-right:4px;font-weight:${FONT_WEIGHT.bold};`
+
+  const logoIcon = document.createElement('img')
+  logoIcon.src = '/logo.png'
+  logoIcon.alt = 'SectorFlow'
+  logoIcon.width = 40
+  logoIcon.height = 40
+  logoIcon.style.cssText = `width:40px;height:40px;border-radius:${RADIUS.md};display:block;flex-shrink:0;object-fit:cover;`
+
+  const logoText = document.createElement('span')
+  logoText.textContent = 'SectorFlow'
+  logo.appendChild(logoIcon)
+  logo.appendChild(logoText)
   header.appendChild(logo)
 
   // 투자모드 칩 (로고 바로 우측, 독립적 위치 — 시각적 우선순위)
