@@ -45,7 +45,7 @@ export function createInfoTooltip(text: string): HTMLElement {
         background: COLOR.white,
         border: '1px solid ' + COLOR.borderDark,
         boxShadow: SHADOW.popup,
-        fontSize: FONT_SIZE.desc,
+        fontSize: '14px', // 설명 가독성 위해 desc(12px) + 2px
         color: COLOR.code,
         lineHeight: '1.4',
         whiteSpace: 'pre-wrap',
@@ -53,11 +53,11 @@ export function createInfoTooltip(text: string): HTMLElement {
       })
       popup.textContent = text
       document.body.appendChild(popup)
-      // 위치 계산 (렌더 후 실제 크기 기반)
+      // 위치 계산 (렌더 후 실제 크기 기반) — 아이콘 상단에 표시 (마우스 포인터 위)
       const rect = icon.getBoundingClientRect()
-      const cx = rect.left
-      const cy = rect.bottom + 4
       const pr = popup.getBoundingClientRect()
+      const cx = rect.left
+      const cy = rect.top - pr.height - 4
       const pos = clampPosition(cx, cy, pr.width, pr.height, window.innerWidth, window.innerHeight)
       popup.style.left = `${pos.left}px`
       popup.style.top = `${pos.top}px`
