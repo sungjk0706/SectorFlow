@@ -181,7 +181,6 @@ function buildRiskBlockBuyRow(state: GeneralSettingsState): HTMLElement {
   const r = createSettingToggleRow({
     label: '안전장치 조건 충족 시 매수 차단',
     toggleOn: true,
-    rowStyle: { paddingLeft: '20px' },
     onToggle: async next => {
       state.vals.risk_block_buy_on = next
       const res = await state.settingsMgr!.saveSection({ risk_block_buy_on: next })
@@ -197,7 +196,6 @@ function buildRiskBlockSellRow(state: GeneralSettingsState): HTMLElement {
   const r = createSettingToggleRow({
     label: '안전장치 조건 충족 시 매도 차단',
     toggleOn: false,
-    rowStyle: { paddingLeft: '20px' },
     onToggle: async next => {
       state.vals.risk_block_sell_on = next
       const res = await state.settingsMgr!.saveSection({ risk_block_sell_on: next })
