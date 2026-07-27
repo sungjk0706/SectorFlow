@@ -2,7 +2,7 @@
 // hashchange 기반 경량 클라이언트 사이드 라우터
 // react-router-dom 대체
 
-import { COLOR } from './components/common/ui-styles'
+import { COLOR, RADIUS } from './components/common/ui-styles'
 import { createActionButton } from './components/common/button'
 
 // ── 타입 정의 ──
@@ -190,7 +190,7 @@ export function createRouter(routes: RouteConfig[]): RouterApi {
         label: '다시 시도',
         variant: 'secondary',
         padding: '8px 16px',
-        borderRadius: '4px',
+        borderRadius: RADIUS.xs,
         onClick: () => location.reload(),
       })
       errorWrap.appendChild(errorMsg)

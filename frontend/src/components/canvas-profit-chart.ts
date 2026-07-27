@@ -5,7 +5,7 @@
  * - 인터랙티브: 크로스헤어, 툴팁
  */
 
-import { pnlColor, FONT_FAMILY, COLOR, fmtWon, positionTooltip } from './common/ui-styles'
+import { pnlColor, FONT_FAMILY, COLOR, RADIUS, SHADOW, BLUR, SURFACE_ALPHA, hexToRgba, fmtWon, positionTooltip } from './common/ui-styles'
 import { createToggleSelectBtn } from './common/button'
 import { createDateRangeInput } from './common/date-range-input'
 import { getLocalToday, getLocalMonthStart } from '../utils/date'
@@ -66,7 +66,7 @@ const COLORS = {
   loss: [COLOR.down, COLOR.downLight],
   volume: [COLOR.down, COLOR.downLight],
   equity: COLOR.down,
-  equityArea: 'rgba(25, 118, 210, 0.08)',
+  equityArea: hexToRgba(COLOR.down, 0.08),
   grid: COLOR.hoverBg,
   axis: COLOR.tertiary,
   zeroLine: COLOR.borderDark,
@@ -213,8 +213,9 @@ export function createProfitChart(options: ProfitChartOptions): ProfitChartApi {
   const tooltip = document.createElement('div')
   tooltip.style.cssText = [
     'position:absolute;display:none;pointer-events:none;z-index:10;',
-    `background:rgba(255,255,255,0.98);border:1px solid ${COLOR.borderLight};border-radius:8px;`,
-    'padding:10px 14px;font-size:11px;box-shadow:0 4px 15px rgba(0,0,0,0.08);',
+    `background:${SURFACE_ALPHA.panel};backdrop-filter:${BLUR.panel};-webkit-backdrop-filter:${BLUR.panel};`,
+    `border:1px solid ${COLOR.borderLight};border-radius:${RADIUS.md};`,
+    `padding:10px 14px;font-size:11px;box-shadow:${SHADOW.popup};`,
     'min-width:120px;line-height:1.5;'
   ].join('')
   canvasWrap.appendChild(tooltip)

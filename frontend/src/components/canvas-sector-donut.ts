@@ -5,7 +5,7 @@
  * - 인터랙티브: 호버 시 업종명 + 손익 금액 툴팁
  */
 
-import { FONT_FAMILY, COLOR, fmtWon, positionTooltip, computeWeightedRate } from './common/ui-styles'
+import { FONT_FAMILY, COLOR, RADIUS, SHADOW, BLUR, SURFACE_ALPHA, fmtWon, positionTooltip, computeWeightedRate } from './common/ui-styles'
 
 // ── 타입 ────────────────────────────────────────────────────
 
@@ -89,8 +89,9 @@ export function createSectorDonut(options: SectorDonutOptions): SectorDonutApi {
   const tooltip = document.createElement('div')
   tooltip.style.cssText = [
     'position:absolute;display:none;pointer-events:none;z-index:10;',
-    `background:rgba(255,255,255,0.98);border:1px solid ${COLOR.borderLight};border-radius:8px;`,
-    'padding:10px 14px;font-size:11px;box-shadow:0 4px 15px rgba(0,0,0,0.08);',
+    `background:${SURFACE_ALPHA.panel};backdrop-filter:${BLUR.panel};-webkit-backdrop-filter:${BLUR.panel};`,
+    `border:1px solid ${COLOR.borderLight};border-radius:${RADIUS.md};`,
+    `padding:10px 14px;font-size:11px;box-shadow:${SHADOW.popup};`,
     'min-width:120px;line-height:1.5;',
   ].join('')
   canvasWrap.appendChild(tooltip)
@@ -222,7 +223,7 @@ export function createSectorDonut(options: SectorDonutOptions): SectorDonutApi {
       const seg = currentSegments[i]
       const isProfit = seg.row.pnl >= 0
       const item = document.createElement('div')
-      item.style.cssText = `display:flex;align-items:center;gap:6px;padding:4px 6px;cursor:pointer;border-radius:4px;${hoveredIdx === i ? `background:${COLOR.hoverBg};` : ''}`
+      item.style.cssText = `display:flex;align-items:center;gap:6px;padding:4px 6px;cursor:pointer;border-radius:${RADIUS.xs};${hoveredIdx === i ? `background:${COLOR.hoverBg};` : ''}`
       const dot = document.createElement('span')
       dot.style.cssText = `flex:none;width:8px;height:8px;border-radius:50%;background:${seg.color};`
       const label = document.createElement('span')

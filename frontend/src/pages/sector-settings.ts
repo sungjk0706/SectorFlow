@@ -12,7 +12,7 @@ import { createProgressBar, type ProgressBarHandle } from '../components/common/
 import { createMarketCountRow, type MarketCountRowHandle } from '../components/common/market-count-row'
 import { createDescText, createStepLabel } from '../components/common/settings-common'
 import { createInfoTooltip } from '../components/common/info-tooltip'
-import { FONT_SIZE, COLOR } from '../components/common/ui-styles'
+import { FONT_SIZE, COLOR, RADIUS } from '../components/common/ui-styles'
 import { createCardTitle } from '../components/common/card-title'
 import type { ReceiveRateEntry } from '../stores/uiStore'
 import type { AppSettings } from '../types'
@@ -365,7 +365,7 @@ function buildMaxTargetsSection(root: HTMLElement): void {
 
   // ⑤ 행 아래 보조 줄 — 상위 N 업종 종목 합계 (P21 투명성)
   maxTargetsSumEl = document.createElement('div')
-  Object.assign(maxTargetsSumEl.style, { fontSize: FONT_SIZE.small, color: COLOR.tertiary, textAlign: 'right', marginTop: '4px', marginBottom: '6px', minHeight: '16px', padding: '4px 8px', background: COLOR.downBg, borderRadius: '6px', display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '4px' })
+  Object.assign(maxTargetsSumEl.style, { fontSize: FONT_SIZE.small, color: COLOR.tertiary, textAlign: 'right', marginTop: '4px', marginBottom: '6px', minHeight: '16px', padding: '4px 8px', background: COLOR.downBg, borderRadius: RADIUS.sm, display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '4px' })
   root.appendChild(maxTargetsSumEl)
 }
 

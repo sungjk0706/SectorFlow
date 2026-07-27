@@ -2,7 +2,7 @@
 // 수익현황 페이지 — 업종별 종목 수익 렌더 + 섹션 구성 (F-05 분할, P24 단순성)
 // profit-overview.ts에서 이관. 순수 이동 + renderSectorStockPnl 함수 분할, 동작 변경 없음.
 
-import { FONT_SIZE, FONT_WEIGHT, COLOR, pnlColor } from '../components/common/ui-styles'
+import { FONT_SIZE, FONT_WEIGHT, COLOR, RADIUS, pnlColor } from '../components/common/ui-styles'
 import { createActionButton } from '../components/common/button'
 import { sectionTitle } from '../components/common/settings-common'
 import { buildSectorStockPnl, type SectorPnlGroup, type SectorStockPnl } from './profit-shared'
@@ -25,7 +25,7 @@ function createAmountCell(value: number, unit: string, opts: AmountCellOpts): HT
     flex: 'none', width: opts.width,
     display: 'flex', justifyContent: 'flex-end', alignItems: 'baseline',
     fontSize: opts.fontSize, fontWeight: opts.fontWeight,
-    border: opts.border, borderRadius: opts.border ? '4px' : undefined,
+    border: opts.border, borderRadius: opts.border ? RADIUS.xs : undefined,
     padding: opts.border ? '2px 4px' : undefined, boxSizing: opts.border ? 'border-box' : undefined,
   })
   const sign = value >= 0 ? '+' : ''
@@ -144,7 +144,7 @@ export function renderSectorStockPnl(state: ProfitOverviewState): void {
       sectorGroup.dataset.sector = group.sector
       const isActive = activeSector === group.sector
       if (isActive) {
-        Object.assign(sectorGroup.style, { background: COLOR.hoverBg, borderRadius: '6px' })
+        Object.assign(sectorGroup.style, { background: COLOR.hoverBg, borderRadius: RADIUS.sm })
       }
 
       const header = createSectorHeader(group, () => {
@@ -198,7 +198,7 @@ export function buildStockListSection(state: ProfitOverviewState): HTMLDivElemen
     variant: 'secondary',
     padding: '2px 10px',
     fontSize: FONT_SIZE.small,
-    borderRadius: '4px',
+    borderRadius: RADIUS.xs,
     onClick: () => {
       state.allExpanded = !state.allExpanded
       state.activeSector = null
