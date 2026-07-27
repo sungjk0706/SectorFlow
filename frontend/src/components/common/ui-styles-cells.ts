@@ -55,6 +55,7 @@ function applyCell(cell: HTMLElement, align: string): void {
     boxSizing: 'border-box',
     padding: CELL_PADDING,
     overflow: 'hidden',
+    fontVariantNumeric: 'tabular-nums',  // 숫자 셀 자릿수 정렬 (P23 일관성)
   })
 }
 
@@ -132,6 +133,7 @@ export function createChangeCell(change: number | null | undefined): HTMLElement
   wrap.style.display = 'inline-flex'
   wrap.style.justifyContent = 'space-between'
   wrap.style.width = '100%'
+  wrap.style.fontVariantNumeric = 'tabular-nums'
   
   const arrow = document.createElement('span')
   arrow.textContent = changeArrow(change)

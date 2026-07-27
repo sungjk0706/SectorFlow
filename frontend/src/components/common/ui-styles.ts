@@ -95,6 +95,10 @@ export const COLOR = {
   warning:      '#d97706',  // 경고/주의 (주황) — macOS 시스템 오렌지 톤
   warningLight: '#f0c080',
   kosdaq:       '#d63384',  // 코스닥 종목명 (핑크)
+  // ── 업종 종합점수 단계 색 (scoreColor 전용) ──
+  scoreHigh:    '#e67e22',  // 고득점 (80+) — 주황
+  scoreMid:     '#2c3e50',  // 중간 (60+) — 다크 네이비
+  scoreLow:     '#7f8c8d',  // 저득점 (60 미만) — 회색
   tertiary:     '#6e6e73',  // 라벨/설명문 (보조 텍스트) — macOS 세컨더리 라벨
   code:         '#515154',  // 종목코드 — macOS 터셔너리 라벨
   disabled:     '#a1a1a6',  // 빈 상태/비활성/오프 — macOS 쿼터너리 라벨

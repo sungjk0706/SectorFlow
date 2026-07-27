@@ -15,6 +15,7 @@ import {
   type ColumnWidthInput,
 } from './auto-width'
 import { COLUMN_WIDTH, type ColumnType } from './table-config'
+import { COLOR } from './ui-styles'
 import { uiStore } from '../../stores/uiStore'
 import { createFixedMode } from './data-table-fixed'
 import { createVirtualScrollMode } from './data-table-virtual'
@@ -91,9 +92,9 @@ export function isGroupRow<T>(row: TableRow<T>): row is GroupRow {
 
 /** 점수 색상 (0~100 점수에 따라 단계별 색상 반환) */
 export function scoreColor(score: number): string {
-  if (score >= 80) return '#e67e22'   // 고득점: 주황
-  if (score >= 60) return '#2c3e50'   // 중간: 다크 네이비
-  return '#7f8c8d'                    // 저득점: 회색
+  if (score >= 80) return COLOR.scoreHigh   // 고득점: 주황
+  if (score >= 60) return COLOR.scoreMid    // 중간: 다크 네이비
+  return COLOR.scoreLow                     // 저득점: 회색
 }
 
 function extractSamples<T>(
