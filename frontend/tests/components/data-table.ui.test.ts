@@ -94,8 +94,8 @@ describe('createDataTable — fixed mode', () => {
     document.body.appendChild(table.el)
     table.updateRows(TEST_DATA)
     const dataRows = table.el.querySelectorAll<HTMLElement>('tr[data-row-type="data"]')
-    expect(dataRows[1].style.backgroundColor).toBe('#f9f9f9')
-    expect(dataRows[0].style.backgroundColor).not.toBe('#f9f9f9')
+    expect(dataRows[1].style.backgroundColor).toBe('#fafafa')
+    expect(dataRows[0].style.backgroundColor).not.toBe('#fafafa')
   })
 
   it('applies custom rowStyle', () => {

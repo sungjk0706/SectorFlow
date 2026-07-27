@@ -9,8 +9,10 @@ export * from './ui-styles-columns'
 
 /* ── 폰트 ── */
 
-/** 기본 폰트 — 숫자/영어: Tahoma, 한글: 굴림 */
-export const FONT_FAMILY = "Tahoma, '굴림', Gulim, sans-serif"
+/** 기본 폰트 — macOS 시스템 폰트 우선 스택 (SF Pro → 폴백) */
+export const FONT_FAMILY =
+  "-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', " +
+  "'Helvetica Neue', 'Segoe UI', system-ui, sans-serif"
 
 /* ── 폰트 크기 ── */
 
@@ -40,44 +42,83 @@ export const FONT_WEIGHT = {
   bold: '700',        // 그룹 헤더
 } as const
 
+/* ── 둥근 모서리 ── */
+
+export const RADIUS = {
+  xs:   '4px',     // 칩, 스핀 버튼, 슬라이더 핸들, 행 내부 요소
+  sm:   '6px',     // 버튼, 입력란, 카드 내부 요소, 태그
+  md:   '8px',     // 카드, 드롭다운, 팝업, 컨텍스트 메뉴
+  lg:   '10px',    // 토스트, 브로커 배지, 헤더 칩
+  xl:   '12px',    // 다이얼로그, 사이드바 활성 항, 큰 카드
+  pill: '9999px',  // 원형 배지, 토글
+} as const
+
+/* ── 그림자 ── */
+
+export const SHADOW = {
+  card:         '0 1px 2px rgba(0, 0, 0, 0.04), 0 1px 3px rgba(0, 0, 0, 0.06)',  // 카드/패널 — 은은한 1층
+  cardHover:    '0 2px 6px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.06)',  // 호버/활성 카드
+  popup:        '0 4px 16px rgba(0, 0, 0, 0.12), 0 1px 4px rgba(0, 0, 0, 0.06)', // 팝업/드롭다운
+  modal:        '0 12px 36px rgba(0, 0, 0, 0.16), 0 2px 8px rgba(0, 0, 0, 0.08)', // 모달/다이얼로그
+  sidebarActive:'2px 2px 8px rgba(0, 0, 0, 0.06)',  // 사이드바 활성 항 — 좌측 책갈피용
+  none:         'none',
+} as const
+
+/* ── 반투명 블러 ── */
+
+export const BLUR = {
+  toolbar: 'blur(20px) saturate(180%)',  // 헤더/사이드바 툴바 — 강한 블러 (macOS 툴바 표준)
+  panel:   'blur(16px) saturate(150%)',  // 카드/패널 — 중간 블러
+  overlay: 'blur(8px) saturate(120%)',   // 모달 오버레이 — 약한 블러
+  none:    'none',
+} as const
+
+/* ── 반투명 표면 배경 (블러와 함께 사용) ── */
+
+export const SURFACE_ALPHA = {
+  toolbar: 'rgba(255, 255, 255, 0.72)',  // 헤더/사이드바 툴바 배경 — 흰색 72%
+  panel:   'rgba(255, 255, 255, 0.80)',  // 카드/패널 배경 — 흰색 80%
+  overlay: 'rgba(0, 0, 0, 0.40)',        // 모달 오버레이 — 검정 40%
+} as const
+
 /* ── 전역 색상 상수 (단일 소스 진리) ── */
 
 export const COLOR = {
-  up:           '#f44336',  // 상승/양수/매수/위험/에러 (빨강)
-  upLight:      '#ef9a9a',
-  down:         '#1e88e5',  // 하락/음수/매도/정보/활성 (파랑)
-  downLight:    '#90caf9',
-  neutral:      '#333',     // 보합/기본 텍스트
-  success:      '#2e7d32',  // 성공/통과/연결 (초록)
-  successLight: '#a5d6a7',
+  up:           '#d64545',  // 상승/양수/매수/위험/에러 (빨강) — macOS 시스템 레드 톤
+  upLight:      '#eba0a0',
+  down:         '#0a6cff',  // 하락/음수/매도/정보/활성 (파랑) — macOS 시스템 블루
+  downLight:    '#a5c8ff',
+  neutral:      '#1d1d1f',  // 보합/기본 텍스트 — macOS 라벨 컬러
+  success:      '#248a3d',  // 성공/통과/연결 (초록) — macOS 시스템 그린 톤
+  successLight: '#a8d8b0',
   successHover: '#157347',  // success 버튼 호버 (진한 초록)
-  warning:      '#e65100',  // 경고/주의 (주황)
-  warningLight: '#ffcc80',
+  warning:      '#d97706',  // 경고/주의 (주황) — macOS 시스템 오렌지 톤
+  warningLight: '#f0c080',
   kosdaq:       '#d63384',  // 코스닥 종목명 (핑크)
-  tertiary:     '#666',     // 라벨/설명문 (보조 텍스트)
-  code:         '#555',     // 종목코드
-  disabled:     '#9e9e9e',  // 빈 상태/비활성/오프
-  muted:        '#adb5bd',  // 미달/흐림
+  tertiary:     '#6e6e73',  // 라벨/설명문 (보조 텍스트) — macOS 세컨더리 라벨
+  code:         '#515154',  // 종목코드 — macOS 터셔너리 라벨
+  disabled:     '#a1a1a6',  // 빈 상태/비활성/오프 — macOS 쿼터너리 라벨
+  muted:        '#c7c7cc',  // 미달/흐림 — macOS 플레이스홀더
   white:        '#fff',     // 흰색 텍스트/배경 (컬러 배경 위 텍스트)
   groupHeader:  '#1a237e',  // 업종 그룹 헤더 (다크 인디고)
   // ── 보더 ──
-  border:       '#ccc',     // 기본 보더
-  borderDark:   '#ddd',     // 진한 보더 (섹션/헤더 구분선)
-  borderLight:  '#eee',     // 연한 보더
-  borderGrid:   '#d0d0d0',  // 그리드 셀 보더
-  borderRow:    '#e5e7eb',  // 행 보더
+  border:       '#d2d2d7',  // 기본 보더 — macOS 세퍼레이터
+  borderDark:   '#e5e5ea',  // 진한 보더 (섹션/헤더 구분선) — macOS 세퍼레이터 (연함)
+  borderLight:  '#f2f2f7',  // 연한 보더 — macOS 그룹 배경 경계
+  borderGrid:   '#e5e5ea',  // 그리드 셀 보더 — 더 연하게
+  borderRow:    '#f2f2f7',  // 행 보더 — 거의 안 보이게
   // ── 배경 ──
-  upBg:         '#ffebee',  // 빨강 배경
-  downBg:       '#e3f2fd',  // 파랑 배경
-  successBg:    '#e8f5e9',  // 초록 배경
-  warningBg:    '#fff3e0',  // 주황 배경
-  neutralBg:    '#f5f5f5',  // 회색 배경
-  zebra:        '#f9f9f9',  // 제브라 스트라이핑
-  surfaceLight: '#fafafa',  // 연한 서피스
-  hoverBg:      '#f0f0f0',  // 호버/활성 배경
-  surface:      '#f8f9fa',  // 서피스 (사이드바/버튼)
-  inactiveBg:   '#e0e0e0',  // 비활성 배경
-  toggleOff:    '#6c757d',  // 토글 OFF
+  upBg:         '#faeaea',  // 빨강 배경 — macOS 톤 pastel (채도 낮춤)
+  downBg:       '#eaf0fa',  // 파랑 배경 — macOS 톤 pastel
+  successBg:    '#eaf5ec',  // 초록 배경 — macOS 톤 pastel
+  warningBg:    '#f7eede',  // 주황 배경 — macOS 톤 pastel
+  neutralBg:    '#f2f2f7',  // 회색 배경 — macOS 비활성 배경
+  zebra:        '#fafafa',  // 제브라 스트라이핑 — 매우 연함
+  surfaceLight: '#fbfbfd',  // 연한 서피스 — macOS secondary 백그라운드
+  hoverBg:      '#ececef',  // 호버/활성 배경 — macOS 호버 하이라이트
+  surface:      '#f5f5f7',  // 서피스 (사이드바/버튼) — macOS 그룹 배경 백그라운드
+  inactiveBg:   '#e5e5ea',  // 비활성 배경 — macOS 비활성 토글 배경
+  toggleOff:    '#8e8e93',  // 토글 OFF — macOS 토글 OFF
   // ── 기간 구분 카드 전용 (수익상세 상단 5카드 + 하단 통계 연동) ──
   // 당일은 down/downBg 재사용. 전일/5거래일/당월/누적은 기존 의미 색(success/warning/up/kosdaq)과 충돌 회피한 신규 색.
   periodPrev:     '#0097a7', // 청록 (전일 거래일)
