@@ -4,7 +4,7 @@
 > 세션: COUPLING-S3 (C-03)
 > 기준 파일: `backend/app/web/ws_manager.py`, `backend/app/services/engine_account_notify.py`, `frontend/src/binding.ts`, `frontend/src/stores/hotStore.ts`, `frontend/src/stores/uiStore.ts`, `frontend/src/stores/stockClassificationStore.ts`
 > 원칙: P5 직접 호출·Queue 경계 유지, P10 SSOT, P16 살아있는 경로, P21 사용자 투명성, P23 일관성, P24 단순성, P25 격리된 실패
-> 상태: 조사 전수 완료 + 후속 dead subscription 4건 정리 완료 (2026-07-27) + 잔여 3건 근본 해결 완료 (2026-07-27, 항목2/5는 다음 세션) + 항목2 index-data 분리 완료 (2026-07-27) + 항목5 네이밍 hyphen 통일 완료 (2026-07-27) + 항목9 account-update 분리 완료 (2026-07-27, COUPLING-S3 전체 완료)
+> 상태: 조사 전수 완료 + 후속 dead subscription 4건 정리 완료 (2026-07-27) + 잔여 3건 근본 해결 완료 (2026-07-27, 항목2/5는 다음 세션) + 항목2 index-data 분리 완료 (2026-07-27) + 항목5 네이밍 hyphen 통일 완료 (2026-07-27) + 항목9 account-update 분리 완료 (2026-07-27) + 항목9 settings-changed payload 계약 명시 완료 (2026-07-27, COUPLING-S3 단일화 우선순위 9건 전부 완료)
 
 ---
 
@@ -507,13 +507,14 @@ WS 이벤트 (real-data / orderbook-update / program-update)
 - **해결**: 경량화 분기(수익현황 전용)를 `account-summary-update` 신규 이벤트로 분리. `account-update`는 전체/폴백 payload만 전송 (단일 payload 계약). 프론트엔드 `applyAccountUpdate`(전체 처리) + `applyAccountSummaryUpdate`(경량화 처리) 분리. `AccountUpdateEvent`에서 legacy `positions` 필드 제거 (P16 dead code). `AccountSummaryUpdateEvent` 신규 타입 (`Partial<AccountSnapshot>` snapshot + `position_count`).
 - **위반 원칙**: ~~P23 (일관성 — 동일 이벤트의 payload 구조가 분기별 상이), P16 (legacy positions dead code)~~ → ☑ 해결 (각 이벤트 단일 payload 계약, 분기 로직 제거)
 
-### 8.3 `settings-changed` — 전체/delta payload 분기
+### 8.3 `settings-changed` — 전체/delta payload 분리 — ☑ 2026-07-27 해결 완료
 
 - **전체 payload**: `get_settings_snapshot()` + `{"_v": 1}` (AppSettings 전체)
 - **delta payload**: `{"_v": 1, "delta": true, "changed": {key: value}}`
-- **영향**: 프론트엔드 `applySettingsChanged(data as AppSettings)`가 delta 분기(`{delta: true, changed: {...}}`)를 `AppSettings`로 캐스팅 — 타입 불일치.
-- **위반 원칙**: P23 (일관성 — payload 계약 불일치), 잠재적 런타임 오류
-- **조치**: delta 분기를 별도 이벤트(`settings-changed-delta`)로 분리 또는 프론트엔드가 `delta` 필드로 분기 처리. 현재 `applySettingsChanged` 구현 확인 필요.
+- ~~**영향**: 프론트엔드 `applySettingsChanged(data as AppSettings)`가 delta 분기(`{delta: true, changed: {...}}`)를 `AppSettings`로 캐스팅 — 타입 불일치.~~
+- ~~**위반 원칙**: P23 (일관성 — payload 계약 불일치), 잠재적 런타임 오류~~
+- **해결**: 이벤트 분리 없이 `SettingsChangedEvent` union 타입 신설로 payload 계약 명시 (`AppSettings | SettingsChangedDeltaEvent`). `binding.ts` 캐스팅을 `data as SettingsChangedEvent`로 정정 (P23 타입 계약). `applySettingsChanged` 시그니처를 `SettingsChangedEvent` 사용 + `isSettingsDeltaEvent` type predicate로 delta 분기 식별 (AppSettings의 `[key: string]: unknown` 인덱스 시그니처로 인해 `'delta' in data`만으로는 좁히기 불가하므로 명시적 type predicate 사용). delta는 동일 consumer 부분 갱신 패턴이므로 `account-update`→`account-summary-update` 분리와 달리 이벤트 분리 없이 union 타입으로 계약 명시 (P24 단순성 — 2 이벤트 → 1 핸들러 분리 위반 회피). 테스트 6건 추가 (`tests/stores/uiStore.test.ts` — 전체 교체/delta 병합/null 시 changed 신설/payload 식별).
+- **위반 원칙**: ~~P23 (일관성 — payload 계약 불일치)~~ → ☑ 해결 (명시 타입 계약 + type predicate)
 
 ### 8.4 `index-data` — 엔진 상태/업종지수 payload 혼용 — ☑ 2026-07-27 해결 완료
 
@@ -562,7 +563,7 @@ WS 이벤트 (real-data / orderbook-update / program-update)
 | 6 | `receive-rate` / `sector-scores.status.receive_rate` 중복 경로 | 단일 경로로 통일 | 낮음 | P10, P24 | ☑ 완료 |
 | 7 | `market-phase` 부분 payload 통일 | 부분 payload 전송을 전체 payload로 통일 | 낮음 | P23 | ☑ 완료 |
 | 8 | ~~6개 underscore 이벤트 hyphen 통일~~ | ~~네이밍 컨벤션 통일 (producer 6곳 + binding 6곳 + 테스트)~~ | 낮음 | P23 | ☑ 2026-07-27 완료 |
-| 9 | ~~`account-update` / `settings-changed` payload 분기 정리~~ | ~~분기를 별도 이벤트로 분리 또는 optional 필드 명시~~ | 낮음 | P23 | ☑ 2026-07-27 완료 (`account-update` 경량화 분기 → `account-summary-update` 분리; `settings-changed`는 별도 후속 검토 대상) |
+| 9 | ~~`account-update` / `settings-changed` payload 분기 정리~~ | ~~분기를 별도 이벤트로 분리 또는 optional 필드 명시~~ | 낮음 | P23 | ☑ 2026-07-27 완료 (`account-update` 경량화 분기 → `account-summary-update` 분리; `settings-changed`는 `SettingsChangedEvent` union 타입 신설 + type predicate로 payload 계약 명시 — 이벤트 분리 없이 P23/P24 동시 충족) |
 
 > 후속 세션에서는 위 9개 항목 중 1개만 별도 승인 후 진행 권장. 규칙 0-1(세션당 1단계) 준수.
 

@@ -7,6 +7,8 @@ import type {
   EngineStatus,
   EngineStatusPayload,
   IndexData,
+  SettingsChangedEvent,
+  SettingsChangedDeltaEvent,
 } from '../types'
 
 /** 수신율 단일 항목 — KRX/NXT 각각 1개씩 (2단계 분리 구조) */
@@ -136,10 +138,18 @@ export function applyAvgAmtProgress(data: { current: number; total: number; done
 }
 
 /* ── settings-changed: 설정만 갱신 (증분 갱신 대응) ── */
-export function applySettingsChanged(data: AppSettings | { delta: boolean; changed: Partial<AppSettings> }): void {
-  if (data && 'delta' in data && data.delta) {
+
+// AppSettings가 `[key: string]: unknown` 인덱스 시그니처를 가져 'delta' in data만으로는
+// 타입 좁히기가 불가능하므로 명시적 type predicate로 delta payload 식별 (P23 타입 계약).
+function isSettingsDeltaEvent(data: SettingsChangedEvent): data is SettingsChangedDeltaEvent {
+  return typeof data === 'object' && data !== null && 'delta' in data && (data as { delta?: unknown }).delta === true
+}
+
+export function applySettingsChanged(data: SettingsChangedEvent): void {
+  if (isSettingsDeltaEvent(data)) {
+    const changed = data.changed
     uiStore.setState((state) => ({
-      settings: state.settings ? { ...state.settings, ...(data.changed && typeof data.changed === 'object' ? data.changed : {}) } : (data.changed as AppSettings),
+      settings: state.settings ? { ...state.settings, ...changed } : (changed as AppSettings),
     }))
   } else {
     uiStore.setState({ settings: data as AppSettings })

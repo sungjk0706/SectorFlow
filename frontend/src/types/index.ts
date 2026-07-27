@@ -344,6 +344,22 @@ export interface AccountSummaryUpdateEvent {
   removed_codes?: string[];
 }
 
+/**
+ * settings-changed 이벤트 — 전체/delta payload 계약 (P23 일관성).
+ * 백엔드 `notify_desktop_settings_toggled`와 계약 일치:
+ * - 전체 payload: AppSettings 전체 스냅샷 (외부 전체 갱신 — 텔레그램/스케줄러/엔진 재기동 등)
+ * - delta payload: 변경된 키만 부분 갱신 (trading.py 시간스케줄러 토글 등 단건 변경)
+ * delta는 동일 consumer(applySettingsChanged)의 부분 갱신 패턴이므로 이벤트 분리 없이
+ * union 타입으로 계약 명시 (P24 단순성 — account-update 분리와 다른 구조적 정당성).
+ */
+export interface SettingsChangedDeltaEvent {
+  _v: number;
+  delta: true;
+  changed: Partial<AppSettings>;
+}
+
+export type SettingsChangedEvent = AppSettings | SettingsChangedDeltaEvent;
+
 // ── Sector Custom 관련 타입 ──
 
 export interface StockClassificationChangedEvent {

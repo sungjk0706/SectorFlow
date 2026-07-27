@@ -131,17 +131,17 @@
 
 ### 세션 COUPLING-S3 — C-03 WebSocket 이벤트 계약 인덱스
 
-**상태:** ☑ 완료 (인덱스 문서 작성 + 후속 dead subscription 4건 정리 완료 + 잔여 3건 근본 해결 완료)
+**상태:** ☑ 완료 (인덱스 문서 작성 + 단일화 우선순위 9건 전부 근본 해결 완료)
 **대상 원칙:** P5 직접 호출·Queue 경계 유지, P10 SSOT, P16 살아있는 경로, P21 사용자 투명성, P23 일관성, P24 단순성, P25 격리된 실패
-**결과:** `docs/coupling-ws-event-contract-index.md`에 WS 이벤트 전수 인덱스 작성. 코드 수정 없음(조사·문서만). 후속 세션(2026-07-27)에서 dead subscription 4건 전수 정리 완료 + 잔여 3건(항목1/3/4) 근본 해결 완료. 항목2(index-data 분리)·항목5(네이밍 통일)는 다음 세션 진행.
+**결과:** `docs/coupling-ws-event-contract-index.md`에 WS 이벤트 전수 인덱스 작성. 코드 수정 없음(조사·문서만). 후속 세션(2026-07-27)에서 단일화 우선순위 9건 전부 근본 해결 완료 — dead subscription 4건 정리 + payload 불일치/중복 경로/네이밍/분기 정리.
 - WS 3 채널 구조 정의: prices(28 이벤트), settings(6 이벤트), orders(2 이벤트). 3 채널 모두 동일 `ws_manager` 싱글턴 공유 (채널 분리는 TCP 연결 분리일 뿐 이벤트 라우팅 분리 아님).
 - 40개 이벤트 전수 인덱스: 36개 프론트엔드 구독 + 4개 dead subscription.
 - P16/P21 위반 4건 (dead subscription): `engine-reload-complete`, `bootstrap-stage`, `avg-amt-progress`, `order-filled` — 백엔드 producer 전혀 없음. `bootstrap-stage`는 P21(사용자 투명성) 위반 (부트스트랩 진행 미표시). **→ 2026-07-27 후속 세션에서 4건 전수 정리 완료.**
-- P23 위반 8건: 네이밍 underscore 6개(`circuit_breaker_open` 등) vs hyphen 34개, payload 필드 불일치 2건(`ws-subscribe-status` `index_subscribed` 누락, `account-update` 경량화/전체 분기). **→ `ws-subscribe-status` payload 불일치 2026-07-27 해결 완료 (백엔드 `index_subscribed` 상태 추가). 네이밍 6개 underscore→hyphen 통일 2026-07-27 COUPLING-S3 항목5 해결 완료 (전체 40개 이벤트 hyphen 통일). `account-update` 분기는 잔존.**
+- P23 위반 8건: 네이밍 underscore 6개(`circuit_breaker_open` 등) vs hyphen 34개, payload 필드 불일치 2건(`ws-subscribe-status` `index_subscribed` 누락, `account-update` 경량화/전체 분기). **→ 전부 해결 완료.** `ws-subscribe-status` payload 불일치 2026-07-27 해결 (백엔드 `index_subscribed` 상태 추가). 네이밍 6개 underscore→hyphen 통일 2026-07-27 COUPLING-S3 항목5 해결 (전체 40개 이벤트 hyphen 통일). `account-update` 분기 2026-07-27 해결 (경량화 → `account-summary-update` 분리).
 - P10/P24 위반 3건 (중복 경로): `receive-rate` vs `sector-scores.status.receive_rate`, `engine-ready` vs `engine-reload-complete`(동일 액션), `confirmed-progress` vs `avg-amt-progress`(동일 액션). **→ 3건 모두 해결 완료.** `engine-reload-complete`/`avg-amt-progress` 중복 구독 2건 정리 + `receive-rate` 중복 경로 2026-07-27 해결 (sector-scores에서 receive_rate 제거, receive-rate 단일 소스).
-- 다중 producer 6건: `index-data`(4곳, payload 혼용), `market-phase`(3곳, 부분 payload), `stock-classification-changed`(3곳), `buy-targets-update`/`sector-stocks-refresh`/`engine-ready`(각 2곳). **→ `market-phase` 부분 payload 2026-07-27 해결 완료 (engine_ws_dispatch.py:372 전체 payload 통일). `index-data` payload 혼용은 잔존 (다음 세션).**
+- 다중 producer 6건: `index-data`(4곳, payload 혼용), `market-phase`(3곳, 부분 payload), `stock-classification-changed`(3곳), `buy-targets-update`/`sector-stocks-refresh`/`engine-ready`(각 2곳). **→ `market-phase` 부분 payload 2026-07-27 해결 완료 (engine_ws_dispatch.py:372 전체 payload 통일). `index-data` payload 혼용 2026-07-27 해결 완료 (엔진 상태 → `engine-status` 분리, `index-data`는 업종지수 전용).**
 - CustomEvent 배칭 3종: `real-data-tick`/`orderbook-tick`/`program-tick` — hotStore `flushTickBatch()` rAF coalescing → 4개 페이지 consumer.
-- 단일화 우선순위 9건 식별. **→ 1순위(`bootstrap-stage`) + 2순위(`ws-subscribe-status`) + 3순위(`order-filled`) + 5순위(`engine-reload-complete`/`avg-amt-progress`) + 6순위(`receive-rate`) + 7순위(`market-phase`) 완료. 잔존 3건(4순위 `index-data`, 8순위 네이밍 6개, 9순위 `account-update`/`settings-changed`)은 다음 세션 진행.**
+- 단일화 우선순위 9건 식별. **→ 9건 전부 완료.** 1순위(`bootstrap-stage`) + 2순위(`ws-subscribe-status`) + 3순위(`order-filled`) + 4순위(`index-data` 분리) + 5순위(`engine-reload-complete`/`avg-amt-progress`) + 6순위(`receive-rate`) + 7순위(`market-phase`) + 8순위(네이밍 6개 hyphen 통일) + 9순위(`account-update` → `account-summary-update` 분리 + `settings-changed` `SettingsChangedEvent` union 타입 신설로 payload 계약 명시).
 
 #### 대상 코드
 

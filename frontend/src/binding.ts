@@ -44,7 +44,7 @@ import {
 import type {
   AccountUpdateEvent,
   AccountSummaryUpdateEvent,
-  AppSettings,
+  SettingsChangedEvent,
   SectorStock,
   StockClassificationChangedEvent,
   RealDataEvent,
@@ -138,7 +138,7 @@ export function bindWSToStore(
 
   /* ── settings 채널 이벤트 핸들러 ── */
   settingsClient.onEvent('settings-changed', (data) => {
-    applySettingsChanged(data as AppSettings)
+    applySettingsChanged(data as SettingsChangedEvent)
   })
 
   settingsClient.onEvent('engine-status', (data) => {
