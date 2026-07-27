@@ -13,8 +13,7 @@ function buildMasterToggleRow(state: GeneralSettingsState): HTMLElement {
   const r = createSettingToggleRow({
     label: '자동매매',
     toggleOn: false,
-    disableControlsOnToggle: false,
-    controls: [createHolidayBadge()],
+    extras: [createHolidayBadge()],
     onToggle: () => handleMasterToggle(state),
   })
   state.masterToggle = r.toggle

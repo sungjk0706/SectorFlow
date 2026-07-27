@@ -58,7 +58,8 @@ function buildBuyTimeRow(state: GeneralSettingsState): HTMLElement {
     label: '자동매수 시간',
     toggleOn: !!state.vals.auto_buy_on,
     disableControlsOnToggle: false,
-    controls: [tpWrap, createHolidayBadge()],
+    controls: [tpWrap],
+    extras: [createHolidayBadge()],
     onToggle: async next => {
       state.vals.auto_buy_on = next
       const res = await state.settingsMgr!.saveSection({ auto_buy_on: next })
@@ -97,7 +98,8 @@ function buildSellTimeRow(state: GeneralSettingsState): HTMLElement {
     label: '자동매도 시간',
     toggleOn: !!state.vals.auto_sell_on,
     disableControlsOnToggle: false,
-    controls: [tpWrap, createHolidayBadge()],
+    controls: [tpWrap],
+    extras: [createHolidayBadge()],
     onToggle: async next => {
       state.vals.auto_sell_on = next
       const res = await state.settingsMgr!.saveSection({ auto_sell_on: next })
@@ -252,7 +254,7 @@ export function syncTimeSettingsTab(r: Record<string, unknown>): void {
   if (state.confirmedDlSlot) updateTimeSlotDisplay(state.confirmedDlSlot, cdh, cdm)
   const dlOn = r.scheduler_market_close_on !== false
   state.confirmedDlToggle?.setOn(dlOn)
-  if (state.confirmedDlSlot) setDisabled(state.confirmedDlSlot, !dlOn)
+  if (state.confirmedDlSlot) setDisabled(state.confirmedDlSlot.parentElement as HTMLElement, !dlOn)
 
   // 타임테이블 3슬롯
   const [trh, trm] = parseHM(String(r['timetable.realtime_reset'] ?? '07:58'))

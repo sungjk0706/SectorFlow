@@ -6,7 +6,7 @@
  *
  * 입력란 그룹과 컨트롤 그룹은 분할됨 (F06-02, P24 단순성):
  * - 입력란: setting-row-inputs.ts (createNumInput, createMoneyInput, createTextInput, createSelect)
- * - 컨트롤: setting-row-controls.ts (createToggleBtn, createRadioGroup, createToggleLabelControlsRow)
+ * - 컨트롤: setting-row-controls.ts (createToggleBtn, createRadioGroup, createSettingToggleRow)
  */
 
 import { COLOR, FONT_SIZE } from './ui-styles'

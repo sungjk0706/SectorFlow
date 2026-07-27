@@ -2,12 +2,11 @@
  * 공통 설정 행 컴포넌트 — 토글/라디오/컴포지션 컨트롤 그룹.
  * setting-row.ts에서 분할 (F06-02, P24 단순성).
  *
- * 포함: createToggleBtn, createRadioGroup, createToggleLabelControlsRow
+ * 포함: createToggleBtn, createRadioGroup, createSettingToggleRow
  */
 
 import { COLOR, FONT_SIZE, FONT_WEIGHT, setDisabled } from './ui-styles'
 import { createInfoTooltip } from './info-tooltip'
-import { createSettingRow } from './setting-row'
 
 /* ── ON/OFF 토글 버튼 ──────────────────────────────────────── */
 export function createToggleBtn(options: {
@@ -139,89 +138,29 @@ export function createRadioGroup(options: {
   return { el: container, setValue, getValue, setDisabled }
 }
 
-/* ── 토글 + 라벨 + 컨트롤 컴포지션 행 ─────────────────────── */
-// labelSubText(라벨 하단) → rangeText(입력란 좌측)로 통일 (INPUT-VAL-S2, P23 일관성)
-// infoText(입력란 좌측 ⓘ 툴팁) 추가 — 전부 툴팁 통일 방식 (P23 일관성, P21 투명성)
-export function createToggleLabelControlsRow(options: {
-  labelText: string | string[]
-  rangeText?: string
-  infoText?: string
-  toggleOn: boolean
-  onToggle: (next: boolean) => void
-  controlsChild: HTMLElement
-  initialDisabled?: boolean
-  extraDisableTargets?: HTMLElement[]
-  rowStyle?: Partial<CSSStyleDeclaration>
-}): {
-  el: HTMLElement
-  toggle: ReturnType<typeof createToggleBtn>
-  controls: HTMLElement
-} {
-  const controls = document.createElement('span')
-  controls.style.cssText = 'display:flex;align-items:center;gap:6px;'
-
-  let toggle: ReturnType<typeof createToggleBtn>
-  toggle = createToggleBtn({ on: options.toggleOn, onClick: () => {
-    const next = !toggle.isOn()
-    toggle.setOn(next)
-    setDisabled(controls, !next)
-    if (options.extraDisableTargets) {
-      for (const t of options.extraDisableTargets) setDisabled(t, !next)
-    }
-    options.onToggle(next)
-  }})
-
-  const labelWrap = document.createElement('span')
-  labelWrap.style.cssText = 'display:flex;align-items:center;gap:8px;'
-  labelWrap.appendChild(toggle.el)
-  const labelBox = document.createElement('span')
-  labelBox.style.cssText = 'display:flex;flex-direction:column;'
-  const labelLines = Array.isArray(options.labelText) ? options.labelText : [options.labelText]
-  for (const t of labelLines) {
-    const label = document.createElement('span')
-    label.textContent = t
-    labelBox.appendChild(label)
-  }
-  labelWrap.appendChild(labelBox)
-
-  if (options.rangeText) {
-    const rangeSpan = document.createElement('span')
-    Object.assign(rangeSpan.style, { fontSize: FONT_SIZE.small, color: COLOR.tertiary, whiteSpace: 'nowrap' })
-    rangeSpan.textContent = options.rangeText
-    controls.appendChild(rangeSpan)
-  }
-  controls.appendChild(options.controlsChild)
-
-  const initDisabled = options.initialDisabled ?? !options.toggleOn
-  setDisabled(controls, initDisabled)
-  if (options.extraDisableTargets) {
-    for (const t of options.extraDisableTargets) setDisabled(t, initDisabled)
-  }
-
-  // infoText: createSettingRow에서 입력란 좌측에 ⓘ 툴팁 배치 — 우측 고정폭으로 정렬 통일
-  const el = createSettingRow(labelWrap, controls, {
-    infoText: options.infoText,
-    style: options.rowStyle,
-  })
-  return { el, toggle, controls }
-}
-
-/* ── 라벨 + 컨트롤 + 오른쪽 토글 행 ───────────────────────── */
-// 일반설정 탭에서 토글 위치/간격 통일용 (P23 일관성)
+/* ── 설정 행 — 라벨 + (컨트롤) + 토글 ───────────────────────── */
+// 토글 위치/간격 통일용 (P23 일관성)
+// togglePosition: 'left'  → [토글][라벨]      [info][controls][extras]
+// togglePosition: 'right' → [라벨]      [info][controls][extras][토글]
 export function createSettingToggleRow(options: {
-  label: string
+  label: string | string[]
   toggleOn: boolean
   onToggle: (next: boolean) => void
   controls?: HTMLElement[]
+  extras?: HTMLElement[]
   infoText?: string
   disableControlsOnToggle?: boolean
   initialDisabled?: boolean
+  extraDisableTargets?: HTMLElement[]
+  togglePosition?: 'left' | 'right'
   rowStyle?: Partial<CSSStyleDeclaration>
 }): {
   el: HTMLElement
   toggle: ReturnType<typeof createToggleBtn>
   controls: HTMLElement
 } {
+  const togglePosition = options.togglePosition ?? 'left'
+
   const row = document.createElement('div')
   Object.assign(row.style, {
     display: 'flex',
@@ -232,13 +171,28 @@ export function createSettingToggleRow(options: {
   })
   if (options.rowStyle) Object.assign(row.style, options.rowStyle)
 
-  const labelSpan = document.createElement('span')
-  Object.assign(labelSpan.style, { fontSize: FONT_SIZE.settingsLabel, fontWeight: FONT_WEIGHT.normal })
-  labelSpan.textContent = options.label
-  row.appendChild(labelSpan)
+  const labelBox = document.createElement('span')
+  Object.assign(labelBox.style, {
+    display: 'flex',
+    flexDirection: 'column',
+    fontSize: FONT_SIZE.settingsLabel,
+    fontWeight: FONT_WEIGHT.normal,
+  })
+  const labelLines = Array.isArray(options.label) ? options.label : [options.label]
+  for (const t of labelLines) {
+    const s = document.createElement('span')
+    s.textContent = t
+    labelBox.appendChild(s)
+  }
 
   const controls = document.createElement('span')
   controls.style.cssText = 'display:inline-flex;align-items:center;gap:10px;'
+
+  const extras = document.createElement('span')
+  extras.style.cssText = 'display:inline-flex;align-items:center;gap:10px;'
+  if (options.extras) {
+    for (const c of options.extras) extras.appendChild(c)
+  }
 
   const right = document.createElement('span')
   right.style.cssText = 'display:inline-flex;align-items:center;gap:10px;'
@@ -249,6 +203,11 @@ export function createSettingToggleRow(options: {
 
   if (options.controls) {
     for (const c of options.controls) controls.appendChild(c)
+    right.appendChild(controls)
+  }
+
+  if (options.extras && options.extras.length > 0) {
+    right.appendChild(extras)
   }
 
   let toggle: ReturnType<typeof createToggleBtn>
@@ -258,15 +217,29 @@ export function createSettingToggleRow(options: {
     if (options.disableControlsOnToggle) {
       setDisabled(controls, !next)
     }
+    if (options.extraDisableTargets) {
+      for (const t of options.extraDisableTargets) setDisabled(t, !next)
+    }
     options.onToggle(next)
   }})
 
-  right.appendChild(controls)
-  right.appendChild(toggle.el)
-
   const initDisabled = options.initialDisabled ?? (options.disableControlsOnToggle ? !options.toggleOn : false)
-  if (options.disableControlsOnToggle && options.controls) {
+  if (options.disableControlsOnToggle) {
     setDisabled(controls, initDisabled)
+  }
+  if (options.extraDisableTargets) {
+    for (const t of options.extraDisableTargets) setDisabled(t, initDisabled)
+  }
+
+  if (togglePosition === 'left') {
+    const labelWrap = document.createElement('span')
+    labelWrap.style.cssText = 'display:inline-flex;align-items:center;gap:8px;'
+    labelWrap.appendChild(toggle.el)
+    labelWrap.appendChild(labelBox)
+    row.appendChild(labelWrap)
+  } else {
+    row.appendChild(labelBox)
+    right.appendChild(toggle.el)
   }
 
   row.appendChild(right)
