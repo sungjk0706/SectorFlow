@@ -524,13 +524,16 @@ export function applyRealtimeReset(): void {
 // sectorStocks와 불일치 가능 (조회 시점 차이). incoming 실시간 필드를 sectorStocks 기준으로
 // 재결합하여 단일 소스 일관성 유지. buy-targets-delta의 added/changed 결합 패턴과 동일 (P23).
 //
-// same 비교 키 (세션 8 — 백엔드 _BUY_TARGET_CMP_KEYS와 일치, P23 일관성):
+// same 비교 키 (백엔드 _BUY_TARGET_CMP_KEYS와 일치, P23 일관성):
 //   식별자: code, name (백엔드는 code 기준 delta이므로 불필요, 프론트는 배열 순서 비교용)
 //   정적 필드: rank, boost_score, guard_pass, reason, order_ratio, program_net_buy,
-//             high_5d, avg_amt_5d, news_boost
+//             high_5d, avg_amt_5d
 //   실시간 필드(cur_price/change/change_rate/strength/trade_amount)는 제외 —
 //   틱 디스패치(real-data-tick)가 별도 갱신 담당, update same에서 비교하면 매 틱마다
 //   setState 트리거하여 비용 낭비. 백엔드 _BUY_TARGET_CMP_KEYS도 동일 제외.
+//   news_boost 제외 (세션 3 — news-hit 이벤트가 단일 갱신 경로, P10 SSOT).
+//   applyBuyTargetsUpdate는 초기 buy-targets-update 수신 시에만 news_boost 포함,
+//   이후 갱신은 applyNewsHit이 담당하므로 same 비교에서 제외해 이중 갱신 경로 차단.
 export function applyBuyTargetsUpdate(data: { buy_targets: SectorStock[] }): void {
   const sectorStocks = hotStore.getState().sectorStocks
   const incoming = (data.buy_targets ?? []).map(t => {
@@ -559,12 +562,39 @@ export function applyBuyTargetsUpdate(data: { buy_targets: SectorStock[] }): voi
       && p.program_net_buy === n.program_net_buy
       && p.high_5d === n.high_5d
       && p.avg_amt_5d === n.avg_amt_5d
-      && p.news_boost === n.news_boost
   })
   if (!same) {
     rebuildBuyTargetIndex(incoming)
     hotStore.setState({ buyTargets: incoming })
   }
+}
+
+/* ── news-hit: 뉴스 호재 가산점 갱신 (news_boost 단일 전달 경로, P10 SSOT) ── */
+// 백엔드 _handle_nws_news()가 뉴스 호재 매칭 시 news-hit 이벤트로 news_boost 전달.
+// buy-targets-delta에서는 news_boost 제외(세션 1)하고 본 action으로만 갱신 — 이중 갱신
+// 경로 제거 (P10). applyBuyTargetsUpdate same 비교에서도 news_boost 제외(세션 3)와 짝.
+// P23: normalizeStockCode + hotStore.setState updater 패턴 (applyBuyTargetsDelta와 동일).
+// P7: O(len(codes) * len(buyTargets)) — codes는 단일 뉴스 매칭 종목 수(소), buyTargets는
+//     매수후보 N(소). applyBuyTargetsDelta의 findIndex 패턴과 동일 (P23 일관성).
+// P20: codes/scores 누락 시 빈 배열로 명시적 처리 (폴백 아님).
+// P25: 미매칭 시 setState 미발화 (불필요한 리렌더 방지). 해당 종목만 in-place patch.
+export function applyNewsHit(data: { codes: string[]; scores: number[] }): void {
+  const codes = data.codes ?? []
+  const scores = data.scores ?? []
+  if (codes.length === 0) return
+  hotStore.setState((state) => {
+    let buyTargets = state.buyTargets
+    let changed = false
+    for (let k = 0; k < codes.length; k++) {
+      const code = normalizeStockCode(codes[k])
+      const idx = buyTargets.findIndex((t: SectorStock) => normalizeStockCode(t.code) === code)
+      if (idx >= 0) {
+        if (!changed) { buyTargets = [...buyTargets]; changed = true }
+        buyTargets[idx] = { ...buyTargets[idx], news_boost: scores[k] ?? 0 }
+      }
+    }
+    return changed ? { buyTargets } : state
+  })
 }
 
 /* ── buy-targets-delta: 매수후보 증분 갱신 (added/removed/changed) ── */

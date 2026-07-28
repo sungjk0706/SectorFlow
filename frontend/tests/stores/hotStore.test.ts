@@ -5,6 +5,7 @@ import {
   applySectorStocksDelta,
   applyBuyTargetsUpdate,
   applyBuyTargetsDelta,
+  applyNewsHit,
   applyRealtimeReset,
   applyRealData,
   applyOrderbookUpdate,
@@ -300,12 +301,13 @@ describe('hotStore — 이벤트 계약 정합성 (세션 4)', () => {
     })
   })
 
-  // ── 세션 8 — same 비교 키 백엔드 _BUY_TARGET_CMP_KEYS 일치 검증 ──────────────
+  // ── same 비교 키 백엔드 _BUY_TARGET_CMP_KEYS 일치 검증 ──────────────
   // same 키: 정적 필드만 (rank, boost_score, guard_pass, reason, order_ratio,
-  //          program_net_buy, high_5d, avg_amt_5d, news_boost) + 식별자 (code, name)
+  //          program_net_buy, high_5d, avg_amt_5d) + 식별자 (code, name)
   // 실시간 필드(cur_price/change/change_rate/strength/trade_amount)는 same 비교 제외 —
   // 틱 디스패치가 별도 갱신 담당, 매 틱마다 setState 트리거 방지.
-  describe('applyBuyTargetsUpdate — same 비교 키 (세션 8 — 백엔드 cmp_keys 일치)', () => {
+  // news_boost 제외 (세션 3 — news-hit 이벤트가 단일 갱신 경로, P10 SSOT).
+  describe('applyBuyTargetsUpdate — same 비교 키 (백엔드 cmp_keys 일치)', () => {
     it('실시간 필드만 변경 시 setState 미발화 (same=true)', () => {
       // 초기 buyTargets 설정 (정적 필드 포함)
       const initial: SectorStock[] = [
@@ -353,7 +355,10 @@ describe('hotStore — 이벤트 계약 정합성 (세션 4)', () => {
       expect(state.buyTargets[0].avg_amt_5d).toBe(5000)
     })
 
-    it('news_boost 변경 시 setState 발화 (same=false, 세션 8 결함 B 수정)', () => {
+    it('news_boost 변경 시 setState 미발화 (same=true, news-hit 단일 경로 — 세션 3)', () => {
+      // news_boost는 news-hit 이벤트가 단일 갱신 경로 (P10 SSOT).
+      // applyBuyTargetsUpdate same 비교에서 제거 — news_boost만 변경된 incoming은 same=true로
+      // 간주해 setState 미발화. news_boost 갱신은 applyNewsHit이 담당 (아래 describe 블록).
       const initial: SectorStock[] = [
         {
           code: '000001', name: '종목A', cur_price: 10000, change: 100, change_rate: 1.0,
@@ -363,13 +368,15 @@ describe('hotStore — 이벤트 계약 정합성 (세션 4)', () => {
         },
       ]
       applyBuyTargetsUpdate({ buy_targets: initial })
+      const prevRef = hotStore.getState().buyTargets
 
-      // news_boost 변경 (0.0 → 1.5)
+      // news_boost만 변경 (0.0 → 1.5) — same=true, setState 미발화
       const updated: SectorStock[] = [{ ...initial[0], news_boost: 1.5 }]
       applyBuyTargetsUpdate({ buy_targets: updated })
 
       const state = hotStore.getState()
-      expect(state.buyTargets[0].news_boost).toBe(1.5)
+      expect(state.buyTargets).toBe(prevRef)            // 참조 동일 — setState 미발화
+      expect(state.buyTargets[0].news_boost).toBe(0.0)  // news_boost 무시 (news-hit이 담당)
     })
 
     it('high_5d 변경 시 setState 발화 (same=false)', () => {
@@ -634,6 +641,72 @@ describe('hotStore — applyBuyTargetsDelta (COUPLING-S8 후속)', () => {
     // removed 후 인덱스 재구축: 000002 → idx 0, 000001 → undefined
     expect(getBuyTargetIndex('000001')).toBeUndefined()
     expect(getBuyTargetIndex('000002')).toBe(0)
+  })
+})
+
+// ── 세션 3 — news-hit 단일 갱신 경로 (P10 SSOT, P25 격리된 실패) ──────────────
+describe('hotStore — applyNewsHit (news-hit 단일 갱신 경로, 세션 3)', () => {
+  beforeEach(() => {
+    resetHotState()
+  })
+
+  it('해당 종목의 news_boost만 patch (다른 필드 불변, 미해당 종목 불변)', () => {
+    // 초기 buyTargets: 종목A(000001) news_boost=0.0, 종목B(000002) news_boost=undefined
+    const prev = hotStore.getState().buyTargets
+    const prevA = { ...prev[0] }
+    const prevB = { ...prev[1] }
+
+    applyNewsHit({ codes: ['000001'], scores: [1.5] })
+
+    const state = hotStore.getState()
+    // 종목A: news_boost만 1.5로 갱신, 나머지 필드 불변
+    expect(state.buyTargets[0].news_boost).toBe(1.5)
+    const { news_boost: _a, ...restA } = state.buyTargets[0]
+    const { news_boost: _pa, ...restPrevA } = prevA
+    expect(restA).toEqual(restPrevA)
+    // 종목B: 미해당 — 불변 (참조 동일)
+    expect(state.buyTargets[1]).toBe(prev[1])
+    expect(state.buyTargets[1]).toEqual(prevB)
+  })
+
+  it('복수 종목 동시 갱신 — codes 순서대로 scores 매핑', () => {
+    applyNewsHit({ codes: ['000001', '000002'], scores: [1.5, 2.0] })
+
+    const state = hotStore.getState()
+    expect(state.buyTargets[0].news_boost).toBe(1.5)
+    expect(state.buyTargets[1].news_boost).toBe(2.0)
+  })
+
+  it('종목코드 정규화 — A 접두사/패딩 처리', () => {
+    applyNewsHit({ codes: ['A000001'], scores: [1.5] })
+    expect(hotStore.getState().buyTargets[0].news_boost).toBe(1.5)
+  })
+
+  it('buyTargets에 없는 종목은 무시 (다른 종목 정상 갱신)', () => {
+    const prev = hotStore.getState().buyTargets
+    applyNewsHit({ codes: ['999999', '000001'], scores: [9.9, 1.5] })
+
+    const state = hotStore.getState()
+    expect(state.buyTargets[0].news_boost).toBe(1.5)
+    // buyTargets 길이 불변 — 999999 추가되지 않음
+    expect(state.buyTargets.length).toBe(prev.length)
+  })
+
+  it('빈 codes 시 setState 미발화 (배열 참조 동일, P25)', () => {
+    const prev = hotStore.getState().buyTargets
+    applyNewsHit({ codes: [], scores: [] })
+    expect(hotStore.getState().buyTargets).toBe(prev)
+  })
+
+  it('codes 누락 시 setState 미발화 (P20 명시적 빈 배열 처리)', () => {
+    const prev = hotStore.getState().buyTargets
+    applyNewsHit({} as { codes: string[]; scores: number[] })
+    expect(hotStore.getState().buyTargets).toBe(prev)
+  })
+
+  it('scores 요소 부재 시 0으로 처리 (P20 명시적 값)', () => {
+    applyNewsHit({ codes: ['000001'], scores: [] })
+    expect(hotStore.getState().buyTargets[0].news_boost).toBe(0)
   })
 })
 

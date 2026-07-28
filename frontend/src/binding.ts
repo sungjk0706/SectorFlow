@@ -11,6 +11,7 @@ import {
   applyProgramUpdate,
   applyBuyTargetsUpdate,
   applyBuyTargetsDelta,
+  applyNewsHit,
   applySectorStocksRefresh,
   applySectorStocksDelta,
   applyRealtimeReset,
@@ -52,6 +53,7 @@ import type {
   SectorScoresEvent,
   IndexData,
   EngineStatusPayload,
+  NewsHitEvent,
 } from './types'
 import { applyStockClassificationChanged } from './stores/stockClassificationStore'
 import { showToast } from './components/common/toast'
@@ -246,6 +248,17 @@ export function bindWSToStore(
     const d = data as { message?: string }
     applyCircuitBreakerOpen(d)
     showToast('error', d.message ?? '서킷브레이커 발동 — 자동매매 중지', 8000)
+  })
+
+  /* ── news-hit: 뉴스 호재 가산점 갱신 + 토스트 알림 (P10 단일 전달 경로, P21 투명성) ── */
+  // 백엔드 _handle_nws_news()가 호재 매칭 시 news_boost를 본 이벤트로만 전달.
+  // applyNewsHit이 해당 종목 news_boost만 patch (buy-targets-delta는 news_boost 제외, 세션 1).
+  // 토스트로 사용자에게 즉시 알림 (P21). title 빈 문자열 시 기본 문구 (P20 명시적 값,
+  // circuit-breaker-open의 `?? 기본문구` 패턴과 일관).
+  pricesClient.onEvent('news-hit', (data) => {
+    const d = data as NewsHitEvent
+    applyNewsHit(d)
+    showToast('info', d.title || '뉴스 호재 발생', 4000)
   })
 
   /* ── order-time-blocked: 체결 불가 시간대 주문 차단 상태 (10초 주기) ── */
