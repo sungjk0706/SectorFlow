@@ -441,6 +441,18 @@ class AutoTradeManager:
         if not _allowed:
             _reason_code = _map_risk_reason_to_code(_risk_reason)
             logger.info("[매매] [리스크차단] %s 매수 차단 — %s (사유코드=%s)", stk_cd, _risk_reason, _reason_code)
+            # P21 사용자 투명성 — 차단 사유 텔레그램 알림 + WS 브로드캐스트 (매도 경로와 동일 패턴, P23)
+            _blocked_stk_nm = data_manager.get_stock_name(stk_cd, access_token)
+            _fire_and_forget_telegram(
+                f"🛑 [리스크차단] {_blocked_stk_nm}({stk_cd}) 매수 차단 — {_risk_reason}",
+                self.get_settings_fn(),
+            )
+            from backend.app.services.engine_account_notify import _safe_broadcast
+            await _safe_broadcast("risk-block-status", {
+                "blocked": True,
+                "side": "buy",
+                "reason": _risk_reason,
+            })
             return False, _reason_code
 
         self._buy_state[stk_cd] = {"last_req_ts": now, "has_open_buy": True}
@@ -764,7 +776,11 @@ class AutoTradeManager:
             allowed, reason = await risk_mgr.check_sell_order_allowed("", 0, 0)
             if not allowed:
                 logger.info("[매매] [리스크차단] 매도 조건 전체 차단 — %s", reason)
-                # P21 사용자 투명성 — 차단 사유 WS 브로드캐스트
+                # P21 사용자 투명성 — 차단 사유 텔레그램 알림 + WS 브로드캐스트
+                _fire_and_forget_telegram(
+                    f"🛑 [리스크차단] 매도 전체 차단 — {reason}",
+                    base_settings,
+                )
                 from backend.app.services.engine_account_notify import _safe_broadcast
                 await _safe_broadcast("risk-block-status", {
                     "blocked": True,

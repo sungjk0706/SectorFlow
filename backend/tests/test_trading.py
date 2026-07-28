@@ -431,6 +431,44 @@ class TestExecuteBuyReasonCodes:
         assert result is False
         assert reason == BUY_REJECT_RISK_CIRCUIT
 
+    @pytest.mark.asyncio
+    async def test_risk_block_buy_sends_telegram_and_ws_broadcast(self):
+        """매수 리스크 차단 시 텔레그램 알림 + risk-block-status WS 브로드캐스트 전송 (P21)."""
+        mgr = _make_manager()
+        with patch("backend.app.services.trading.auto_buy_effective", return_value=True), \
+             patch("backend.app.services.engine_state.state") as mock_state, \
+             patch("backend.app.services.engine_account.get_positions", new_callable=AsyncMock, return_value=[]), \
+             patch("backend.app.services.trading.is_test_mode", return_value=True), \
+             patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock, return_value=[]), \
+             patch("backend.app.services.dry_run.estimate_fill_price", return_value=70000), \
+             patch("backend.app.services.trading.get_risk_manager") as mock_rm, \
+             patch("backend.app.services.data_manager.get_stock_name", return_value="삼성전자"), \
+             patch("backend.app.services.trading._fire_and_forget_telegram") as mock_telegram, \
+             patch("backend.app.services.engine_account_notify._safe_broadcast", new=AsyncMock()) as mock_broadcast:
+            mock_state.realtime_latency_exceeded = False
+            mock_state.integrated_system_settings_cache = _raw_settings()
+            mock_state.master_stocks_cache = {}
+            mock_rm.return_value.get_withdrawable_deposit.return_value = 10_000_000
+            mock_rm.return_value.check_buy_order_allowed = AsyncMock(
+                return_value=(False, "일일 손실 한도 초과")
+            )
+            result, reason = await mgr.execute_buy("005930", 70000, "token")
+        assert result is False
+        assert reason == BUY_REJECT_RISK_LOSS
+        # 텔레그램 알림 검증 — 메시지에 종목명·코드·사유 포함 (P21)
+        mock_telegram.assert_called_once()
+        telegram_msg = mock_telegram.call_args.args[0]
+        assert "🛑" in telegram_msg
+        assert "삼성전자" in telegram_msg
+        assert "005930" in telegram_msg
+        assert "일일 손실 한도 초과" in telegram_msg
+        # WS 브로드캐스트 검증 — side="buy" (P21, 매도 경로와 동일 패턴 P23)
+        mock_broadcast.assert_awaited_once_with("risk-block-status", {
+            "blocked": True,
+            "side": "buy",
+            "reason": "일일 손실 한도 초과",
+        })
+
 
 class TestBroadcastDailyBuyStateStatus:
     """일일 매수 상태 로드 성공/실패 브로드캐스트 검증."""
@@ -636,6 +674,49 @@ class TestCheckSellConditions:
             mock_rm.return_value.check_sell_order_allowed = AsyncMock(return_value=(True, "승인"))
             await mgr.check_sell_conditions([stock], _raw_settings(), "token")
         mgr.execute_sell.assert_not_awaited()
+
+
+# ── 매도 리스크 차단 알림 (P21 사용자 투명성) ──────────────────────────────────
+
+class TestSellRiskBlockNotification:
+    """매도 리스크 차단 시 텔레그램 알림 + risk-block-status WS 브로드캐스트 검증 (P21)."""
+
+    @pytest.mark.asyncio
+    @patch("backend.app.services.trading.auto_sell_effective", return_value=True)
+    async def test_risk_block_sell_sends_telegram_and_ws_broadcast(self, _mock_sell):
+        mgr = _make_manager()
+        mgr.execute_sell = AsyncMock()
+        stock = {
+            "stk_cd": "005930",
+            "stk_nm": "삼성전자",
+            "cur_price": "65000",
+            "qty": "10",
+            "pnl_rate": -6.0,
+            "pnl_amount": -50000,
+        }
+        with patch("backend.app.services.engine_state.state") as mock_state, \
+             patch("backend.app.services.trading.get_risk_manager") as mock_rm, \
+             patch("backend.app.services.trading._fire_and_forget_telegram") as mock_telegram, \
+             patch("backend.app.services.engine_account_notify._safe_broadcast", new=AsyncMock()) as mock_broadcast:
+            mock_state.realtime_latency_exceeded = False
+            mock_rm.return_value.check_sell_order_allowed = AsyncMock(
+                return_value=(False, "일일 손실 한도 초과 (매도 차단)")
+            )
+            await mgr.check_sell_conditions([stock], _raw_settings(), "token")
+        # 매도 실행 차단 — execute_sell 호출 없음
+        mgr.execute_sell.assert_not_awaited()
+        # 텔레그램 알림 검증 — 메시지에 "매도 전체 차단" + 사유 포함 (P21)
+        mock_telegram.assert_called_once()
+        telegram_msg = mock_telegram.call_args.args[0]
+        assert "🛑" in telegram_msg
+        assert "매도 전체 차단" in telegram_msg
+        assert "일일 손실 한도 초과 (매도 차단)" in telegram_msg
+        # WS 브로드캐스트 검증 — side="sell" (기존 동작 유지)
+        mock_broadcast.assert_awaited_once_with("risk-block-status", {
+            "blocked": True,
+            "side": "sell",
+            "reason": "일일 손실 한도 초과 (매도 차단)",
+        })
 
 
 # ── 매도 주문 간격 게이트 ──────────────────────────────────────────────────────
