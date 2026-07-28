@@ -6,9 +6,13 @@
   - stocks.db 본체·stocks.db-shm·stocks.db-wal·sectorflow.db는 절대 삭제되지 않는다 (P22).
   - keep=0이면 모든 백업 세트가 삭제된다.
   - 백업이 없으면 0을 반환하고 본체는 건드리지 않는다.
+  - 정렬 기준은 파일명 문자열이 아닌 파일시스템 mtime (P10/P22).
+  - 비표준 타임스탬스(접두사 포함)도 mtime 기준으로 동일 처리 (P22).
+  - mtime 조회 실패 시 해당 세트만 스킵 + warning, 나머지 정상 처리 (P25).
 """
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from backend.app.db.database import cleanup_old_backups
@@ -21,6 +25,14 @@ def _make_backup_set(data_dir: Path, ts: str, *, with_shm: bool = True, with_wal
         (data_dir / f"stocks.db-shm.{ts}.backup").write_bytes(b"shm")
     if with_wal:
         (data_dir / f"stocks.db-wal.{ts}.backup").write_bytes(b"wal")
+
+
+def _set_mtime(data_dir: Path, ts: str, mtime: float) -> None:
+    """한 세트의 db/shm/wal 백업 파일 mtime 일괄 설정."""
+    for prefix in ("stocks.db.", "stocks.db-shm.", "stocks.db-wal."):
+        p = data_dir / f"{prefix}{ts}.backup"
+        if p.exists():
+            os.utime(p, (mtime, mtime))
 
 
 def _make_live_db(data_dir: Path) -> None:
@@ -111,3 +123,96 @@ def test_keep_two_preserves_two_sets(tmp_path: Path) -> None:
     assert (tmp_path / "stocks.db.20260720_000000.backup").exists()
     assert not (tmp_path / "stocks.db.20260715_000000.backup").exists()
     assert not (tmp_path / "stocks.db.20260710_000000.backup").exists()
+
+
+def test_sorts_by_mtime_not_filename(tmp_path: Path) -> None:
+    """파일명 문자열이 아닌 mtime 기준 정렬 — step2_ 접두사 구 백업이 신규 백업보다
+    파일명 순으로 앞서도, mtime이 더 최신인 7/28 백업이 보존되어야 한다 (P10/P22)."""
+    _make_live_db(tmp_path)
+    # 구 백업: 접두사 step2_ — 파일명 문자열상 더 큼 ('s' > '2')
+    _make_backup_set(tmp_path, "step2_20260725_155057")
+    # 신규 백업: 순수 타임스탬프 — 파일명 문자열상 더 작지만 mtime이 더 최신
+    _make_backup_set(tmp_path, "20260728_162400")
+
+    # mtime 명시 설정: 7/25 백업은 과거, 7/28 백업은 최신
+    _set_mtime(tmp_path, "step2_20260725_155057", 1_753_449_057)  # 2025-07-25 15:50:57 UTC
+    _set_mtime(tmp_path, "20260728_162400", 1_753_707_840)        # 2025-07-28 16:24:00 UTC
+
+    deleted = cleanup_old_backups(keep=1, data_dir=tmp_path)
+
+    # mtime 기준 최신(7/28) 보존, 구 백업(7/25) 3개 삭제
+    assert deleted == 3
+    assert (tmp_path / "stocks.db.20260728_162400.backup").exists()
+    assert (tmp_path / "stocks.db-shm.20260728_162400.backup").exists()
+    assert (tmp_path / "stocks.db-wal.20260728_162400.backup").exists()
+    assert not (tmp_path / "stocks.db.step2_20260725_155057.backup").exists()
+    assert not (tmp_path / "stocks.db-shm.step2_20260725_155057.backup").exists()
+    assert not (tmp_path / "stocks.db-wal.step2_20260725_155057.backup").exists()
+
+
+def test_nonstandard_timestamp_handled_normally(tmp_path: Path, caplog) -> None:
+    """비표준 타임스탬스(접두사 포함)도 mtime 기준으로 표준 파일과 동일 처리.
+    warning이 아닌 info 레벨 로그만 출력되어야 한다 (P22 — 형식 무관 동일 처리)."""
+    import logging
+
+    _make_live_db(tmp_path)
+    _make_backup_set(tmp_path, "pre_migration_20260720_000000")
+    _make_backup_set(tmp_path, "20260722_000000")
+
+    # mtime 명시 설정: pre_migration이 과거, 표준이 최신
+    _set_mtime(tmp_path, "pre_migration_20260720_000000", 1_753_017_600)
+    _set_mtime(tmp_path, "20260722_000000", 1_753_190_400)
+
+    with caplog.at_level(logging.INFO, logger="backend.app.db.database"):
+        deleted = cleanup_old_backups(keep=1, data_dir=tmp_path)
+
+    # mtime 기준 최신(표준 7/22) 보존, 비표준 7/20 3개 삭제
+    assert deleted == 3
+    assert (tmp_path / "stocks.db.20260722_000000.backup").exists()
+    assert not (tmp_path / "stocks.db.pre_migration_20260720_000000.backup").exists()
+
+    # warning 로그 미출력, info 로그만 출력
+    warnings = [r for r in caplog.records if r.levelno >= logging.WARNING]
+    assert not warnings, f"warning 이상 로그가 출력됨: {[r.getMessage() for r in warnings]}"
+    infos = [r for r in caplog.records if r.levelno == logging.INFO]
+    assert any("백업 파일" in r.getMessage() for r in infos)
+
+
+def test_skips_set_on_stat_error(tmp_path: Path, monkeypatch, caplog) -> None:
+    """mtime 조회 실패(OSError) 시 해당 세트만 스킵 + warning, 나머지 정상 처리 (P25)."""
+    import logging
+
+    _make_live_db(tmp_path)
+    _make_backup_set(tmp_path, "20260720_000000")
+    _make_backup_set(tmp_path, "20260722_000000")
+
+    # mtime 명시 설정
+    _set_mtime(tmp_path, "20260720_000000", 1_753_017_600)
+    _set_mtime(tmp_path, "20260722_000000", 1_753_190_400)
+
+    # 7/20 세트의 stocks.db 백업 파일 stat()이 OSError 발생하도록 패치
+    target_path = tmp_path / "stocks.db.20260720_000000.backup"
+    real_stat = Path.stat
+
+    def _patched_stat(self: Path, *args, **kwargs):
+        if self == target_path:
+            raise OSError("mock stat failure")
+        return real_stat(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "stat", _patched_stat)
+
+    with caplog.at_level(logging.WARNING, logger="backend.app.db.database"):
+        deleted = cleanup_old_backups(keep=1, data_dir=tmp_path)
+
+    # assertion 전 패치 해제 — Path.stat 복원 후 exists() 정상 동작
+    monkeypatch.undo()
+
+    # 7/20 세트는 mtime 조회 실패로 스킵 → 삭제 대상에서 제외, 7/22 보존
+    # keep=1이지만 7/20이 스킵되어 timed 리스트에 7/22만 남음 → 삭제 0건
+    assert deleted == 0
+    assert (tmp_path / "stocks.db.20260722_000000.backup").exists()
+    assert (tmp_path / "stocks.db.20260720_000000.backup").exists()  # 스킵되어 남음
+
+    # warning 로그 출력 (mtime 조회 실패)
+    warnings = [r for r in caplog.records if r.levelno >= logging.WARNING]
+    assert any("mtime 조회 실패" in r.getMessage() for r in warnings)
