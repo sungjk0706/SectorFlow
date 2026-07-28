@@ -237,12 +237,6 @@ class TelegramBot:
             await self._cmd_toggle_auto_buy(token, chat_id, profile)
         elif cmd == "매도":
             await self._cmd_toggle_auto_sell(token, chat_id, profile)
-        elif cmd in ("거래", "trade"):
-            await self._send(
-                token,
-                chat_id,
-                "ℹ️ 인메모리 거래내역 집계는 제거되었습니다. 잔고·상태로 계좌를 확인하세요.",
-            )
         elif cmd in ("상태", "status"):
             await self._cmd_status_full(token, chat_id, profile)
         elif cmd in ("현황",):
@@ -255,8 +249,6 @@ class TelegramBot:
             await self._cmd_sector(token, chat_id)
         elif cmd in ("후보", "candidate"):
             await self._cmd_buy_candidates(token, chat_id)
-        elif cmd in ("수익", "profit"):
-            await self._cmd_profit_discontinued(token, chat_id)
         elif cmd in ("도움말", "help"):
             await self._cmd_help(token, chat_id)
         elif cmd == "start":
@@ -512,14 +504,6 @@ class TelegramBot:
             await self._send(token, chat_id, "\n".join(lines))
         except Exception as exc:
             await self._send(token, chat_id, f"⚠ 매수 후보 조회 오류: {str(exc)[:120]}")
-
-    async def _cmd_profit_discontinued(self, token: str, chat_id: str) -> None:
-        await self._send(
-            token,
-            chat_id,
-            "ℹ️ 체결 이력 기반 당일 실현 손익 집계는 제거되었습니다.\n"
-            "증권사 앱/HTS에서 당일 실현을 확인하거나 잔고·상태를 참고하세요.",
-        )
 
 
 telegram_bot = TelegramBot()

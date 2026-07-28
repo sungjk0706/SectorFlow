@@ -660,21 +660,6 @@ class TestHandleCommand:
         mock_cmd.assert_called_once_with("tok", "123", None)
 
     @pytest.mark.asyncio
-    async def test_cmd_trade_routes_to_send(self):
-        bot = TelegramBot()
-        with patch.object(bot, "_send", new_callable=AsyncMock) as mock_send:
-            await bot._handle_command("tok", "123", "거래")
-        mock_send.assert_called_once()
-        assert "제거되었습니다" in mock_send.call_args[0][2]
-
-    @pytest.mark.asyncio
-    async def test_cmd_trade_english_routes_to_send(self):
-        bot = TelegramBot()
-        with patch.object(bot, "_send", new_callable=AsyncMock) as mock_send:
-            await bot._handle_command("tok", "123", "trade")
-        mock_send.assert_called_once()
-
-    @pytest.mark.asyncio
     async def test_cmd_status_routes_to_status_full(self):
         bot = TelegramBot()
         with patch.object(bot, "_cmd_status_full", new_callable=AsyncMock) as mock_cmd:
@@ -749,20 +734,6 @@ class TestHandleCommand:
         bot = TelegramBot()
         with patch.object(bot, "_cmd_buy_candidates", new_callable=AsyncMock) as mock_cmd:
             await bot._handle_command("tok", "123", "candidate")
-        mock_cmd.assert_called_once_with("tok", "123")
-
-    @pytest.mark.asyncio
-    async def test_cmd_profit_routes_to_discontinued(self):
-        bot = TelegramBot()
-        with patch.object(bot, "_cmd_profit_discontinued", new_callable=AsyncMock) as mock_cmd:
-            await bot._handle_command("tok", "123", "수익")
-        mock_cmd.assert_called_once_with("tok", "123")
-
-    @pytest.mark.asyncio
-    async def test_cmd_profit_english_routes_to_discontinued(self):
-        bot = TelegramBot()
-        with patch.object(bot, "_cmd_profit_discontinued", new_callable=AsyncMock) as mock_cmd:
-            await bot._handle_command("tok", "123", "profit")
         mock_cmd.assert_called_once_with("tok", "123")
 
     @pytest.mark.asyncio
@@ -1265,17 +1236,3 @@ class TestCmdBuyCandidates:
         mock_send.assert_called_once()
         text = mock_send.call_args[0][2]
         assert "체결강도" not in text
-
-
-# ── TelegramBot._cmd_profit_discontinued ────────────────────────────────────────
-
-class TestCmdProfitDiscontinued:
-    @pytest.mark.asyncio
-    async def test_sends_discontinued_message(self):
-        bot = TelegramBot()
-        with patch.object(bot, "_send", new_callable=AsyncMock) as mock_send:
-            await bot._cmd_profit_discontinued("tok", "123")
-        mock_send.assert_called_once()
-        text = mock_send.call_args[0][2]
-        assert "제거되었습니다" in text
-        assert "실현 손익" in text
