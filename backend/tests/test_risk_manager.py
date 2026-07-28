@@ -13,6 +13,17 @@ from backend.app.services.risk_manager import RiskManager
 from backend.app.services.circuit_breaker import CircuitBreaker
 
 
+@pytest.fixture(autouse=True)
+def _patch_notify_telegram():
+    """_notify_telegram을 mock하여 NotificationWorker 백그라운드 태스크 생성 차단.
+
+    개별 테스트에서 _notify_telegram 호출을 검증할 때는 with patch(...)로 덮어씀.
+    P23(일관성): test_trading.py의 _fire_and_forget_telegram autouse 패턴과 동일.
+    """
+    with patch("backend.app.services.risk_manager._notify_telegram"):
+        yield
+
+
 # ── 픽스처 ─────────────────────────────────────────────────────────────────────
 
 @pytest.fixture
@@ -183,6 +194,27 @@ class TestCheckBuyOrderAllowed:
             mock_state.positions = []
             allowed, reason = await risk_manager.check_buy_order_allowed("005930", 70_000, 10)
         assert allowed is True
+
+    @pytest.mark.asyncio
+    async def test_daily_loss_limit_sends_telegram(self, risk_manager, settings_cache):
+        """일일 손실 한도 도달 시 '자동매매 중단' 텔레그램 알림 전송 (P21)."""
+        with patch("backend.app.services.engine_state.state") as mock_state, \
+             patch("backend.app.services.risk_manager.is_test_mode", return_value=False), \
+             patch("backend.app.services.risk_manager.get_total_realized_pnl", new_callable=AsyncMock, return_value=-600_000), \
+             patch("backend.app.services.risk_manager._notify_telegram") as mock_telegram:
+            mock_state.integrated_system_settings_cache = settings_cache
+            mock_state.positions = []
+            allowed, reason = await risk_manager.check_buy_order_allowed("005930", 70_000, 10)
+        assert allowed is False
+        assert "일일 손실 한도" in reason
+        # 텔레그램 알림 검증 — "자동매매 중단" 상태 명시 (P21)
+        mock_telegram.assert_called_once()
+        msg = mock_telegram.call_args.args[0]
+        assert "🛑" in msg
+        assert "자동매매 중단" in msg
+        assert "일일 손실 한도" in msg
+        assert "-600,000" in msg  # 당일 손실
+        assert "-500,000" in msg  # 한도
 
     @pytest.mark.asyncio
     async def test_insufficient_deposit_blocks(self, risk_manager, settings_cache):
@@ -403,6 +435,35 @@ class TestDailyLossRateLimit:
         assert allowed is False
         assert "일일 손실률 한도" in reason
         assert "매도 차단" in reason
+
+    @pytest.mark.asyncio
+    async def test_loss_rate_exceeds_sends_telegram(self, risk_manager, settings_cache):
+        """일일 손실률 한도 도달 시 '자동매매 중단' 텔레그램 알림 전송 (P21)."""
+        risk_manager.risk_manager_on = True
+        risk_manager.risk_block_buy_on = True
+        risk_manager.daily_loss_rate_limit_on = True
+        risk_manager.daily_loss_rate_limit = -5.0
+        risk_manager.daily_loss_limit = -700_000
+        with patch("backend.app.services.engine_state.state") as mock_state, \
+             patch("backend.app.services.risk_manager.is_test_mode", return_value=False), \
+             patch("backend.app.services.risk_manager.get_total_realized_pnl", new_callable=AsyncMock, return_value=-600_000), \
+             patch("backend.app.services.trade_history.get_buy_history", new_callable=AsyncMock, return_value=[{"price": 50_000, "qty": 200}]), \
+             patch("backend.app.services.risk_manager._notify_telegram") as mock_telegram, \
+             patch.object(risk_manager, "_sync_thresholds", lambda: None):
+            mock_state.integrated_system_settings_cache = settings_cache
+            mock_state.account_snapshot = {"orderable": 100_000_000}
+            mock_state.positions = []
+            allowed, reason = await risk_manager.check_buy_order_allowed("005930", 70_000, 10)
+        assert allowed is False
+        assert "일일 손실률 한도" in reason
+        # 텔레그램 알림 검증 — "자동매매 중단" 상태 명시 (P21)
+        mock_telegram.assert_called_once()
+        msg = mock_telegram.call_args.args[0]
+        assert "🛑" in msg
+        assert "자동매매 중단" in msg
+        assert "일일 손실률 한도" in msg
+        assert "-6.00%" in msg  # 당일 손실률
+        assert "-5.00%" in msg  # 한도
 
 
 class TestConsecutiveLossLimit:

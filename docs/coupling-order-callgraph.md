@@ -15,7 +15,7 @@
 |------|-------|------|
 | `backend/app/services/trading.py` | 886 | `execute_buy()`/`execute_sell()`/`check_sell_conditions()`/`on_fill_update()` 단일 진입점 + 매수 실패 사유 상수 |
 | `backend/app/services/buy_order_executor.py` | 235 | 업종 매수 후보 순회 → `execute_buy()` 호출, 사유 분류(전체/종목별), 조건 스냅샷 게이트 |
-| `backend/app/services/risk_manager.py` | 225 | 서킷브레이커/일일 손실/손실률/연속 손실/예수금/단일 종목 비중 게이트 |
+| `backend/app/services/risk_manager.py` | 250 | 서킷브레이커/일일 손실/손실률/연속 손실/예수금/단일 종목 비중 게이트 |
 | `backend/app/services/settlement_engine.py` | 344 | 테스트모드 전용 누적투자금/주문가능금액 관리, 사전 차감/롤백, 기동 정합성 대조 |
 | `backend/app/services/engine_account.py` | 439 | 계좌 스냅샷/포지션 조회, `_on_fill_after_ws()` 체결 후 갱신, `_broadcast_account()` |
 | `backend/app/services/engine_account_notify.py` | 457+ | WS 브로드캐스트 헬퍼(`_broadcast`/`_safe_broadcast`), delta 계산, 헤더 칩 알림 |
@@ -132,11 +132,13 @@ execute_buy(stk_cd, current_price, access_token, reason)
    ├─ [13] RiskManager 게이트 (P16 — 주문 전 필수)
    │   └─ risk_manager.check_buy_order_allowed(stk_cd, price, qty)
    │      ├─ 서킷브레이커 → [차단] BUY_REJECT_RISK_CIRCUIT
-   │      ├─ 일일 손실 한도 → [차단] BUY_REJECT_RISK_LOSS
-   │      ├─ 일일 손실률 한도 → [차단] BUY_REJECT_RISK_LOSS_RATE
+   │      ├─ 일일 손실 한도 → [차단] BUY_REJECT_RISK_LOSS + _notify_telegram("🛑 [자동매매 중단] 일일 손실 한도 도달 — ...") (P21)
+   │      ├─ 일일 손실률 한도 → [차단] BUY_REJECT_RISK_LOSS_RATE + _notify_telegram("🛑 [자동매매 중단] 일일 손실률 한도 도달 — ...") (P21)
    │      ├─ 연속 손실 한도 → [차단] BUY_REJECT_RISK_CONSEC_LOSS
    │      ├─ 예수금 부족 → [차단] BUY_REJECT_RISK_CASH
    │      └─ 단일 종목 비중 → [차단] BUY_REJECT_RISK_SINGLE (종목별)
+   │      차단 시 → _fire_and_forget_telegram("🛑 [리스크차단] {종목명}({코드}) 매수 차단 — {사유}") (P21)
+   │               + _safe_broadcast("risk-block-status", {blocked, side="buy", reason}) (P21)
    │
    ├─ [14] _buy_state 갱신 (has_open_buy=True)
    ├─ [15] 텔레그램 알림 (NotificationWorker 큐 — fire-and-forget)
@@ -275,7 +277,8 @@ check_sell_conditions(stock_list, base_settings, access_token)
 ├─ [2] 실시간 지연 게이트 (fail-closed — 매수와 동일 정책, P23)
 ├─ [3] RiskManager 매도 차단 체크
 │   └─ risk_manager.check_sell_order_allowed()
-│      차단 → _safe_broadcast("risk-block-status", {blocked, side="sell", reason}) (P21)
+│      차단 → _fire_and_forget_telegram("🛑 [리스크차단] 매도 전체 차단 — {reason}") (P21)
+│             + _safe_broadcast("risk-block-status", {blocked, side="sell", reason}) (P21)
 ├─ [4] 매도 주문 간격 게이트
 │   └─ order_interval.check_order_interval("sell")
 └─ [5] for stock in stock_list:
@@ -326,8 +329,8 @@ schedule_engine_task(dry_run.fake_fill_event("BUY"/"SELL", ...))
 
 | 호출부 | 파일:줄 | 시점 | 비고 |
 |--------|---------|------|------|
-| `check_buy_order_allowed()` | `trading.py:382` | 주문 전 | execute_buy 내부 — P16 준수 |
-| `check_sell_order_allowed()` | `trading.py:737` | 매도 조건 순회 전 | check_sell_conditions 내부 |
+| `check_buy_order_allowed()` | `trading.py:438` | 주문 전 | execute_buy 내부 — P16 준수 |
+| `check_sell_order_allowed()` | `trading.py:776` | 매도 조건 순회 전 | check_sell_conditions 내부 |
 | `record_order_failure()` | `trading.py:432, 641` | 주문 실패 시 | execute_buy/execute_sell 내부 |
 | `record_order_success()` | `trading.py:515, 701` | 주문 성공 시 | execute_buy/execute_sell 내부 |
 | `get_withdrawable_deposit()` | `trading.py:363`, `buy_order_executor.py:126, 220` | 주문가능 금액 조회 | 주문 전 + 사전 체크 |
@@ -417,7 +420,7 @@ computeOrderBlockStatus(side, uiState, settings)
 
 ### 8.2 P16 (살아있는 경로) — 준수
 
-- RiskManager: `execute_buy()` 내부에서 `check_buy_order_allowed()` 호출 (trading.py:382). `check_sell_conditions()`에서 `check_sell_order_allowed()` 호출 (trading.py:737).
+- RiskManager: `execute_buy()` 내부에서 `check_buy_order_allowed()` 호출 (trading.py:438). `check_sell_conditions()`에서 `check_sell_order_allowed()` 호출 (trading.py:776).
 - CircuitBreaker: 주문 실패 시 `record_order_failure()` (trading.py:432, 641), 성공 시 `record_order_success()` (trading.py:515, 701). 주문 전후 모두 호출.
 - `buy_order_executor.evaluate_buy_candidates()`의 사전 RiskManager 체크는 조기 차단 목적이며, `execute_buy()` 내부에서 다시 호출하므로 dead code 아님.
 

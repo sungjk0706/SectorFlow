@@ -99,7 +99,7 @@ WebSocket 이벤트의 **이름 · 채널 · producer · payload 필드 · Store
 | 21 | `ws-subscribe-status` | prices | `ws_subscribe_control.py:62` (broadcast) | binding.ts:300 | `applyWsSubscribeStatus` | WS 구독 상태 변경 시 |
 | 22 | `circuit-breaker-open` | prices | `trading.py:438,647` (broadcast) | binding.ts:305 | `applyCircuitBreakerOpen` + showToast | 서킷브레이커 차단 시 |
 | 23 | `order-time-blocked` | prices | `daily_time_scheduler.py:766` (broadcast) | binding.ts:312 | `applyOrderTimeBlocked` | 체결 불가 시간대 (10초 주기) |
-| 24 | `risk-block-status` | prices | `trading.py:742` (broadcast) | binding.ts:317 | `applyRiskBlockStatus` | 리스크 매니저 차단 시 |
+| 24 | `risk-block-status` | prices | `trading.py:451,785` (broadcast) | binding.ts:317 | `applyRiskBlockStatus` | 리스크 매니저 매수/매도 차단 시 |
 | 25 | `buy-limit-status` | prices | `engine_account.py:87` (broadcast) | binding.ts:322 | `applyBuyLimitStatus` | 매수 한도 상태 변경 시 |
 | 26 | `realtime-latency-status` | prices | `engine_ws_dispatch.py:120` (broadcast) | binding.ts:327 | `applyRealtimeLatencyStatus` | 실시간 지연 200ms 초과 시 |
 | 27 | `daily-buy-state-status` | prices | `trading.py:118` (broadcast) | binding.ts:332 | `applyDailyBuyStateStatus` | 일일 매수 상태 로드 실패 시 |
@@ -291,11 +291,11 @@ WebSocket 이벤트의 **이름 · 채널 · producer · payload 필드 · Store
 - **계약 상태**: ✅ 단일 producer. 네이밍 hyphen 통일 완료 (이전 underscore).
 
 #### `risk-block-status` (리스크 매니저 차단) — ☑ 네이밍 hyphen 통일 (2026-07-27)
-- **Producer**: `trading.py:742` (broadcast)
-- **Payload**: `{"blocked": bool, "side": str, "reason": str}`
+- **Producer**: `trading.py:451` (매수 차단, broadcast) + `trading.py:785` (매도 차단, broadcast)
+- **Payload**: `{"blocked": bool, "side": str, "reason": str}` — `side` = `"buy"` | `"sell"`
 - **Consumer**: binding.ts:317 → `applyRiskBlockStatus({blocked?, side?, reason?})`
 - **수정 상태**: uiStore(`riskBlockStatus`)
-- **계약 상태**: ✅ 단일 producer. 네이밍 hyphen 통일 완료 (이전 underscore).
+- **계약 상태**: ✅ 단일 producer 모듈(trading.py). 네이밍 hyphen 통일 완료 (이전 underscore). 매수 분기는 2026-07-29 TELEGRAM-01-S4 추가 (이전 매도만 존재 → P21/P16 위반 보완).
 
 #### `buy-limit-status` (매수 한도 상태)
 - **Producer**: `engine_account.py:87` (broadcast)

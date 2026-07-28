@@ -19,6 +19,23 @@ from backend.app.core.trade_mode import is_test_mode
 logger = logging.getLogger(__name__)
 
 
+def _notify_telegram(message: str, settings: dict | None) -> None:
+    """텔레그램 알림을 NotificationWorker 큐로 전송. 예외 격리.
+
+    P23(일관성): trading.py `_fire_and_forget_telegram`·engine_ws_dispatch.py
+    `_notify_krx_cb_telegram`과 동일 패턴. risk_manager→trading 순환 import 회피.
+    """
+    try:
+        from backend.app.services.notification_worker import NotificationWorker
+        NotificationWorker.get_instance().enqueue({
+            "type": "telegram",
+            "message": message,
+            "settings": settings,
+        })
+    except Exception as e:
+        logger.warning("[리스크] 텔레그램 알림 큐 등록 실패: %s", e, exc_info=True)
+
+
 class RiskManager:
     """통합 리스크 관리자"""
 
@@ -76,6 +93,12 @@ class RiskManager:
             today_pnl_rate = today_pnl / today_principal * 100
             if today_pnl_rate <= self.daily_loss_rate_limit:
                 logger.warning("[매매] 일일 손실률 한도 초과: 현재 %.2f%%, 한도 %.2f%%", today_pnl_rate, self.daily_loss_rate_limit)
+                # P21 사용자 투명성 — 자동매매 중단 상태 텔레그램 알림 (매 건 전송)
+                from backend.app.services.engine_state import state as engine_state
+                _notify_telegram(
+                    f"🛑 [자동매매 중단] 일일 손실률 한도 도달 — 당일 손실률 {today_pnl_rate:.2f}%, 한도 {self.daily_loss_rate_limit:.2f}%. 자동매매가 중단된 상태입니다.",
+                    engine_state.integrated_system_settings_cache,
+                )
                 return False, "일일 손실률 한도 초과"
 
         # 2. 연속 손실 횟수
@@ -108,6 +131,11 @@ class RiskManager:
         today_pnl = await get_total_realized_pnl(today_only=True, trade_mode=trade_mode)
         if self.daily_loss_limit_on and today_pnl <= self.daily_loss_limit:
             logger.warning("[매매] 일일 손실 한도 초과: 현재 %s, 한도 %s", f"{today_pnl:,}", f"{self.daily_loss_limit:,}")
+            # P21 사용자 투명성 — 자동매매 중단 상태 텔레그램 알림 (매 건 전송)
+            _notify_telegram(
+                f"🛑 [자동매매 중단] 일일 손실 한도 도달 — 당일 손실 {today_pnl:,}원, 한도 {self.daily_loss_limit:,}원. 자동매매가 중단된 상태입니다.",
+                cache,
+            )
             return False, "일일 손실 한도 초과"
 
         # 3. 신규 리스크 조건 (risk_manager_on + risk_block_buy_on 시에만)
