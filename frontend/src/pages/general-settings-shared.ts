@@ -325,11 +325,6 @@ export function mapEncryptionErrorMessage(errorCode?: string, fallback?: string)
   return fallback ?? '저장 실패'
 }
 
-/** 암호화 키 백업 안내 문구 (설계 9.2). */
-export const ENCRYPTION_KEY_BACKUP_GUIDE =
-  'API 키와 텔레그램 토큰은 암호화하여 저장합니다. 암호화 키를 잃어버리면 저장된 인증정보를 복구할 수 없습니다. ' +
-  '앱 데이터 백업과 암호화 키 백업을 서로 다른 안전한 장소에 보관하세요. 암호화 키를 화면이나 로그에 입력·기록하지 마세요.'
-
 /** 현재 암호화 키 상태 조회 (vals에서 읽기 — 백엔드 GET /api/settings 응답 필드). */
 export function currentEncryptionKeyState(): EncryptionKeyState | null {
   const v = state.vals.encryption_key_state

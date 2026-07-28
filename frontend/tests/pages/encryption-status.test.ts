@@ -2,7 +2,6 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import {
   ENCRYPTION_KEY_STATE_MESSAGES,
   SECRET_FIELD_STATUS_MESSAGES,
-  ENCRYPTION_KEY_BACKUP_GUIDE,
   mapEncryptionErrorMessage,
   currentEncryptionKeyState,
   currentSecretFieldStatus,
@@ -50,13 +49,6 @@ describe('B21-01 세션7: 암호화 상태 헬퍼', () => {
 
     it('EMPTY 메시지는 빈 문자열', () => {
       expect(SECRET_FIELD_STATUS_MESSAGES.EMPTY.text).toBe('')
-    })
-  })
-
-  describe('ENCRYPTION_KEY_BACKUP_GUIDE', () => {
-    it('키 백업 안내 문구 포함 (설계 9.2)', () => {
-      expect(ENCRYPTION_KEY_BACKUP_GUIDE).toContain('암호화 키를 잃어버리면')
-      expect(ENCRYPTION_KEY_BACKUP_GUIDE).toContain('서로 다른 안전한 장소')
     })
   })
 

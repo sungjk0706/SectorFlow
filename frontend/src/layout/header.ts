@@ -289,6 +289,11 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
   modeChip.style.fontWeight = '700'
   header.appendChild(modeChip)
 
+  // 백그라운드 데이터 갱신 칩 (KRX 장 상태 칩 좌측 — 다운로드 표시/소멸 시 장 상태 칩 위치 고정)
+  const avgAmtChip = createChipEl()
+  avgAmtChip.style.display = 'none'
+  header.appendChild(avgAmtChip)
+
   // KRX / NXT 장 상태 칩
   const krxChip = createChipEl()
   const nxtChip = createChipEl()
@@ -299,11 +304,6 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
   const krxAlertChip = createChipEl()
   krxAlertChip.style.display = 'none'
   header.appendChild(krxAlertChip)
-
-  // 백그라운드 데이터 갱신 칩
-  const avgAmtChip = createChipEl()
-  avgAmtChip.style.display = 'none'
-  header.appendChild(avgAmtChip)
 
   // 엔진 상태 칩: 증권사(항상 표시, 상태만 갱신), 테스트/실전모드
   const brokerChipsContainer = document.createElement('span')

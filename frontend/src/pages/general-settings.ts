@@ -29,7 +29,6 @@ import {
   updateHolidayBadges,
   resetState,
   ENCRYPTION_KEY_STATE_MESSAGES,
-  ENCRYPTION_KEY_BACKUP_GUIDE,
   currentEncryptionKeyState,
 } from './general-settings-shared'
 import { renderTimeSettingsTab, syncTimeSettingsTab } from './general-settings-time-settings-tab'
@@ -51,15 +50,6 @@ function renderEncryptionBanner(): HTMLElement {
     padding: '8px 12px', borderRadius: RADIUS.sm, fontSize: FONT_SIZE.desc, fontWeight: '500',
   })
   wrap.appendChild(statusLine)
-
-  // 키 백업 안내 (설계 9.2 — 항상 표시, 상태와 무관)
-  const guide = document.createElement('div')
-  Object.assign(guide.style, {
-    padding: '6px 12px', fontSize: FONT_SIZE.desc, color: COLOR.tertiary,
-    background: COLOR.neutralBg, borderRadius: RADIUS.sm, marginTop: '6px',
-  })
-  guide.textContent = ENCRYPTION_KEY_BACKUP_GUIDE
-  wrap.appendChild(guide)
 
   state.encryptionBanner = statusLine
   return wrap
