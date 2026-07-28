@@ -256,7 +256,7 @@ def create_buy_targets(
                 rank=blocked_rank,
                 sector_rank=sc.rank,
                 stock=stock,
-                reason=stock.guard_reason,
+                reject_reason=stock.guard_reason,
             )
             blocked_targets.append(target)
             blocked_rank += 1
@@ -265,7 +265,7 @@ def create_buy_targets(
                 rank=pass_rank,
                 sector_rank=sc.rank,
                 stock=stock,
-                reason="",
+                reject_reason="",
             )
             buy_targets.append(target)
             pass_rank += 1

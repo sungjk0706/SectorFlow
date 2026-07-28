@@ -364,7 +364,7 @@ async def notify_desktop_sector_stocks_refresh(*, force: bool = False) -> None:
 #   일괄 pop 루프를 재사용(P24 중복 제거). news_boost만 별도 상수로 분리 시 코드 증가.
 _BUY_TARGET_REALTIME_KEYS = ("cur_price", "change", "change_rate", "strength", "trade_amount", "news_boost")
 _BUY_TARGET_CMP_KEYS = (
-    "rank", "boost_score", "guard_pass", "reason",
+    "rank", "boost_score", "guard_pass", "reject_reason",
     "order_ratio", "program_net_buy", "high_5d",
 )
 

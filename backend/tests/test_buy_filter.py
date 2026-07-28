@@ -474,7 +474,7 @@ class TestCreateBuyTargets:
         result = create_buy_targets([sc])
         assert len(result.buy_targets) == 1
         assert result.buy_targets[0].stock.code == "A001"
-        assert result.buy_targets[0].reason == ""
+        assert result.buy_targets[0].reject_reason == ""
         assert result.blocked_targets == []
 
     def test_guard_blocked_goes_to_blocked_targets(self):
@@ -484,7 +484,7 @@ class TestCreateBuyTargets:
         assert result.buy_targets == []
         assert len(result.blocked_targets) == 1
         assert result.blocked_targets[0].stock.code == "A001"
-        assert result.blocked_targets[0].reason == "상승률"
+        assert result.blocked_targets[0].reject_reason == "상승률"
 
     def test_mixed_pass_and_blocked(self):
         s_pass = _stock(code="A001", change_rate=1.0)
@@ -610,9 +610,9 @@ class TestCreateBuyTargets:
         sc = _sector(rank=1, stocks=[s_held, s_normal])
         result = create_buy_targets([sc], held_codes={"A002"}, sort_keys=["change_rate"])
         assert [t.stock.code for t in result.buy_targets] == ["A001"]
-        assert result.buy_targets[0].reason == ""
+        assert result.buy_targets[0].reject_reason == ""
         assert [t.stock.code for t in result.blocked_targets] == ["A002"]
-        assert result.blocked_targets[0].reason == "보유중"
+        assert result.blocked_targets[0].reject_reason == "보유중"
         assert result.blocked_targets[0].stock.guard_pass is False
 
     def test_bought_today_goes_to_blocked_targets(self):
@@ -621,9 +621,9 @@ class TestCreateBuyTargets:
         sc = _sector(rank=1, stocks=[s_bought, s_normal])
         result = create_buy_targets([sc], bought_today_codes={"A002"}, sort_keys=["change_rate"])
         assert [t.stock.code for t in result.buy_targets] == ["A001"]
-        assert result.buy_targets[0].reason == ""
+        assert result.buy_targets[0].reject_reason == ""
         assert [t.stock.code for t in result.blocked_targets] == ["A002"]
-        assert result.blocked_targets[0].reason == "금일매수"
+        assert result.blocked_targets[0].reject_reason == "금일매수"
         assert result.blocked_targets[0].stock.guard_pass is False
 
     def test_held_and_blocked_both_in_blocked_targets(self):
@@ -647,21 +647,21 @@ class TestCreateBuyTargets:
         assert result.buy_targets[0].stock.code == "A001"
         assert result.buy_targets[0].rank == 1
         assert [t.stock.code for t in result.blocked_targets] == ["A002"]
-        assert result.blocked_targets[0].reason == "보유중"
+        assert result.blocked_targets[0].reject_reason == "보유중"
 
     def test_held_takes_priority_over_rise_guard(self):
         """전역 조건(보유중)이 개별 가드(상승률)보다 우선 — SSOT: trading.py 실행 게이트와 동일 순서."""
         s_held = _stock(code="A002", change_rate=10.0)
         sc = _sector(rank=1, stocks=[s_held])
         result = create_buy_targets([sc], held_codes={"A002"}, block_rise_pct=7.0)
-        assert result.blocked_targets[0].reason == "보유중"
+        assert result.blocked_targets[0].reject_reason == "보유중"
 
     def test_bought_today_takes_priority_over_fall_guard(self):
         """전역 조건(금일매수)이 개별 가드(하락률)보다 우선."""
         s_bought = _stock(code="A003", change_rate=-10.0)
         sc = _sector(rank=1, stocks=[s_bought])
         result = create_buy_targets([sc], bought_today_codes={"A003"}, block_fall_pct=-7.0)
-        assert result.blocked_targets[0].reason == "금일매수"
+        assert result.blocked_targets[0].reject_reason == "금일매수"
 
     # ── rebuy_block_on=False: 보유/금일매수 종목 매수 허용 ──
 
@@ -679,7 +679,7 @@ class TestCreateBuyTargets:
         # 보유 종목의 guard_pass는 True, reason은 빈 문자열
         held_target = next(t for t in result.buy_targets if t.stock.code == "A002")
         assert held_target.stock.guard_pass is True
-        assert held_target.reason == ""
+        assert held_target.reject_reason == ""
 
     def test_rebuy_block_off_bought_today_in_buy_targets(self):
         """rebuy_block_on=False → 금일매수 종목도 매수 후보에 포함."""
@@ -694,7 +694,7 @@ class TestCreateBuyTargets:
         assert "A001" in codes
         bought_target = next(t for t in result.buy_targets if t.stock.code == "A002")
         assert bought_target.stock.guard_pass is True
-        assert bought_target.reason == ""
+        assert bought_target.reject_reason == ""
 
     def test_rebuy_block_off_no_blocked_targets_from_held(self):
         """rebuy_block_on=False → 보유 종목이 blocked_targets에 들어가지 않음."""
@@ -712,4 +712,4 @@ class TestCreateBuyTargets:
         sc = _sector(rank=1, stocks=[s_held])
         result = create_buy_targets([sc], held_codes={"A002"})
         assert [t.stock.code for t in result.blocked_targets] == ["A002"]
-        assert result.blocked_targets[0].reason == "보유중"
+        assert result.blocked_targets[0].reject_reason == "보유중"

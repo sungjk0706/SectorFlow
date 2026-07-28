@@ -25,7 +25,7 @@ def invalidate_buy_snapshot() -> None:
 
 
 async def _mark_all_reject_reasons(ss, reason_code: str) -> None:
-    """전역 차단 사유를 모든 guard_pass 매수 후보 bt.reason에 기록 후 WS delta 전송 (P21).
+    """전역 차단 사유를 모든 guard_pass 매수 후보 bt.reject_reason에 기록 후 WS delta 전송 (P21).
 
     사전 체크 전역 차단(max_holding, daily_limit 등) 시 호출 —
     모든 매수 후보가 동일 사유로 차단됨을 UI "원인" 컬럼에 표시.
@@ -37,7 +37,7 @@ async def _mark_all_reject_reasons(ss, reason_code: str) -> None:
         return
     for bt in ss.buy_targets:
         if bt.stock.guard_pass:
-            bt.reason = text
+            bt.reject_reason = text
     from backend.app.services.engine_account_notify import notify_buy_targets_update
     await notify_buy_targets_update()
 
@@ -207,7 +207,7 @@ async def evaluate_buy_candidates() -> None:
     )
     from backend.app.services.risk_manager import get_risk_manager as _get_rm
 
-    _reason_changed = False  # bt.reason 변경 추적 — 루프 종료 후 notify 1회 호출 (P21)
+    _reject_reason_changed = False  # bt.reject_reason 변경 추적 — 루프 종료 후 notify 1회 호출 (P21)
 
     for bt in ss.buy_targets:
         s = bt.stock
@@ -254,9 +254,9 @@ async def evaluate_buy_candidates() -> None:
             else:
                 # 실패 사유 분류
                 _reject_text = BUY_REJECT_REASON_TEXT.get(_reason, "")
-                if _reject_text and bt.reason != _reject_text:
-                    bt.reason = _reject_text
-                    _reason_changed = True
+                if _reject_text and bt.reject_reason != _reject_text:
+                    bt.reject_reason = _reject_text
+                    _reject_reason_changed = True
                 if _reason == BUY_REJECT_QTY_ZERO:
                     # 잔액 0이면 전체 차단, 단가 비싸면 종목별 차단
                     if _get_rm().get_withdrawable_deposit() <= 0:
@@ -277,6 +277,6 @@ async def evaluate_buy_candidates() -> None:
             break  # 예외 시 안전 종료
 
     # ── 차단 사유 변경 시 WS delta 전송 (P21 사용자 투명성) ──
-    if _reason_changed:
+    if _reject_reason_changed:
         from backend.app.services.engine_account_notify import notify_buy_targets_update
         await notify_buy_targets_update()

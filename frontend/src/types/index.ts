@@ -56,7 +56,7 @@ export interface StockScore {
   // ── 정적 스코어 필드 (백엔드 StockScore + BuyTarget) ──
   rank?: number;
   guard_pass?: boolean;
-  reason?: string;
+  reject_reason?: string;
   boost_score?: number;
   // ── 매수후보 전용 파생 필드 (캐시 병합) ──
   order_ratio?: [number, number] | null;

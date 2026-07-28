@@ -115,7 +115,7 @@ class TestGetBuyTargetsSectorStocks:
         mock_bt = MagicMock()
         mock_bt.stock = mock_stock
         mock_bt.rank = 1
-        mock_bt.reason = "상승률 상위"
+        mock_bt.reject_reason = "상승률 상위"
 
         mock_ss = MagicMock()
         mock_ss.buy_targets = [mock_bt]
@@ -151,7 +151,7 @@ class TestGetBuyTargetsSectorStocks:
         mock_bt = MagicMock()
         mock_bt.stock = mock_stock
         mock_bt.rank = 0
-        mock_bt.reason = "상승률 미달"
+        mock_bt.reject_reason = "상승률 미달"
 
         mock_ss = MagicMock()
         mock_ss.buy_targets = []
@@ -180,7 +180,7 @@ class TestGetBuyTargetsSectorStocks:
         mock_bt = MagicMock()
         mock_bt.stock = mock_stock
         mock_bt.rank = 1
-        mock_bt.reason = "상승률 상위"
+        mock_bt.reject_reason = "상승률 상위"
 
         mock_ss = MagicMock()
         mock_ss.buy_targets = [mock_bt]
@@ -210,7 +210,7 @@ class TestGetBuyTargetsSectorStocks:
         mock_bt = MagicMock()
         mock_bt.stock = mock_stock
         mock_bt.rank = 2
-        mock_bt.reason = "상승률 상위"
+        mock_bt.reject_reason = "상승률 상위"
 
         mock_ss = MagicMock()
         mock_ss.buy_targets = [mock_bt]

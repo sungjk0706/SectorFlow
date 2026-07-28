@@ -527,7 +527,7 @@ export function applyRealtimeReset(): void {
 //
 // same 비교 키 (백엔드 _BUY_TARGET_CMP_KEYS와 일치, P23 일관성):
 //   식별자: code, name (백엔드는 code 기준 delta이므로 불필요, 프론트는 배열 순서 비교용)
-//   정적 필드: rank, boost_score, guard_pass, reason, order_ratio, program_net_buy,
+//   정적 필드: rank, boost_score, guard_pass, reject_reason, order_ratio, program_net_buy,
 //             high_5d
 //   실시간 필드(cur_price/change/change_rate/strength/trade_amount)는 제외 —
 //   틱 디스패치(real-data-tick)가 별도 갱신 담당, update same에서 비교하면 매 틱마다
@@ -565,7 +565,7 @@ export function applyBuyTargetsUpdate(data: { buy_targets: StockScore[] }): void
   const same = prev.length === incoming.length && prev.every((p, i) => {
     const n = incoming[i]
     return p.rank === n.rank && normalizeStockCode(p.code) === normalizeStockCode(n.code) && p.name === n.name
-      && p.guard_pass === n.guard_pass && p.reason === n.reason
+      && p.guard_pass === n.guard_pass && p.reject_reason === n.reject_reason
       && p.boost_score === n.boost_score
       && p.order_ratio?.[0] === n.order_ratio?.[0] && p.order_ratio?.[1] === n.order_ratio?.[1]
       && p.program_net_buy === n.program_net_buy

@@ -20,17 +20,17 @@ import {
 import type { SectorStock, StockScore, RealDataEvent, Position } from '../../src/types'
 
 /** 테스트용 초기 상태 — buyTargets(StockScore)와 sectorStocks(SectorStock) 분리
- *  T1 설계 수정: 매수후보 전용 필드(rank/guard_pass/reason)는 StockScore에만,
+ *  T1 설계 수정: 매수후보 전용 필드(rank/guard_pass/reject_reason)는 StockScore에만,
  *  실시간 파생 필드는 양쪽 공유, avg_amt_5d는 SectorStock 전용. */
 function makeInitialHotState(): HotState {
   // buyTargets용 (StockScore — 매수후보 컨텍스트)
   const targetA: StockScore = {
     code: '000001', name: '종목A', cur_price: 10000, change: 100, change_rate: 1.0,
-    trade_amount: 5000, strength: 80, sector: '업종1', rank: 1, guard_pass: true, reason: '',
+    trade_amount: 5000, strength: 80, sector: '업종1', rank: 1, guard_pass: true, reject_reason: '',
   }
   const targetB: StockScore = {
     code: '000002', name: '종목B', cur_price: 20000, change: -200, change_rate: -0.9,
-    trade_amount: 3000, strength: 60, sector: '업종2', rank: 2, guard_pass: true, reason: '',
+    trade_amount: 3000, strength: 60, sector: '업종2', rank: 2, guard_pass: true, reject_reason: '',
   }
   // sectorStocks용 (SectorStock — 업종분류 컨텍스트, 매수후보 필드 제외)
   const sectorStocks: Record<string, SectorStock> = {
@@ -94,10 +94,10 @@ describe('hotStore — sectorStocks ↔ buyTargets 실시간 필드 정합성 (�
       expect(btB.trade_amount).toBe(8888)
       expect(btB.strength).toBe(70)
 
-      // 정적 필드는 유지 (rank, guard_pass, reason)
+      // 정적 필드는 유지 (rank, guard_pass, reject_reason)
       expect(btA.rank).toBe(1)
       expect(btA.guard_pass).toBe(true)
-      expect(btA.reason).toBe('')
+      expect(btA.reject_reason).toBe('')
     })
 
     it('sectorStocks에 없는 buyTargets 종목은 실시간 필드가 변경되지 않음', () => {
@@ -266,11 +266,11 @@ describe('hotStore — 이벤트 계약 정합성 (세션 4)', () => {
       const incoming: StockScore[] = [
         {
           code: '000001', name: '종목A', cur_price: 9000, change: -100, change_rate: -1.0,
-          trade_amount: 1000, strength: 50, sector: '업종1', rank: 1, guard_pass: true, reason: '',
+          trade_amount: 1000, strength: 50, sector: '업종1', rank: 1, guard_pass: true, reject_reason: '',
         },
         {
           code: '000002', name: '종목B', cur_price: 19000, change: -100, change_rate: -0.5,
-          trade_amount: 2000, strength: 55, sector: '업종2', rank: 2, guard_pass: true, reason: '',
+          trade_amount: 2000, strength: 55, sector: '업종2', rank: 2, guard_pass: true, reject_reason: '',
         },
       ]
       applyBuyTargetsUpdate({ buy_targets: incoming })
@@ -294,7 +294,7 @@ describe('hotStore — 이벤트 계약 정합성 (세션 4)', () => {
       const incoming: StockScore[] = [
         {
           code: '000004', name: '종목D', cur_price: 50000, change: 500, change_rate: 1.0,
-          trade_amount: 9999, strength: 70, sector: '업종3', rank: 1, guard_pass: true, reason: '',
+          trade_amount: 9999, strength: 70, sector: '업종3', rank: 1, guard_pass: true, reject_reason: '',
         },
       ]
       applyBuyTargetsUpdate({ buy_targets: incoming })
@@ -308,7 +308,7 @@ describe('hotStore — 이벤트 계약 정합성 (세션 4)', () => {
   })
 
   // ── same 비교 키 백엔드 _BUY_TARGET_CMP_KEYS 일치 검증 ──────────────
-  // same 키: 정적 필드만 (rank, boost_score, guard_pass, reason, order_ratio,
+  // same 키: 정적 필드만 (rank, boost_score, guard_pass, reject_reason, order_ratio,
   //          program_net_buy, high_5d) + 식별자 (code, name)
   // 실시간 필드(cur_price/change/change_rate/strength/trade_amount)는 same 비교 제외 —
   // 틱 디스패치가 별도 갱신 담당, 매 틱마다 setState 트리거 방지.
@@ -321,7 +321,7 @@ describe('hotStore — 이벤트 계약 정합성 (세션 4)', () => {
         {
           code: '000001', name: '종목A', cur_price: 10000, change: 100, change_rate: 1.0,
           trade_amount: 5000, strength: 80, sector: '업종1', rank: 1, guard_pass: true,
-          reason: '', boost_score: 5.0, high_5d: 12000, news_boost: 0.0,
+          reject_reason: '', boost_score: 5.0, high_5d: 12000, news_boost: 0.0,
           order_ratio: [100, 200], program_net_buy: null,
         },
       ]
@@ -351,7 +351,7 @@ describe('hotStore — 이벤트 계약 정합성 (세션 4)', () => {
         {
           code: '000001', name: '종목A', cur_price: 10000, change: 100, change_rate: 1.0,
           trade_amount: 5000, strength: 80, sector: '업종1', rank: 1, guard_pass: true,
-          reason: '', boost_score: 5.0, high_5d: 12000, news_boost: 0.0,
+          reject_reason: '', boost_score: 5.0, high_5d: 12000, news_boost: 0.0,
           order_ratio: [100, 200], program_net_buy: null,
         },
       ]
@@ -372,7 +372,7 @@ describe('hotStore — 이벤트 계약 정합성 (세션 4)', () => {
         {
           code: '000001', name: '종목A', cur_price: 10000, change: 100, change_rate: 1.0,
           trade_amount: 5000, strength: 80, sector: '업종1', rank: 1, guard_pass: true,
-          reason: '', boost_score: 5.0, high_5d: 12000, news_boost: 0.0,
+          reject_reason: '', boost_score: 5.0, high_5d: 12000, news_boost: 0.0,
           order_ratio: [100, 200], program_net_buy: null,
         },
       ]
@@ -391,7 +391,7 @@ describe('hotStore — 이벤트 계약 정합성 (세션 4)', () => {
         {
           code: '000001', name: '종목A', cur_price: 10000, change: 100, change_rate: 1.0,
           trade_amount: 5000, strength: 80, sector: '업종1', rank: 1, guard_pass: true,
-          reason: '', boost_score: 5.0, high_5d: 12000, news_boost: 0.0,
+          reject_reason: '', boost_score: 5.0, high_5d: 12000, news_boost: 0.0,
           order_ratio: [100, 200], program_net_buy: null,
         },
       ]
@@ -410,7 +410,7 @@ describe('hotStore — 이벤트 계약 정합성 (세션 4)', () => {
         {
           code: '000001', name: '종목A', cur_price: 10000, change: 100, change_rate: 1.0,
           trade_amount: 5000, strength: 80, sector: '업종1', rank: 1, guard_pass: true,
-          reason: '', boost_score: 5.0, high_5d: 12000, news_boost: 0.0,
+          reject_reason: '', boost_score: 5.0, high_5d: 12000, news_boost: 0.0,
           order_ratio: [100, 200], program_net_buy: null,
         },
       ]
@@ -439,13 +439,13 @@ describe('hotStore — 이벤트 계약 정합성 (세션 4)', () => {
         {
           code: '000001', name: '종목A', cur_price: 11000, change: 200, change_rate: 2.0,
           trade_amount: 6000, strength: 85, sector: '업종1', rank: 1, guard_pass: true,
-          reason: '', boost_score: 5.0, high_5d: 12000, news_boost: 1.5,
+          reject_reason: '', boost_score: 5.0, high_5d: 12000, news_boost: 1.5,
           order_ratio: [100, 200], program_net_buy: null,
         },
         {
           code: '000002', name: '종목B', cur_price: 20000, change: -200, change_rate: -0.9,
           trade_amount: 3000, strength: 60, sector: '업종2', rank: 2, guard_pass: true,
-          reason: '', boost_score: 3.0, high_5d: 22000, news_boost: 0,
+          reject_reason: '', boost_score: 3.0, high_5d: 22000, news_boost: 0,
           order_ratio: [100, 200], program_net_buy: null,
         },
       ]
@@ -465,7 +465,7 @@ describe('hotStore — 이벤트 계약 정합성 (세션 4)', () => {
         {
           code: '000001', name: '종목A', cur_price: 11000, change: 200, change_rate: 2.0,
           trade_amount: 6000, strength: 85, sector: '업종1', rank: 1, guard_pass: true,
-          reason: '', boost_score: 5.0, high_5d: 12000, news_boost: 0,
+          reject_reason: '', boost_score: 5.0, high_5d: 12000, news_boost: 0,
           order_ratio: [100, 200], program_net_buy: null,
         },
       ]
@@ -505,7 +505,7 @@ describe('hotStore — applyBuyTargetsDelta (COUPLING-S8 후속)', () => {
     const changed: StockScore[] = [
       {
         code: '000001', name: '종목A-리네임', cur_price: 9000, change: -100, change_rate: -1.0,
-        trade_amount: 1000, strength: 50, sector: '업종1', rank: 3, guard_pass: false, reason: 'r',
+        trade_amount: 1000, strength: 50, sector: '업종1', rank: 3, guard_pass: false, reject_reason: 'r',
       },
     ]
     applyBuyTargetsDelta({ changed })
@@ -531,7 +531,7 @@ describe('hotStore — applyBuyTargetsDelta (COUPLING-S8 후속)', () => {
     const changed: StockScore[] = [
       {
         code: '000999', name: '종목X', cur_price: 5000, change: 0, change_rate: 0,
-        trade_amount: 0, strength: 0, sector: '업종X', rank: 9, guard_pass: true, reason: '',
+        trade_amount: 0, strength: 0, sector: '업종X', rank: 9, guard_pass: true, reject_reason: '',
       },
     ]
     const prevCount = hotStore.getState().buyTargets.length
@@ -558,7 +558,7 @@ describe('hotStore — applyBuyTargetsDelta (COUPLING-S8 후속)', () => {
     const added: StockScore[] = [
       {
         code: '000003', name: '종목C', cur_price: 25000, change: -300, change_rate: -1.0,
-        trade_amount: 2000, strength: 30, sector: '업종3', rank: 3, guard_pass: true, reason: '',
+        trade_amount: 2000, strength: 30, sector: '업종3', rank: 3, guard_pass: true, reject_reason: '',
       },
     ]
     applyBuyTargetsDelta({ added })
@@ -580,7 +580,7 @@ describe('hotStore — applyBuyTargetsDelta (COUPLING-S8 후속)', () => {
     const added: StockScore[] = [
       {
         code: '000005', name: '종목E', cur_price: 50000, change: 500, change_rate: 1.0,
-        trade_amount: 9999, strength: 70, sector: '업종5', rank: 5, guard_pass: true, reason: '',
+        trade_amount: 9999, strength: 70, sector: '업종5', rank: 5, guard_pass: true, reject_reason: '',
       },
     ]
     applyBuyTargetsDelta({ added })
@@ -604,7 +604,7 @@ describe('hotStore — applyBuyTargetsDelta (COUPLING-S8 후속)', () => {
     const changed: StockScore[] = [
       {
         code: '000001', name: '종목A-리네임', cur_price: 9000, change: -100, change_rate: -1.0,
-        trade_amount: 1000, strength: 50, sector: '업종1', rank: 3, guard_pass: false, reason: 'r',
+        trade_amount: 1000, strength: 50, sector: '업종1', rank: 3, guard_pass: false, reject_reason: 'r',
       },
     ]
     // sectorStocks에서 000001 제거하여 누락 상태 시뮬레이션
@@ -641,13 +641,13 @@ describe('hotStore — applyBuyTargetsDelta (COUPLING-S8 후속)', () => {
       changed: [
         {
           code: '000001', name: '종목A-리네임', cur_price: 9000, change: -100, change_rate: -1.0,
-          trade_amount: 1000, strength: 50, sector: '업종1', rank: 5, guard_pass: false, reason: 'r',
+          trade_amount: 1000, strength: 50, sector: '업종1', rank: 5, guard_pass: false, reject_reason: 'r',
         },
       ],
       added: [
         {
           code: '000003', name: '종목C', cur_price: 25000, change: -300, change_rate: -1.0,
-          trade_amount: 2000, strength: 30, sector: '업종3', rank: 3, guard_pass: true, reason: '',
+          trade_amount: 2000, strength: 30, sector: '업종3', rank: 3, guard_pass: true, reject_reason: '',
         },
       ],
     })

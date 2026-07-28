@@ -73,7 +73,7 @@ BUY_GLOBAL_REJECT_REASONS: frozenset[str] = frozenset({
 })
 
 # ── 매수 차단 사유 → UI "원인" 컬럼 표시 텍스트 (P10 SSOT, P21 사용자 투명성) ──
-# buy_order_executor에서 bt.reason 설정 시 사용. 매핑 없음 = 표시 생략.
+# buy_order_executor에서 bt.reject_reason 설정 시 사용. 매핑 없음 = 표시 생략.
 BUY_REJECT_REASON_TEXT: dict[str, str] = {
     BUY_REJECT_MAX_HOLDING:       "최대 보유종목 초과",
     BUY_REJECT_DAILY_LIMIT:       "일일 매수한도 초과",

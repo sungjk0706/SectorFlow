@@ -941,10 +941,10 @@ class TestMultiRankBuyAlgorithm:
         assert fresh_state.auto_trade.execute_buy.await_count == 1
 
 
-# ── 차단 사유 bt.reason 기록 (P21 사용자 투명성) ──────────────────────────────
+# ── 차단 사유 bt.reject_reason 기록 (P21 사용자 투명성) ──────────────────────────────
 
 class TestRejectReasonRecording:
-    """execute_buy 차단 시 bt.reason에 사유 텍스트 기록 + WS delta 전송 검증."""
+    """execute_buy 차단 시 bt.reject_reason에 사유 텍스트 기록 + WS delta 전송 검증."""
 
     def _two_pass_targets(self):
         s1 = _stock(code="A001", cur_price=70_000)
@@ -961,7 +961,7 @@ class TestRejectReasonRecording:
 
     @pytest.mark.asyncio
     async def test_max_holding_sets_reason_on_all(self, fresh_state, reset_cash_gate):
-        """최대 보유종목 초과 → 모든 guard_pass 후보 bt.reason = "최대 보유종목 초과"."""
+        """최대 보유종목 초과 → 모든 guard_pass 후보 bt.reject_reason = "최대 보유종목 초과"."""
         fresh_state.integrated_system_settings_cache = _default_settings(max_stock_cnt=1)
         with patch("backend.app.services.engine_state.state", fresh_state), \
              patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
@@ -972,12 +972,12 @@ class TestRejectReasonRecording:
         ss = fresh_state.sector_summary_cache
         for bt in ss.buy_targets:
             if bt.stock.guard_pass:
-                assert bt.reason == BUY_REJECT_REASON_TEXT[BUY_REJECT_MAX_HOLDING]
+                assert bt.reject_reason == BUY_REJECT_REASON_TEXT[BUY_REJECT_MAX_HOLDING]
         reset_cash_gate.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_buy_amt_zero_sets_reason_on_all(self, fresh_state, reset_cash_gate):
-        """종목당 한도 0 → 모든 guard_pass 후보 bt.reason = "종목당 한도 0"."""
+        """종목당 한도 0 → 모든 guard_pass 후보 bt.reject_reason = "종목당 한도 0"."""
         fresh_state.integrated_system_settings_cache = _default_settings(buy_amt=0)
         with patch("backend.app.services.engine_state.state", fresh_state), \
              patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
@@ -988,11 +988,11 @@ class TestRejectReasonRecording:
         ss = fresh_state.sector_summary_cache
         for bt in ss.buy_targets:
             if bt.stock.guard_pass:
-                assert bt.reason == BUY_REJECT_REASON_TEXT[BUY_REJECT_BUY_AMT_ZERO]
+                assert bt.reject_reason == BUY_REJECT_REASON_TEXT[BUY_REJECT_BUY_AMT_ZERO]
 
     @pytest.mark.asyncio
     async def test_daily_limit_sets_reason_on_all(self, fresh_state, reset_cash_gate):
-        """일일 매수한도 초과 → 모든 guard_pass 후보 bt.reason = "일일 매수한도 초과"."""
+        """일일 매수한도 초과 → 모든 guard_pass 후보 bt.reject_reason = "일일 매수한도 초과"."""
         fresh_state.integrated_system_settings_cache = _default_settings(
             max_daily_total_buy_on=True, max_daily_total_buy_amt=5_000_000,
         )
@@ -1006,11 +1006,11 @@ class TestRejectReasonRecording:
         ss = fresh_state.sector_summary_cache
         for bt in ss.buy_targets:
             if bt.stock.guard_pass:
-                assert bt.reason == BUY_REJECT_REASON_TEXT[BUY_REJECT_DAILY_LIMIT]
+                assert bt.reject_reason == BUY_REJECT_REASON_TEXT[BUY_REJECT_DAILY_LIMIT]
 
     @pytest.mark.asyncio
     async def test_cash_zero_sets_reason_on_all(self, fresh_state, reset_cash_gate):
-        """예수금 부족 → 모든 guard_pass 후보 bt.reason = "예수금 부족"."""
+        """예수금 부족 → 모든 guard_pass 후보 bt.reject_reason = "예수금 부족"."""
         with patch("backend.app.services.engine_state.state", fresh_state), \
              patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
              patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
@@ -1022,11 +1022,11 @@ class TestRejectReasonRecording:
         ss = fresh_state.sector_summary_cache
         for bt in ss.buy_targets:
             if bt.stock.guard_pass:
-                assert bt.reason == BUY_REJECT_REASON_TEXT[BUY_REJECT_RISK_CASH]
+                assert bt.reject_reason == BUY_REJECT_REASON_TEXT[BUY_REJECT_RISK_CASH]
 
     @pytest.mark.asyncio
     async def test_per_stock_reject_sets_reason_on_current(self, fresh_state, reset_cash_gate):
-        """종목별 차단(상승률 가드) → 해당 종목 bt.reason만 기록, 차순위는 빈 값 유지."""
+        """종목별 차단(상승률 가드) → 해당 종목 bt.reject_reason만 기록, 차순위는 빈 값 유지."""
         fresh_state.sector_summary_cache = self._two_pass_targets()
         # 1순위 종목별 차단, 2순위 성공
         fresh_state.auto_trade.execute_buy = AsyncMock(
@@ -1045,13 +1045,13 @@ class TestRejectReasonRecording:
         # 1순위(A001)만 차단 사유 기록
         bt1 = ss.buy_targets[0]
         bt2 = ss.buy_targets[1]
-        assert bt1.reason == BUY_REJECT_REASON_TEXT[BUY_REJECT_RISE_GUARD]
-        # 2순위(A002)는 매수 성공 → reason 빈 값 유지
-        assert bt2.reason == ""
+        assert bt1.reject_reason == BUY_REJECT_REASON_TEXT[BUY_REJECT_RISE_GUARD]
+        # 2순위(A002)는 매수 성공 → reject_reason 빈 값 유지
+        assert bt2.reject_reason == ""
 
     @pytest.mark.asyncio
     async def test_global_reject_sets_reason_on_current(self, fresh_state, reset_cash_gate):
-        """전체 차단(자동매수 OFF) → 해당 종목 bt.reason 기록 후 루프 종료."""
+        """전체 차단(자동매수 OFF) → 해당 종목 bt.reject_reason 기록 후 루프 종료."""
         fresh_state.sector_summary_cache = self._two_pass_targets()
         fresh_state.auto_trade.execute_buy = AsyncMock(return_value=(False, BUY_REJECT_AUTO_BUY_OFF))
         with patch("backend.app.services.engine_state.state", fresh_state), \
@@ -1065,13 +1065,13 @@ class TestRejectReasonRecording:
             await evaluate_buy_candidates()
         ss = fresh_state.sector_summary_cache
         bt1 = ss.buy_targets[0]
-        assert bt1.reason == BUY_REJECT_REASON_TEXT[BUY_REJECT_AUTO_BUY_OFF]
+        assert bt1.reject_reason == BUY_REJECT_REASON_TEXT[BUY_REJECT_AUTO_BUY_OFF]
         # notify 호출 확인
         reset_cash_gate.assert_awaited()
 
     @pytest.mark.asyncio
     async def test_successful_buy_does_not_set_reason(self, fresh_state, reset_cash_gate):
-        """매수 성공 → bt.reason 빈 값 유지, notify 호출 안 됨."""
+        """매수 성공 → bt.reject_reason 빈 값 유지, notify 호출 안 됨."""
         fresh_state.auto_trade.execute_buy = AsyncMock(return_value=(True, ""))
         with patch("backend.app.services.engine_state.state", fresh_state), \
              patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
@@ -1085,13 +1085,13 @@ class TestRejectReasonRecording:
         ss = fresh_state.sector_summary_cache
         for bt in ss.buy_targets:
             if bt.stock.guard_pass:
-                assert bt.reason == ""
+                assert bt.reject_reason == ""
         # 매수 성공 시에는 루프 내 notify 호출 없음
         reset_cash_gate.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_qty_zero_cash_zero_sets_reason(self, fresh_state, reset_cash_gate):
-        """QTY_ZERO + 잔액 0 → 해당 종목 bt.reason = "매수수량 0" 기록 후 루프 종료."""
+        """QTY_ZERO + 잔액 0 → 해당 종목 bt.reject_reason = "매수수량 0" 기록 후 루프 종료."""
         fresh_state.sector_summary_cache = self._two_pass_targets()
         fresh_state.auto_trade.execute_buy = AsyncMock(return_value=(False, BUY_REJECT_QTY_ZERO))
         with patch("backend.app.services.engine_state.state", fresh_state), \
@@ -1105,7 +1105,7 @@ class TestRejectReasonRecording:
             await evaluate_buy_candidates()
         ss = fresh_state.sector_summary_cache
         bt1 = ss.buy_targets[0]
-        assert bt1.reason == BUY_REJECT_REASON_TEXT[BUY_REJECT_QTY_ZERO]
+        assert bt1.reject_reason == BUY_REJECT_REASON_TEXT[BUY_REJECT_QTY_ZERO]
 
 
 # ── 매수 근거 가산점 통합 문자열 생성 (BUY-REASON-S4: P10 SSOT, P20 폴백 금지, P21 사용자 투명성, P23 용어 통일) ──

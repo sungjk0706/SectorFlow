@@ -649,7 +649,7 @@ class TestNotifyBuyTargetsUpdate:
             "sector": "반도체",
             "rank": 1,
             "guard_pass": True,
-            "reason": "",
+            "reject_reason": "",
             "boost_score": 5.0,
             "high_5d": 75000,
             "news_boost": 0.0,
@@ -668,7 +668,7 @@ class TestNotifyBuyTargetsUpdate:
         assert "news_boost" not in _BUY_TARGET_CMP_KEYS
         assert "news_boost" in _BUY_TARGET_REALTIME_KEYS  # delta 제외 그룹 포함 (안 A)
         # 정적 필드 포함
-        for k in ("rank", "boost_score", "guard_pass", "reason", "order_ratio",
+        for k in ("rank", "boost_score", "guard_pass", "reject_reason", "order_ratio",
                   "program_net_buy", "high_5d"):
             assert k in _BUY_TARGET_CMP_KEYS
 

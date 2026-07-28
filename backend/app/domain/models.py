@@ -57,7 +57,7 @@ class BuyTarget:
     rank: int                   # 전체 우선순위
     sector_rank: int            # 업종 순위
     stock: StockScore
-    reason: str = ""            # 타겟 선정 이유 요약
+    reject_reason: str = ""    # 차단/거절 사유 (가드 차단 + 매수 거절 사유 통합, 빈 문자열 = 통과)
 
 
 @dataclass

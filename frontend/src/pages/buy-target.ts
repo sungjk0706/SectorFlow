@@ -83,7 +83,7 @@ function computeBadgeContext(): BadgeContext {
   const orderable = state.account?.orderable ?? 0
 
   // 1순위 통과 종목 — 주문가능금액 배지의 1위 종목 매수 가능 수량 계산용
-  const topTarget = [...state.buyTargets].sort(compareBuyTargets).find(t => t.guard_pass && t.reason === '')
+  const topTarget = [...state.buyTargets].sort(compareBuyTargets).find(t => t.guard_pass && t.reject_reason === '')
 
   // 백엔드 trading.py와 동일 — buy_amt_on=False 시 종목당 한도 없음 (주문가능 금액이 상한)
   const dailyRemain = maxDaily > 0 ? Math.max(0, maxDaily - dailySpent) : Infinity

@@ -34,7 +34,7 @@ export type ColumnType =
   | 'boost'
   | 'news'
   | 'guard'
-  | 'reason'
+  | 'reject_reason'
   | 'actions'
   | 'cmd'
   | 'desc'
@@ -83,7 +83,7 @@ export const COLUMN_WIDTH: Record<ColumnType, ColumnWidth> = {
   boost: { minWidth: 36, maxWidth: 60 },
   news: { minWidth: 50, maxWidth: 70 },
   guard: { minWidth: 36, maxWidth: 50 },
-  reason: { minWidth: 50, maxWidth: 85 },
+  reject_reason: { minWidth: 50, maxWidth: 85 },
   actions: { minWidth: 50, maxWidth: 120 },
   cmd: { minWidth: 50, maxWidth: 70 },
   desc: { minWidth: 80, maxWidth: 160 },

@@ -136,7 +136,7 @@ def _build_target_entry(bt, news_boost_cache: dict[str, float] | None = None) ->
 
     필드 표시 규칙 (세션 8 — payload 계약 명시, P22 데이터 정합성):
       - 정적·식별 필드 (항상 값 존재):
-          code, name, sector, market_type, nxt_enable, rank, guard_pass, reason,
+          code, name, sector, market_type, nxt_enable, rank, guard_pass, reject_reason,
           boost_score
       - 실시간 파생 필드 (sectorStocks SSOT에서 파생 — null 허용):
           cur_price, change, change_rate, strength, trade_amount
@@ -171,7 +171,7 @@ def _build_target_entry(bt, news_boost_cache: dict[str, float] | None = None) ->
         "sector": s.sector,
         "rank": bt.rank,
         "guard_pass": s.guard_pass,
-        "reason": bt.reason,
+        "reject_reason": bt.reject_reason,
         "boost_score": s.boost_score,
         "high_5d": int(cache_entry.get("high_5d_price", 0) or 0),
         "news_boost": _nbc.get(s.code, 0.0),

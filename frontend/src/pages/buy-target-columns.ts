@@ -146,9 +146,9 @@ export const COLUMNS: ColumnDef<StockScore>[] = [
     },
   },
   {
-    key: 'reason', label: '원인', align: 'left', type: 'reason', cellStyle: { color: COLOR.tertiary },
+    key: 'reject_reason', label: '원인', align: 'left', type: 'reject_reason', cellStyle: { color: COLOR.tertiary },
     render: (t) => {
-      const r = t.reason || ''
+      const r = t.reject_reason || ''
       if (r === '보유중' || r === '금일매수') {
         const span = document.createElement('span')
         span.textContent = r
