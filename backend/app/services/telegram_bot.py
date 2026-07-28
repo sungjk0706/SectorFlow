@@ -55,6 +55,57 @@ def _normalize_chat_id(raw: str) -> str:
     except (ValueError, TypeError):
         return s
 
+
+def _build_risk_status_lines() -> str:
+    """리스크 차단 상태 요약 라인 생성 (저장된 SSOT만 표시 — P10/P21/P24).
+
+    표시 대상 (이미 engine_state에 저장된 상태):
+      - OMS 서킷브레이커: RiskManager.circuit_breaker.get_state() (CLOSED/OPEN/HALF_OPEN)
+      - KRX 서킷브레이커/사이드카: engine_state.krx_circuit_breaker_active + market_phase["krx_alert"]
+
+    일일 손실 한도 등 리스크 매니저 조건은 주문 시도 시에만 계산되어
+    상태로 저장되지 않으므로 여기서 표시하지 않음 (추후 보강 시 본 함수에 추가).
+
+    반환: 상태 명령어 본문에 삽입할 라인 문자열 (빈 줄 1개 + 리스크 라인들).
+    예외 격리 (P25) — 조회 실패 시 정상 표시.
+    """
+    try:
+        from backend.app.services.engine_state import state
+        from backend.app.services.risk_manager import get_risk_manager
+
+        # OMS 서킷브레이커 상태
+        cb_state = get_risk_manager().circuit_breaker.get_state()
+        # KRX 서킷브레이커/사이드카 상태
+        krx_active = bool(state.krx_circuit_breaker_active)
+        krx_alert = (state.market_phase.get("krx_alert") or "").strip()
+
+        # 차단 우선순위: OMS 서킷브레이커 > KRX 서킷브레이커 (P23 — header.ts 칩 순서와 동일)
+        if cb_state == "OPEN":
+            return (
+                "\n\n🛡️ <b>리스크 상태</b>\n"
+                "🚫 매매 차단 중: OMS 서킷브레이커 차단 (자동매매 마스터 강제 OFF)"
+            )
+        if cb_state == "HALF_OPEN":
+            return (
+                "\n\n🛡️ <b>리스크 상태</b>\n"
+                "⚠️ 매매 제한 중: OMS 서킷브레이커 복구 시도 (단일 테스트 주문만 허용)"
+            )
+        if krx_active:
+            alert_txt = f" — {krx_alert}" if krx_alert else ""
+            return (
+                "\n\n🛡️ <b>리스크 상태</b>\n"
+                f"🚫 매매 차단 중: KRX 서킷브레이커/사이드카 발동{alert_txt}"
+            )
+        # 정상
+        return (
+            "\n\n🛡️ <b>리스크 상태</b>\n"
+            "✅ 정상 (차단 없음)"
+        )
+    except Exception:
+        logger.warning("[알림] 리스크 상태 조회 실패 — 상태 명령어에서 리스크 라인 생략", exc_info=True)
+        return ""
+
+
 class TelegramBot:
     def __init__(self):
         self._task: asyncio.Task | None = None
@@ -378,6 +429,9 @@ class TelegramBot:
             else:
                 acct_lines = "\n 계좌 스냅샷 없음 (엔진 가동 여부 확인)"
 
+            # 리스크 차단 상태 (저장된 SSOT만 표시 — P21 사용자 투명성, P10 SSOT)
+            risk_lines = _build_risk_status_lines()
+
             text = (
                 "📊 <b>상태</b>\n\n"
                 f"⚙️ 매매엔진: {' 가동중' if eng_running else '⏹️ 정지'}\n"
@@ -388,6 +442,7 @@ class TelegramBot:
                 f" ({flat['sell_time_start']}~{flat['sell_time_end']})\n"
                 f"🤖 지금 자동매매 가능: {' 예' if eff else '⏸️ 아니오'}\n"
                 f"🕐 확인 시각: {now_str} (KST)"
+                f"{risk_lines}"
                 f"{acct_lines}"
             )
             await self._send(token, chat_id, text)

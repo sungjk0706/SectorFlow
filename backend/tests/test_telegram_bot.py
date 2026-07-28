@@ -18,6 +18,7 @@ from backend.app.services.telegram_bot import (
     TelegramBot,
     _mask_telegram_url,
     _normalize_chat_id,
+    _build_risk_status_lines,
     apply_telegram_polling_change,
     TELEGRAM_POLLING_KEYS,
 )
@@ -1046,6 +1047,194 @@ class TestCmdStatusFull:
         mock_send.assert_called_once()
         text = mock_send.call_args[0][2]
         assert "오류" in text
+
+    @pytest.mark.asyncio
+    async def test_status_includes_risk_status_normal(self):
+        """정상 상태 — 리스크 라인 '정상 (차단 없음)' 포함 (P21)."""
+        bot = TelegramBot()
+        flat = {
+            "time_scheduler_on": True, "auto_buy_on": True, "auto_sell_on": False,
+            "buy_time_start": "09:00", "buy_time_end": "15:20",
+            "sell_time_start": "09:00", "sell_time_end": "15:20",
+        }
+        mock_cb = MagicMock()
+        mock_cb.get_state.return_value = "CLOSED"
+        mock_rm = MagicMock()
+        mock_rm.circuit_breaker = mock_cb
+        mock_state = MagicMock()
+        mock_state.krx_circuit_breaker_active = False
+        mock_state.market_phase = {}
+        with patch("backend.app.services.engine_lifecycle.get_engine_status", return_value={"running": True}), \
+             patch("backend.app.core.settings_file.load_integrated_system_settings", new_callable=AsyncMock, return_value=flat), \
+             patch("backend.app.services.engine_account.get_account_snapshot", new_callable=AsyncMock, return_value={}), \
+             patch("backend.app.services.telegram_bot.auto_trading_effective", return_value=True), \
+             patch("backend.app.services.risk_manager.get_risk_manager", return_value=mock_rm), \
+             patch("backend.app.services.engine_state.state", mock_state), \
+             patch.object(bot, "_send", new_callable=AsyncMock) as mock_send:
+            await bot._cmd_status_full("tok", "123")
+        text = mock_send.call_args[0][2]
+        assert "리스크 상태" in text
+        assert "정상" in text
+        assert "차단 없음" in text
+
+    @pytest.mark.asyncio
+    async def test_status_includes_risk_status_oms_cb_open(self):
+        """OMS 서킷브레이커 OPEN — 매매 차단 중 + 사유 포함 (P21)."""
+        bot = TelegramBot()
+        flat = {
+            "time_scheduler_on": False, "auto_buy_on": False, "auto_sell_on": False,
+            "buy_time_start": "09:00", "buy_time_end": "15:20",
+            "sell_time_start": "09:00", "sell_time_end": "15:20",
+        }
+        mock_cb = MagicMock()
+        mock_cb.get_state.return_value = "OPEN"
+        mock_rm = MagicMock()
+        mock_rm.circuit_breaker = mock_cb
+        mock_state = MagicMock()
+        mock_state.krx_circuit_breaker_active = False
+        mock_state.market_phase = {}
+        with patch("backend.app.services.engine_lifecycle.get_engine_status", return_value={"running": True}), \
+             patch("backend.app.core.settings_file.load_integrated_system_settings", new_callable=AsyncMock, return_value=flat), \
+             patch("backend.app.services.engine_account.get_account_snapshot", new_callable=AsyncMock, return_value={}), \
+             patch("backend.app.services.telegram_bot.auto_trading_effective", return_value=False), \
+             patch("backend.app.services.risk_manager.get_risk_manager", return_value=mock_rm), \
+             patch("backend.app.services.engine_state.state", mock_state), \
+             patch.object(bot, "_send", new_callable=AsyncMock) as mock_send:
+            await bot._cmd_status_full("tok", "123")
+        text = mock_send.call_args[0][2]
+        assert "매매 차단 중" in text
+        assert "OMS 서킷브레이커" in text
+
+    @pytest.mark.asyncio
+    async def test_status_includes_risk_status_krx_cb_active(self):
+        """KRX 서킷브레이커 발동 — 매매 차단 중 + alert 사유 포함 (P21)."""
+        bot = TelegramBot()
+        flat = {
+            "time_scheduler_on": True, "auto_buy_on": True, "auto_sell_on": True,
+            "buy_time_start": "09:00", "buy_time_end": "15:20",
+            "sell_time_start": "09:00", "sell_time_end": "15:20",
+        }
+        mock_cb = MagicMock()
+        mock_cb.get_state.return_value = "CLOSED"
+        mock_rm = MagicMock()
+        mock_rm.circuit_breaker = mock_cb
+        mock_state = MagicMock()
+        mock_state.krx_circuit_breaker_active = True
+        mock_state.market_phase = {"krx_alert": "코스피 시장조치 1단계"}
+        with patch("backend.app.services.engine_lifecycle.get_engine_status", return_value={"running": True}), \
+             patch("backend.app.core.settings_file.load_integrated_system_settings", new_callable=AsyncMock, return_value=flat), \
+             patch("backend.app.services.engine_account.get_account_snapshot", new_callable=AsyncMock, return_value={}), \
+             patch("backend.app.services.telegram_bot.auto_trading_effective", return_value=False), \
+             patch("backend.app.services.risk_manager.get_risk_manager", return_value=mock_rm), \
+             patch("backend.app.services.engine_state.state", mock_state), \
+             patch.object(bot, "_send", new_callable=AsyncMock) as mock_send:
+            await bot._cmd_status_full("tok", "123")
+        text = mock_send.call_args[0][2]
+        assert "매매 차단 중" in text
+        assert "KRX 서킷브레이커" in text
+        assert "코스피 시장조치 1단계" in text
+
+
+# ── _build_risk_status_lines ────────────────────────────────────────────────────
+
+class TestBuildRiskStatusLines:
+    """_build_risk_status_lines — 저장된 SSOT 기반 리스크 차단 상태 요약 (단계7)."""
+
+    def test_normal_when_cb_closed_and_krx_inactive(self):
+        mock_cb = MagicMock()
+        mock_cb.get_state.return_value = "CLOSED"
+        mock_rm = MagicMock()
+        mock_rm.circuit_breaker = mock_cb
+        mock_state = MagicMock()
+        mock_state.krx_circuit_breaker_active = False
+        mock_state.market_phase = {}
+        with patch("backend.app.services.risk_manager.get_risk_manager", return_value=mock_rm), \
+             patch("backend.app.services.engine_state.state", mock_state):
+            lines = _build_risk_status_lines()
+        assert "정상" in lines
+        assert "차단 없음" in lines
+
+    def test_oms_cb_open_shows_block(self):
+        mock_cb = MagicMock()
+        mock_cb.get_state.return_value = "OPEN"
+        mock_rm = MagicMock()
+        mock_rm.circuit_breaker = mock_cb
+        mock_state = MagicMock()
+        mock_state.krx_circuit_breaker_active = False
+        mock_state.market_phase = {}
+        with patch("backend.app.services.risk_manager.get_risk_manager", return_value=mock_rm), \
+             patch("backend.app.services.engine_state.state", mock_state):
+            lines = _build_risk_status_lines()
+        assert "매매 차단 중" in lines
+        assert "OMS 서킷브레이커" in lines
+        assert "강제 OFF" in lines
+
+    def test_oms_cb_half_open_shows_restricted(self):
+        mock_cb = MagicMock()
+        mock_cb.get_state.return_value = "HALF_OPEN"
+        mock_rm = MagicMock()
+        mock_rm.circuit_breaker = mock_cb
+        mock_state = MagicMock()
+        mock_state.krx_circuit_breaker_active = False
+        mock_state.market_phase = {}
+        with patch("backend.app.services.risk_manager.get_risk_manager", return_value=mock_rm), \
+             patch("backend.app.services.engine_state.state", mock_state):
+            lines = _build_risk_status_lines()
+        assert "매매 제한 중" in lines
+        assert "복구 시도" in lines
+
+    def test_krx_cb_active_shows_block_with_alert(self):
+        mock_cb = MagicMock()
+        mock_cb.get_state.return_value = "CLOSED"
+        mock_rm = MagicMock()
+        mock_rm.circuit_breaker = mock_cb
+        mock_state = MagicMock()
+        mock_state.krx_circuit_breaker_active = True
+        mock_state.market_phase = {"krx_alert": "코스닥 시장조치 2단계"}
+        with patch("backend.app.services.risk_manager.get_risk_manager", return_value=mock_rm), \
+             patch("backend.app.services.engine_state.state", mock_state):
+            lines = _build_risk_status_lines()
+        assert "매매 차단 중" in lines
+        assert "KRX 서킷브레이커" in lines
+        assert "코스닥 시장조치 2단계" in lines
+
+    def test_krx_cb_active_without_alert_shows_block(self):
+        """krx_alert가 빈 문자열이어도 차단 상태는 표시 (P20 폴백 금지 — 빈 값이어도 차단 사실은 표시)."""
+        mock_cb = MagicMock()
+        mock_cb.get_state.return_value = "CLOSED"
+        mock_rm = MagicMock()
+        mock_rm.circuit_breaker = mock_cb
+        mock_state = MagicMock()
+        mock_state.krx_circuit_breaker_active = True
+        mock_state.market_phase = {"krx_alert": ""}
+        with patch("backend.app.services.risk_manager.get_risk_manager", return_value=mock_rm), \
+             patch("backend.app.services.engine_state.state", mock_state):
+            lines = _build_risk_status_lines()
+        assert "매매 차단 중" in lines
+        assert "KRX 서킷브레이커" in lines
+        # 빈 alert는 " — " 구분자 없이 깔끔하게 표시
+        assert " — " not in lines
+
+    def test_oms_cb_open_takes_priority_over_krx(self):
+        """OMS 서킷브레이커가 KRX보다 우선 (P23 — header.ts 칩 순서와 동일)."""
+        mock_cb = MagicMock()
+        mock_cb.get_state.return_value = "OPEN"
+        mock_rm = MagicMock()
+        mock_rm.circuit_breaker = mock_cb
+        mock_state = MagicMock()
+        mock_state.krx_circuit_breaker_active = True
+        mock_state.market_phase = {"krx_alert": "코스피 시장조치"}
+        with patch("backend.app.services.risk_manager.get_risk_manager", return_value=mock_rm), \
+             patch("backend.app.services.engine_state.state", mock_state):
+            lines = _build_risk_status_lines()
+        assert "OMS 서킷브레이커" in lines
+        assert "KRX 서킷브레이커" not in lines
+
+    def test_exception_returns_empty_string(self):
+        """조회 실패 시 빈 문자열 반환 (P25 격리된 실패 — 상태 명령어 전체 중단 차단)."""
+        with patch("backend.app.services.risk_manager.get_risk_manager", side_effect=Exception("boom")):
+            lines = _build_risk_status_lines()
+        assert lines == ""
 
 
 # ── TelegramBot._cmd_account ────────────────────────────────────────────────────
