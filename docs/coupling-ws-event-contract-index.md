@@ -56,17 +56,19 @@ WebSocket 이벤트의 **이름 · 채널 · producer · payload 필드 · Store
 
 ---
 
-## 2. 전체 이벤트 인덱스 (41개 = 37 구독 + 4 누락 producer)
+## 2. 전체 이벤트 인덱스 (42개 = 38 구독 + 4 누락 producer)
+
+> ☑ 2026-07-28 NEWS-BOOST-S2: `news-hit` 이벤트 신설(뉴스 호재 가산점 단일 전달 경로, P10 SSOT). `buy-targets-delta` payload에서 `news_boost` 제거(세션 1, `_BUY_TARGET_REALTIME_KEYS` 일괄 제거 패턴 재사용).
 
 ### 2.1 요약
 
 | 분류 | 이벤트 수 | 비고 |
 |------|----------|------|
-| **정상 계약 (producer + consumer 일치)** | ~~30~~ 32 | payload 필드 일치 또는 부분 일치 — `index-data` 분리로 `engine-status` 정상 계약 추가, `account-update` 분리로 `account-summary-update` 정상 계약 추가 |
+| **정상 계약 (producer + consumer 일치)** | ~~30~~ 33 | payload 필드 일치 또는 부분 일치 — `index-data` 분리로 `engine-status` 정상 계약 추가, `account-update` 분리로 `account-summary-update` 정상 계약 추가, `news-hit` 신설(NEWS-BOOST-S2, 2026-07-28) |
 | **payload 필드 불일치** | ~~2~~ 0 | ~~`ws-subscribe-status`(`index_subscribed` 누락)~~ — ☑ 2026-07-27 해결 완료. ~~`account-update`(경량화/전체 분기)~~ — ☑ 2026-07-27 분리 완료 (`account-update` 전체 + `account-summary-update` 경량화) |
 | **다중 producer (동일 이벤트 다른 파일)** | ~~6~~ 5 | ~~`index-data`(4곳)~~ → ☑ 2026-07-27 분리 완료 (`engine-status` 3곳 + `index-data` 2곳). `market-phase`(3곳), `stock-classification-changed`(3곳), `buy-targets-update`(2곳), `sector-stocks-refresh`(2곳), `engine-ready`(2곳), `circuit-breaker-open`(2곳) |
 | **프론트엔드 구독 + 백엔드 producer 누락 (P16/P21 위반)** | ~~4~~ 0 | ~~`engine-reload-complete`, `bootstrap-stage`, `avg-amt-progress`, `order-filled`~~ — 2026-07-27 후속 세션에서 4건 전수 정리 완료 |
-| **네이밍 컨벤션 불일치 (P23)** | ~~6~~ 0 | ~~`circuit_breaker_open`, `order_time_blocked`, `risk_block_status`, `realtime_latency_status`, `daily_buy_state_status`, `test_cash_failed`~~ — ☑ 2026-07-27 hyphen 통일 완료 (`circuit-breaker-open` 등 6개). 전체 41개 이벤트 hyphen 통일 |
+| **네이밍 컨벤션 불일치 (P23)** | ~~6~~ 0 | ~~`circuit_breaker_open`, `order_time_blocked`, `risk_block_status`, `realtime_latency_status`, `daily_buy_state_status`, `test_cash_failed`~~ — ☑ 2026-07-27 hyphen 통일 완료 (`circuit-breaker-open` 등 6개). 전체 42개 이벤트 hyphen 통일 |
 
 ### 2.2 이벤트 전체 목록 (이름 · 채널 · producer · consumer · 갱신 빈도)
 
@@ -75,10 +77,11 @@ WebSocket 이벤트의 **이름 · 채널 · producer · payload 필드 · Store
 | 1 | `initial-snapshot` | prices | `ws.py:85` (send_to, 연결 시 1회) | binding.ts:79 | `applyInitialSnapshotHot` + `applyInitialSnapshotUI` | 연결 시 1회 |
 | 2 | `account-update` | prices | `engine_account_broadcast.py:66,70` (broadcast_to_pages/broadcast — 전체/폴백) | binding.ts:85 | `applyAccountUpdate` | 체결/잔고/시세 변경 시 (전체 delta, 매도포지션/폴백) |
 | 2b | `account-summary-update` | prices | `engine_account_broadcast.py:47` (broadcast_to_pages — 경량화, 수익현황 전용) | binding.ts:89 | `applyAccountSummaryUpdate` | 체결/잔고/시세 변경 시 (경량화 delta, 수익현황 전용) |
-| 3 | `buy-targets-update` | prices | `ws.py:138` (send_to), `engine_account_notify.py:418` (broadcast) | binding.ts:89 | `applyBuyTargetsUpdate` | 매수 후보 변경 시 (초기/전체) |
+| 3 | `buy-targets-update` | prices | `ws.py:138` (send_to), `engine_account_notify.py:403` (broadcast) | binding.ts:89 | `applyBuyTargetsUpdate` | 매수 후보 변경 시 (초기/전체, `news_boost` 포함 — D-1) |
 | 4 | `sector-stocks-refresh` | prices | `ws.py:91` (send_to), `engine_account_notify.py:349` (broadcast) | binding.ts:93 | `applySectorStocksRefresh` | 종목 목록 변경 시 (전체) |
 | 5 | `sector-stocks-delta` | prices | `engine_account_notify.py:360` (broadcast) | binding.ts:98 | `applySectorStocksDelta` | 종목 목록 변경 시 (증분) |
-| 6 | `buy-targets-delta` | prices | `engine_account_notify.py:447` (broadcast) | binding.ts:102 | 인라인 setState (rebuildBuyTargetIndex) | 매수 후보 변경 시 (증분) |
+| 6 | `buy-targets-delta` | prices | `engine_account_notify.py:432` (broadcast) | binding.ts:102 | 인라인 setState (rebuildBuyTargetIndex) | 매수 후보 변경 시 (증분, `news_boost` 제외 — NEWS-BOOST-S1) |
+| 6a | `news-hit` | prices | `pipeline_compute_tick_handlers.py:395` (`_safe_broadcast`) | binding.ts:258 | `applyNewsHit` + `showToast('info', ...)` | 뉴스 호재 매칭 시 (이벤트 기반, NEWS-BOOST-S2) |
 | 7 | `buy-history-append` | prices | `trade_history.py:201` (broadcast) | binding.ts:150 | 인라인 setState (`buyHistory`) | 매수 체결 시 단건 |
 | 8 | `real-data` | prices | `pipeline_compute_tick_handlers.py:237` (broadcast_queue → gateway) | binding.ts:157 | `applyRealData` | 틱마다 (고빈도) |
 | 9 | `orderbook-update` | prices | `engine_account_notify.py:334` (broadcast) | binding.ts:161 | `applyOrderbookUpdate` | 호가잔량 변경 시 |
@@ -139,8 +142,8 @@ WebSocket 이벤트의 **이름 · 채널 · producer · payload 필드 · Store
 - **계약 상태**: ✅ 단일 producer, 단일 payload 계약 (2026-07-27 COUPLING-S3 항목9 — `account-update`에서 분리)
 
 #### `buy-targets-update` (매수 후보 전체)
-- **Producer**: `ws.py:138` (send_to, 연결 시), `engine_account_notify.py:418` (broadcast, 초기 상태)
-- **Payload**: `{"_v": 1, "buy_targets": [SectorStock]}` (실시간 필드 포함)
+- **Producer**: `ws.py:138` (send_to, 연결 시), `engine_account_notify.py:403` (broadcast, 초기 상태)
+- **Payload**: `{"_v": 1, "buy_targets": [SectorStock]}` (실시간 필드 포함, `news_boost` 포함 — D-1, NEWS-BOOST-S1)
 - **Consumer**: binding.ts:89 → `applyBuyTargetsUpdate({buy_targets})`
 - **수정 상태**: hotStore(`buyTargets`)
 - **계약 상태**: ✅ 다중 producer이나 payload 일치
@@ -160,11 +163,18 @@ WebSocket 이벤트의 **이름 · 채널 · producer · payload 필드 · Store
 - **계약 상태**: ✅ 단일 producer
 
 #### `buy-targets-delta` (매수 후보 증분)
-- **Producer**: `engine_account_notify.py:447` (broadcast)
-- **Payload**: `{"added": [SectorStock], "removed": [str], "changed": [SectorStock]}` — 정적 필드만 (실시간 필드 `_BUY_TARGET_REALTIME_KEYS` 제거)
+- **Producer**: `engine_account_notify.py:432` (broadcast)
+- **Payload**: `{"added": [SectorStock], "removed": [str], "changed": [SectorStock]}` — 정적 필드만 (실시간 필드 `_BUY_TARGET_REALTIME_KEYS` 일괄 제거). `news_boost`는 `_BUY_TARGET_REALTIME_KEYS`에 포함되어 delta에서 제외 (NEWS-BOOST-S1, P10 SSOT — `news-hit` 이벤트가 단일 전달 경로)
 - **Consumer**: binding.ts:102 → 인라인 setState (sectorStocks에서 실시간 필드 재결합)
 - **수정 상태**: hotStore(`buyTargets`) + `rebuildBuyTargetIndex`
-- **계약 상태**: ✅ 단일 producer. 실시간 필드는 sectorStocks SSOT에서 파생 (P10)
+- **계약 상태**: ✅ 단일 producer. 실시간 필드는 sectorStocks SSOT에서 파생 (P10). `news_boost`는 `news-hit` 이벤트로만 전달(P10).
+
+#### `news-hit` (뉴스 호재 가산점 갱신, NEWS-BOOST-S2 신설 2026-07-28)
+- **Producer**: `pipeline_compute_tick_handlers.py:395` — `_handle_nws_news()`가 호재 키워드 매칭 시 `_safe_broadcast("news-hit", ...)` 호출. `news_boost_cache` 갱신 후 즉시 브로드캐스트 (P11 이벤트 기반, 체결 틱 의존성 제거)
+- **Payload**: `{"codes": [str], "names": [str], "scores": [number], "title": str}` — `codes`/`names`/`scores`는 동일 인덱스(매칭된 종목 리스트), `title`은 뉴스 제목(결정 4 = 포함). `names`는 `master_stocks_cache`에서 조회, 부재 시 빈 문자열(P20 명시적 값)
+- **Consumer**: binding.ts:258 → `applyNewsHit(d)` + `showToast('info', d.title || '뉴스 호재 발생', 4000)` (P21 투명성, title 빈 문자열 시 기본 문구 P20)
+- **수정 상태**: hotStore(`buyTargets[i].news_boost`, `buyTargets[i].news_boost_title`) — 해당 종목만 in-place patch (P10 단일 갱신 경로)
+- **계약 상태**: ✅ 단일 producer. `news_boost` 단일 전달 경로(P10 SSOT). `_safe_broadcast` 내부 예외 처리 — 전송 실패 시에도 캐시 갱신·로그 정상 완료(P25 격리된 실패)
 
 #### `buy-history-append` (매수 체결 단건)
 - **Producer**: `trade_history.py:201` (broadcast)

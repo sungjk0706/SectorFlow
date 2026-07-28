@@ -16,7 +16,7 @@
 | `backend/app/services/daily_time_scheduler.py` | 1510 | KST 시간표 기반 단일 call_later 스케줄러 — 시간 이벤트 → WS 구독·파이프라인·페이즈 전환·자정 리셋·자동매매 전환 트리거 |
 | `backend/app/services/market_close_pipeline.py` | 1425 | 장마감 확정 데이터 파이프라인 본체 — 7단계(전종목 조회→필터→해석→DB 저장→일봉 다운로드→메모리 교체→업종 재계산) + KRX 단독 종목 REMOVE + 5거래일 일봉 수동 다운로드 |
 | `backend/app/pipelines/pipeline_compute.py` | 696 | Compute Engine — tick_queue 소비 + control_queue 제어 신호 + Phase 1(수신율 임계값 대기) + Phase 2(0.2초 배치 증분 재계산) |
-| `backend/app/pipelines/pipeline_compute_tick_handlers.py` | 388 | 틱 타입별 leaf 핸들러 — 0J 업종지수/01 체결/0D 호가/PGM 프로그램/NWS 뉴스 + 01 코얼레싱 |
+| `backend/app/pipelines/pipeline_compute_tick_handlers.py` | 403 | 틱 타입별 leaf 핸들러 — 0J 업종지수/01 체결/0D 호가/PGM 프로그램/NWS 뉴스(`news-hit` 브로드캐스트, NEWS-BOOST-S2) + 01 코얼레싱 |
 | `backend/app/pipelines/pipeline_gateway.py` | 123 | 화면 전송기 — broadcast_queue 컨슘 → ws_manager.broadcast |
 | `backend/app/services/engine_loop.py` | 405 | 엔진 메인 루프 — 캐시·토큰·스펙 병렬 초기화 + WS 구간 감지 루프(연결/해제 단일 책임) |
 | `backend/app/services/engine_sector_confirm.py` | 414 | 업종 재계산 — dirty 마킹 + 증분/전체 재계산 + buy_targets 변경 감지 + 동적 구독 갱신 + 매수 후보 평가 트리거 |
@@ -254,6 +254,13 @@
 │   - 0D 호가 → _handle_real_0d_tick → notify_orderbook_update (ws_manager 직접)    │
 │   - 0J 업종지수 → _handle_real_0j_tick → notify_index_data                        │
 │   - PGM 프로그램 → _handle_real_pgm_tick → notify_program_update (ws_manager 직접)│
+│   - NWS 뉴스 → _handle_nws_news (engine_ws_dispatch 직접 호출, tick_queue 우회)   │
+│     side effect (호재 키워드 매칭 시만):                                          │
+│     - news_boost_cache[code] = (score, now) — 5분 TTL 메모리 캐시 갱신 (P7 O(1)) │
+│     - _safe_broadcast("news-hit", {codes, names, scores, title}) — 단일 전달 경로│
+│       (P10 SSOT, NEWS-BOOST-S2). 체결 틱 의존성 제거 — 뉴스 수신 즉시 브로드캐스트│
+│     - hit_codes 빈 경우 미전송. 종목명 부재 시 빈 문자열 (P20)                    │
+│     - _safe_broadcast 실패 시에도 캐시 갱신·로그 정상 완료 (P25 격리된 실패)      │
 │                                                                                  │
 │  배치 후: _refresh_account_snapshot_meta + _broadcast_account (보유종목 가격 갱신 시)│
 └─────────────────────────────────────────────────────────────────────────────────┘
@@ -494,7 +501,7 @@
 - ✅ `_step5_download_daily_confirmed` 전종목 조회 실패 시 빈 폴백 금지 — 파이프라인 중단 + 화면 알림 (P21)
 - ✅ `execute_unified_rolling_and_save` date_str 누락 시 `return False` (폴백 저장 금지)
 - ✅ `_handle_real_pgm_tick` tval 누락/오류 시 스킵 + 경고 (화면에 0 잘못 표시 방지)
-- ✅ `_handle_nws_news` code 빈 뉴스 스킵 + debug 로깅 (폴백 없음)
+- ✅ `_handle_nws_news` code 빈 뉴스 스킵 + debug 로깅 (폴백 없음). 종목명 부재 시 빈 문자열 (P20 명시적 값, NEWS-BOOST-S2)
 - ✅ silent `except: pass` 0건 — 전부 `logger.warning/error(..., exc_info=True)`
 
 ### 6.6 P24 단순성
@@ -520,6 +527,7 @@
 - ✅ `_run_confirmed_pipeline` finally에서 `confirmed_refresh_running_confirmed=False` + 임시 토큰 pop — 예외 경로 정리
 - ✅ `NotificationWorker._consume_loop` 메시지별 try/except — 계속 처리
 - ✅ `engine_lifecycle.stop_engine` 백그라운드 태스크 일괄 취소 + `clear_all_queues`
+- ✅ `_handle_nws_news` `_safe_broadcast` 실패 시에도 `news_boost_cache` 갱신·로그 정상 완료 (NEWS-BOOST-S2, P25 격리된 실패)
 
 ---
 
@@ -587,8 +595,8 @@
 
 ### 9.2 P10/P11/P16/P20/P24/P25 준수
 
-- P10 SSOT: 단일 적용 경로(`_apply_market_phase`), 단일 쓰기 경로(`latest_filter_summary_meta` 등), `qry_dt` 기준 통일.
-- P11 이벤트 기반: `call_later` 단일 타이머, `_receive_rate_event.wait()`, `ws_window_changed_event.wait()`. 폴링 0건.
+- P10 SSOT: 단일 적용 경로(`_apply_market_phase`), 단일 쓰기 경로(`latest_filter_summary_meta` 등), `qry_dt` 기준 통일. `news_boost` 단일 전달 경로 = `news-hit` 이벤트 (NEWS-BOOST-S2, `buy-targets-delta`에서 제외).
+- P11 이벤트 기반: `call_later` 단일 타이머, `_receive_rate_event.wait()`, `ws_window_changed_event.wait()`. 폴링 0건. NWS 뉴스 수신 즉시 `news-hit` 브로드캐스트 (체결 틱 의존성 제거, NEWS-BOOST-S2).
 - P16 살아있는 경로: `_TIMETABLE` 빌드 보장, 토글 OFF 시 dead path 제거, JIF 미수신 시 시간표 보완.
 - P20 폴백 금지: 캐시 키 누락 시 ValueError, 조회 실패 시 파이프라인 중단, silent except 0건.
 - P24 단순성: 부작용 단일 집중, tick_handlers 분리. 파일 길이 2건 초과 (C-09 범위).

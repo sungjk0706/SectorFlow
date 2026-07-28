@@ -109,7 +109,7 @@ export function normalizeStockCode(code: string | undefined | null): string {
 - **입력**: `string | undefined | null` (null-safe)
 - **동작**: 빈/null → "" → `_` split 첫 부분 (모든 `_` 접미사 제거) → `A` 접두사 제거 → 순수 숫자 & 길이<6이면 `padStart(6,'0')` → 그 외 그대로
 - **출력**: 숫자 입력은 6자리 미만만 zero-padded (6자리 이상은 길이 유지, 잘라내기 없음); `A` 접두사 제거; `_` 접미사 제거; 비숫자는 그대로 (대소문자 변환 없음)
-- **용도**: 프론트 Store/페이지 종목코드 정규화 — `sectorStocks` Record 키, position 인덱스 매칭, buyTargets 매칭, real-data 디스패치, orderbook/program update
+- **용도**: 프론트 Store/페이지 종목코드 정규화 — `sectorStocks` Record 키, position 인덱스 매칭, buyTargets 매칭, real-data 디스패치, orderbook/program update, `news-hit` 종목 매칭(NEWS-BOOST-S3)
 - **docstring**: "종목코드 정규화 헬퍼"
 - **특이**: `A` 접두사 제거는 KRX REST 응답 형식(A005930) 전용. `_` split은 `_AL`/`_NX`뿐 아니라 모든 `_` 접미사 제거 (더 넓음). 대소문자 변환 안 함. 잘라내기 안 함 (padStart만)
 
@@ -182,7 +182,7 @@ export function normalizeStockCode(code: string | undefined | null): string {
 
 ### 4.4 `normalizeStockCode` 호출부 (30+건)
 
-**hotStore.ts 내부 (15건):**
+**hotStore.ts 내부 (17건):**
 - `stocksToMap:29` — 배열 → Record 변환 키
 - `rebuildBuyTargetIndex:70` — buyTargets 인덱스 Map 키
 - `rebuildPositionIndex:79` — positions 인덱스 Map 키
@@ -194,6 +194,7 @@ export function normalizeStockCode(code: string | undefined | null): string {
 - `applyProgramUpdate:466` — 프로그램 매매 업데이트 코드
 - `applyBuyTargetsUpdate:555/573/639` — buyTargets 매칭 (3건)
 - `applySellTargetsUpdate:674/721` — sellTargets 처리 (2건)
+- `applyNewsHit:598/599` — `news-hit` 이벤트 종목코드 매칭 (NEWS-BOOST-S3, 2건). `codes[k]` 정규화 후 `buyTargets` 인덱스 조회 → 해당 종목 `news_boost`/`news_boost_title` in-place patch (P10 단일 갱신 경로)
 
 **binding.ts (5건):**
 - `binding.ts:106/107/112/115/130` — buy-targets-delta 처리

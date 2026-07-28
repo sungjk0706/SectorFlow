@@ -1,10 +1,11 @@
 # 뉴스 가산점 로직 근본 설계 (v2 — 잘못된 로직 제거)
 
-> **상태**: 설계 단계 (코드 수정 금지)
+> **상태**: ☑ 구현 완료 (NEWS-BOOST-S1~S5, 2026-07-28)
 > **작성일**: 2026-07-28
 > **이전 문서**: `docs/news-boost-fix-design.md` (v1 — 폐기, "1줄 추가 + 잘못된 로직 유지" 방식)
 > **관련 규칙**: P7, P10(SSOT), P11, P16, P21, P22, P23, P24, P25
-> **다단계 워크플로우**: 설계(본 파일) → 태스크 분할 → 구현 (세션당 1단계)
+> **다단계 워크플로우**: 설계(본 파일) → 태스크 분할(`news-boost-fix-tasks.md`) → 구현 (세션당 1단계, 총 5세션)
+> **구현 세션**: S1(백엔드 잘못된 로직 #1·#2·#4 제거) → S2(백엔드 `news-hit` 브로드캐스트) → S3(프론트 `applyNewsHit` + binding + same 비교 제거) → S4(📰 툴팁 연결 + `news_boost_title` store 보관) → S5(문서 갱신)
 
 ---
 
@@ -380,7 +381,9 @@ pricesClient.onEvent('news-hit', (data) => {
 
 ---
 
-## 6. 결정 필요 사항 (사용자 승인 전)
+## 6. 결정 사항 (☑ 확정 완료 — 구현 세션 1~4에서 전부 확정)
+
+> 본 섹션은 원래 "사용자 승인 전" 결정 대기 항목이었으나, 구현 세션 진행 중 전부 확정됨. 확정값은 §7.2 참조.
 
 ### 결정 1: 토스트 팝업 포함 여부
 
@@ -412,16 +415,40 @@ pricesClient.onEvent('news-hit', (data) => {
 
 ---
 
-## 7. 다음 단계 (사용자 승인 후)
+## 7. 구현 완료 결과 (NEWS-BOOST-S1~S5, 2026-07-28)
 
-1. **태스크 분할 세션**: 본 설계 기반 구현 태스크 분할 (세션당 1단계 원칙)
-   - 태스크 1: 백엔드 — `_BUY_TARGET_CMP_KEYS`에서 `news_boost` 제거 + delta에서 제거 + 테스트 수정
-   - 태스크 2: 백엔드 — `_handle_nws_news()`에 `news-hit` 브로드캐스트 추가 + 테스트
-   - 태스크 3: 프론트엔드 — `applyNewsHit()` action + `binding.ts` 핸들러 + same 비교 제거 + 테스트
-   - 태스크 4 (결정 1=B 시): 토스트 팝업 연결
-   - 태스크 5: 문서 갱신 (`coupling-ws-event-contract-index.md` 등)
-2. **구현 세션**: 태스크별 세션 진행 (세션당 1단계)
-3. **검증**: `.venv/bin/python -m pytest backend/tests -q` + `.venv/bin/python -W error::RuntimeWarning main.py` + `cd frontend && npm run typecheck` + `cd frontend && npm run test`
+> 본 섹션은 설계 단계의 "다음 단계"를 구현 완료 결과로 대체. 상세 구현 내역은 git 커밋 메시지 + `HANDOVER.md` 세션 개요 참조.
+
+### 7.1 세션별 구현 결과
+
+| 세션 | 단계 | 결과 |
+|------|------|------|
+| S1 | 백엔드 잘못된 로직 #1·#2·#4 제거 | `_BUY_TARGET_CMP_KEYS`에서 `news_boost` 제거 + `_BUY_TARGET_REALTIME_KEYS`에 `news_boost` 추가(안 A, 단순) → delta added/changed에서 일괄 pop. 초기 스냅샷 `buy-targets-update`는 `news_boost` 유지(D-1). 단위 65 + 전체 2787 테스트 통과. |
+| S2 | 백엔드 `news-hit` WS 이벤트 브로드캐스트 | `_handle_nws_news()`가 호재 매칭 시 `news_boost_cache` 갱신 후 즉시 `news-hit` 브로드캐스트. payload = `{codes, names, scores, title}`(결정 4 title 포함). `_safe_broadcast` 사용(P25). 단위 13 + 전체 2791 테스트 통과. |
+| S3 | 프론트 `applyNewsHit` + binding + same 비교 제거 | `hotStore.applyNewsHit(data)` action 추가(`normalizeStockCode` + `setState` updater 패턴 재사용). `binding.ts` `news-hit` 핸들러 → `applyNewsHit` + `showToast('info', title || '뉴스 호재 발생', 4000)`. `applyBuyTargetsUpdate` same 비교에서 `news_boost` 제거(잘못된 로직 #3). `NewsHitEvent` 타입 추가. typecheck + test(279 tests) + build 통과. |
+| S4 | 📰 툴팁 연결 + `news_boost_title` store 보관 | `applyNewsHit`이 `title`을 `buyTargets[i].news_boost_title`에 보관(P21). `SectorStock` 타입에 `news_boost_title?: string` 추가. `applyBuyTargetsUpdate`에 `news_boost_title` 보존 로직 추가(P22 — `news_boost > 0` 시 prev에서 보존, 만료 시 소멸). `buy-target-columns.ts` 📰 아이콘 `span.title`에 `news_boost_title` 포함. typecheck + test(284 tests) + build 통과. |
+| S5 | 문서 갱신 | `coupling-ws-event-contract-index.md`(`news-hit` 등록, 이벤트 41→42, `buy-targets-delta` payload `news_boost` 제거 명시) + `coupling-pipeline-boundary.md`(NWS 처리 경로, 체결 틱 의존성 제거) + `coupling-stock-code-normalization.md`(`applyNewsHit` `normalizeStockCode` 추적 추가) + 본 파일 최종 상태 갱신. |
+
+### 7.2 사용자 결정 항목 확정 결과
+
+| # | 항목 | 확정값 | 근거 |
+|---|------|--------|------|
+| 1 | 토스트 팝업 포함 여부 | B(토스트 포함) | 사용자 명시 "토스트 팝업 + 툴팁" |
+| 2 | 토스트 메시지 포맷 | `d.title \|\| '뉴스 호재 발생'` (title 우선, 빈 시 기본 문구) | P20 명시적 값, `circuit-breaker-open` 패턴과 일관 |
+| 3 | 토스트 지속 시간 | 4000ms | 사용자 인지 시간 확보 |
+| 4 | `news-hit` payload에 뉴스 제목 포함 여부 | 포함 `{codes, names, scores, title}` | 툴팁에 뉴스 제목 표시(결정 6=a) |
+| 5 | 초기 스냅샷 `news_boost` 필드 | D-1(유지) | 초기 로드 시 캐시 반영, 사용자 경험 저하 방지 |
+| 6 | 📰 아이콘 툴팁 내용 | (a) 뉴스 제목 | 결정 4 = 포함과 연동, 호재 구체 내용 인지에 가장 유용 |
+
+### 7.3 검증 결과
+
+- 백엔드: `.venv/bin/python -m pytest backend/tests -q` 통과(2791 tests, RuntimeWarning 0건). 런타임 기동 `.venv/bin/python -W error::RuntimeWarning main.py` 정상 + 잔존 프로세스 0건.
+- 프론트엔드: `npm run typecheck` + `npm run test`(284 tests, hotStore 77) + `npm run build` 전부 통과.
+- 문서-코드 일치: 이벤트 인덱스 42개, `news-hit` payload 코드와 일치, `buy-targets-delta` payload에서 `news_boost` 제거 명시, ARCHITECTURE.md는 설계 4.4 명시대로 변경 없음.
+
+### 7.4 다단계 워크플로우 완료
+
+본 설계서 기반 구현 태스크 분할(`news-boost-fix-tasks.md`) + 5세션 구현 전부 완료. 설계서·태스크 파일 삭제 여부는 규칙 10에 따라 최종 커밋에서 확인.
 
 ---
 
