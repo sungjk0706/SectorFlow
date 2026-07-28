@@ -13,12 +13,12 @@ import { createBadgeRow, createBadge, updateBadge, type BadgeHandle, type BadgeS
 import { computeOrderBlockStatus } from '../utils/order-block-status'
 import { filterStocksBySearch } from '../utils/stock-search'
 import { COLUMNS } from './buy-target-columns'
-import type { SectorStock, AppSettings } from '../types'
+import type { StockScore, AppSettings } from '../types'
 import type { UIState } from '../stores/uiStore'
 import type { HotState } from '../stores/hotStore'
 
 /* ── 모듈 변수 ── */
-let dataTable: DataTableApi<SectorStock> | null = null
+let dataTable: DataTableApi<StockScore> | null = null
 let badgeEls: { combined: BadgeHandle; daily: BadgeHandle; holding: BadgeHandle } | null = null
 let emptyEl: HTMLElement | null = null
 let searchInput: ReturnType<typeof createSearchInput> | null = null
@@ -49,7 +49,7 @@ let _rsDailyBuyStateFailed: UIState['dailyBuyStateFailed'] = false
 
 /** 매수후보 정렬 comparator — guard_pass 통과 우선, 동일 그룹 내 rank 오름차순.
  *  computeBadgeContext(1위 종목 찾기)와 renderTableRows(전체 정렬) 공통 (P24 중복 제거). */
-function compareBuyTargets(a: SectorStock, b: SectorStock): number {
+function compareBuyTargets(a: StockScore, b: StockScore): number {
   if (a.guard_pass !== b.guard_pass) return a.guard_pass ? -1 : 1
   return (a.rank ?? 999999) - (b.rank ?? 999999)
 }
@@ -254,7 +254,7 @@ function buildTableArea(root: HTMLElement): void {
   Object.assign(scrollContainer.style, { flex: '1', minHeight: '200px', display: 'flex', flexDirection: 'column', overflowY: 'auto' })
 
   // DataTable 생성
-  dataTable = createDataTable<SectorStock>({
+  dataTable = createDataTable<StockScore>({
     columns: COLUMNS,
     virtualScroll: true,
     keyFn: (t) => t.code,
@@ -324,7 +324,7 @@ function hasStateChanged(latest: HotState, latestUi: UIState): boolean {
 }
 
 /** 테이블 행 렌더 — 필터링 + 정렬 + updateRows + 빈 상태 갱신 (초기 렌더 + rAF 콜백 공용) */
-function renderTableRows(buyTargets: SectorStock[]): void {
+function renderTableRows(buyTargets: StockScore[]): void {
   // 필터링 (SSOT: filterStocksBySearch 재사용) → 정렬
   const matchedCodes = filterStocksBySearch(buyTargets, searchTerm)
   const targets = [...buyTargets]

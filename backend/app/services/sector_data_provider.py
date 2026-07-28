@@ -137,7 +137,7 @@ def _build_target_entry(bt, news_boost_cache: dict[str, float] | None = None) ->
     필드 표시 규칙 (세션 8 — payload 계약 명시, P22 데이터 정합성):
       - 정적·식별 필드 (항상 값 존재):
           code, name, sector, market_type, nxt_enable, rank, guard_pass, reason,
-          boost_score, avg_amt_5d
+          boost_score
       - 실시간 파생 필드 (sectorStocks SSOT에서 파생 — null 허용):
           cur_price, change, change_rate, strength, trade_amount
           - null = 틱 미수신 (테스트모드 기동 직후, 장 전, 구독 지연 등)
@@ -150,6 +150,10 @@ def _build_target_entry(bt, news_boost_cache: dict[str, float] | None = None) ->
                       (0은 "가산점 없음"의 명시적 값이지 폴백이 아님 — 부재와 부여 안 함을 동일 취급)
           order_ratio: None = 호가잔량 미수신 (orderbook-update 이벤트로 갱신 전)
           program_net_buy: None = 프로그램 순매수 미수신 (program-update 이벤트로 갱신 전)
+
+    avg_amt_5d 제거 (T1 설계 수정 — avg_amt_5d 주인은 SectorStock, 매수후보에서 불필요.
+    업종분류 get_all_sector_stocks()에서 master_stocks_cache["avg_5d_trade_amount"]를
+    억 단위로 변환하여 전송 — 우측 패널 표시용).
     """
     s = bt.stock
     cache_entry = engine_state.state.master_stocks_cache.get(s.code, {})
@@ -162,7 +166,6 @@ def _build_target_entry(bt, news_boost_cache: dict[str, float] | None = None) ->
         "change": cache_entry.get("change"),
         "strength": cache_entry.get("strength"),
         "trade_amount": cache_entry.get("trade_amount"),
-        "avg_amt_5d": s.avg_amt_5d,
         "market_type": s.market_type,
         "nxt_enable": s.nxt_enable,
         "sector": s.sector,
@@ -180,7 +183,13 @@ def _build_target_entry(bt, news_boost_cache: dict[str, float] | None = None) ->
 async def get_all_sector_stocks() -> list[dict]:
     """전체 종목(매매부적격 제외) — 업종분류 커스텀 페이지 전용.
 
-    각 종목: { code, name, sector(get_merged_sectors_batch 기반), market_type, nxt_enable }
+    각 종목: { code, name, sector(get_merged_sectors_batch 기반), market_type, nxt_enable,
+              avg_amt_5d(5거래일 평균 거래대금 — 우측 패널 표시용, 억 단위) }
+
+    avg_amt_5d (T1 설계 수정 — SectorStock 주인, P10 SSOT):
+      - 데이터 소스: master_stocks_cache[cd]["avg_5d_trade_amount"] (백만원 단위)
+      - 변환: avg5d_eok = avg5d_million // 100 (sector_calculator.py:89와 동일 패턴, P23 일관성)
+      - 0 = 원천 부재/미다운로드 (5거래일 일봉 전) 표시 규칙 유지 (P20 폴백 금지)
     """
     from backend.app.core.sector_mapping import get_merged_sectors_batch
     from backend.app.services.engine_symbol_utils import get_stock_market as _get_mkt, is_nxt_enabled as _is_nxt
@@ -199,12 +208,15 @@ async def get_all_sector_stocks() -> list[dict]:
     result: list[dict] = []
     for cd in valid_codes:
         entry = engine_state.state.master_stocks_cache[cd]
+        avg5d_million = int(entry.get("avg_5d_trade_amount", 0) or 0)
+        avg5d_eok = avg5d_million // 100  # 백만원 → 억 단위 변환 (sector_calculator.py:89와 동일)
         result.append({
             "code": cd,
             "name": entry.get("name", ""),
             "sector": sectors_map.get(cd, "미분류"),
             "market_type": _get_mkt(cd) or "",
             "nxt_enable": _is_nxt(cd),
+            "avg_amt_5d": avg5d_eok,
         })
     return result
 

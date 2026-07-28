@@ -365,7 +365,7 @@ async def notify_desktop_sector_stocks_refresh(*, force: bool = False) -> None:
 _BUY_TARGET_REALTIME_KEYS = ("cur_price", "change", "change_rate", "strength", "trade_amount", "news_boost")
 _BUY_TARGET_CMP_KEYS = (
     "rank", "boost_score", "guard_pass", "reason",
-    "order_ratio", "program_net_buy", "high_5d", "avg_amt_5d",
+    "order_ratio", "program_net_buy", "high_5d",
 )
 
 

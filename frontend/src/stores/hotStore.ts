@@ -4,6 +4,7 @@ import { createStore } from './store'
 import type {
   Position,
   SectorStock,
+  StockScore,
   SectorScoreRow,
   AccountSnapshot,
   AccountUpdateEvent,
@@ -39,7 +40,7 @@ export interface HotState {
   positionCount: number
   sectorStocks: Record<string, SectorStock>
   sectorScores: SectorScoreRow[]
-  buyTargets: SectorStock[]
+  buyTargets: StockScore[]
   sellHistory: Record<string, unknown>[]
   buyHistory: Record<string, unknown>[]
   /** WS push 전용 (최근 N거래일) — HTTP 덮어쓰기 금지 (P10 SSOT) */
@@ -65,7 +66,7 @@ let _buyTargetIndexCache: Map<string, number> = new Map()
 let _positionIndexCache: Map<string, number> = new Map()
 
 /** buyTargets 배열로부터 code→index 캐시 재구축 */
-export function rebuildBuyTargetIndex(targets: SectorStock[]): void {
+export function rebuildBuyTargetIndex(targets: StockScore[]): void {
   const map = new Map<string, number>()
   for (let i = 0; i < targets.length; i++) {
     map.set(normalizeStockCode(targets[i].code), i)
@@ -527,15 +528,16 @@ export function applyRealtimeReset(): void {
 // same 비교 키 (백엔드 _BUY_TARGET_CMP_KEYS와 일치, P23 일관성):
 //   식별자: code, name (백엔드는 code 기준 delta이므로 불필요, 프론트는 배열 순서 비교용)
 //   정적 필드: rank, boost_score, guard_pass, reason, order_ratio, program_net_buy,
-//             high_5d, avg_amt_5d
+//             high_5d
 //   실시간 필드(cur_price/change/change_rate/strength/trade_amount)는 제외 —
 //   틱 디스패치(real-data-tick)가 별도 갱신 담당, update same에서 비교하면 매 틱마다
 //   setState 트리거하여 비용 낭비. 백엔드 _BUY_TARGET_CMP_KEYS도 동일 제외.
+//   avg_amt_5d 제외 (T1 설계 수정 — avg_amt_5d 주인은 SectorStock, 매수후보에서 제거).
 //   news_boost 제외 (세션 3 — news-hit 이벤트가 단일 갱신 경로, P10 SSOT).
 //   news_boost_title 제외 (세션 4 — 동일 단일 경로, P10 SSOT).
 //   applyBuyTargetsUpdate는 초기 buy-targets-update 수신 시에만 news_boost 포함,
 //   이후 갱신은 applyNewsHit이 담당하므로 same 비교에서 제외해 이중 갱신 경로 차단.
-export function applyBuyTargetsUpdate(data: { buy_targets: SectorStock[] }): void {
+export function applyBuyTargetsUpdate(data: { buy_targets: StockScore[] }): void {
   const sectorStocks = hotStore.getState().sectorStocks
   const prev = hotStore.getState().buyTargets
   // P22: news_boost_title은 백엔드 스냅샷에 없음 (news-hit 이벤트가 단일 소스, 세션 4).
@@ -568,7 +570,6 @@ export function applyBuyTargetsUpdate(data: { buy_targets: SectorStock[] }): voi
       && p.order_ratio?.[0] === n.order_ratio?.[0] && p.order_ratio?.[1] === n.order_ratio?.[1]
       && p.program_net_buy === n.program_net_buy
       && p.high_5d === n.high_5d
-      && p.avg_amt_5d === n.avg_amt_5d
   })
   if (!same) {
     rebuildBuyTargetIndex(incoming)
@@ -596,7 +597,7 @@ export function applyNewsHit(data: { codes: string[]; scores: number[]; title?: 
     let changed = false
     for (let k = 0; k < codes.length; k++) {
       const code = normalizeStockCode(codes[k])
-      const idx = buyTargets.findIndex((t: SectorStock) => normalizeStockCode(t.code) === code)
+      const idx = buyTargets.findIndex((t: StockScore) => normalizeStockCode(t.code) === code)
       if (idx >= 0) {
         if (!changed) { buyTargets = [...buyTargets]; changed = true }
         buyTargets[idx] = { ...buyTargets[idx], news_boost: scores[k] ?? 0, news_boost_title: title }
@@ -611,21 +612,21 @@ export function applyNewsHit(data: { codes: string[]; scores: number[]; title?: 
 // 재결합하여 단일 소스 일관성 유지. applyBuyTargetsUpdate의 결합 패턴과 동일 (P23 일관성).
 // binding.ts 인라인 45줄 → action 추출 (P23/P24, COUPLING-S8 후속).
 export function applyBuyTargetsDelta(data: {
-  added?: SectorStock[]
+  added?: StockScore[]
   removed?: string[]
-  changed?: SectorStock[]
+  changed?: StockScore[]
 }): void {
   const { added, removed, changed } = data
   hotStore.setState((state) => {
     let buyTargets = state.buyTargets
     if (removed && removed.length > 0) {
       const removedSet = new Set(removed.map(c => normalizeStockCode(c)))
-      buyTargets = buyTargets.filter((t: SectorStock) => !removedSet.has(normalizeStockCode(t.code)))
+      buyTargets = buyTargets.filter((t: StockScore) => !removedSet.has(normalizeStockCode(t.code)))
     }
     if (changed && changed.length > 0) {
       buyTargets = buyTargets === state.buyTargets ? [...buyTargets] : buyTargets
       for (const item of changed) {
-        const idx = buyTargets.findIndex((t: SectorStock) => normalizeStockCode(t.code) === normalizeStockCode(item.code))
+        const idx = buyTargets.findIndex((t: StockScore) => normalizeStockCode(t.code) === normalizeStockCode(item.code))
         if (idx >= 0) {
           // P10(SSOT) + P22(데이터 정합성): sectorStocks가 실시간 데이터 단일 소스.
           // sectorStocks 누락 시 incoming 실시간 필드 유지 — applyBuyTargetsUpdate 결합 패턴과 동일 (P23 일관성).
@@ -715,7 +716,7 @@ export function applySectorScores(data: SectorScoresEvent): void {
 
 /** buyTargets 요소의 실시간 필드를 sectorStocks 기준으로 in-place 재결합 */
 function rebindBuyTargetsRealtime(
-  buyTargets: SectorStock[],
+  buyTargets: StockScore[],
   sectorStocks: Record<string, SectorStock>,
 ): boolean {
   let changed = false
@@ -790,7 +791,7 @@ export function applyBuyHistoryUpdate(data: { buy_history: Record<string, unknow
 export function applyInitialSnapshotHot(data: Record<string, unknown>): void {
   const stocks = (data.sector_stocks as SectorStock[]) ?? []
   const scores = (data.sector_scores as SectorScoreRow[]) ?? []
-  const newBuyTargets = ((data.buy_targets as SectorStock[]) ?? []).map(t => ({
+  const newBuyTargets = ((data.buy_targets as StockScore[]) ?? []).map(t => ({
     ...t,
     code: normalizeStockCode(t.code)
   }))

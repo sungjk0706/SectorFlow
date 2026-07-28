@@ -17,23 +17,29 @@ import {
   normalizeStockCode,
   type HotState,
 } from '../../src/stores/hotStore'
-import type { SectorStock, RealDataEvent, Position } from '../../src/types'
+import type { SectorStock, StockScore, RealDataEvent, Position } from '../../src/types'
 
-/** 테스트용 초기 상태 — buyTargets와 sectorStocks에 동일 종목이 실시간 필드 포함 */
+/** 테스트용 초기 상태 — buyTargets(StockScore)와 sectorStocks(SectorStock) 분리
+ *  T1 설계 수정: 매수후보 전용 필드(rank/guard_pass/reason)는 StockScore에만,
+ *  실시간 파생 필드는 양쪽 공유, avg_amt_5d는 SectorStock 전용. */
 function makeInitialHotState(): HotState {
-  const stockA: SectorStock = {
+  // buyTargets용 (StockScore — 매수후보 컨텍스트)
+  const targetA: StockScore = {
     code: '000001', name: '종목A', cur_price: 10000, change: 100, change_rate: 1.0,
     trade_amount: 5000, strength: 80, sector: '업종1', rank: 1, guard_pass: true, reason: '',
   }
-  const stockB: SectorStock = {
+  const targetB: StockScore = {
     code: '000002', name: '종목B', cur_price: 20000, change: -200, change_rate: -0.9,
     trade_amount: 3000, strength: 60, sector: '업종2', rank: 2, guard_pass: true, reason: '',
   }
+  // sectorStocks용 (SectorStock — 업종분류 컨텍스트, 매수후보 필드 제외)
   const sectorStocks: Record<string, SectorStock> = {
-    '000001': { ...stockA },
-    '000002': { ...stockB },
+    '000001': { code: '000001', name: '종목A', cur_price: 10000, change: 100, change_rate: 1.0,
+      trade_amount: 5000, strength: 80, sector: '업종1' },
+    '000002': { code: '000002', name: '종목B', cur_price: 20000, change: -200, change_rate: -0.9,
+      trade_amount: 3000, strength: 60, sector: '업종2' },
   }
-  const buyTargets = [{ ...stockA }, { ...stockB }]
+  const buyTargets = [{ ...targetA }, { ...targetB }]
   rebuildBuyTargetIndex(buyTargets)
   return {
     account: null,
@@ -257,7 +263,7 @@ describe('hotStore — 이벤트 계약 정합성 (세션 4)', () => {
     it('incoming 실시간 필드가 sectorStocks와 불일치 시 sectorStocks 기준으로 재결합', () => {
       // sectorStocks: 종목A cur_price=10000 (초기 상태)
       // 백엔드 buy-targets-update가 stale cur_price=9000 전송 (조회 시점 차이)
-      const incoming: SectorStock[] = [
+      const incoming: StockScore[] = [
         {
           code: '000001', name: '종목A', cur_price: 9000, change: -100, change_rate: -1.0,
           trade_amount: 1000, strength: 50, sector: '업종1', rank: 1, guard_pass: true, reason: '',
@@ -285,7 +291,7 @@ describe('hotStore — 이벤트 계약 정합성 (세션 4)', () => {
 
     it('sectorStocks에 없는 종목은 incoming 실시간 필드 유지', () => {
       // 종목D는 sectorStocks에 없고 buy-targets-update에만 포함
-      const incoming: SectorStock[] = [
+      const incoming: StockScore[] = [
         {
           code: '000004', name: '종목D', cur_price: 50000, change: 500, change_rate: 1.0,
           trade_amount: 9999, strength: 70, sector: '업종3', rank: 1, guard_pass: true, reason: '',
@@ -303,18 +309,19 @@ describe('hotStore — 이벤트 계약 정합성 (세션 4)', () => {
 
   // ── same 비교 키 백엔드 _BUY_TARGET_CMP_KEYS 일치 검증 ──────────────
   // same 키: 정적 필드만 (rank, boost_score, guard_pass, reason, order_ratio,
-  //          program_net_buy, high_5d, avg_amt_5d) + 식별자 (code, name)
+  //          program_net_buy, high_5d) + 식별자 (code, name)
   // 실시간 필드(cur_price/change/change_rate/strength/trade_amount)는 same 비교 제외 —
   // 틱 디스패치가 별도 갱신 담당, 매 틱마다 setState 트리거 방지.
+  // avg_amt_5d 제외 (T1 설계 수정 — avg_amt_5d 주인은 SectorStock, 매수후보에서 제거).
   // news_boost 제외 (세션 3 — news-hit 이벤트가 단일 갱신 경로, P10 SSOT).
   describe('applyBuyTargetsUpdate — same 비교 키 (백엔드 cmp_keys 일치)', () => {
     it('실시간 필드만 변경 시 setState 미발화 (same=true)', () => {
       // 초기 buyTargets 설정 (정적 필드 포함)
-      const initial: SectorStock[] = [
+      const initial: StockScore[] = [
         {
           code: '000001', name: '종목A', cur_price: 10000, change: 100, change_rate: 1.0,
           trade_amount: 5000, strength: 80, sector: '업종1', rank: 1, guard_pass: true,
-          reason: '', boost_score: 5.0, high_5d: 12000, avg_amt_5d: 4000, news_boost: 0.0,
+          reason: '', boost_score: 5.0, high_5d: 12000, news_boost: 0.0,
           order_ratio: [100, 200], program_net_buy: null,
         },
       ]
@@ -323,7 +330,7 @@ describe('hotStore — 이벤트 계약 정합성 (세션 4)', () => {
       const prevTargetsRef = stateBefore.buyTargets
 
       // 동일 정적 필드 + 실시간 필드만 변경 (cur_price 10000 → 11000)
-      const updated: SectorStock[] = [
+      const updated: StockScore[] = [
         {
           ...initial[0],
           cur_price: 11000, change: 200, change_rate: 2.0, trade_amount: 6000, strength: 85,
@@ -336,34 +343,15 @@ describe('hotStore — 이벤트 계약 정합성 (세션 4)', () => {
       expect(stateAfter.buyTargets).toBe(prevTargetsRef)
     })
 
-    it('avg_amt_5d 변경 시 setState 발화 (same=false)', () => {
-      const initial: SectorStock[] = [
-        {
-          code: '000001', name: '종목A', cur_price: 10000, change: 100, change_rate: 1.0,
-          trade_amount: 5000, strength: 80, sector: '업종1', rank: 1, guard_pass: true,
-          reason: '', boost_score: 5.0, high_5d: 12000, avg_amt_5d: 4000, news_boost: 0.0,
-          order_ratio: [100, 200], program_net_buy: null,
-        },
-      ]
-      applyBuyTargetsUpdate({ buy_targets: initial })
-
-      // avg_amt_5d 변경 (4000 → 5000)
-      const updated: SectorStock[] = [{ ...initial[0], avg_amt_5d: 5000 }]
-      applyBuyTargetsUpdate({ buy_targets: updated })
-
-      const state = hotStore.getState()
-      expect(state.buyTargets[0].avg_amt_5d).toBe(5000)
-    })
-
     it('news_boost 변경 시 setState 미발화 (same=true, news-hit 단일 경로 — 세션 3)', () => {
       // news_boost는 news-hit 이벤트가 단일 갱신 경로 (P10 SSOT).
       // applyBuyTargetsUpdate same 비교에서 제거 — news_boost만 변경된 incoming은 same=true로
       // 간주해 setState 미발화. news_boost 갱신은 applyNewsHit이 담당 (아래 describe 블록).
-      const initial: SectorStock[] = [
+      const initial: StockScore[] = [
         {
           code: '000001', name: '종목A', cur_price: 10000, change: 100, change_rate: 1.0,
           trade_amount: 5000, strength: 80, sector: '업종1', rank: 1, guard_pass: true,
-          reason: '', boost_score: 5.0, high_5d: 12000, avg_amt_5d: 4000, news_boost: 0.0,
+          reason: '', boost_score: 5.0, high_5d: 12000, news_boost: 0.0,
           order_ratio: [100, 200], program_net_buy: null,
         },
       ]
@@ -371,7 +359,7 @@ describe('hotStore — 이벤트 계약 정합성 (세션 4)', () => {
       const prevRef = hotStore.getState().buyTargets
 
       // news_boost만 변경 (0.0 → 1.5) — same=true, setState 미발화
-      const updated: SectorStock[] = [{ ...initial[0], news_boost: 1.5 }]
+      const updated: StockScore[] = [{ ...initial[0], news_boost: 1.5 }]
       applyBuyTargetsUpdate({ buy_targets: updated })
 
       const state = hotStore.getState()
@@ -380,18 +368,18 @@ describe('hotStore — 이벤트 계약 정합성 (세션 4)', () => {
     })
 
     it('high_5d 변경 시 setState 발화 (same=false)', () => {
-      const initial: SectorStock[] = [
+      const initial: StockScore[] = [
         {
           code: '000001', name: '종목A', cur_price: 10000, change: 100, change_rate: 1.0,
           trade_amount: 5000, strength: 80, sector: '업종1', rank: 1, guard_pass: true,
-          reason: '', boost_score: 5.0, high_5d: 12000, avg_amt_5d: 4000, news_boost: 0.0,
+          reason: '', boost_score: 5.0, high_5d: 12000, news_boost: 0.0,
           order_ratio: [100, 200], program_net_buy: null,
         },
       ]
       applyBuyTargetsUpdate({ buy_targets: initial })
 
       // high_5d 변경 (12000 → 13000)
-      const updated: SectorStock[] = [{ ...initial[0], high_5d: 13000 }]
+      const updated: StockScore[] = [{ ...initial[0], high_5d: 13000 }]
       applyBuyTargetsUpdate({ buy_targets: updated })
 
       const state = hotStore.getState()
@@ -399,18 +387,18 @@ describe('hotStore — 이벤트 계약 정합성 (세션 4)', () => {
     })
 
     it('order_ratio 변경 시 setState 발화 (same=false)', () => {
-      const initial: SectorStock[] = [
+      const initial: StockScore[] = [
         {
           code: '000001', name: '종목A', cur_price: 10000, change: 100, change_rate: 1.0,
           trade_amount: 5000, strength: 80, sector: '업종1', rank: 1, guard_pass: true,
-          reason: '', boost_score: 5.0, high_5d: 12000, avg_amt_5d: 4000, news_boost: 0.0,
+          reason: '', boost_score: 5.0, high_5d: 12000, news_boost: 0.0,
           order_ratio: [100, 200], program_net_buy: null,
         },
       ]
       applyBuyTargetsUpdate({ buy_targets: initial })
 
       // order_ratio 변경 ([100, 200] → [150, 250])
-      const updated: SectorStock[] = [{ ...initial[0], order_ratio: [150, 250] }]
+      const updated: StockScore[] = [{ ...initial[0], order_ratio: [150, 250] }]
       applyBuyTargetsUpdate({ buy_targets: updated })
 
       const state = hotStore.getState()
@@ -418,18 +406,18 @@ describe('hotStore — 이벤트 계약 정합성 (세션 4)', () => {
     })
 
     it('program_net_buy 변경 시 setState 발화 (same=false)', () => {
-      const initial: SectorStock[] = [
+      const initial: StockScore[] = [
         {
           code: '000001', name: '종목A', cur_price: 10000, change: 100, change_rate: 1.0,
           trade_amount: 5000, strength: 80, sector: '업종1', rank: 1, guard_pass: true,
-          reason: '', boost_score: 5.0, high_5d: 12000, avg_amt_5d: 4000, news_boost: 0.0,
+          reason: '', boost_score: 5.0, high_5d: 12000, news_boost: 0.0,
           order_ratio: [100, 200], program_net_buy: null,
         },
       ]
       applyBuyTargetsUpdate({ buy_targets: initial })
 
       // program_net_buy 변경 (null → 5000000)
-      const updated: SectorStock[] = [{ ...initial[0], program_net_buy: 5000000 }]
+      const updated: StockScore[] = [{ ...initial[0], program_net_buy: 5000000 }]
       applyBuyTargetsUpdate({ buy_targets: updated })
 
       const state = hotStore.getState()
@@ -447,17 +435,17 @@ describe('hotStore — 이벤트 계약 정합성 (세션 4)', () => {
       expect(hotStore.getState().buyTargets[0].news_boost_title).toBe('A기업 수주 계약')
 
       // 2. 전체 새로고침 — 백엔드 스냅샷은 news_boost 포함하지만 title 미포함
-      const refreshed: SectorStock[] = [
+      const refreshed: StockScore[] = [
         {
           code: '000001', name: '종목A', cur_price: 11000, change: 200, change_rate: 2.0,
           trade_amount: 6000, strength: 85, sector: '업종1', rank: 1, guard_pass: true,
-          reason: '', boost_score: 5.0, high_5d: 12000, avg_amt_5d: 4000, news_boost: 1.5,
+          reason: '', boost_score: 5.0, high_5d: 12000, news_boost: 1.5,
           order_ratio: [100, 200], program_net_buy: null,
         },
         {
           code: '000002', name: '종목B', cur_price: 20000, change: -200, change_rate: -0.9,
           trade_amount: 3000, strength: 60, sector: '업종2', rank: 2, guard_pass: true,
-          reason: '', boost_score: 3.0, high_5d: 22000, avg_amt_5d: 5000, news_boost: 0,
+          reason: '', boost_score: 3.0, high_5d: 22000, news_boost: 0,
           order_ratio: [100, 200], program_net_buy: null,
         },
       ]
@@ -473,11 +461,11 @@ describe('hotStore — 이벤트 계약 정합성 (세션 4)', () => {
       applyNewsHit({ codes: ['000001'], scores: [1.5], title: 'A기업 수주 계약' })
 
       // 2. 전체 새로고침 — news_boost 0 (뉴스 만료/TTL 경과)
-      const refreshed: SectorStock[] = [
+      const refreshed: StockScore[] = [
         {
           code: '000001', name: '종목A', cur_price: 11000, change: 200, change_rate: 2.0,
           trade_amount: 6000, strength: 85, sector: '업종1', rank: 1, guard_pass: true,
-          reason: '', boost_score: 5.0, high_5d: 12000, avg_amt_5d: 4000, news_boost: 0,
+          reason: '', boost_score: 5.0, high_5d: 12000, news_boost: 0,
           order_ratio: [100, 200], program_net_buy: null,
         },
       ]
@@ -514,7 +502,7 @@ describe('hotStore — applyBuyTargetsDelta (COUPLING-S8 후속)', () => {
   it('changed: 기존 종목 정적 필드 교체 + 실시간 필드는 sectorStocks 기준 재결합', () => {
     // sectorStocks 종목A: cur_price=10000 (초기 상태)
     // 백엔드 changed가 stale cur_price=9000 전송 → sectorStocks 기준으로 10000 재결합
-    const changed: SectorStock[] = [
+    const changed: StockScore[] = [
       {
         code: '000001', name: '종목A-리네임', cur_price: 9000, change: -100, change_rate: -1.0,
         trade_amount: 1000, strength: 50, sector: '업종1', rank: 3, guard_pass: false, reason: 'r',
@@ -540,7 +528,7 @@ describe('hotStore — applyBuyTargetsDelta (COUPLING-S8 후속)', () => {
   })
 
   it('changed: buyTargets에 없는 종목은 스킵 (추가되지 않음)', () => {
-    const changed: SectorStock[] = [
+    const changed: StockScore[] = [
       {
         code: '000999', name: '종목X', cur_price: 5000, change: 0, change_rate: 0,
         trade_amount: 0, strength: 0, sector: '업종X', rank: 9, guard_pass: true, reason: '',
@@ -562,12 +550,12 @@ describe('hotStore — applyBuyTargetsDelta (COUPLING-S8 후속)', () => {
     const stateBefore = hotStore.getState()
     const stockC: SectorStock = {
       code: '000003', name: '종목C', cur_price: 30000, change: 300, change_rate: 1.0,
-      trade_amount: 7000, strength: 90, sector: '업종3', rank: 3, guard_pass: true, reason: '',
+      trade_amount: 7000, strength: 90, sector: '업종3',
     }
     hotStore.setState({ sectorStocks: { ...stateBefore.sectorStocks, '000003': stockC } })
 
     // 백엔드 added가 stale cur_price=25000 전송 → sectorStocks 기준 30000 재결합
-    const added: SectorStock[] = [
+    const added: StockScore[] = [
       {
         code: '000003', name: '종목C', cur_price: 25000, change: -300, change_rate: -1.0,
         trade_amount: 2000, strength: 30, sector: '업종3', rank: 3, guard_pass: true, reason: '',
@@ -589,7 +577,7 @@ describe('hotStore — applyBuyTargetsDelta (COUPLING-S8 후속)', () => {
   it('added: sectorStocks에 없는 종목은 incoming 실시간 필드 유지 (applyBuyTargetsUpdate와 P23 일치)', () => {
     // COUPLING-S8 후속2 — applyBuyTargetsUpdate는 sectorStocks 누락 시 incoming 실시간 필드 유지.
     // applyBuyTargetsDelta도 동일 패턴으로 일치화 — undefined 덮어쓰기 제거 (P23 일관성).
-    const added: SectorStock[] = [
+    const added: StockScore[] = [
       {
         code: '000005', name: '종목E', cur_price: 50000, change: 500, change_rate: 1.0,
         trade_amount: 9999, strength: 70, sector: '업종5', rank: 5, guard_pass: true, reason: '',
@@ -613,7 +601,7 @@ describe('hotStore — applyBuyTargetsDelta (COUPLING-S8 후속)', () => {
     // COUPLING-S8 후속2 — changed 케이스도 added와 동일하게 incoming 유지.
     // sectorStocks에 없는 종목의 changed 이벤트 수신 시 undefined 덮어쓰기 방지.
     // 먼저 buyTargets에 000001 추가 (초기 상태에 이미 있음 — 종목A)
-    const changed: SectorStock[] = [
+    const changed: StockScore[] = [
       {
         code: '000001', name: '종목A-리네임', cur_price: 9000, change: -100, change_rate: -1.0,
         trade_amount: 1000, strength: 50, sector: '업종1', rank: 3, guard_pass: false, reason: 'r',
@@ -644,7 +632,7 @@ describe('hotStore — applyBuyTargetsDelta (COUPLING-S8 후속)', () => {
     const stateBefore = hotStore.getState()
     const stockC: SectorStock = {
       code: '000003', name: '종목C', cur_price: 30000, change: 300, change_rate: 1.0,
-      trade_amount: 7000, strength: 90, sector: '업종3', rank: 3, guard_pass: true, reason: '',
+      trade_amount: 7000, strength: 90, sector: '업종3',
     }
     hotStore.setState({ sectorStocks: { ...stateBefore.sectorStocks, '000003': stockC } })
 

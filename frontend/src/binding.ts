@@ -47,6 +47,7 @@ import type {
   AccountSummaryUpdateEvent,
   SettingsChangedEvent,
   SectorStock,
+  StockScore,
   StockClassificationChangedEvent,
   RealDataEvent,
   SectorScoreRow,
@@ -93,7 +94,7 @@ export function bindWSToStore(
 
 
   pricesClient.onEvent('buy-targets-update', (data) => {
-    applyBuyTargetsUpdate(data as { buy_targets: SectorStock[] })
+    applyBuyTargetsUpdate(data as { buy_targets: StockScore[] })
   })
 
   pricesClient.onEvent('sector-stocks-refresh', (data) => {
@@ -106,7 +107,7 @@ export function bindWSToStore(
   })
 
   pricesClient.onEvent('buy-targets-delta', (data) => {
-    applyBuyTargetsDelta(data as { added: SectorStock[]; removed: string[]; changed: SectorStock[] })
+    applyBuyTargetsDelta(data as { added: StockScore[]; removed: string[]; changed: StockScore[] })
   })
 
   pricesClient.onEvent('buy-history-append', (data) => {

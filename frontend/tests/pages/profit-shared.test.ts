@@ -24,7 +24,7 @@ function makePosition(code: string, qty: number, avgPrice: number): Position {
 function makeSectorStock(code: string, curPrice: number | null): SectorStock {
   return {
     code, name: `종목${code}`, cur_price: curPrice, change: 0, change_rate: 0,
-    trade_amount: 0, strength: 0, sector: '업종1', rank: 1, guard_pass: true, reason: '',
+    trade_amount: 0, strength: 0, sector: '업종1',
   }
 }
 

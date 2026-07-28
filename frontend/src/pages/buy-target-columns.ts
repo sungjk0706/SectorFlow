@@ -15,15 +15,15 @@ import {
   FONT_WEIGHT,
   COLOR,
 } from '../components/common/ui-styles'
-import type { SectorStock } from '../types'
+import type { StockScore } from '../types'
 
 /* ── ColumnDef 배열 (12개 컬럼) ── */
-export const COLUMNS: ColumnDef<SectorStock>[] = [
+export const COLUMNS: ColumnDef<StockScore>[] = [
   { key: 'seq', label: '순번', align: 'center', type: 'seq', render: (_t, idx) => createSeqCell(idx + 1) },
-  makeCodeColumn<SectorStock>((t) => t.code),
+  makeCodeColumn<StockScore>((t) => t.code),
   {
-    ...createStockNameColumn<SectorStock>(
-      (t: SectorStock) => ({
+    ...createStockNameColumn<StockScore>(
+      (t: StockScore) => ({
         name: t.name,
         market_type: t.market_type,
         nxt_enable: t.nxt_enable
@@ -47,8 +47,8 @@ export const COLUMNS: ColumnDef<SectorStock>[] = [
       return cell
     },
   },
-  makeChangeColumn<SectorStock>((t) => t.change != null ? Number(t.change) : null),
-  makeRateColumn<SectorStock>((t) => t.change_rate != null ? Number(t.change_rate) : null),
+  makeChangeColumn<StockScore>((t) => t.change != null ? Number(t.change) : null),
+  makeRateColumn<StockScore>((t) => t.change_rate != null ? Number(t.change_rate) : null),
   {
     key: 'order_ratio', label: '호가잔량비(%)', align: 'right', type: 'order_ratio', maxWidth: 110,
     render: (t) => {

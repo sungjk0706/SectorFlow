@@ -644,7 +644,6 @@ class TestNotifyBuyTargetsUpdate:
             "change_rate": 0.7,
             "strength": 1.2,
             "trade_amount": 1000000,
-            "avg_amt_5d": 800000,
             "market_type": "KS",
             "nxt_enable": False,
             "sector": "반도체",
@@ -670,7 +669,7 @@ class TestNotifyBuyTargetsUpdate:
         assert "news_boost" in _BUY_TARGET_REALTIME_KEYS  # delta 제외 그룹 포함 (안 A)
         # 정적 필드 포함
         for k in ("rank", "boost_score", "guard_pass", "reason", "order_ratio",
-                  "program_net_buy", "high_5d", "avg_amt_5d"):
+                  "program_net_buy", "high_5d"):
             assert k in _BUY_TARGET_CMP_KEYS
 
     @pytest.mark.asyncio
@@ -717,7 +716,6 @@ class TestNotifyBuyTargetsUpdate:
                     assert k not in added
                 # 정적 필드 유지 확인
                 assert added["rank"] == 2
-                assert added["avg_amt_5d"] == 800000
                 # news_boost는 delta에서 제외 (news-hit 단일 전달, P10)
                 assert "news_boost" not in added
         finally:
@@ -783,25 +781,6 @@ class TestNotifyBuyTargetsUpdate:
                 await notify_buy_targets_update()
                 # news_boost는 cmp_keys에서 제외 → changed 없음 → 전송 생략
                 mock_bc.assert_not_awaited()
-        finally:
-            notify_cache.prev_buy_targets_map = None
-
-    @pytest.mark.asyncio
-    async def test_delta_changed_avg_amt_5d_triggers_change(self):
-        """delta changed: avg_amt_5d 변경 시 changed 전송 (세션 8 — cmp_keys에 이미 포함)."""
-        prev_map = {"005930": self._make_target("005930", avg_amt_5d=800000)}
-        notify_cache.prev_buy_targets_map = prev_map
-        new_targets = [self._make_target("005930", avg_amt_5d=900000)]
-        try:
-            with patch("backend.app.services.engine_account_notify._safe_broadcast", new_callable=AsyncMock) as mock_bc, \
-                 patch("backend.app.services.sector_data_provider.get_buy_targets_sector_stocks",
-                       new_callable=AsyncMock, return_value=new_targets):
-                await notify_buy_targets_update()
-                mock_bc.assert_awaited_once()
-                event, payload = mock_bc.call_args.args
-                assert event == "buy-targets-delta"
-                assert len(payload["changed"]) == 1
-                assert payload["changed"][0]["avg_amt_5d"] == 900000
         finally:
             notify_cache.prev_buy_targets_map = None
 
