@@ -50,3 +50,6 @@ coverage>=7.0.0
 
 # Static Type Check
 mypy>=1.10.0
+
+# Linter / Formatter
+ruff>=0.6.0
