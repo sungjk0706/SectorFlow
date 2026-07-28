@@ -6,7 +6,7 @@
 에서 core로 이동됨 (C-06 core→services 역참조 해소). engine_symbol_utils.py는 본 모듈에서
 재수출하여 기존 호출부·테스트 patch 경로를 유지 (P16 살아있는 경로).
 
-의미 경계 (coupling-stock-code-normalization.md 참조):
+의미 경계:
 - _base_stk_cd: 엔진 전 경로 종목코드 정규화 (_AL/_NX 접미사 제거 + zfill(6)[-6:] truncate)
 - _real_item_stk_cd: REAL 체결·호가 등 values/item 루트에서 종목코드 추출 (FID 9001 우선,
   jmcode/stk_cd/code/종목코드/item 필드 보조, 7자리 초과 계좌번호 스킵)

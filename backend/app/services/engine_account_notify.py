@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 class NotificationCache:
     """알림 레이어 델타 캐시 통합 클래스 — 동일 사용자 모든 WS 연결이 공유하는 단일 delta SSOT.
 
-    책임 경계 (세션 6 — cache_state_fix_tasks.md):
+    책임 경계 (세션 6):
       본 캐시는 **전역 delta 기준점**을 담당한다. SectorFlow는 1인 로컬 자동매매 앱으로
       다중 WS 연결(다중 탭/재연결)은 모두 동일 사용자·동일 계정·동일 데이터를 바라본다.
       따라서 delta 기준점을 연결별로 분리하지 않고 전역 SSOT 1개로 통일한다 (P10 SSOT,
@@ -372,7 +372,7 @@ _BUY_TARGET_CMP_KEYS = (
 async def notify_buy_targets_update() -> None:
     """매수 후보 목록 변경 시 delta만 WS로 브로드캐스트한다.
 
-    Payload 계약 (세션 8 — cache_state_fix_tasks.md):
+    Payload 계약 (세션 8):
       - added/changed 항목은 **정적 필드만** 전송. 실시간 필드(`_BUY_TARGET_REALTIME_KEYS`)는
         `_BUY_TARGET_REALTIME_KEYS` 리스트 기반으로 일괄 제거 (P24 중복 제거 — 2곳 하드코딩 → 상수).
       - 프론트엔드는 sectorStocks(실시간 SSOT)에서 실시간 필드를 재결합하여 단일 소스 일관성 유지.

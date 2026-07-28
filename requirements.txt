@@ -20,9 +20,6 @@ cryptography==42.0.0
 # KRX 거래일 판별 (korean_lunar_calendar — 음력→양력 변환)
 korean-lunar-calendar>=0.3.1
 
-# Excel parsing (broker specs)
-openpyxl>=3.1.0
-
 # Async file I/O
 aiofiles>=23.0.0
 
