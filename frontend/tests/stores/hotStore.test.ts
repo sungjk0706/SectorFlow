@@ -144,6 +144,22 @@ describe('hotStore — sectorStocks ↔ buyTargets 실시간 필드 정합성 (�
       expect(btA.guard_pass).toBe(true)
       expect(btA.name).toBe('종목A')
     })
+
+    it('reset 후 sectorScores도 빈 배열로 동기화 (백엔드 sector_summary_cache=None 반영)', () => {
+      // P10/P21/P22: reset 전 낡은 점수가 잔류하면 좌/우 패널 시점 불일치.
+      // 백엔드 _reset_realtime_fields()가 sector_summary_cache를 None으로 리셋하므로
+      // 프론트 sectorScores도 함께 비워야 함.
+      hotStore.setState({
+        sectorScores: [
+          { sector: '업종1', rank: 1, final_score: 10, rise_ratio: 100, total: 5, is_cutoff_passed: true, avg_trade_amount: 1000 } as never,
+        ],
+      })
+      expect(hotStore.getState().sectorScores.length).toBe(1)
+
+      applyRealtimeReset()
+
+      expect(hotStore.getState().sectorScores).toEqual([])
+    })
   })
 
   describe('applyRealData', () => {

@@ -482,9 +482,18 @@ function nullifyFields<T extends object>(
 }
 
 /* ── realtime-reset: 실시간 필드 일괄 초기화 ── */
+// P10/P21/P22: 백엔드 _reset_realtime_fields()가 sector_summary_cache를 None으로
+// 리셋하고 임계값 게이트로 인해 sector-scores 전송이 차단되는 구간에
+// 프론트 sectorScores도 함께 비워 좌/우 패널 시점을 동기화.
+// 임계값 통과 후 notify_desktop_sector_score가 full payload로 전송 → applySectorScores가 자동 복구.
 export function applyRealtimeReset(): void {
   hotStore.setState((state) => {
     const updates: Partial<HotState> = {}
+
+    // sectorScores: 백엔드 sector_summary_cache=None 동기화 (reset 전 낡은 점수 잔류 방지)
+    if (state.sectorScores.length > 0) {
+      updates.sectorScores = []
+    }
 
     // sectorStocks: 현재가/대비/등락률/거래대금/체결강도
     const sectorStocks: Record<string, SectorStock> = {}
