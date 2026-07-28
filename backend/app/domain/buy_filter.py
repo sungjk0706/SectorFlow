@@ -24,14 +24,21 @@ def calculate_boost_score(
     boost_news_score: float = 1.0,
 ) -> float:
     """종목 가산점 합계 계산. 항상 >= 0.0 반환.
+    각 가산점 트리거 여부는 stock.boost_*_triggered 필드에 설정 (매수 근거 표시용).
     """
     score = 0.0
+    # 트리거 필드 매 호출 시 초기화 (stale 상태 방지 — P22 정합성)
+    stock.boost_high_triggered = False
+    stock.boost_order_ratio_triggered = False
+    stock.boost_news_triggered = False
+    stock.boost_program_triggered = False
 
     # 1. 5거래일 고가 돌파
     if boost_high_on:
         high_val = high_5d_cache.get(stock.code, 0)
         if high_val > 0 and stock.cur_price > high_val:
             score += boost_high_score
+            stock.boost_high_triggered = True
 
     # 2. 잔량비율
     if boost_order_ratio_on:
@@ -47,12 +54,14 @@ def calculate_boost_score(
                     ratio = numerator / denominator
                     if ratio >= 1 + (abs(boost_order_ratio_pct) / 100):
                         score += boost_order_ratio_score
+                        stock.boost_order_ratio_triggered = True
 
     # 3. 프로그램 순매수
     if boost_program_net_buy_on:
         net_buy = program_net_buy_cache.get(stock.code, 0)
         if net_buy > 0:
             score += boost_program_net_buy_score
+            stock.boost_program_triggered = True
 
     # 4. 뉴스 호재 (NWS — news_boost_cache는 만료 항목 제거된 유효 항목만 포함)
     if boost_news_on:
@@ -60,6 +69,7 @@ def calculate_boost_score(
         news_score = _nbc.get(stock.code, 0.0)
         if news_score > 0:
             score += boost_news_score
+            stock.boost_news_triggered = True
 
     return max(score, 0.0)
 

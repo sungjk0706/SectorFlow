@@ -25,6 +25,11 @@ class StockScore:
     guard_reason: str = ""      # 차단 사유 (빈 문자열 = 통과)
     # 가산점
     boost_score: float = 0.0    # 가산점 합계 (>= 0.0)
+    # 개별 가산점 트리거 여부 (매수 근거 표시용 — calculate_boost_score 호출 시 매번 재설정)
+    boost_high_triggered: bool = False           # 5거래일 고가 돌파
+    boost_order_ratio_triggered: bool = False    # 잔량비율 조건 충족
+    boost_news_triggered: bool = False           # 뉴스 호재
+    boost_program_triggered: bool = False        # 프로그램 순매수
 
 
 @dataclass

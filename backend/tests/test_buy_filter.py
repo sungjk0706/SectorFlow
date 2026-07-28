@@ -161,6 +161,10 @@ class TestCalculateBoostScore:
             program_net_buy_cache={},
         )
         assert score == 0.0
+        assert stock.boost_high_triggered is False
+        assert stock.boost_order_ratio_triggered is False
+        assert stock.boost_news_triggered is False
+        assert stock.boost_program_triggered is False
 
     def test_high_breakout_boost(self):
         stock = _stock(code="005930", cur_price=75000)
@@ -173,6 +177,10 @@ class TestCalculateBoostScore:
             boost_high_score=2.0,
         )
         assert score == 2.0
+        assert stock.boost_high_triggered is True
+        assert stock.boost_order_ratio_triggered is False
+        assert stock.boost_news_triggered is False
+        assert stock.boost_program_triggered is False
 
     def test_high_breakout_no_boost_when_below_high(self):
         stock = _stock(code="005930", cur_price=65000)
@@ -185,6 +193,7 @@ class TestCalculateBoostScore:
             boost_high_score=1.0,
         )
         assert score == 0.0
+        assert stock.boost_high_triggered is False
 
     def test_high_breakout_no_boost_when_high_zero(self):
         stock = _stock(code="005930", cur_price=75000)
@@ -197,6 +206,7 @@ class TestCalculateBoostScore:
             boost_high_score=1.0,
         )
         assert score == 0.0
+        assert stock.boost_high_triggered is False
 
     def test_order_ratio_boost_positive_pct(self):
         stock = _stock(code="005930")
@@ -210,6 +220,8 @@ class TestCalculateBoostScore:
             boost_order_ratio_score=1.5,
         )
         assert score == 1.5
+        assert stock.boost_order_ratio_triggered is True
+        assert stock.boost_high_triggered is False
 
     def test_order_ratio_no_boost_when_ratio_below_threshold(self):
         stock = _stock(code="005930")
@@ -223,6 +235,7 @@ class TestCalculateBoostScore:
             boost_order_ratio_score=1.0,
         )
         assert score == 0.0
+        assert stock.boost_order_ratio_triggered is False
 
     def test_order_ratio_boost_negative_pct(self):
         stock = _stock(code="005930")
@@ -236,6 +249,7 @@ class TestCalculateBoostScore:
             boost_order_ratio_score=1.0,
         )
         assert score == 1.0
+        assert stock.boost_order_ratio_triggered is True
 
     def test_order_ratio_no_boost_when_denominator_zero(self):
         stock = _stock(code="005930")
@@ -249,6 +263,7 @@ class TestCalculateBoostScore:
             boost_order_ratio_score=1.0,
         )
         assert score == 0.0
+        assert stock.boost_order_ratio_triggered is False
 
     def test_program_net_buy_boost(self):
         stock = _stock(code="005930")
@@ -261,6 +276,8 @@ class TestCalculateBoostScore:
             boost_program_net_buy_score=1.0,
         )
         assert score == 1.0
+        assert stock.boost_program_triggered is True
+        assert stock.boost_high_triggered is False
 
     def test_program_net_buy_no_boost_when_zero(self):
         stock = _stock(code="005930")
@@ -273,6 +290,7 @@ class TestCalculateBoostScore:
             boost_program_net_buy_score=1.0,
         )
         assert score == 0.0
+        assert stock.boost_program_triggered is False
 
     def test_multiple_boosts_accumulate(self):
         stock = _stock(code="005930", cur_price=75000)
@@ -290,6 +308,10 @@ class TestCalculateBoostScore:
             boost_program_net_buy_score=1.0,
         )
         assert score == 3.0
+        assert stock.boost_high_triggered is True
+        assert stock.boost_order_ratio_triggered is True
+        assert stock.boost_program_triggered is True
+        assert stock.boost_news_triggered is False
 
     def test_news_boost_when_in_cache_and_enabled(self):
         stock = _stock(code="005930")
@@ -303,6 +325,8 @@ class TestCalculateBoostScore:
             boost_news_score=2.0,
         )
         assert score == 2.0
+        assert stock.boost_news_triggered is True
+        assert stock.boost_high_triggered is False
 
     def test_news_no_boost_when_disabled(self):
         stock = _stock(code="005930")
@@ -316,6 +340,7 @@ class TestCalculateBoostScore:
             boost_news_score=2.0,
         )
         assert score == 0.0
+        assert stock.boost_news_triggered is False
 
     def test_news_no_boost_when_cache_empty(self):
         stock = _stock(code="005930")
@@ -329,6 +354,7 @@ class TestCalculateBoostScore:
             boost_news_score=2.0,
         )
         assert score == 0.0
+        assert stock.boost_news_triggered is False
 
     def test_news_no_boost_when_stock_not_in_cache(self):
         stock = _stock(code="005930")
@@ -342,6 +368,7 @@ class TestCalculateBoostScore:
             boost_news_score=2.0,
         )
         assert score == 0.0
+        assert stock.boost_news_triggered is False
 
     def test_news_accumulates_with_other_boosts(self):
         stock = _stock(code="005930", cur_price=75000)
@@ -362,6 +389,41 @@ class TestCalculateBoostScore:
             boost_news_score=1.5,
         )
         assert score == 4.5
+        assert stock.boost_high_triggered is True
+        assert stock.boost_order_ratio_triggered is True
+        assert stock.boost_program_triggered is True
+        assert stock.boost_news_triggered is True
+
+    def test_trigger_fields_reset_on_recompute(self):
+        """이전 호출에서 True였던 트리거 필드가 재호출 시 조건 미충족이면 False로 리셋되는지 검증 (P22 정합성)."""
+        stock = _stock(code="005930", cur_price=75000)
+        # 1차 호출: 모든 가산점 트리거
+        calculate_boost_score(
+            stock,
+            high_5d_cache={"005930": 70000},
+            orderbook_cache={"005930": (150, 100)},
+            program_net_buy_cache={"005930": 500_000_000},
+            news_boost_cache={"005930": 1.0},
+            boost_high_on=True,
+            boost_order_ratio_on=True,
+            boost_program_net_buy_on=True,
+            boost_news_on=True,
+        )
+        assert stock.boost_high_triggered is True
+        assert stock.boost_order_ratio_triggered is True
+        assert stock.boost_program_triggered is True
+        assert stock.boost_news_triggered is True
+        # 2차 호출: 모든 가산점 OFF → 트리거 필드 모두 False로 리셋
+        calculate_boost_score(
+            stock,
+            high_5d_cache={},
+            orderbook_cache={},
+            program_net_buy_cache={},
+        )
+        assert stock.boost_high_triggered is False
+        assert stock.boost_order_ratio_triggered is False
+        assert stock.boost_program_triggered is False
+        assert stock.boost_news_triggered is False
 
     def test_score_never_negative(self):
         stock = _stock(code="005930")
