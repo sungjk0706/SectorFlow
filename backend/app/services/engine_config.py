@@ -95,7 +95,7 @@ async def refresh_engine_integrated_system_settings_cache(user_id: str | None = 
         # NWS 가산점 설정 동기화 (P13 — 메모리 상주)
         _sync_nws_settings_to_state(fresh)
 
-        logger.info("[설정] 설정 캐시 갱신 완료")
+        logger.info("[설정] 설정 캐시 갱신")
 
         # ── step 2) 엔진 실행 중일 때만: 필터 콜백 트리거 ──────────────────────
         if engine_state.state.running:

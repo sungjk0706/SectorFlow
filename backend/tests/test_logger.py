@@ -132,7 +132,7 @@ class TestInterceptHandler:
         assert "Shutting down" in InterceptHandler._UVICORN_MSG_MAP
 
     def test_uvicorn_msg_map_values_are_korean(self):
-        assert InterceptHandler._UVICORN_MSG_MAP["Application startup complete."] == "앱 시작 완료"
+        assert InterceptHandler._UVICORN_MSG_MAP["Application startup complete."] == "앱 시작"
         assert InterceptHandler._UVICORN_MSG_MAP["Shutting down"] == "종료 중"
 
     def test_uvicorn_prefix_map_contains_process_messages(self):
@@ -155,7 +155,7 @@ class TestInterceptHandler:
             mock_logger.opt.return_value.log = MagicMock()
             handler.emit(record)
         args = mock_logger.opt.return_value.log.call_args
-        assert "앱 시작 완료" in args[0][1]
+        assert "앱 시작" in args[0][1]
 
     def test_emit_translates_uvicorn_prefix_message(self):
         handler = InterceptHandler()

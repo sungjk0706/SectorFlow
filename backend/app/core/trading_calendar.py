@@ -65,7 +65,7 @@ async def initialize_trading_calendar_cache() -> None:
             _trading_days_cache.update(new_data)
             await save_trading_days_cache(new_data)
         _cache_initialized = True
-        logger.info("[스케줄] DB 캐시 로드 완료 — %d개 연도", len(_trading_days_cache))
+        logger.info("[스케줄] DB 캐시 로드 — %d개 연도", len(_trading_days_cache))
         return
 
     logger.info("[스케줄] DB 캐시 없음 — 자체 휴일 계산으로 최초 생성")
@@ -75,7 +75,7 @@ async def initialize_trading_calendar_cache() -> None:
     _trading_days_cache.update(next_year_data)
     await save_trading_days_cache(_trading_days_cache)
     _cache_initialized = True
-    logger.info("[스케줄] 최초 캐시 생성 및 DB 저장 완료 — %d개 연도", len(_trading_days_cache))
+    logger.info("[스케줄] 최초 캐시 생성 및 DB 저장 — %d개 연도", len(_trading_days_cache))
 
 
 # ── KRX 휴일 계산 (korean_lunar_calendar 기반) ──────────────────────────────────
@@ -270,7 +270,7 @@ async def refresh_trading_days_for_year(year: int) -> None:
     new_data = _generate_trading_days(year)
     _trading_days_cache[year] = new_data[year]
     await save_trading_days_cache({year: _trading_days_cache[year]})
-    logger.info("[스케줄] %d년 거래일 캐시 갱신 완료", year)
+    logger.info("[스케줄] %d년 거래일 캐시 갱신", year)
 
 
 def is_trading_day(d: date) -> bool:

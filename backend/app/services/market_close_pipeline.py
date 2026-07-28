@@ -379,7 +379,7 @@ async def execute_unified_rolling_and_save(
                 """, updated_params)
 
             await conn.commit()
-            logger.info("[데이터] 저장 완료 — 5거래일 일봉: %d종목, 전종목 마스터 테이블: %d종목", len(bars_bulk_params), len(master_bulk_params))
+            logger.info("[데이터] 저장 — 5거래일 일봉: %d종목, 전종목 마스터 테이블: %d종목", len(bars_bulk_params), len(master_bulk_params))
             return True
 
         except Exception as e:
@@ -499,7 +499,7 @@ async def _apply_confirmed_to_memory(
 
         updated += 1
 
-    logger.info("[스케줄] 확정 데이터 메모리 반영 — %d종목", updated)
+    logger.info("[스케줄] 확정 데이터 메모리 캐시 갱신 — %d종목", updated)
     return updated
 
 
@@ -515,7 +515,7 @@ async def _run_post_confirmed_pipeline(eligible_codes: set[str] | None = None) -
     """
     try:
         await _save_confirmed_cache(eligible_codes=eligible_codes)
-        logger.info("[스케줄] 확정 후 파이프라인 완료 (롤링 로직 생략)")
+        logger.info("[스케줄] 확정 후 파이프라인 종료 (롤링 로직 생략)")
     except Exception as exc:
         logger.warning("[스케줄] 확정 후 파이프라인 오류: %s", exc, exc_info=True)
 
@@ -641,7 +641,7 @@ async def _save_confirmed_cache(
                 ))
 
             await conn.commit()
-            logger.info("[스케줄] 전종목 마스터 테이블 통합 저장 완료 — %d종목 (날짜=%s, 생략=%d)", len(all_target_codes), date_str, len(_skip))
+            logger.info("[스케줄] 전종목 마스터 테이블 통합 저장 — %d종목 (날짜=%s, 생략=%d)", len(all_target_codes), date_str, len(_skip))
         except Exception as e:
             if 'conn' in locals():
                 await conn.rollback()
@@ -672,7 +672,7 @@ async def _step1_fetch_all_stocks(
         kospi_count = sum(1 for r in records if r.market_code == "0")
         kosdaq_count = sum(1 for r in records if r.market_code == "10")
         other_count = len(records) - kospi_count - kosdaq_count
-        logger.info("%s 1단계 완료 — 총 %d종목 (코스피 %d, 코스닥 %d, 기타 %d)", tag, len(records), kospi_count, kosdaq_count, other_count)
+        logger.info("%s 1단계 종료 — 총 %d종목 (코스피 %d, 코스닥 %d, 기타 %d)", tag, len(records), kospi_count, kosdaq_count, other_count)
         return records
     except Exception as exc:
         logger.warning("%s 전종목 통합 조회(ka10099) 실패: %s", tag, exc, exc_info=True)
@@ -733,7 +733,7 @@ async def _step2_filter_eligible(
         if conflict_codes:
             conflict_preview = sorted(conflict_codes)[:20]
             logger.warning("%s 전종목 통합 조회(ka10099) 동일 종목코드 판정 충돌 — %d종목, 예시=%s", tag, len(conflict_codes), conflict_preview)
-        _broadcast_confirmed_progress(0, 0, message=f"✅ 2단계 완료: 총 {unique_codes}종목 중 {len(confirmed_codes)}종목 적격 판정", step=2)
+        _broadcast_confirmed_progress(0, 0, message=f"✅ 2단계 종료: 총 {unique_codes}종목 중 {len(confirmed_codes)}종목 적격 판정", step=2)
 
         _meta_top = [
             {"k": k, "v": v}
@@ -766,7 +766,7 @@ async def _step3_parse_confirmed(
             if r.code in confirmed_codes:
                 name_map[r.code] = r.name
                 market_map[r.code] = r.market_code
-        logger.info("%s 3단계 완료 — %d종목 해석/매칭", tag, len(name_map))
+        logger.info("%s 3단계 종료 — %d종목 해석/매칭", tag, len(name_map))
         return name_map, market_map
     except Exception as exc:
         logger.warning("%s 3단계 해석/매칭 실패: %s", tag, exc, exc_info=True)
@@ -846,7 +846,7 @@ async def _step4_save_to_db_and_cache(
 
         all_codes = list(confirmed_codes)
         await _update_layout_cache(all_codes, name_map)
-        logger.info("%s 4단계 완료 — 저장 완료 (%d종목)", tag, len(confirmed_codes))
+        logger.info("%s 4단계 종료 — 저장 (%d종목)", tag, len(confirmed_codes))
 
         try:
             from backend.app.web.routes.stock_classification import broadcast_stock_classification_changed
@@ -905,7 +905,7 @@ async def _step5_download_daily_confirmed(
     fetched = len(confirmed)
     failed = total - fetched
     success_rate = (fetched / total * 100) if total else 0
-    logger.info("[다운로드] 다운로드 완료 — 성공 %d, 실패 %d (%.1f%%)", fetched, failed, success_rate)
+    logger.info("[다운로드] 다운로드 종료 — 성공 %d, 실패 %d (%.1f%%)", fetched, failed, success_rate)
     if failed > 0 and success_rate < 99.0:
         logger.warning("[다운로드] 실패율 높음: %d/%d (%.1f%%)", failed, total, 100 - success_rate)
 
@@ -928,20 +928,20 @@ async def _step5_download_daily_confirmed(
     if confirmed:
         logger.info("%s 단일 벌크 트랜잭션 시작", tag)
         await execute_unified_rolling_and_save(normalized_confirmed, name_map=name_map, qry_dt=qry_dt)
-        logger.info("%s 단일 벌크 트랜잭션 완료", tag)
+        logger.info("%s 단일 벌크 트랜잭션 종료", tag)
         cached = True
 
     try:
         from backend.app.web.routes.stock_classification import broadcast_stock_classification_changed
         await broadcast_stock_classification_changed()
-        logger.info("%s 종목분류 페이지 갱신 전송 완료", tag)
+        logger.info("%s 종목분류 페이지 갱신 전송", tag)
     except Exception as _bc_err:
         logger.warning("%s 종목분류 페이지 갱신 전송 실패(무시): %s", tag, _bc_err, exc_info=True)
 
     if failed > 0:
-        _broadcast_confirmed_progress(total, total, message=f"⚠️ 일봉 차트 시세 다운로드 부분 완료 ({fetched:,}/{total:,}) — {failed}종목 실패", step=5, failed_count=failed)
+        _broadcast_confirmed_progress(total, total, message=f"⚠️ 일봉 차트 시세 다운로드 부분 종료 ({fetched:,}/{total:,}) — {failed}종목 실패", step=5, failed_count=failed)
     else:
-        _broadcast_confirmed_progress(total, total, message=f"일봉 차트 시세 다운로드 완료 ({fetched:,}/{total:,})", step=5)
+        _broadcast_confirmed_progress(total, total, message=f"일봉 차트 시세 다운로드 종료 ({fetched:,}/{total:,})", step=5)
 
     _broadcast_confirmed_progress(total, total, message="5거래일 거래대금 계산 중...", step=5)
     await _run_post_confirmed_pipeline(eligible_codes=confirmed_codes)
@@ -954,7 +954,7 @@ async def _step5_download_daily_confirmed(
                 if cd in engine_state.state.master_stocks_cache:
                     engine_state.state.master_stocks_cache[cd].pop("_subscribed", None)
             subscribed_count = sum(1 for entry in engine_state.state.master_stocks_cache.values() if entry.get("_subscribed", False))
-            logger.info("%s 6단계 메모리 교체 완료 — 구독 중=%d종목", tag, subscribed_count)
+            logger.info("%s 6단계 메모리 교체 — 구독 중=%d종목", tag, subscribed_count)
     else:
         logger.warning("%s 캐시 미적용 — 메모리 교체 생략", tag)
 
@@ -978,7 +978,7 @@ async def _post_recompute_notify(tag: str) -> None:
         await _send_receive_rate(get_current_receive_rate())
         await notify_desktop_sector_stocks_refresh(force=True)
         await recompute_sector_summary_now()
-        logger.info("%s 업종순위 재계산 + 실시간 화면 전송 완료", tag)
+        logger.info("%s 업종순위 재계산 + 실시간 화면 전송", tag)
     except Exception as _ws_err:
         logger.warning("%s 업종순위 재계산 실패: %s", tag, _ws_err, exc_info=True)
 
@@ -1030,7 +1030,7 @@ async def _run_confirmed_pipeline(
         engine_state.state.integrated_system_settings_cache["sector_stock_layout"] = []
         from backend.app.services.engine_account_notify import _rebuild_layout_cache
         _rebuild_layout_cache([])
-        logger.info("%s 메모리 전체 초기화 완료 — 새 데이터로 교체 시작", tag)
+        logger.info("%s 메모리 전체 초기화 — 새 데이터로 교체 시작", tag)
 
         # 스케줄러 토글 체크 (타이머 전용)
         if check_scheduler and not engine_state.state.integrated_system_settings_cache["scheduler_market_close_on"]:
@@ -1086,7 +1086,7 @@ async def _run_confirmed_pipeline(
         await _step7_recompute_and_broadcast(tag)
 
         if cached:
-            logger.info("[다운로드] 전체 완료 — 전종목 통합 조회(ka10099): %d종목 | 적격: %d종목 | 일봉: %d/%d종목", len(all_codes), len(confirmed_codes), fetched, len(all_codes))
+            logger.info("[다운로드] 전체 종료 — 전종목 통합 조회(ka10099): %d종목 | 적격: %d종목 | 일봉: %d/%d종목", len(all_codes), len(confirmed_codes), fetched, len(all_codes))
         return {"fetched": fetched, "failed": failed, "cached": cached}
     finally:
         if _broker_token_registered:
@@ -1378,7 +1378,7 @@ async def fetch_5d_data_only() -> dict:
                     )
                 await conn.commit()
 
-            logger.info("[다운로드] DB 저장 완료 — %d종목, %d행", len(confirmed_5d), len(bars_params))
+            logger.info("[다운로드] DB 저장 — %d종목, %d행", len(confirmed_5d), len(bars_params))
 
             # 메모리 캐시 갱신
             for cd, data in confirmed_5d.items():
@@ -1395,15 +1395,15 @@ async def fetch_5d_data_only() -> dict:
                     engine_state.state.master_stocks_cache[cd]["avg_5d_trade_amount"] = avg_5d
                     engine_state.state.master_stocks_cache[cd]["high_5d_price"] = high_5d
 
-            logger.info("[다운로드] 메모리 캐시 갱신 완료")
+            logger.info("[다운로드] 메모리 캐시 갱신")
 
         success_rate = (fetched / total * 100) if total else 0
-        logger.info("[다운로드] 다운로드 완료 — 성공 %d종목, 실패 %d종목 (%.1f%%)", fetched, failed, success_rate)
+        logger.info("[다운로드] 다운로드 종료 — 성공 %d종목, 실패 %d종목 (%.1f%%)", fetched, failed, success_rate)
 
         if failed > 0:
-            _broadcast_confirmed_progress(total, total, message=f"⚠️ 5거래일 일봉 차트 거래대금,고가 다운로드 부분 완료 ({fetched:,}/{total:,}) — {failed}종목 실패", step=5, failed_count=failed)
+            _broadcast_confirmed_progress(total, total, message=f"⚠️ 5거래일 일봉 차트 거래대금,고가 다운로드 부분 종료 ({fetched:,}/{total:,}) — {failed}종목 실패", step=5, failed_count=failed)
         else:
-            _broadcast_confirmed_progress(total, total, message=f"5거래일 일봉 차트 거래대금,고가 다운로드 완료 ({fetched:,}/{total:,})", step=5)
+            _broadcast_confirmed_progress(total, total, message=f"5거래일 일봉 차트 거래대금,고가 다운로드 종료 ({fetched:,}/{total:,})", step=5)
 
         # 종목분류 전송 (프론트엔드 자동갱신)
         from backend.app.web.routes.stock_classification import broadcast_stock_classification_changed

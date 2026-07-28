@@ -447,7 +447,7 @@ class AutoTradeManager:
         stk_nm = data_manager.get_stock_name(stk_cd, access_token)
 
         logger.info("[매매] [매수주문] %s(%s) 매수신호 감지. %s %d주 주문전송.", stk_nm, stk_cd, order_type, buy_qty)
-        _fire_and_forget_telegram(f"🚀 [자동매매] {stk_nm} {buy_qty}주 매수 주문 전송 완료.", self.get_settings_fn())
+        _fire_and_forget_telegram(f"🚀 [자동매매] {stk_nm} {buy_qty}주 매수 주문 전송.", self.get_settings_fn())
 
         # ── 테스트모드: 예수금 검증 + 즉시 차감 (TOCTOU 경쟁 상태 방지, P22) ────
         _reserved_cost: int = 0
@@ -512,7 +512,7 @@ class AutoTradeManager:
         # ── 매수 성공 즉시 _bought_today 반영 (테스트/실전 공통 — 원칙 18 동등성) ──
         if stk_cd not in self._bought_today:
             self._bought_today[stk_cd] = time.time()
-            logger.info("[매매] [매수기억] %s 주문 성공! 금일 매수 이력 저장 완료.", stk_nm)
+            logger.info("[매매] [매수기억] %s 주문 성공! 금일 매수 이력 저장.", stk_nm)
 
         # ── 체결 이력 기록 ────────────────────────────────────────────────────
         _buy_reason = reason or "자동매수"
@@ -556,7 +556,7 @@ class AutoTradeManager:
             risk_mgr.record_order_success()
             new_state = risk_mgr.circuit_breaker.get_state()
             if prev_state == "HALF_OPEN" and new_state == "CLOSED":
-                logger.info("[매매] 서킷브레이커 복구 완료 — 복구시도 → 정상")
+                logger.info("[매매] 서킷브레이커 복구 — 복구시도 → 정상")
                 _fire_and_forget_telegram("✅ [OMS] 서킷브레이커 복구 완료 — 주문 정상 작동 재개", self.get_settings_fn())
         except Exception:
             logger.warning("[매매] 리스크 관리자 성공 보고 실패", exc_info=True)
@@ -581,16 +581,16 @@ class AutoTradeManager:
             stk_nm = data_manager.get_stock_name(stk_cd, access_token)
             logger.info("[매매] [매수체결] %s 체결 확인!", stk_nm)
             _fire_and_forget_telegram(
-                f"✅ [매수체결] {stk_nm}({stk_cd}) 매수 체결 완료!",
+                f"✅ [매수체결] {stk_nm}({stk_cd}) 매수 체결!",
                 self.get_settings_fn(),
             )
         elif str(side) == "2" and unex == 0:
             # 매도 체결 완료 — 재매도 차단 해제
             self._recent_sells.discard(nk)
             stk_nm = data_manager.get_stock_name(stk_cd, access_token)
-            logger.info("[매매] [매도체결] %s(%s) 매도 체결 완료!", stk_nm, stk_cd)
+            logger.info("[매매] [매도체결] %s(%s) 매도 체결!", stk_nm, stk_cd)
             _fire_and_forget_telegram(
-                f"💰 [매도체결] {stk_nm}({stk_cd}) 매도 체결 완료!",
+                f"💰 [매도체결] {stk_nm}({stk_cd}) 매도 체결!",
                 self.get_settings_fn(),
             )
         elif str(side) in ("3", "4"):
@@ -727,7 +727,7 @@ class AutoTradeManager:
             risk_mgr.record_order_success()
             new_state = risk_mgr.circuit_breaker.get_state()
             if prev_state == "HALF_OPEN" and new_state == "CLOSED":
-                logger.info("[매매] 서킷브레이커 복구 완료 — 복구시도 → 정상")
+                logger.info("[매매] 서킷브레이커 복구 — 복구시도 → 정상")
                 _fire_and_forget_telegram("✅ [OMS] 서킷브레이커 복구 완료 — 주문 정상 작동 재개", self.get_settings_fn())
         except Exception:
             logger.warning("[매매] 리스크 관리자 성공 보고 실패", exc_info=True)
@@ -835,7 +835,7 @@ class AutoTradeManager:
                         logger.error("[매매] 손절 실행 실패", exc_info=True)
                         _sold = False
                     if _sold:
-                        logger.info("[매매] 매도 1건 완료 — 주문 간격 대기")
+                        logger.info("[매매] 매도 1건 — 주문 간격 대기")
                         break  # 1건 매도 성공 — 건별 간격 적용
                     continue  # 실패 시 차순위
 
@@ -849,7 +849,7 @@ class AutoTradeManager:
                         logger.error("[매매] 익절 실행 실패", exc_info=True)
                         _sold = False
                     if _sold:
-                        logger.info("[매매] 매도 1건 완료 — 주문 간격 대기")
+                        logger.info("[매매] 매도 1건 — 주문 간격 대기")
                         break  # 1건 매도 성공 — 건별 간격 적용
                     continue  # 실패 시 차순위
 
@@ -866,7 +866,7 @@ class AutoTradeManager:
                             logger.error("[매매] T/S 익절 실행 실패", exc_info=True)
                             _sold = False
                         if _sold:
-                            logger.info("[매매] 매도 1건 완료 — 주문 간격 대기")
+                            logger.info("[매매] 매도 1건 — 주문 간격 대기")
                             break  # 1건 매도 성공 — 건별 간격 적용
                         continue  # 실패 시 차순위
 

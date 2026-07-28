@@ -259,7 +259,7 @@ async def _fetch_all_stocks_ka10081(
 
     if failed_codes:
         logger.warning("[다운로드] 실패 종목 %d개: %s", len(failed_codes), failed_codes)
-    logger.info("[다운로드] 다운로드 완료 — 성공 %d/%d종목, 실패 %d종목",
+    logger.info("[다운로드] 다운로드 종료 — 성공 %d/%d종목, 실패 %d종목",
               len(result), total, len(failed_codes))
     return result
 

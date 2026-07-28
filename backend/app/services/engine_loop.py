@@ -39,7 +39,7 @@ async def _cache_and_bootstrap(settings: dict) -> None:
     try:
         from backend.app.web.ws_manager import ws_manager
         await ws_manager.broadcast("engine-ready", {"_v": 1, "ready": True})
-        logger.info("[연산] 데이터 준비 완료 — 실시간 준비됨")
+        logger.info("[연산] 데이터 로드 — 실시간 준비됨")
     except Exception:
         logger.warning("[연산] 엔진 준비 브로드캐스트 실패", exc_info=True)
 
@@ -222,7 +222,7 @@ async def run_engine_loop() -> None:
 
         _t_parallel_end = time.perf_counter()
         logger.info(
-            "[연산] 준비 완료 — %.0fms",
+            "[연산] 엔진 준비 — %.0fms",
             (_t_parallel_end - _t_parallel_start) * 1000,
         )
 
@@ -258,7 +258,7 @@ async def run_engine_loop() -> None:
                     _rest_api._account_tr_id = tr
             engine_state.state.broker_rest_apis[broker_nm] = _rest_api
             from backend.app.services.engine_lifecycle import log_message
-            log_message(f"[연결] {BROKER_DISPLAY_NAMES.get(broker_nm, broker_nm)} 연결 완료 (테스트모드={_is_test})")
+            log_message(f"[연결] {BROKER_DISPLAY_NAMES.get(broker_nm, broker_nm)} 연결 (테스트모드={_is_test})")
 
 
 
@@ -271,7 +271,7 @@ async def run_engine_loop() -> None:
         )
         _acnt_disp     = (_acnt_raw[:4] + "****") if len(_acnt_raw) >= 4 else _acnt_raw
         _real_warn     = " ★ 실제 자금 투입 ★" if not _is_test_flag else ""
-        logger.info("[연산] 기동 완료 — %s %s / 계좌: %s%s", _broker_str, _mode_str, _acnt_disp, _real_warn)
+        logger.info("[연산] 엔진 기동 — %s %s / 계좌: %s%s", _broker_str, _mode_str, _acnt_disp, _real_warn)
 
         if engine_state.state.access_token:
             from backend.app.services.engine_lifecycle import sync_sell_overrides as _sync_sell_overrides_from_settings
@@ -319,11 +319,11 @@ async def run_engine_loop() -> None:
                             for connector in _mgr._connectors.values():
                                 if hasattr(connector, 'set_queue_callback'):
                                     connector.set_queue_callback(tick_queue)
-                            logger.info("[연결] 커넥터 큐 콜백 설정 완료 (틱 큐)")
+                            logger.info("[연결] 커넥터 큐 콜백 설정 (틱 큐)")
                             engine_state.state.connector_manager = _mgr
                             await _mgr.connect_all()
                             if _mgr.is_connected():
-                                logger.info("[연결] 실시간 연결 완료")
+                                logger.info("[연결] 실시간 연결")
                             else:
                                 logger.warning("[연결] 실시간 연결 실패 — 재연결 루프 기동 중")
                             await _broadcast_engine_ws()
@@ -336,7 +336,7 @@ async def run_engine_loop() -> None:
                             if hasattr(engine_state.state.connector_manager, 'disconnect_all'):
                                 await engine_state.state.connector_manager.disconnect_all()
                             engine_state.state.connector_manager = None
-                            logger.info("[연결] 실시간 연결 해제 완료")
+                            logger.info("[연결] 실시간 연결 해제")
                             await _broadcast_engine_ws()
                         except Exception as e:
                             logger.error("[연결] 실시간 연결 해제 실패: %s", e, exc_info=True)
@@ -373,7 +373,7 @@ async def run_engine_loop() -> None:
         except Exception as e:
             logger.warning("[연산] 계산 루프 종료 실패: %s", e, exc_info=True)
 
-        logger.info("[연산] 백그라운드 태스크 종료 완료")
+        logger.info("[연산] 백그라운드 태스크 종료")
 
         # ── Event Bus 종료 ───────────────────────────────────────────────────
         # P25 격리된 실패 — 연결 해제 실패가 이후 REST 정리 루프를 블로킹하지 않도록 per-step try/except.

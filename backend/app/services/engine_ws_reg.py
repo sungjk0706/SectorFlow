@@ -129,7 +129,7 @@ async def subscribe_sector_stocks_0b(*, nxt_only: bool = False) -> None:
 
         ok = await ws.subscribe_stocks(pos_targets)
         if ok:
-            logger.info("[구독] 보유종목 구독 완료 — %d종목", len(pos_targets))
+            logger.info("[구독] 보유종목 구독 — %d종목", len(pos_targets))
         else:
             for cd in pos_targets:
                 if cd in engine_state.state.master_stocks_cache:
@@ -148,7 +148,7 @@ async def subscribe_sector_stocks_0b(*, nxt_only: bool = False) -> None:
 
     ok = await ws.subscribe_stocks(filter_targets)
     if ok:
-        logger.info("[구독] 필터 종목 구독 완료 — %d종목", len(filter_targets))
+        logger.info("[구독] 필터 종목 구독 — %d종목", len(filter_targets))
     else:
         for cd in filter_targets:
             if cd in engine_state.state.master_stocks_cache:
@@ -174,7 +174,7 @@ async def subscribe_index_realtime() -> bool:
     try:
         ok = await ws.subscribe_index()
         if ok:
-            logger.info("[구독] 업종지수 구독 완료")
+            logger.info("[구독] 업종지수 구독")
             return True
         else:
             logger.warning("[구독] 업종지수 구독 실패")
@@ -254,7 +254,7 @@ async def subscribe_positions_stocks_realtime() -> None:
 
     ok = await ws.subscribe_stocks(new_0b)
     if ok:
-        logger.info("[구독] 보유종목 구독 완료 — %d종목", len(new_0b))
+        logger.info("[구독] 보유종목 구독 — %d종목", len(new_0b))
     else:
         for cd in new_0b:
             if cd in engine_state.state.master_stocks_cache:
@@ -298,7 +298,7 @@ async def restore_subscriptions_after_reconnect(broker_id: str) -> None:
         
         ok = await ws.subscribe_stocks(targets_list)
         if ok:
-            logger.info("[연결] %s 구독 복원 완료 — %d종목", BROKER_DISPLAY_NAMES.get(broker_id, broker_id.upper()), len(targets_list))
+            logger.info("[연결] %s 구독 복원 — %d종목", BROKER_DISPLAY_NAMES.get(broker_id, broker_id.upper()), len(targets_list))
         else:
             for cd in targets_list:
                 if cd in engine_state.state.master_stocks_cache:
@@ -308,13 +308,13 @@ async def restore_subscriptions_after_reconnect(broker_id: str) -> None:
     # 데이터(0J) 복원
     try:
         await subscribe_index_realtime()
-        logger.info("[구독] %s 업종지수 구독 복원 완료", BROKER_DISPLAY_NAMES.get(broker_id, broker_id.upper()))
+        logger.info("[구독] %s 업종지수 구독 복원", BROKER_DISPLAY_NAMES.get(broker_id, broker_id.upper()))
     except Exception as e:
         logger.warning("[구독] %s 업종지수 구독 복원 실패: %s", BROKER_DISPLAY_NAMES.get(broker_id, broker_id.upper()), e, exc_info=True)
 
     # 계좌(00/04) 복원
     try:
         await subscribe_account_realtime()
-        logger.info("[계좌] %s 계좌 구독 복원 완료", BROKER_DISPLAY_NAMES.get(broker_id, broker_id.upper()))
+        logger.info("[계좌] %s 계좌 구독 복원", BROKER_DISPLAY_NAMES.get(broker_id, broker_id.upper()))
     except Exception as e:
         logger.warning("[계좌] %s 계좌 구독 복원 실패: %s", BROKER_DISPLAY_NAMES.get(broker_id, broker_id.upper()), e, exc_info=True)

@@ -84,7 +84,7 @@ async def _db_writer_loop() -> None:
                         _db_write_queue.task_done()
 
             except Exception as e:
-                logger.error("[데이터] 작업 처리 실패: %s", e, exc_info=True)
+                logger.error("[데이터] DB 쓰기 작업 실패: %s", e, exc_info=True)
 
     except asyncio.CancelledError:
         logger.info("[데이터] 반복 취소됨")

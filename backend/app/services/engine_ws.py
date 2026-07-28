@@ -161,7 +161,7 @@ async def _run_sector_reg_pipeline() -> None:
     finally:
         if engine_state.state.ws_reg_pipeline_done:
             engine_state.state.ws_reg_pipeline_done.set()
-        logger.info("[연산] 실시간 구독 준비 완료 — 단건 구독 허용")
+        logger.info("[연산] 실시간 구독 상태 초기화 — 단건 구독 허용")
         from backend.app.services.engine_account import _refresh_account_snapshot_meta
         if _ws_live():
             await _refresh_account_snapshot_meta()

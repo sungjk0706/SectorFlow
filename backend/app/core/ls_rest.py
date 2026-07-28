@@ -200,7 +200,7 @@ class LsRestAPI:
                 return True
             resp = await self._client.post(url, headers=headers, data=body, timeout=5)
             if resp.status_code == 200:
-                logger.info("[연결] %s 토큰 폐기 완료", _BROKER_DISPLAY)
+                logger.info("[연결] %s 토큰 폐기", _BROKER_DISPLAY)
             else:
                 logger.warning("[연결] %s 토큰 폐기 실패 (응답코드=%s)", _BROKER_DISPLAY, resp.status_code)
         except Exception as e:

@@ -100,7 +100,7 @@ async def _process_broadcast(data: dict) -> None:
         await _send_to_websocket(event_type, payload)
 
     except Exception as e:
-        logger.error("[연결] 전송 처리 오류: %s", e, exc_info=True)
+        logger.error("[연결] WS 전송 오류: %s", e, exc_info=True)
 
 
 async def _send_to_websocket(event_type: str, data: dict) -> None:

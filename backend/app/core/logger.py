@@ -209,10 +209,10 @@ class InterceptHandler(logging.Handler):
     # uvicorn 기동/종료 메시지 한국어화 (access log 제외)
     _UVICORN_MSG_MAP = {
         "Waiting for application startup.": "앱 시작 대기 중",
-        "Application startup complete.": "앱 시작 완료",
+        "Application startup complete.": "앱 시작",
         "Application startup failed. Exiting.": "앱 시작 실패. 종료.",
         "Waiting for application shutdown.": "앱 종료 대기 중",
-        "Application shutdown complete.": "앱 종료 완료",
+        "Application shutdown complete.": "앱 종료",
         "Application shutdown failed. Exiting.": "앱 종료 실패. 종료.",
         "Shutting down": "종료 중",
     }
@@ -300,12 +300,12 @@ def log_progress(label: str, cur: int, total: int, *, code: str = "") -> None:
 
     label: "[다운로드]" 같은 접두 태그
     cur/total: 현재/전체 (1-based cur 권장)
-    code: 종목코드 (선택 — 있으면 "삼성전자(005930) 다운로드 완료 — N/M (X%)" 형태)
+    code: 종목코드 (선택 — 있으면 "삼성전자(005930) 다운로드 — N/M (X%)" 형태)
     """
     global _progress_active
     pct = (cur / total * 100) if total > 0 else 0.0
     code_part = f"{code} " if code else ""
-    msg = f"{label} {code_part}다운로드 완료 — {cur:,}/{total:,} ({pct:.1f}%)"
+    msg = f"{label} {code_part}다운로드 — {cur:,}/{total:,} ({pct:.1f}%)"
     try:
         s = _get_stdout_utf8()
         if sys.stdout.isatty():

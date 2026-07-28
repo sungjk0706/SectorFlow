@@ -61,7 +61,7 @@ async def _engine_loop() -> None:
     
     try:
         await engine_loop.run_engine_loop()
-        logger.info("[연산] 엔진 루프 완료")
+        logger.info("[연산] 엔진 루프 종료")
     except Exception as e:
         logger.error("[연산] 엔진 루프 오류: %s", e, exc_info=True)
 
@@ -104,7 +104,7 @@ async def stop_engine() -> None:
         for t in bg_tasks:
             t.cancel()
         await asyncio.gather(*bg_tasks, return_exceptions=True)
-        logger.info("[연산] 백그라운드 작업 취소 완료")
+        logger.info("[연산] 백그라운드 작업 취소")
 
     # 모든 루프·태스크 취소 완료 후 큐 잔류 데이터 제거 (원칙16 살아있는 경로, 원칙22 데이터 정합성)
     from backend.app.services.core_queues import clear_all_queues
@@ -232,19 +232,19 @@ async def on_trade_mode_switched() -> None:
         # 실전→테스트: 계좌 실시간 구독(00/04) 해제, 분석용 구독은 유지
         from backend.app.services.engine_ws_reg import _unreg_grp
         await _unreg_grp("10")
-        logger.info("[구독] 테스트모드 전환 — 계좌 실시간 구독 해제 완료")
+        logger.info("[구독] 테스트모드 전환 — 계좌 실시간 구독 해제")
         # Settlement Engine: 상태 로드 (모드 전환 시 복원 목적) + 만료 항목 정리 + 타이머 재스케줄
         # load_state는 기동 시(로드)와 모드 전환 시(복원) 양쪽에 사용되는 dual-purpose 함수
         await settlement_engine.load_state()
-        logger.info("[연산] 테스트모드 전환 — 정산 엔진 상태 복원 완료")
+        logger.info("[연산] 테스트모드 전환 — 정산 엔진 상태 복원")
     else:
         # 테스트→실전: Settlement Engine 상태 저장 + 타이머 취소
         await settlement_engine.save_state()
-        logger.info("[연산] 실전투자 전환 — 정산 엔진 상태 저장 완료")
+        logger.info("[연산] 실전투자 전환 — 정산 엔진 상태 저장")
         # 테스트→실전: 계좌 실시간 구독(00/04) + 보유종목 실시간(0B) 등록
         await _subscribe_account_realtime()
         await _subscribe_positions_stocks_realtime()
-        logger.info("[구독] 실전투자 전환 — 계좌 + 보유종목 실시간 구독 완료")
+        logger.info("[구독] 실전투자 전환 — 계좌 + 보유종목 실시간 구독")
 
     # 모드 전환 후 계좌 스냅샷 즉시 갱신
     await _refresh_account_snapshot_meta()
@@ -270,7 +270,7 @@ async def _apply_pending_settings_on_startup() -> None:
         logger.info("[연산] 엔진 기동 시 보류 설정 변경 적용: %s", sorted(pending))
         await apply_settings_change(pending)
         await clear_pending_settings()
-        logger.info("[연산] 보류 설정 변경 적용 완료")
+        logger.info("[연산] 보류 설정 변경 적용")
     except Exception as e:
         logger.error("[연산] 보류 설정 변경 적용 실패: %s", e, exc_info=True)
 

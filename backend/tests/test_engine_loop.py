@@ -141,7 +141,7 @@ class TestCacheAndBootstrap:
 
         mock_ws.broadcast.assert_awaited_once_with("engine-ready", {"_v": 1, "ready": True})
         info_msgs = [str(c) for c in mock_logger.info.call_args_list]
-        assert any("데이터 준비 완료" in m for m in info_msgs)
+        assert any("데이터 로드" in m for m in info_msgs)
 
     @pytest.mark.asyncio
     async def test_broadcast_exception_handled(self):

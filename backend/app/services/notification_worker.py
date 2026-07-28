@@ -60,7 +60,7 @@ class NotificationWorker:
             try:
                 await self._handle(msg)
             except Exception as e:
-                logger.warning("[알림] 처리 실패 (계속): %s", e)
+                logger.warning("[알림] 알림 전송 실패 (계속): %s", e)
             finally:
                 self._queue.task_done()
 
@@ -90,4 +90,4 @@ class NotificationWorker:
                 await self._task
             except asyncio.CancelledError:
                 pass
-        logger.info("[알림] 워커 종료 완료")
+        logger.info("[알림] 워커 종료")

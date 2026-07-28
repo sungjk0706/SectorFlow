@@ -82,4 +82,4 @@ def clear_all_queues() -> None:
             except asyncio.QueueEmpty:
                 break
 
-    logger.info("[시스템] 모든 큐 비우기 완료")
+    logger.info("[시스템] 모든 큐 비우기")

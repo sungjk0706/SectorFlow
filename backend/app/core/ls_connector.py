@@ -59,7 +59,7 @@ class _LsSocket:
         logger.info("[연결] %s 서버 연결 시도: %s", _BROKER_DISPLAY, self._uri)
         self._ws = await websockets.connect(self._uri, open_timeout=20, ping_interval=20, ping_timeout=20)
         self.connected = True
-        logger.info("[연결] %s 서버 연결 완료", _BROKER_DISPLAY)
+        logger.info("[연결] %s 서버 연결", _BROKER_DISPLAY)
         self._stop_event.clear()
         self._recv_task = asyncio.get_running_loop().create_task(self._recv_loop())
 
@@ -140,7 +140,7 @@ class _LsSocket:
                             logger.warning("[연결] %s 데이터 큐 가득 참 — 실시간 데이터 일부 누락: %s", _BROKER_DISPLAY, tr_cd)
                 else:
                     # 변환 실패 또는 처리 불필요한 메시지
-                    logger.debug("[연결] %s 변환 실패 또는 처리 불필요: %s", _BROKER_DISPLAY, tr_cd)
+                    logger.debug("[연결] %s TR 변환 실패 또는 핸들러 없음: %s", _BROKER_DISPLAY, tr_cd)
 
             except Exception as e:
                 err_name = type(e).__name__
@@ -376,7 +376,7 @@ class LsConnector(BrokerConnector):
                 asyncio.get_running_loop().create_task(self._on_socket_disconnect())
                 raise
             self._connected = True
-            logger.info("[연결] %s 연결 완료", _BROKER_DISPLAY)
+            logger.info("[연결] %s 연결", _BROKER_DISPLAY)
             try:
                 from backend.app.services.engine_state import state
                 state.login_ok = True
@@ -543,7 +543,7 @@ class LsConnector(BrokerConnector):
         total_ok = uh1_ok + uph_ok
         total_fail = uh1_fail + uph_fail
         logger.info(
-            "[구독] %s 호가·프로그램매매 구독 완료 — %d종목 (성공 %d, 실패 %d)",
+            "[구독] %s 호가·프로그램매매 구독 — %d종목 (성공 %d, 실패 %d)",
             _BROKER_DISPLAY, len(codes), total_ok, total_fail,
         )
         return total_ok > 0
@@ -561,7 +561,7 @@ class LsConnector(BrokerConnector):
         total_ok = uh1_ok + uph_ok
         total_fail = uh1_fail + uph_fail
         logger.info(
-            "[구독] %s 호가·프로그램매매 구독 해지 완료 — %d종목 (성공 %d, 실패 %d)",
+            "[구독] %s 호가·프로그램매매 구독 해지 — %d종목 (성공 %d, 실패 %d)",
             _BROKER_DISPLAY, len(codes), total_ok, total_fail,
         )
 
@@ -582,7 +582,7 @@ class LsConnector(BrokerConnector):
         }
         success = await self._socket.send(payload)
         if success:
-            logger.info("[구독] %s 장운영정보 구독 완료", _BROKER_DISPLAY)
+            logger.info("[구독] %s 장운영정보 구독", _BROKER_DISPLAY)
         else:
             logger.warning("[구독] %s 장운영정보 구독 실패", _BROKER_DISPLAY)
         return success
@@ -606,7 +606,7 @@ class LsConnector(BrokerConnector):
             }
             success = await self._socket.send(payload)
             if success:
-                logger.info("[구독] %s 업종지수 구독 완료: %s", _BROKER_DISPLAY, upcode)
+                logger.info("[구독] %s 업종지수 구독: %s", _BROKER_DISPLAY, upcode)
             else:
                 success_all = False
         return success_all
@@ -628,7 +628,7 @@ class LsConnector(BrokerConnector):
         }
         success = await self._socket.send(payload)
         if success:
-            logger.info("[구독] %s 실시간뉴스 구독 완료", _BROKER_DISPLAY)
+            logger.info("[구독] %s 실시간뉴스 구독", _BROKER_DISPLAY)
         else:
             logger.warning("[구독] %s 실시간뉴스 구독 실패", _BROKER_DISPLAY)
         return success

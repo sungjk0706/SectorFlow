@@ -261,7 +261,7 @@ async def _process_tick_batch(batch: list, broadcast_queue: asyncio.Queue) -> No
             if _hit:
                 _account_broadcast_dirty = True
         except Exception as e:
-            logger.error("[연산] 이벤트 처리 오류 (계속): %s", e, exc_info=True)
+            logger.error("[연산] 틱 이벤트 처리 오류 (계속): %s", e, exc_info=True)
 
     if _account_broadcast_dirty:
         try:
@@ -311,7 +311,7 @@ async def _compute_loop_impl() -> None:
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                logger.error("[연산] 처리 오류 (계속): %s", e, exc_info=True)
+                logger.error("[연산] 틱 배치 처리 오류 (계속): %s", e, exc_info=True)
     finally:
         _compute_running = False
 
@@ -424,7 +424,7 @@ async def _handle_sector_recompute(
         from backend.app.services.sector_data_provider import recompute_sector_summary_now
         await recompute_sector_summary_now()
 
-        logger.info("[연산] 업종순위 재계산 완료")
+        logger.info("[연산] 업종순위 재계산 종료")
 
     except Exception as e:
         logger.error("[연산] 업종순위 재계산 오류: %s", e, exc_info=True)
@@ -523,7 +523,7 @@ async def _handle_real_tick(
                 if _hit:
                     _account_dirty = True
             except Exception as e:
-                logger.error("[연산] 아이템 처리 오류 (계속): %s", e, exc_info=True)
+                logger.error("[연산] 큐 아이템 처리 오류 (계속): %s", e, exc_info=True)
     except Exception as e:
         logger.error("[연산] 실시간 틱 처리 오류: %s", e, exc_info=True)
     return _account_dirty

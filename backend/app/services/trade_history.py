@@ -121,7 +121,7 @@ async def _insert_trade(rec: dict) -> None:
             query=_TRADE_INSERT_SQL, params=_trade_params(rec),
         ))
     except Exception as e:
-        logger.warning("[정산] DB 저장 큐 실패 (메모리 저장은 완료): %s", e)
+        logger.warning("[정산] DB 저장 큐 실패 (메모리 저장은 성공): %s", e)
 
 
 async def _trim_expired() -> None:
@@ -581,7 +581,7 @@ async def clear_test_history() -> None:
         ))
     except Exception as e:
         logger.warning("[정산] DB 테스트 이력 삭제 실패: %s", e)
-    logger.info("[정산] 테스트 이력 삭제 완료")
+    logger.info("[정산] 테스트 이력 삭제")
 
 
 async def broadcast_history(trade_mode: str) -> None:

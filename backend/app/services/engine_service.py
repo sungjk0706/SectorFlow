@@ -204,7 +204,7 @@ async def _apply_timetable_change(changed_keys: set[str]) -> None:
             engine_state.state.integrated_system_settings_cache
         )
         _schedule_next_timetable_event()  # 기존 타이머 취소 후 재예약 (P14)
-        logger.info("[설정] 타임테이블 변경 감지 — 재빌드 + 타이머 재예약 완료")
+        logger.info("[설정] 타임테이블 변경 감지 — 재빌드 + 타이머 재예약")
     except Exception:
         logger.warning("[설정] 타임테이블 재빌드/재예약 실패", exc_info=True)
 

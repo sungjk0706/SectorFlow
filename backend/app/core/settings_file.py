@@ -338,7 +338,7 @@ async def save_selected_settings(data: dict) -> None:
                 bulk_params,
             )
             await conn.commit()
-            logger.info("[설정] 증분 저장 완료 — %d개 필드", len(bulk_params))
+            logger.info("[설정] 증분 저장 — %d개 필드", len(bulk_params))
         except Exception as e:
             await conn.rollback()
             logger.error("[설정] 증분 저장 실패: %s", e, exc_info=True)
@@ -394,7 +394,7 @@ async def _ensure_broker_specs(db_data: dict) -> None:
                 content = await f.read()
             spec_data = loads(content)
             db_data["_broker_specs"][broker_name] = spec_data
-            logger.info("[설정] 증권사 명세 로드 완료: %s", BROKER_DISPLAY_NAMES.get(broker_name, broker_name))
+            logger.info("[설정] 증권사 명세 로드: %s", BROKER_DISPLAY_NAMES.get(broker_name, broker_name))
         except Exception as e:
             logger.warning("[설정] 증권사 명세 로드 실패 (%s): %s", spec_file, e, exc_info=True)
 
@@ -670,7 +670,7 @@ async def save_settings(data: dict, delete_keys: list[str] | None = None) -> Non
                 await conn.executemany(_UPSERT_SQL, bulk_params)
 
             await conn.commit()
-            logger.info("[설정] DB 저장 완료 — %d개 증권사 명세, %d개 일반 설정", len(broker_specs_params), len(bulk_params))
+            logger.info("[설정] DB 저장 — %d개 증권사 명세, %d개 일반 설정", len(broker_specs_params), len(bulk_params))
         except Exception as e:
             await conn.rollback()
             logger.error("[설정] DB 저장 실패: %s", e, exc_info=True)

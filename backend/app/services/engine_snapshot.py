@@ -201,7 +201,7 @@ async def _reset_realtime_fields() -> None:
                     trade_amount = NULL
             """)
             await conn.commit()
-        logger.info("[시스템] DB 전종목 마스터 테이블 실시간 필드 리셋 완료")
+        logger.info("[시스템] DB 전종목 마스터 테이블 실시간 필드 리셋")
     except Exception as db_err:
         logger.error("[시스템] DB 전종목 마스터 테이블 실시간 필드 리셋 실패: %s", db_err, exc_info=True)
     logger.info(

@@ -253,7 +253,7 @@ class KiwoomRestAPI:
                         )
                     return False
                 self._token_info = TokenInfo(token=token, expires_dt=expires_dt)
-                logger.info("[연결] %s 토큰 발급 완료", _BROKER_DISPLAY)
+                logger.info("[연결] %s 토큰 발급", _BROKER_DISPLAY)
                 return True
             except Exception as e:
                 logger.warning("[연결] %s 토큰 발급 오류 (시도=%d): %s: %s", _BROKER_DISPLAY, attempt + 1, type(e).__name__, e, exc_info=True)
@@ -279,7 +279,7 @@ class KiwoomRestAPI:
             client = await self._get_client()
             resp = await client.post(url, headers=headers, json=body, timeout=5)
             if resp.status_code == 200:
-                logger.info("[연결] %s 토큰 폐기 완료", _BROKER_DISPLAY)
+                logger.info("[연결] %s 토큰 폐기", _BROKER_DISPLAY)
             else:
                 logger.warning("[연결] %s 토큰 폐기 실패 (응답코드=%s)", _BROKER_DISPLAY, resp.status_code)
         except Exception as e:

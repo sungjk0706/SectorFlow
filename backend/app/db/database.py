@@ -98,5 +98,5 @@ def cleanup_old_backups(keep: int = _BACKUP_KEEP_SETS, data_dir: Path | None = N
                 _logger.warning("[DB] 백업 파일 삭제 실패 — %s: %s", target, e)
 
     if deleted:
-        _logger.info("[DB] 오래된 백업 파일 %d개 정리 완료 (최근 %d세트 보존)", deleted, keep)
+        _logger.info("[DB] 오래된 백업 파일 %d개 정리 (최근 %d세트 보존)", deleted, keep)
     return deleted

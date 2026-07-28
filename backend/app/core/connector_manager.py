@@ -46,7 +46,7 @@ class ConnectorManager:
             try:
                 connector = self._create_single(broker_name)
                 self._connectors[broker_name] = connector
-                logger.info("[연결] %s 커넥터 생성 완료", BROKER_DISPLAY_NAMES.get(broker_name, broker_name.upper()))
+                logger.info("[연결] %s 커넥터 생성", BROKER_DISPLAY_NAMES.get(broker_name, broker_name.upper()))
             except ValueError as e:
                 logger.warning("[연결] %s 커넥터 생성 실패 (설정 확인 필요): %s", BROKER_DISPLAY_NAMES.get(broker_name, broker_name.upper()), e, exc_info=True)
 
@@ -95,7 +95,7 @@ class ConnectorManager:
         async def _connect_one(broker_name: str, connector: BrokerConnector) -> None:
             try:
                 await connector.connect()
-                logger.info("[연결] %s 연결 완료", BROKER_DISPLAY_NAMES.get(broker_name, broker_name.upper()))
+                logger.info("[연결] %s 연결", BROKER_DISPLAY_NAMES.get(broker_name, broker_name.upper()))
             except Exception as e:
                 logger.warning("[연결] %s 연결 실패: %s", BROKER_DISPLAY_NAMES.get(broker_name, broker_name.upper()), e, exc_info=True)
 
@@ -133,7 +133,7 @@ class ConnectorManager:
                     except Exception:
                         logger.warning("[연결] %s 구독 해지 전송 실패 (무시)", BROKER_DISPLAY_NAMES.get(broker_name, broker_name.upper()), exc_info=True)
                 await connector.disconnect()
-                logger.info("[연결] %s 연결 해제 완료", BROKER_DISPLAY_NAMES.get(broker_name, broker_name.upper()))
+                logger.info("[연결] %s 연결 해제", BROKER_DISPLAY_NAMES.get(broker_name, broker_name.upper()))
             except Exception as e:
                 logger.warning("[연결] %s 연결 해제 실패: %s", BROKER_DISPLAY_NAMES.get(broker_name, broker_name.upper()), e, exc_info=True)
 

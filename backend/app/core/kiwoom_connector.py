@@ -54,7 +54,7 @@ class _KiwoomSocket:
         logger.info("[시스템] %s 연결 시도: %s", _BROKER_DISPLAY, self._uri)
         self._ws = await websockets.connect(self._uri, open_timeout=10)
         self.connected = True
-        logger.info("[시스템] %s 연결 완료 — 로그인 전송", _BROKER_DISPLAY)
+        logger.info("[시스템] %s 연결 — 로그인 전송", _BROKER_DISPLAY)
         await self._raw_send({"trnm": "LOGIN", "token": self._token})
         self._stop_event.clear()
         self._recv_task = asyncio.get_running_loop().create_task(self._recv_loop())
@@ -236,7 +236,7 @@ class KiwoomConnector(BrokerConnector):
                 asyncio.get_running_loop().create_task(self._on_socket_disconnect())
                 raise
             self._connected = True
-            logger.info("[연결] %s 연결 완료", _BROKER_DISPLAY)
+            logger.info("[연결] %s 연결", _BROKER_DISPLAY)
             # 연결 상태 전송
             try:
                 from backend.app.services.ws_subscribe_control import broadcast_ws_connection_status
@@ -367,7 +367,7 @@ class KiwoomConnector(BrokerConnector):
         payload = build_index_reg_payload()
         ok, _rc = await _ws_send_reg_unreg_and_wait_ack(payload, sender=self)
         if ok:
-            logger.info("[연결] %s 업종지수(0J) 구독 완료", _BROKER_DISPLAY)
+            logger.info("[연결] %s 업종지수(0J) 구독", _BROKER_DISPLAY)
         else:
             logger.warning("[연결] %s 업종지수(0J) 구독 응답 시간 초과", _BROKER_DISPLAY)
         return ok

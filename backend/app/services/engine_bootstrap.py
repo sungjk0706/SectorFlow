@@ -31,9 +31,9 @@ async def _login_post_pipeline() -> None:
                 logger.info("[연산] 파이프라인 — REST 잔고 선행 조회 시작")
                 from backend.app.services.engine_account import _update_account_memory
                 await _update_account_memory(engine_state.state.integrated_system_settings_cache)
-                logger.info("[연산] 파이프라인 — REST 잔고 선행 조회 완료 (보유 %d종목)", len(engine_state.state.positions))
+                logger.info("[연산] 파이프라인 — REST 잔고 선행 조회 (보유 %d종목)", len(engine_state.state.positions))
             else:
-                logger.info("[연산] 파이프라인 — 잔고 이미 앱 준비 완료 — 재조회 생략 (보유 %d종목)", len(engine_state.state.positions))
+                logger.info("[연산] 파이프라인 — 잔고 이미 앱 기동 — 재조회 생략 (보유 %d종목)", len(engine_state.state.positions))
         else:
             if not engine_state.state.positions and not engine_state.state.account_rest_bootstrapped:
                 from backend.app.services.engine_account import _update_account_memory

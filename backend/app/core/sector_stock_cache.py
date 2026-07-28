@@ -120,6 +120,6 @@ async def clear_pending_settings() -> None:
                 (_PENDING_KEY,)
             )
             await conn.commit()
-        logger.info("[연산] 보류 설정 변경 삭제 완료")
+        logger.info("[연산] 보류 설정 변경 삭제")
     except Exception as e:
         logger.error("[연산] 보류 설정 삭제 실패: %s", e)

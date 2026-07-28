@@ -104,7 +104,7 @@ async def _ensure_account_subscription() -> None:
     from backend.app.services import engine_ws_reg
     try:
         await engine_ws_reg.subscribe_account_realtime()
-        logger.info("[구독] 실전모드 — 계좌(그룹 10) 구독 보장 완료")
+        logger.info("[구독] 실전모드 — 계좌(그룹 10) 구독 보장")
     except Exception as e:
         logger.warning("[구독] 계좌 구독 보장 실패: %s", e, exc_info=True)
 
@@ -133,7 +133,7 @@ async def start_quote() -> dict:
             await engine_ws_reg.subscribe_sector_stocks_0b(nxt_only=is_nxt_only_window())
             _set_status(quote=True)
             await _ensure_account_subscription()
-            logger.info("[구독] 실시간시세(0B, 그룹 4) 구독 시작 완료")
+            logger.info("[구독] 실시간시세(0B, 그룹 4) 구독 시작")
             return {"ok": True, "status": get_subscribe_status()}
         except Exception as e:
             logger.warning("[구독] 실시간시세 구독 시작 실패: %s", e, exc_info=True)
@@ -158,7 +158,7 @@ async def stop_quote() -> dict:
         from backend.app.services.engine_ws_reg import _unreg_grp
         await _unreg_grp("4")
         _set_status(quote=False)
-        logger.info("[구독] 실시간시세(0B, 그룹 4) 구독 해지 완료")
+        logger.info("[구독] 실시간시세(0B, 그룹 4) 구독 해지")
         return {"ok": True, "status": get_subscribe_status()}
 
 
@@ -186,7 +186,7 @@ async def run_conditional_reg_pipeline() -> None:
         try:
             await engine_ws_reg.subscribe_sector_stocks_0b(nxt_only=is_nxt_only_window())
             _set_status(quote=True)
-            logger.info("[구독] 실시간시세(0B) 자동 구독 완료")
+            logger.info("[구독] 실시간시세(0B) 자동 구독")
         except Exception as e:
             logger.warning("[구독] 실시간시세 자동 구독 실패: %s", e, exc_info=True)
 
@@ -194,7 +194,7 @@ async def run_conditional_reg_pipeline() -> None:
             index_ok = await engine_ws_reg.subscribe_index_realtime()
             if index_ok:
                 _set_status(index=True)
-                logger.info("[구독] 업종지수(0J) 자동 구독 완료")
+                logger.info("[구독] 업종지수(0J) 자동 구독")
         except Exception as e:
             logger.warning("[구독] 업종지수 자동 구독 실패: %s", e, exc_info=True)
 
@@ -221,7 +221,7 @@ async def cleanup_stale_subscriptions() -> None:
     for entry in engine_state.state.master_stocks_cache.values():
         entry.pop("_subscribed", None)
     _set_status(quote=False, index=False)
-    logger.debug("[구독] 잔존 구독 정리 완료 — 전체 끄기 (메모리 리셋, 서버 측은 다음 구독 등록 갱신=0으로 덮어씀)")
+    logger.debug("[구독] 잔존 구독 정리 — 전체 끄기 (메모리 리셋, 서버 측은 다음 구독 등록 갱신=0으로 덮어씀)")
 
 
 # ---------------------------------------------------------------------------

@@ -85,7 +85,7 @@ async def _fetch_account_data(settings: dict) -> dict:
     _rest_api_thread_sem = state.rest_api_thread_sem or _ensure_rest_api_thread_sem()
 
     if _rest_api is None:
-        logger.warning("[계좌] REST API 없음 — 엔진 기동 완료 전 호출. 계좌 조회 건너뜀.")
+        logger.warning("[계좌] REST API 없음 — 엔진 기동 전 호출. 계좌 조회 건너뜀.")
         return _EMPTY
 
     # ── 토큰 유효성 먼저 확인 ─────────────────────────────────────────────
@@ -183,11 +183,11 @@ async def _update_account_memory(settings: dict) -> None:
     """
     lock = engine_state._get_account_rest_lock()
     if lock.locked():
-        logger.info("[계좌] REST 조회 중복 요청 — 선행 조회 완료까지 대기")
+        logger.info("[계좌] REST 조회 중복 요청 — 선행 조회 종료까지 대기")
     async with lock:
         # lock 대기 중 선행 조회가 완료됐으면 중복 호출 스킵
         if state.account_rest_bootstrapped:
-            logger.info("[계좌] REST 조회 — 선행 조회에서 이미 완료됨, 중복 생략")
+            logger.info("[계좌] REST 조회 — 선행 조회에서 이미 수행됨, 중복 생략")
             return
         await _update_account_memory_inner(settings)
 
@@ -249,7 +249,7 @@ def _apply_account_yield_to_state(yield_data: dict, s: dict) -> None:
         else str(_ps)
     )
     logger.info(
-        f"[계좌] 갱신 완료 — 평가금: {state.account_snapshot.get('total_eval', 0):,}원 | "
+        f"[계좌] 갱신 — 평가금: {state.account_snapshot.get('total_eval', 0):,}원 | "
         f"손익: {state.account_snapshot.get('total_pnl', 0):,}원 | 포지션: {state.account_snapshot.get('position_count', 0)}개 | "
         f"가격소스: {_ps_kr}"
     )

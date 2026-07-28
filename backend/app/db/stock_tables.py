@@ -103,7 +103,7 @@ async def init_cache_tables():
         "DELETE FROM integrated_system_settings WHERE key = 'order_time_guard_on'"
     )
     await conn.commit()
-    logger.info("SQLite 캐시 테이블 준비 완료.")
+    logger.info("SQLite 캐시 테이블 생성.")
 
 # ── 정산 상태 ─────────────────────────────────────────────────────────────
 async def save_settlement_state(data: dict) -> None:
@@ -174,7 +174,7 @@ async def create_master_stocks_table():
     await conn.execute('CREATE INDEX IF NOT EXISTS idx_mst_sector ON master_stocks_table(sector)')
 
     await conn.commit()
-    logger.info("전종목 마스터 테이블 준비 완료.")
+    logger.info("전종목 마스터 테이블 생성.")
 
 
 async def _rebuild_master_stocks_with_pk(conn) -> None:
@@ -211,11 +211,11 @@ async def _rebuild_master_stocks_with_pk(conn) -> None:
     await conn.execute('CREATE INDEX IF NOT EXISTS idx_mst_avg_5d ON master_stocks_table(avg_5d_trade_amount)')
     await conn.execute('CREATE INDEX IF NOT EXISTS idx_mst_sector ON master_stocks_table(sector)')
     await conn.commit()
-    logger.info("[데이터] 전종목 마스터 테이블 종목코드 기본키 복구 완료 — 백업 테이블 삭제 진행")
+    logger.info("[데이터] 전종목 마스터 테이블 종목코드 기본키 복구 — 백업 테이블 삭제 진행")
 
     await conn.execute("DROP TABLE _master_stocks_table_old")
     await conn.commit()
-    logger.info("[데이터] 전종목 마스터 테이블 마이그레이션 백업 테이블 삭제 완료")
+    logger.info("[데이터] 전종목 마스터 테이블 마이그레이션 백업 테이블 삭제")
 
 
 async def migrate_master_stocks_table_pk():
@@ -252,7 +252,7 @@ async def migrate_add_hidden_to_custom_sectors():
     if "hidden" not in column_names:
         await conn.execute("ALTER TABLE custom_sectors ADD COLUMN hidden INTEGER DEFAULT 0")
         await conn.commit()
-        logger.info("[데이터] 사용자 업종에 숨김 컬럼 추가 완료")
+        logger.info("[데이터] 사용자 업종에 숨김 컬럼 추가")
     else:
         logger.debug("[데이터] 사용자 업종 숨김 컬럼 이미 존재 - 생략")
 
@@ -272,7 +272,7 @@ async def migrate_add_buy_date_to_trades():
     if "buy_date" not in column_names:
         await conn.execute("ALTER TABLE trades ADD COLUMN buy_date TEXT")
         await conn.commit()
-        logger.info("[데이터] 체결 이력 테이블에 매수일 컬럼 추가 완료")
+        logger.info("[데이터] 체결 이력 테이블에 매수일 컬럼 추가")
     else:
         logger.debug("[데이터] 체결 이력 매수일 컬럼 이미 존재 - 생략")
 
@@ -298,7 +298,7 @@ async def create_stock_5d_bars_table():
         )
     ''')
     await conn.commit()
-    logger.info("5거래일 일봉 테이블 준비 완료.")
+    logger.info("5거래일 일봉 테이블 생성.")
 
 
 # ── 거래일 캐시 ─────────────────────────────────────────────────────────────
@@ -313,7 +313,7 @@ async def save_trading_days_cache(cache: dict[int, set[str]]) -> None:
             (year, data_json)
         )
     await conn.commit()
-    logger.info("[스케줄] DB 저장 완료 — %d개 연도", len(cache))
+    logger.info("[스케줄] DB 저장 — %d개 연도", len(cache))
 
 
 async def load_trading_days_cache() -> dict[int, set[str]] | None:
@@ -326,7 +326,7 @@ async def load_trading_days_cache() -> dict[int, set[str]] | None:
     result: dict[int, set[str]] = {}
     for row in rows:
         result[row["year"]] = set(loads(row["data"]))
-    logger.debug("[스케줄] DB 로드 완료 — %d개 연도", len(result))
+    logger.debug("[스케줄] DB 로드 — %d개 연도", len(result))
     return result
 
 
@@ -365,7 +365,7 @@ async def load_master_stocks_table() -> dict[str, dict]:
             "sector": sector,
             "status": "active"
         }
-    logger.info("[데이터] 로드 완료 — %d종목", len(result))
+    logger.info("[데이터] 로드 — %d종목", len(result))
     return result
 
 

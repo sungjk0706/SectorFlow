@@ -79,7 +79,7 @@ async def _load_caches_preboot(settings: dict) -> None:
 
         # ── [수정] 기동 시 단건 실시간 구독 신청 루프 및 asyncio.gather 제거 ──
         # 로그인 이후 배치 파이프라인에서 일괄 등록되므로 기동 단계에서는 스킵합니다.
-        logger.info("[데이터] 선행 캐시 로드 완료 (메모리 반영 및 인덱싱 완료)")
+        logger.info("[데이터] 선행 캐시 로드 (메모리 반영 및 인덱싱)")
 
         # ── 5거래일 평균 + 5거래일 고가 적재 ──
         if sum(1 for v in _cached_avg.values() if int(v or 0) > 0) < 100:
@@ -89,7 +89,7 @@ async def _load_caches_preboot(settings: dict) -> None:
 
         # ── 시장구분 적재 제거 (master_stocks_cache 사용으로 대체) ──
         _total_nxt = sum(1 for v in engine_state.state.master_stocks_cache.values() if v.get("nxt_enable"))
-        logger.debug("[데이터] 시장구분(마스터 캐시) 로드 완료 — %d종목 (NXT %d)", len(engine_state.state.master_stocks_cache), _total_nxt)
+        logger.debug("[데이터] 시장구분(마스터 캐시) 로드 — %d종목 (NXT %d)", len(engine_state.state.master_stocks_cache), _total_nxt)
 
         # 캐시선행 완료 플래그 — 앱준비 에서 중복 로드 스킵용
         engine_state.state.preboot_cache_loaded = True
@@ -104,7 +104,7 @@ async def _load_caches_preboot(settings: dict) -> None:
             # ── 4단계: 사전 트리거 멱등성 플래그 동기화 (중복 실행 방지) ──
             # last_realtime_reset_date 쓰기는 _mark_realtime_reset_done() 단일 경로 (세션 11 P10 SSOT)
             _mark_realtime_reset_done()
-            logger.info("[데이터] 실시간 통신 구독 구간 — 실시간 필드 초기화 완료 (DB 로드 후)")
+            logger.info("[데이터] 실시간 통신 구독 구간 — 실시간 필드 초기화 (DB 로드 후)")
 
         # ── 기동 완료 로직 ──
         # 테스트모드: Settlement Engine 상태 로드 (설정 test_virtual_deposit 우선, DB 없으면 초기화)
@@ -112,7 +112,7 @@ async def _load_caches_preboot(settings: dict) -> None:
             from backend.app.services import settlement_engine
             initial_deposit = engine_state.state.integrated_system_settings_cache["test_virtual_deposit"]
             await settlement_engine.load_state(initial_deposit=initial_deposit)
-            logger.debug("[데이터] 정산 엔진 상태 로드 완료 (테스트모드)")
+            logger.debug("[데이터] 정산 엔진 상태 로드 (테스트모드)")
             # 기동 시 정합성 대조 — fake_fill_event 태스크 실패로 인한 잔고 불일치 복구 (B5-08-03, P22)
             await settlement_engine.reconcile_with_trades()
 
@@ -136,7 +136,7 @@ async def _load_caches_preboot(settings: dict) -> None:
             from backend.app.services.sector_data_provider import recompute_sector_summary_now
             _task = asyncio.create_task(recompute_sector_summary_now())
             _task.add_done_callback(lambda t: logger.warning("[데이터] 업종순위 계산 작업 실패: %s", t.exception()) if t.exception() else None)
-            logger.info("[데이터] 업종순위 계산 백그라운드 실행 (섹터 요약 준비 이벤트 대기)")
+            logger.info("[데이터] 업종순위 계산 백그라운드 실행 (섹터 요약 이벤트 대기)")
 
         # 앱준비 완료 → 기동 시 스킵된 장마감 파이프라인 데이터동기화중 재시도
         # 백그라운드 실행: data_ready_event / bootstrap_event 이미 set() 상태이므로

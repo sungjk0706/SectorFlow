@@ -68,7 +68,7 @@ async def lifespan(app: FastAPI):
     from backend.app.pipelines.pipeline_gateway import start_gateway_loop
     _gateway_task = asyncio.create_task(start_gateway_loop())
     _gateway_task.add_done_callback(lambda t: logger.warning("[웹서버] 게이트웨이 루프 작업 실패: %s", t.exception()) if t.exception() else None)
-    logger.info("[웹서버] 게이트웨이 루프 시작 완료")
+    logger.info("[웹서버] 게이트웨이 루프 시작")
 
     # ── 3개 독립 DB read 작업 병렬 실행 (순차 대기 시간 제거) ──
     from backend.app.core.trading_calendar import initialize_trading_calendar_cache
@@ -81,7 +81,7 @@ async def lifespan(app: FastAPI):
             # latest_filter_summary_meta 쓰기는 _set_latest_filter_summary_meta() 단일 경로 (세션 11 P10 SSOT)
             from backend.app.services.market_close_pipeline import _set_latest_filter_summary_meta
             _set_latest_filter_summary_meta(await load_filter_summary_meta_cache())
-            logger.info("[웹서버] 필터 요약 메타 캐시 로드 완료")
+            logger.info("[웹서버] 필터 요약 메타 캐시 로드")
         except Exception as e:
             logger.warning("[웹서버] 필터 요약 메타 캐시 초기 로드 실패: %s", e)
 
@@ -90,7 +90,7 @@ async def lifespan(app: FastAPI):
         _load_filter_summary_meta(),
         load_integrated_system_settings(),
     )
-    logger.info("[웹서버] 거래일 캐시 로드 완료")
+    logger.info("[웹서버] 거래일 캐시 로드")
     settings = _settings_task
 
 
@@ -121,7 +121,7 @@ async def lifespan(app: FastAPI):
     # 저널 처리 작업 시작 (Phase 4.2 Persistence Journaling)
     from backend.app.core import journal
     journal.start_consumer_task()
-    logger.info("[웹서버] 저널 처리 작업 시작 완료")
+    logger.info("[웹서버] 저널 처리 작업 시작")
 
     # 서버 준비 완료 — Health endpoint 즉시 응답 (프론트엔드 접속 허용)
     from backend.app.services.engine_state import state
@@ -165,7 +165,7 @@ async def lifespan(app: FastAPI):
     # 1. WS 클라이언트 정상 종료 (EPIPE 방지 — close_all이 flush_task 취소 + 모든 ws.close())
     from backend.app.web.ws_manager import ws_manager
     await ws_manager.close_all()
-    logger.info("[웹서버] 실시간 통신 클라이언트 정상 종료 완료")
+    logger.info("[웹서버] 실시간 통신 클라이언트 정상 종료")
 
     from backend.app.services.daily_time_scheduler import stop_daily_time_scheduler
     from backend.app.services.engine_lifecycle import stop_engine
@@ -173,7 +173,7 @@ async def lifespan(app: FastAPI):
     # 저널 처리 작업 종료 (Phase 4.2 Persistence Journaling)
     from backend.app.core import journal
     await journal.stop_consumer_task()
-    logger.info("[웹서버] 저널 처리 작업 종료 완료")
+    logger.info("[웹서버] 저널 처리 작업 종료")
 
     await telegram_bot.stop_async()
     await stop_engine()
@@ -181,12 +181,12 @@ async def lifespan(app: FastAPI):
     # 알림 워커 종료 — 엔진 종료 후 큐 잔량 알림 처리 (P21 사용자 투명성)
     from backend.app.services.notification_worker import NotificationWorker
     await NotificationWorker.get_instance().shutdown()
-    logger.info("[웹서버] 알림 워커 종료 완료")
+    logger.info("[웹서버] 알림 워커 종료")
 
     # 게이트웨이 루프 종료 (compute 종료 후 broadcast_queue 컨슘 중단)
     from backend.app.pipelines.pipeline_gateway import stop_gateway_loop
     await stop_gateway_loop()
-    logger.info("[웹서버] 게이트웨이 루프 종료 완료")
+    logger.info("[웹서버] 게이트웨이 루프 종료")
 
     await stop_daily_time_scheduler()
     
@@ -195,17 +195,17 @@ async def lifespan(app: FastAPI):
     from backend.app.db.database import close_db_connection
     await stop_db_writer()
     await close_db_connection()
-    logger.info("[웹서버] DB 기록기 및 DB 연결 정리 완료")
+    logger.info("[웹서버] DB 기록기 및 DB 연결 정리")
 
     # 파일 로거 태스크 정지
     from backend.app.core.logger import stop_file_writers
     await stop_file_writers()
-    logger.info("[웹서버] 파일 로거 태스크 정지 완료")
+    logger.info("[웹서버] 파일 로거 태스크 정지")
     
     # 상태 이벤트 정리
     state.engine_ready_event.clear()
     state.server_ready_event.clear()
-    logger.info("[웹서버] 엔진 종료 완료")
+    logger.info("[웹서버] 엔진 종료")
 
 
 
@@ -274,7 +274,7 @@ async def global_exception_handler(request: Request, exc: Exception):
             error_msg = f"[SectorFlow 에러 알림]\n에러 타입: {error_type}\n메시지: {str(exc)}\n경로: {request.url.path}"
             await send_msg_async(error_msg, settings, msg_type="error_alert")
             _last_alert_time[error_type] = current_time
-            logger.info("[웹서버] 텔레그램 오류 알림 전송 완료 - 오류유형=%s", error_type)
+            logger.info("[웹서버] 텔레그램 오류 알림 전송 - 오류유형=%s", error_type)
         except Exception as e:
             logger.warning("[웹서버] 텔레그램 알림 전송 실패: %s", e)
 

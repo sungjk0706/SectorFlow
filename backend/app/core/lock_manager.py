@@ -64,7 +64,7 @@ def acquire_lock(lock_path: Path) -> bool:
         fh.flush()
         
         _lock_fh = fh  # 핸들을 유지해야 잠금이 풀리지 않음
-        logger.info("잠금 파일 획득 완료: %s (PID: %d)", lock_path, os.getpid())
+        logger.info("잠금 파일 획득: %s (PID: %d)", lock_path, os.getpid())
         return True
     except OSError as exc:
         logger.error("잠금 파일 획득 실패: %s — %s", lock_path, exc)
@@ -85,7 +85,7 @@ def release_lock(lock_path: Path) -> None:
         # 파일 삭제 (OS 락이 풀린 후)
         if lock_path.exists():
             lock_path.unlink(missing_ok=True)
-            logger.info("잠금 파일 삭제 완료: %s", lock_path)
+            logger.info("잠금 파일 삭제: %s", lock_path)
     except OSError as exc:
         logger.warning("잠금 파일 삭제 실패: %s — %s", lock_path, exc)
 
@@ -117,7 +117,7 @@ def register_cleanup(lock_path: Path) -> None:
     if hasattr(signal, "SIGBREAK"):
         signal.signal(signal.SIGBREAK, _signal_handler)  # type: ignore[attr-defined]
 
-    logger.info("잠금 파일 정리 핸들러 등록 완료")
+    logger.info("잠금 파일 정리 핸들러 등록")
 
 
 def read_lock_pid(lock_path: Path) -> int | None:

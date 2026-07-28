@@ -156,7 +156,7 @@ async def _handle_real_balance(item: dict, vals: dict) -> None:
     try:
         await engine_account._apply_balance_realtime(item, item)
     except Exception as e:
-        logger.warning("[계좌] 실시간 잔고 반영 오류 (계속): %s", e, exc_info=True)
+        logger.warning("[계좌] 실시간 잔고 갱신 오류 (계속): %s", e, exc_info=True)
 
 
 async def handle_ws_data(data: dict) -> None:

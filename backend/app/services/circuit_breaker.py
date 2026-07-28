@@ -61,7 +61,7 @@ class CircuitBreaker:
         self._half_open_test_in_progress = False
         if self.state == "HALF_OPEN":
             self.state = "CLOSED"
-            logger.info("[매매] 서킷브레이커 상태 전이: 복구시도 → 정상 (복구 완료)")
+            logger.info("[매매] 서킷브레이커 상태 전이: 복구시도 → 정상 (복구)")
 
     def allow_request(self) -> bool:
         """
@@ -98,7 +98,7 @@ class CircuitBreaker:
         self.failure_count = 0
         self.last_failure_time = None
         self._half_open_test_in_progress = False
-        logger.info("[매매] 서킷브레이커 초기화 완료")
+        logger.info("[매매] 서킷브레이커 초기화")
 
 
 # 전역 인스턴스 (OMS 루프에서 공유)

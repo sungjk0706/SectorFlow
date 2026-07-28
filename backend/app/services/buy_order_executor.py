@@ -236,7 +236,7 @@ async def evaluate_buy_candidates() -> None:
                 from backend.app.services.order_interval import mark_order_executed
                 mark_order_executed("buy")
                 # 1건 매수 성공 — 건별 간격 적용 (다음 이벤트 시 check_order_interval 판정)
-                logger.info("[매매] 매수 1건 완료 — 주문 간격 대기")
+                logger.info("[매매] 매수 1건 — 주문 간격 대기")
                 break  # ← 1건 매수 후 루프 종료 (건별 간격)
             else:
                 # 실패 사유 분류

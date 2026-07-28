@@ -295,7 +295,7 @@ async def recompute_sector_summary_now() -> None:
         await notify_desktop_sector_scores(force=True)
         await notify_desktop_sector_stocks_refresh(force=True)
         await notify_buy_targets_update()
-        logger.info("[업종] 재계산 완료")
+        logger.info("[업종] 재계산 종료")
         engine_state.state.sector_summary_ready_event.set()
     except Exception as e:
         logger.warning("[업종] 재계산 실패: %s", e, exc_info=True)

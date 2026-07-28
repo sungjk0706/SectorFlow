@@ -126,7 +126,7 @@ async def on_sell_fill(price: int, qty: int, stk_cd: str, stk_nm: str) -> int:
             invalidate_buy_snapshot()
             await evaluate_buy_candidates()
     except Exception as e:
-        logger.warning("[정산] 상태 게이트 회복 실패 (매도 정산은 완료): %s", e, exc_info=True)
+        logger.warning("[정산] 상태 게이트 회복 실패 (매도 정산은 성공): %s", e, exc_info=True)
 
     return _orderable
 
@@ -186,7 +186,7 @@ async def reset(initial_deposit: int) -> None:
     _initial_deposit = initial_deposit
     await _persist()
     await _broadcast_delta()
-    logger.info("[정산] 리셋 완료 — 초기투자금: %s원", f"{initial_deposit:,}")
+    logger.info("[정산] 리셋 — 초기투자금: %s원", f"{initial_deposit:,}")
 
 
 async def save_state() -> None:
@@ -241,7 +241,7 @@ async def _load(force_reload: bool = False, initial_deposit: int | None = None) 
         _orderable = _initial_deposit
         _loaded = True
         await _persist()
-        logger.info("[정산] 초기값 SQLite 저장 완료 — 주문가능: %s원", f"{_orderable:,}")
+        logger.info("[정산] 초기값 SQLite 저장 — 주문가능: %s원", f"{_orderable:,}")
         return
 
     _initial_deposit = int(data.get("initial_deposit", _initial_deposit))
@@ -287,7 +287,7 @@ async def reconcile_with_trades() -> None:
         expected = await trade_history.compute_expected_orderable(_accumulated_investment, "test")
         actual = _orderable
         if expected == actual:
-            logger.info("[정산] 기동 대조 완료 — 주문가능 %s원 (일치)", f"{actual:,}")
+            logger.info("[정산] 기동 대조 — 주문가능 %s원 (일치)", f"{actual:,}")
             return
         diff = actual - expected
         logger.error(
@@ -308,7 +308,7 @@ async def reconcile_with_trades() -> None:
                 "message": f"잔고 정합성 복구 — {diff:+,}원 보정 (거래내역 기준)",
             })
         except Exception as e:
-            logger.warning("[정산] 정합성 복구 알림 전송 실패 (복구 자체는 완료): %s", e, exc_info=True)
+            logger.warning("[정산] 정합성 복구 알림 전송 실패 (복구 자체는 성공): %s", e, exc_info=True)
     except Exception as e:
         # P25 격리된 실패 — 대조 자체 실패 시 기동 중단하지 않고 로깅 후 진행
         logger.error("[정산] 기동 대조 실패 — 정합성 검증 생략 (엔진은 계속 기동): %s", e, exc_info=True)
