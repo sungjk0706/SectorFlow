@@ -246,18 +246,11 @@ async def _apply_sector_ui_change(changed_keys: set[str]) -> None:
 
 
 async def _apply_telegram_toggle(changed_keys: set[str]) -> None:
-    """텔레그램 토글 시 폴링 start/stop."""
-    if "tele_on" not in changed_keys:
-        return
-    try:
-        from backend.app.services.telegram_bot import telegram_bot
-        _tele_on = bool(engine_state.state.integrated_system_settings_cache.get("tele_on", False))
-        if _tele_on:
-            telegram_bot.start()
-            logger.info("[설정] 텔레그램 설정=ON → 텔레그램 폴링 시작")
-        else:
-            await telegram_bot.stop_async()
-            logger.info("[설정] 텔레그램 설정=OFF → 텔레그램 폴링 종료")
-    except Exception:
-        logger.warning("[설정] 텔레그램 폴링 토글 실패", exc_info=True)
+    """텔레그램 설정(tele_on·토큰·chat_id) 변경 시 폴링 start/stop/restart.
+
+    단일 진입: telegram_bot.apply_telegram_polling_change()에 위임 (P10/P24).
+    """
+    from backend.app.services.telegram_bot import apply_telegram_polling_change
+
+    await apply_telegram_polling_change(changed_keys)
 

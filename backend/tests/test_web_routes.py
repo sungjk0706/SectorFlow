@@ -523,6 +523,22 @@ class TestPatchSettingField:
         assert result["ok"] is True
         mock_bot.stop_async.assert_called_once()
 
+    async def test_token_save_restarts_telegram_polling(self):
+        """단계3: 토큰 저장(엔진 미실행) + tele_on=True → 폴링 재시작."""
+        from backend.app.web.routes.settings import patch_setting_field
+        with patch("backend.app.core.settings_store.apply_settings_updates", new_callable=AsyncMock, return_value={"telegram_bot_token_test"}), \
+             patch("backend.app.services.engine_lifecycle.is_engine_running", return_value=False), \
+             patch("backend.app.core.sector_stock_cache.save_pending_settings", new_callable=AsyncMock), \
+             patch("backend.app.services.engine_config.refresh_engine_integrated_system_settings_cache", new_callable=AsyncMock), \
+             patch("backend.app.services.engine_account_notify.notify_desktop_settings_toggled", new_callable=AsyncMock), \
+             patch("backend.app.services.engine_config._mask_sensitive_settings", return_value={"telegram_bot_token_test": "***"}), \
+             patch("backend.app.services.engine_state.state") as mock_state, \
+             patch("backend.app.services.telegram_bot.apply_telegram_polling_change", new_callable=AsyncMock) as mock_apply:
+            mock_state.integrated_system_settings_cache = {"tele_on": True, "telegram_bot_token_test": "***"}
+            result = await patch_setting_field("telegram_bot_token_test", {"value": "newtoken"}, _="dev")
+        assert result["ok"] is True
+        mock_apply.assert_called_once_with({"telegram_bot_token_test"})
+
     async def test_encryption_error_returns_structured_detail(self):
         """B21-01 세션3: EncryptionError → 422 detail 객체(code/message/field) 반환 (설계 5)."""
         from backend.app.web.routes.settings import patch_setting_field

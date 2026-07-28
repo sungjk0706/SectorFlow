@@ -18,6 +18,8 @@ from backend.app.services.telegram_bot import (
     TelegramBot,
     _mask_telegram_url,
     _normalize_chat_id,
+    apply_telegram_polling_change,
+    TELEGRAM_POLLING_KEYS,
 )
 from backend.app.core.encryption import SecretValueState, DecryptResult
 from backend.tests._mock_helpers import swallow_coro_returning
@@ -1236,3 +1238,128 @@ class TestCmdBuyCandidates:
         mock_send.assert_called_once()
         text = mock_send.call_args[0][2]
         assert "체결강도" not in text
+
+
+# ── TelegramBot.is_running ──────────────────────────────────────────────────────
+
+class TestIsRunning:
+    def test_none_task(self):
+        bot = TelegramBot()
+        assert bot.is_running is False
+
+    def test_running_task(self):
+        bot = TelegramBot()
+        mock_task = MagicMock()
+        mock_task.done.return_value = False
+        bot._task = mock_task
+        assert bot.is_running is True
+
+    def test_done_task(self):
+        bot = TelegramBot()
+        mock_task = MagicMock()
+        mock_task.done.return_value = True
+        bot._task = mock_task
+        assert bot.is_running is False
+
+
+# ── apply_telegram_polling_change ───────────────────────────────────────────────
+
+class TestApplyTelegramPollingChange:
+    """단계3: 토큰 저장 후 폴링 재시작 — 설정 변경 시 start/stop/restart 단일 진입 검증."""
+
+    @pytest.mark.asyncio
+    async def test_non_telegram_keys_noop(self):
+        with patch("backend.app.services.telegram_bot.telegram_bot") as mock_bot:
+            await apply_telegram_polling_change({"sector_max_targets"})
+        mock_bot.start.assert_not_called()
+        mock_bot.stop_async.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_tele_on_true_starts_polling(self):
+        with patch("backend.app.services.engine_state.state") as mock_state, \
+             patch("backend.app.services.telegram_bot.telegram_bot") as mock_bot:
+            mock_state.integrated_system_settings_cache = {"tele_on": True}
+            mock_bot.is_running = False
+            await apply_telegram_polling_change({"tele_on"})
+        mock_bot.start.assert_called_once()
+        mock_bot.stop_async.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_tele_on_false_stops_polling(self):
+        with patch("backend.app.services.engine_state.state") as mock_state, \
+             patch("backend.app.services.telegram_bot.telegram_bot") as mock_bot:
+            mock_state.integrated_system_settings_cache = {"tele_on": False}
+            mock_bot.stop_async = AsyncMock()
+            await apply_telegram_polling_change({"tele_on"})
+        mock_bot.stop_async.assert_called_once()
+        mock_bot.start.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_token_change_with_polling_running_stops_and_starts(self):
+        """tele_on=True + 토큰 변경 + 폴링 실행 중 → stop+start (즉시 재폴링)."""
+        with patch("backend.app.services.engine_state.state") as mock_state, \
+             patch("backend.app.services.telegram_bot.telegram_bot") as mock_bot:
+            mock_state.integrated_system_settings_cache = {"tele_on": True}
+            mock_bot.is_running = True
+            mock_bot.stop_async = AsyncMock()
+            await apply_telegram_polling_change({"telegram_bot_token_test"})
+        mock_bot.stop_async.assert_called_once()
+        mock_bot.start.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_token_change_with_polling_stopped_starts_only(self):
+        """tele_on=True + 토큰 변경 + 폴링 미실행 → start만 (stop 불필요)."""
+        with patch("backend.app.services.engine_state.state") as mock_state, \
+             patch("backend.app.services.telegram_bot.telegram_bot") as mock_bot:
+            mock_state.integrated_system_settings_cache = {"tele_on": True}
+            mock_bot.is_running = False
+            await apply_telegram_polling_change({"telegram_bot_token_real"})
+        mock_bot.start.assert_called_once()
+        mock_bot.stop_async.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_chat_id_change_with_polling_running_stops_and_starts(self):
+        """tele_on=True + chat_id 변경 + 폴링 실행 중 → stop+start."""
+        with patch("backend.app.services.engine_state.state") as mock_state, \
+             patch("backend.app.services.telegram_bot.telegram_bot") as mock_bot:
+            mock_state.integrated_system_settings_cache = {"tele_on": True}
+            mock_bot.is_running = True
+            mock_bot.stop_async = AsyncMock()
+            await apply_telegram_polling_change({"telegram_chat_id"})
+        mock_bot.stop_async.assert_called_once()
+        mock_bot.start.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_token_change_with_tele_off_stops_only(self):
+        """tele_on=False + 토큰 변경 → stop만 (이미 종료되어야 정상)."""
+        with patch("backend.app.services.engine_state.state") as mock_state, \
+             patch("backend.app.services.telegram_bot.telegram_bot") as mock_bot:
+            mock_state.integrated_system_settings_cache = {"tele_on": False}
+            mock_bot.stop_async = AsyncMock()
+            await apply_telegram_polling_change({"telegram_bot_token_test"})
+        mock_bot.stop_async.assert_called_once()
+        mock_bot.start.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_exception_does_not_propagate(self):
+        """내부 예외 시 warning 로그 + 전파 차단 (P25)."""
+        with patch("backend.app.services.engine_state.state") as mock_state, \
+             patch("backend.app.services.telegram_bot.telegram_bot") as mock_bot, \
+             patch("backend.app.services.telegram_bot.logger") as mock_logger:
+            mock_state.integrated_system_settings_cache = {"tele_on": True}
+            mock_bot.is_running = False
+            mock_bot.start.side_effect = Exception("boom")
+            await apply_telegram_polling_change({"tele_on"})
+        mock_logger.warning.assert_called_once()
+
+
+# ── TELEGRAM_POLLING_KEYS 상수 ──────────────────────────────────────────────────
+
+class TestTelegramPollingKeys:
+    def test_contains_all_expected_keys(self):
+        assert TELEGRAM_POLLING_KEYS == frozenset({
+            "tele_on",
+            "telegram_bot_token_test",
+            "telegram_bot_token_real",
+            "telegram_chat_id",
+        })

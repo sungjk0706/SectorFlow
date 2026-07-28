@@ -63,6 +63,11 @@ class TelegramBot:
         self._last_poll_err_mon: float | None = None
         self._last_poll_err_msg: str = ""
 
+    @property
+    def is_running(self) -> bool:
+        """폴링 태스크가 살아있는지 여부 (활성 설정 없음으로 자동 종료 후 False)."""
+        return self._task is not None and not self._task.done()
+
     def start(self, _db_getter=None):
         if self._task and not self._task.done():
             return
@@ -504,6 +509,46 @@ class TelegramBot:
             await self._send(token, chat_id, "\n".join(lines))
         except Exception as exc:
             await self._send(token, chat_id, f"⚠ 매수 후보 조회 오류: {str(exc)[:120]}")
+
+
+# ── 설정 변경 시 폴링 start/stop/restart 단일 진입 (engine_service·settings 공유) ────
+TELEGRAM_POLLING_KEYS = frozenset({
+    "tele_on",
+    "telegram_bot_token_test",
+    "telegram_bot_token_real",
+    "telegram_chat_id",
+})
+_TELEGRAM_CRED_KEYS = frozenset({
+    "telegram_bot_token_test",
+    "telegram_bot_token_real",
+    "telegram_chat_id",
+})
+
+
+async def apply_telegram_polling_change(changed_keys: set[str]) -> None:
+    """설정 변경에 맞춰 폴링을 start/stop/restart.
+
+    - tele_on=False → stop
+    - tele_on=True + 토큰/chat_id 변경 → stop+start (즉시 재폴링)
+    - tele_on=True + tele_on만 변경 → start (폴링 미실행 시 기동)
+    """
+    if not (changed_keys & TELEGRAM_POLLING_KEYS):
+        return
+    try:
+        from backend.app.services.engine_state import state
+
+        tele_on = bool(state.integrated_system_settings_cache.get("tele_on", False))
+        if not tele_on:
+            await telegram_bot.stop_async()
+            logger.info("[알림] 텔레그램 OFF → 폴링 종료")
+            return
+        # tele_on=True: 토큰·chat_id 변경 시 실행 중이면 stop 후 start로 즉시 재폴링.
+        if changed_keys & _TELEGRAM_CRED_KEYS and telegram_bot.is_running:
+            await telegram_bot.stop_async()
+        telegram_bot.start()
+        logger.info("[알림] 텔레그램 설정 변경 → 폴링 (재)시작")
+    except Exception:
+        logger.warning("[알림] 폴링 start/stop 실패", exc_info=True)
 
 
 telegram_bot = TelegramBot()
