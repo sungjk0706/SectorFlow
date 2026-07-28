@@ -904,6 +904,86 @@ class TestDailyBuySpentFeeInclusive:
         assert mgr._symbol_daily_buy_spent["005930"] == _expected_base
 
 
+# ── execute_buy 매수 근거 전달 (BUY-REASON-S4: P10 SSOT, P15 단일 경로, P16 살아있는 경로, P20 폴백 금지) ──
+
+class TestExecuteBuyReasonPassThrough:
+    """execute_buy에 sector/buy_rank/reason 전달 시 record_buy에 그대로 전달되는지 검증.
+    P20: reason or "자동매수" 폴백 제거 — 빈 reason은 빈 문자열 그대로 저장.
+    P16: sector/buy_rank가 execute_buy → record_buy까지 단일 배선.
+    """
+
+    @pytest.mark.asyncio
+    async def test_sector_buy_rank_reason_passed_to_record_buy(self):
+        """sector/buy_rank/reason 전달 시 record_buy 호출 인자에 그대로 전달 (P16)."""
+        mgr = _make_manager(_raw_settings(rebuy_block_on=False))
+        with patch("backend.app.services.engine_state.state") as mock_state, \
+             patch("backend.app.services.trading.auto_buy_effective", return_value=True), \
+             patch("backend.app.services.engine_account.get_positions", new_callable=AsyncMock, return_value=[]), \
+             patch("backend.app.services.trading.is_test_mode", return_value=True), \
+             patch("backend.app.services.settlement_engine.get_available_cash", return_value=10_000_000), \
+             patch("backend.app.services.dry_run.estimate_fill_price", return_value=70000), \
+             patch("backend.app.services.trading.get_risk_manager") as mock_rm, \
+             patch("backend.app.services.data_manager.get_stock_name", return_value="삼성전자"), \
+             patch("backend.app.services.engine_strategy_core.reserve_test_buy_power", new_callable=AsyncMock, return_value=(True, "", 490350)), \
+             patch("backend.app.services.dry_run.fake_send_order", new_callable=AsyncMock, return_value={"success": True, "order_id": "test1"}), \
+             patch("backend.app.services.dry_run.set_stock_name", new_callable=AsyncMock), \
+             patch("backend.app.services.dry_run.fake_fill_event", new_callable=AsyncMock), \
+             patch("backend.app.services.trade_history.record_buy", new_callable=AsyncMock) as mock_record_buy, \
+             patch("backend.app.core.journal.record_order_request", new_callable=AsyncMock), \
+             patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock), \
+             patch("backend.app.services.engine_lifecycle.schedule_engine_task", side_effect=_close_coro), \
+             patch("backend.app.services.trading._fire_and_forget_telegram"):
+            mock_state.realtime_latency_exceeded = False
+            mock_state.integrated_system_settings_cache = _raw_settings(rebuy_block_on=False)
+            mock_state.master_stocks_cache = {}
+            mock_rm.return_value.circuit_breaker.get_state.return_value = "CLOSED"
+            mock_rm.return_value.get_withdrawable_deposit.return_value = 10_000_000
+            mock_rm.return_value.check_buy_order_allowed = AsyncMock(return_value=(True, "승인"))
+            await mgr.execute_buy(
+                "005930", 70000, "token",
+                reason="📈고가돌파 · 📰뉴스", sector="반도체", buy_rank=1,
+            )
+        # record_buy에 sector/buy_rank/reason이 그대로 전달되었는지 검증 (P16)
+        _kwargs = mock_record_buy.call_args.kwargs
+        assert _kwargs["sector"] == "반도체"
+        assert _kwargs["buy_rank"] == 1
+        assert _kwargs["reason"] == "📈고가돌파 · 📰뉴스"
+
+    @pytest.mark.asyncio
+    async def test_empty_reason_no_fallback(self):
+        """reason 미전달 시 빈 문자열 그대로 저장 — "자동매수" 폴백 제거 검증 (P20)."""
+        mgr = _make_manager(_raw_settings(rebuy_block_on=False))
+        with patch("backend.app.services.engine_state.state") as mock_state, \
+             patch("backend.app.services.trading.auto_buy_effective", return_value=True), \
+             patch("backend.app.services.engine_account.get_positions", new_callable=AsyncMock, return_value=[]), \
+             patch("backend.app.services.trading.is_test_mode", return_value=True), \
+             patch("backend.app.services.settlement_engine.get_available_cash", return_value=10_000_000), \
+             patch("backend.app.services.dry_run.estimate_fill_price", return_value=70000), \
+             patch("backend.app.services.trading.get_risk_manager") as mock_rm, \
+             patch("backend.app.services.data_manager.get_stock_name", return_value="삼성전자"), \
+             patch("backend.app.services.engine_strategy_core.reserve_test_buy_power", new_callable=AsyncMock, return_value=(True, "", 490350)), \
+             patch("backend.app.services.dry_run.fake_send_order", new_callable=AsyncMock, return_value={"success": True, "order_id": "test1"}), \
+             patch("backend.app.services.dry_run.set_stock_name", new_callable=AsyncMock), \
+             patch("backend.app.services.dry_run.fake_fill_event", new_callable=AsyncMock), \
+             patch("backend.app.services.trade_history.record_buy", new_callable=AsyncMock) as mock_record_buy, \
+             patch("backend.app.core.journal.record_order_request", new_callable=AsyncMock), \
+             patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock), \
+             patch("backend.app.services.engine_lifecycle.schedule_engine_task", side_effect=_close_coro), \
+             patch("backend.app.services.trading._fire_and_forget_telegram"):
+            mock_state.realtime_latency_exceeded = False
+            mock_state.integrated_system_settings_cache = _raw_settings(rebuy_block_on=False)
+            mock_state.master_stocks_cache = {}
+            mock_rm.return_value.circuit_breaker.get_state.return_value = "CLOSED"
+            mock_rm.return_value.get_withdrawable_deposit.return_value = 10_000_000
+            mock_rm.return_value.check_buy_order_allowed = AsyncMock(return_value=(True, "승인"))
+            await mgr.execute_buy("005930", 70000, "token")  # reason/sector/buy_rank 생략
+        _kwargs = mock_record_buy.call_args.kwargs
+        # P20: 폴백 금지 — reason은 빈 문자열, "자동매수" 아님
+        assert _kwargs["reason"] == ""
+        assert _kwargs["sector"] == ""
+        assert _kwargs["buy_rank"] is None
+
+
 # ── execute_buy 주문 전송 실패 (P22 정합성, P15 단일 경로, P18 테스트모드 동등성) ──
 
 class TestExecuteBuyOrderFailure:

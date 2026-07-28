@@ -21,13 +21,19 @@ from backend.app.domain.models import StockScore, SectorSummary, BuyTarget
 
 # ── 헬퍼 ──────────────────────────────────────────────────────────────────────
 
-def _stock(code="005930", guard_pass=True, cur_price=70000, sector="반도체", name="삼성전자", nxt_enable=False):
+def _stock(code="005930", guard_pass=True, cur_price=70000, sector="반도체", name="삼성전자", nxt_enable=False,
+           boost_high_triggered=False, boost_order_ratio_triggered=False,
+           boost_news_triggered=False, boost_program_triggered=False):
     s = StockScore(
         code=code, name=name, sector=sector,
         change_rate=1.0, trade_amount=1_000_000_000,
         avg_amt_5d=40, strength=100.0,
         cur_price=cur_price, change=700, market_type="0", nxt_enable=nxt_enable,
         guard_pass=guard_pass,
+        boost_high_triggered=boost_high_triggered,
+        boost_order_ratio_triggered=boost_order_ratio_triggered,
+        boost_news_triggered=boost_news_triggered,
+        boost_program_triggered=boost_program_triggered,
     )
     return s
 
@@ -1100,3 +1106,73 @@ class TestRejectReasonRecording:
         ss = fresh_state.sector_summary_cache
         bt1 = ss.buy_targets[0]
         assert bt1.reason == BUY_REJECT_REASON_TEXT[BUY_REJECT_QTY_ZERO]
+
+
+# ── 매수 근거 가산점 통합 문자열 생성 (BUY-REASON-S4: P10 SSOT, P20 폴백 금지, P21 사용자 투명성, P23 용어 통일) ──
+
+class TestBuyReasonBoostString:
+    """트리거 필드 조합별 가산점 통합 문자열(reason) 생성 + execute_buy 전달 검증.
+    표시 순서 고정: 고가돌파 → 잔량비율 → 뉴스 → 프로그램순매수 (P23 일관성).
+    미발생 시 빈 문자열 (P20 폴백 금지).
+    """
+
+    @staticmethod
+    def _state_with_stock(stock, fresh_state):
+        fresh_state.sector_summary_cache = _sector_summary(
+            stocks=[stock],
+            buy_targets=[BuyTarget(rank=1, sector_rank=1, stock=stock)],
+        )
+        return fresh_state
+
+    @pytest.mark.asyncio
+    async def test_all_boosts_triggered(self, fresh_state, reset_cash_gate):
+        """가산점 4개 모두 발생 → 전체 연결 문자열."""
+        s = _stock(boost_high_triggered=True, boost_order_ratio_triggered=True,
+                   boost_news_triggered=True, boost_program_triggered=True)
+        self._state_with_stock(s, fresh_state)
+        with patch("backend.app.services.engine_state.state", fresh_state), \
+             patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock, return_value=[]), \
+             patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm, \
+             patch("backend.app.services.daily_time_scheduler.is_order_blocked_by_time", return_value=False):
+            mock_rm.return_value.get_withdrawable_deposit.return_value = 10_000_000
+            await evaluate_buy_candidates()
+        _kwargs = fresh_state.auto_trade.execute_buy.call_args.kwargs
+        assert _kwargs["reason"] == "📈고가돌파 · 📊잔량비율 · 📰뉴스 · 💹프로그램순매수"
+        assert _kwargs["sector"] == "반도체"
+        assert _kwargs["buy_rank"] == 1
+
+    @pytest.mark.asyncio
+    async def test_partial_boosts_triggered(self, fresh_state, reset_cash_gate):
+        """고가돌파·뉴스만 발생 → 해당 가산점만 연결 (P20 — 미발생 항목 제외)."""
+        s = _stock(boost_high_triggered=True, boost_news_triggered=True)
+        self._state_with_stock(s, fresh_state)
+        with patch("backend.app.services.engine_state.state", fresh_state), \
+             patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock, return_value=[]), \
+             patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm, \
+             patch("backend.app.services.daily_time_scheduler.is_order_blocked_by_time", return_value=False):
+            mock_rm.return_value.get_withdrawable_deposit.return_value = 10_000_000
+            await evaluate_buy_candidates()
+        _kwargs = fresh_state.auto_trade.execute_buy.call_args.kwargs
+        assert _kwargs["reason"] == "📈고가돌파 · 📰뉴스"
+
+    @pytest.mark.asyncio
+    async def test_no_boost_triggered_empty_string(self, fresh_state, reset_cash_gate):
+        """가산점 미발생 → 빈 문자열 (P20 폴백 금지 — "자동매수" 아님)."""
+        s = _stock()  # 모든 트리거 기본값 False
+        self._state_with_stock(s, fresh_state)
+        with patch("backend.app.services.engine_state.state", fresh_state), \
+             patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock, return_value=[]), \
+             patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm, \
+             patch("backend.app.services.daily_time_scheduler.is_order_blocked_by_time", return_value=False):
+            mock_rm.return_value.get_withdrawable_deposit.return_value = 10_000_000
+            await evaluate_buy_candidates()
+        _kwargs = fresh_state.auto_trade.execute_buy.call_args.kwargs
+        assert _kwargs["reason"] == ""
+        assert _kwargs["sector"] == "반도체"
+        assert _kwargs["buy_rank"] == 1

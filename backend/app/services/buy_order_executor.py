@@ -226,9 +226,21 @@ async def evaluate_buy_candidates() -> None:
             _price = int(s.cur_price or 0)
             if _price <= 0:
                 break  # 현재가 0은 전역 이상 → 루프 종료
+            # 매수 근거(가산점 통합 문자열) 생성 — 발생한 가산점만 이모지+이름 연결 (P20/P21/P23).
+            # 표시 순서 고정: 고가돌파 → 잔량비율 → 뉴스 → 프로그램순매수.
+            _boost_parts: list[str] = []
+            if s.boost_high_triggered:
+                _boost_parts.append("📈고가돌파")
+            if s.boost_order_ratio_triggered:
+                _boost_parts.append("📊잔량비율")
+            if s.boost_news_triggered:
+                _boost_parts.append("📰뉴스")
+            if s.boost_program_triggered:
+                _boost_parts.append("💹프로그램순매수")
+            _buy_reason = " · ".join(_boost_parts)  # 미발생 시 빈 문자열 (P20)
             _ordered, _reason = await state.auto_trade.execute_buy(
                 s.code, float(_price), state.access_token or "",
-                reason=f"업종자동매수 업종={s.sector} 순위={bt.rank}",
+                reason=_buy_reason, sector=s.sector, buy_rank=bt.rank,
             )
             if _ordered:
                 logger.info("[매매] 매수 주문 전송: %s(%s) 순위=%d", s.name, s.code, bt.rank)
