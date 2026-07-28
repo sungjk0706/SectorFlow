@@ -394,7 +394,7 @@ async def _ensure_broker_specs(db_data: dict) -> None:
                 content = await f.read()
             spec_data = loads(content)
             db_data["_broker_specs"][broker_name] = spec_data
-            logger.info("[설정] 증권사 명세 초기화: %s", BROKER_DISPLAY_NAMES.get(broker_name, broker_name))
+            logger.info("[설정] 증권사 명세 로드 완료: %s", BROKER_DISPLAY_NAMES.get(broker_name, broker_name))
         except Exception as e:
             logger.warning("[설정] 증권사 명세 로드 실패 (%s): %s", spec_file, e, exc_info=True)
 

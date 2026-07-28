@@ -221,7 +221,7 @@ async def cleanup_stale_subscriptions() -> None:
     for entry in engine_state.state.master_stocks_cache.values():
         entry.pop("_subscribed", None)
     _set_status(quote=False, index=False)
-    logger.debug("[구독] 잔존 구독 정리 완료 — 전체 끄기 (인메모리 초기화, 서버 측은 다음 구독 등록 갱신=0으로 덮어씀)")
+    logger.debug("[구독] 잔존 구독 정리 완료 — 전체 끄기 (메모리 리셋, 서버 측은 다음 구독 등록 갱신=0으로 덮어씀)")
 
 
 # ---------------------------------------------------------------------------

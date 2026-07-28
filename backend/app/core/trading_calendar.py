@@ -276,7 +276,7 @@ async def refresh_trading_days_for_year(year: int) -> None:
 def is_trading_day(d: date) -> bool:
     """해당 날짜가 KRX 거래일이면 True (메모리 캐시 set 조회, O(1))."""
     if not _cache_initialized:
-        logger.error("[스케줄] 캐시 미초기화 — 거래일 캐시 초기화가 호출되지 않음")
+        logger.error("[스케줄] 캐시 미로드 — 거래일 캐시 로드가 호출되지 않음")
         raise RuntimeError("trading calendar cache not initialized")
     year = d.year
     if year not in _trading_days_cache:

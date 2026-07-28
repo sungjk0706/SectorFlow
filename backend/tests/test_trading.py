@@ -44,7 +44,7 @@ from backend.app.services.trading import (  # noqa: E402
 
 @pytest.fixture(autouse=True)
 def _patch_trading_calendar():
-    """is_trading_day가 캐시 미초기화 RuntimeError를 발생시키지 않도록 mock.
+    """is_trading_day가 캐시 미로드 RuntimeError를 발생시키지 않도록 mock.
     auto_buy_effective / auto_sell_effective가 _master_on → is_trading_day를 호출하기 때문.
     _fire_and_forget_telegram도 mock하여 NotificationWorker 백그라운드 태스크 생성 차단.
     """

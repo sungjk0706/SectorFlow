@@ -581,7 +581,7 @@ async def clear_test_history() -> None:
         ))
     except Exception as e:
         logger.warning("[정산] DB 테스트 이력 삭제 실패: %s", e)
-    logger.info("[정산] 테스트 이력 즉시 초기화 완료")
+    logger.info("[정산] 테스트 이력 삭제 완료")
 
 
 async def broadcast_history(trade_mode: str) -> None:

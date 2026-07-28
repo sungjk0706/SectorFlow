@@ -142,7 +142,7 @@ async def _reset_positions_and_account() -> None:
     )
     await _refresh_account_snapshot_meta()
     await _broadcast_account(reason="test_data_reset")
-    logger.info("[연산] 보유종목, 실시간 필드 및 REST 보완 저장데이터 초기화 완료")
+    logger.info("[연산] 보유종목, 실시간 필드 및 REST 보완 저장데이터 리셋 완료")
 
 
 async def _reset_buy_state_and_broadcast() -> None:

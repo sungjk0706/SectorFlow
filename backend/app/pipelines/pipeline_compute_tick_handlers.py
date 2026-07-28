@@ -314,7 +314,7 @@ async def _handle_real_pgm_tick(
         nk = _base_stk_cd(raw_cd)
         tval_str = vals.get("tval")
         if tval_str is None:
-            logger.warning("[연산] PGM 순매수 데이터 누락 (tval 필드 없음, 종목=%s) — 틱 스킵. 화면에 순매수 0이 잘못 표시되지 않도록 갱신을 생략합니다.", nk)
+            logger.warning("[연산] PGM 순매수 데이터 누락 (tval 필드 없음, 종목=%s) — 틱 생략. 화면에 순매수 0이 잘못 표시되지 않도록 갱신을 생략합니다.", nk)
             return
         try:
             tval = int(tval_str)
@@ -354,14 +354,14 @@ async def _handle_nws_news(item: dict) -> None:
         if not title:
             return
         if not code_raw:
-            logger.debug("[연산] 뉴스 제목 수신 (종목코드 없음, 스킵): %s", title[:60])
+            logger.debug("[연산] 뉴스 제목 수신 (종목코드 없음, 생략): %s", title[:60])
             return
 
         # 복수 종목코드 파싱 (공백/쉼표 구분, 최대 240자)
         codes = [_base_stk_cd(c.strip()) for c in code_raw.replace(",", " ").split() if c.strip()]
         codes = [c for c in codes if c]
         if not codes:
-            logger.debug("[연산] 뉴스 제목 수신 (유효 종목코드 없음, 스킵): %s", title[:60])
+            logger.debug("[연산] 뉴스 제목 수신 (유효 종목코드 없음, 생략): %s", title[:60])
             return
 
         # 호재 키워드 매칭 (메모리 상주 사전, P13)

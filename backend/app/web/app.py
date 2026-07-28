@@ -90,7 +90,7 @@ async def lifespan(app: FastAPI):
         _load_filter_summary_meta(),
         load_integrated_system_settings(),
     )
-    logger.info("[웹서버] 거래일 캐시 초기화 완료")
+    logger.info("[웹서버] 거래일 캐시 로드 완료")
     settings = _settings_task
 
 

@@ -379,7 +379,7 @@ async def execute_unified_rolling_and_save(
                 """, updated_params)
 
             await conn.commit()
-            logger.info("[데이터] 저장 완료 — 5거래일 일봉 세로 행: %d종목, 전종목 마스터 테이블: %d종목", len(bars_bulk_params), len(master_bulk_params))
+            logger.info("[데이터] 저장 완료 — 5거래일 일봉: %d종목, 전종목 마스터 테이블: %d종목", len(bars_bulk_params), len(master_bulk_params))
             return True
 
         except Exception as e:
@@ -1308,7 +1308,7 @@ async def fetch_5d_data_only() -> dict:
         log_progress_end()
         # ── 5거래일 일봉 세로 행 테이블 직접 삽입 (5거래일치 전체 저장) ───────────────────
         if confirmed_5d:
-            logger.info("[다운로드] 5거래일 일봉 세로 행 테이블 직접 삽입 — %d종목", len(confirmed_5d))
+            logger.info("[다운로드] 5거래일 일봉 테이블 직접 삽입 — %d종목", len(confirmed_5d))
 
             bars_params = []
             master_update_params = []

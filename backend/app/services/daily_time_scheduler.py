@@ -729,7 +729,7 @@ async def retry_pipeline_catchup_after_bootstrap() -> None:
     else:
         # 실시간 연결 구간 (market_phase 활성)
         # 이 구간에서는 실시간 틱 데이터가 캐시를 채우므로 확정 다운로드를 하지 않음
-        logger.debug("[스케줄] 실시간 연결 구간 기동 — 실시간 틱 수신 중이므로 다운로드 대기/스킵")
+        logger.debug("[스케줄] 실시간 연결 구간 기동 — 실시간 틱 수신 중이므로 다운로드 대기/생략")
         return
 
 
@@ -866,7 +866,7 @@ async def _on_ws_subscribe_start() -> None:
         today = _kst_now()
         today_str = today.strftime("%Y%m%d")
         if engine_state.state.last_ws_subscribe_start_date == today_str:
-            logger.debug("[작업실행] NXT 종목 구독 신청 스킵 (이미 실행됨 — %s)", today_str)
+            logger.debug("[작업실행] NXT 종목 구독 신청 생략 (이미 실행됨 — %s)", today_str)
             return
         if today.weekday() >= 5:
             return
@@ -931,7 +931,7 @@ async def _on_confirmed_download() -> None:
     try:
         today_str = _kst_now().strftime("%Y%m%d")
         if engine_state.state.last_confirmed_download_date == today_str:
-            logger.debug("[스케줄] 확정 다운로드 오늘 이미 실행 — 스킵 (P22)")
+            logger.debug("[스케줄] 확정 다운로드 오늘 이미 실행 — 생략 (P22)")
             return
         logger.info("[스케줄] 확정 시세 다운로드 시각 도달 → 확정 데이터 다운로드 트리거")
         _fire_unified_confirmed_fetch()
@@ -1407,7 +1407,7 @@ async def _on_midnight() -> None:
             engine_state.state.krx_remove_done = False
             engine_state.state.confirmed_done = False
             engine_state.state.last_confirmed_download_date = ""  # 확정 다운로드 멱등성 가드 리셋 (P22)
-            logger.info("[스케줄] 자정 날짜 변경 — 플래그 초기화 (%s)", engine_state.state.last_reset_date)
+            logger.info("[스케줄] 자정 날짜 변경 — 플래그 리셋 (%s)", engine_state.state.last_reset_date)
 
             # 연도 변경 시 다음 연도 거래일 캐시 미리 생성 (블로킹 방지)
             current_year = now.year

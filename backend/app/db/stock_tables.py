@@ -103,7 +103,7 @@ async def init_cache_tables():
         "DELETE FROM integrated_system_settings WHERE key = 'order_time_guard_on'"
     )
     await conn.commit()
-    logger.info("SQLite 캐시 테이블 초기화 완료.")
+    logger.info("SQLite 캐시 테이블 준비 완료.")
 
 # ── 정산 상태 ─────────────────────────────────────────────────────────────
 async def save_settlement_state(data: dict) -> None:
@@ -174,7 +174,7 @@ async def create_master_stocks_table():
     await conn.execute('CREATE INDEX IF NOT EXISTS idx_mst_sector ON master_stocks_table(sector)')
 
     await conn.commit()
-    logger.info("전종목 마스터 테이블 초기화 완료.")
+    logger.info("전종목 마스터 테이블 준비 완료.")
 
 
 async def _rebuild_master_stocks_with_pk(conn) -> None:
@@ -298,7 +298,7 @@ async def create_stock_5d_bars_table():
         )
     ''')
     await conn.commit()
-    logger.info("5거래일 일봉 세로 행 테이블 초기화 완료.")
+    logger.info("5거래일 일봉 테이블 준비 완료.")
 
 
 # ── 거래일 캐시 ─────────────────────────────────────────────────────────────
