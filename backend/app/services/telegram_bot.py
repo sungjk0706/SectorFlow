@@ -12,6 +12,7 @@
   계좌 / account    -- 잔고 와 동일 (호환)
   업종 / sector     -- 업종 분석 상위/하위 요약
   후보 / candidate  -- 매수 후보 1~10순위
+  설정 / settings   -- 주요 설정값 조회 (변경 불가, 조회 전용)
   도움말 / help     -- 명령어 목록 (/start 도 동일)
 """
 import asyncio
@@ -104,6 +105,107 @@ def _build_risk_status_lines() -> str:
     except Exception:
         logger.warning("[알림] 리스크 상태 조회 실패 — 상태 명령어에서 리스크 라인 생략", exc_info=True)
         return ""
+
+
+def _fmt_money(v) -> str:
+    """금액 포맷 — 만원/억원 단위로 간결 표시 (P24 단순성)."""
+    try:
+        n = int(v or 0)
+    except (ValueError, TypeError):
+        return "0"
+    if abs(n) >= 100_000_000:
+        return f"{n / 100_000_000:.1f}억"
+    if abs(n) >= 10_000:
+        return f"{n / 10_000:.0f}만"
+    return f"{n:,}"
+
+
+def _fmt_pct(v) -> str:
+    """백분율 포맷 — 부호 붙여 간결 표시."""
+    try:
+        return f"{float(v):+.1f}%"
+    except (ValueError, TypeError):
+        return "0.0%"
+
+
+def _build_settings_lines(flat: dict) -> str:
+    """주요 설정값 요약 라인 생성 (조회 전용 — P21 사용자 투명성, P10 SSOT).
+
+    인자: load_integrated_system_settings() 결과 flat dict.
+    반환: 설정 명령어 본문에 삽입할 라인 문자열.
+    주의: 본 함수는 조회만 수행 — 설정 변경은 절대 금지 (P15 단일 주문 경로, P16 살아있는 경로).
+    """
+    def on_off(key: str) -> str:
+        return "ON" if bool(flat.get(key)) else "OFF"
+
+    # 자동매매
+    mode = flat.get("trade_mode") or "test"
+    mode_txt = "테스트" if mode == "test" else "실전"
+    auto_lines = [
+        f"🔰 마스터: {on_off('time_scheduler_on')}",
+        f" 매수: {on_off('auto_buy_on')} ({flat.get('buy_time_start', '?')}~{flat.get('buy_time_end', '?')})",
+        f"🏪 매도: {on_off('auto_sell_on')} ({flat.get('sell_time_start', '?')}~{flat.get('sell_time_end', '?')})",
+        f"🎯 투자모드: {mode_txt}",
+    ]
+
+    # 매수 조건
+    buy_lines = []
+    if flat.get("max_stock_cnt_on"):
+        buy_lines.append(f"최대 종목: {flat.get('max_stock_cnt', 0)}개")
+    if flat.get("buy_amt_on"):
+        buy_lines.append(f"종목당 금액: {_fmt_money(flat.get('buy_amt'))}")
+    if flat.get("max_daily_total_buy_on"):
+        buy_lines.append(f"일일 총매수 한도: {_fmt_money(flat.get('max_daily_total_buy_amt'))}")
+    if flat.get("rebuy_block_on"):
+        buy_lines.append(f"재매수 차단: {flat.get('rebuy_block_period', '?')}")
+    buy_block = " · ".join(buy_lines) if buy_lines else "제한 없음"
+
+    # 매도 조건
+    sell_lines = []
+    if flat.get("tp_apply"):
+        sell_lines.append(f"익절: {_fmt_pct(flat.get('tp_val'))}")
+    if flat.get("loss_apply"):
+        sell_lines.append(f"손절: {_fmt_pct(flat.get('loss_val'))}")
+    if flat.get("ts_apply"):
+        sell_lines.append(
+            f"트레일링: 시작 {_fmt_pct(flat.get('ts_start_val'))} / 하락 {_fmt_pct(flat.get('ts_drop_val'))}"
+        )
+    sell_block = " · ".join(sell_lines) if sell_lines else "조건 없음"
+
+    # 리스크 관리
+    risk_lines = []
+    if flat.get("risk_manager_on"):
+        risk_lines.append(f"리스크 매니저: {on_off('risk_manager_on')}")
+        if flat.get("daily_loss_limit_on"):
+            risk_lines.append(f"일일 손실 한도: {_fmt_money(flat.get('daily_loss_limit'))}")
+        if flat.get("daily_loss_rate_limit_on"):
+            risk_lines.append(f"일일 손실률: {_fmt_pct(flat.get('daily_loss_rate_limit'))}")
+        if flat.get("consecutive_loss_limit_on"):
+            risk_lines.append(f"연속 손실: {flat.get('consecutive_loss_limit', 0)}회")
+    risk_lines.append(f"종목 최대 노출: {_fmt_money(flat.get('max_single_stock_exposure'))}")
+    risk_block = " · ".join(risk_lines)
+
+    # 업종 필터
+    sector_lines = [
+        f"최소 상승 비율: {_fmt_pct(flat.get('sector_min_rise_ratio_pct'))}",
+        f"최소 거래대금: {_fmt_money(flat.get('sector_min_trade_amt'))}",
+        f"최대 업종 수: {flat.get('sector_max_targets', 0)}개",
+        f"수신률 임계값: {_fmt_pct(flat.get('sector_start_threshold_pct'))}",
+    ]
+    if flat.get("buy_block_rise_on"):
+        sector_lines.append(f"상승 차단: {_fmt_pct(flat.get('buy_block_rise_pct'))}")
+    if flat.get("buy_block_fall_on"):
+        sector_lines.append(f"하락 차단: {_fmt_pct(flat.get('buy_block_fall_pct'))}")
+    sector_block = " · ".join(sector_lines)
+
+    return (
+        "⚙️ <b>자동매매</b>\n"
+        + "\n".join(auto_lines) + "\n\n"
+        f"💰 <b>매수 조건</b>\n{buy_block}\n\n"
+        f"📉 <b>매도 조건</b>\n{sell_block}\n\n"
+        f"🛡️ <b>리스크 관리</b>\n{risk_block}\n\n"
+        f"📊 <b>업종 필터</b>\n{sector_block}"
+    )
 
 
 class TelegramBot:
@@ -305,6 +407,8 @@ class TelegramBot:
             await self._cmd_sector(token, chat_id)
         elif cmd in ("후보", "candidate"):
             await self._cmd_buy_candidates(token, chat_id)
+        elif cmd in ("설정", "settings"):
+            await self._cmd_settings(token, chat_id)
         elif cmd in ("도움말", "help"):
             await self._cmd_help(token, chat_id)
         elif cmd == "start":
@@ -325,6 +429,7 @@ class TelegramBot:
             "잔고  -- 계좌 현황만 (계좌)\n"
             "업종  -- 업종 분석 상위/하위 요약\n"
             "후보  -- 매수 후보 1~10순위\n"
+            "설정  -- 주요 설정값 조회 (변경 불가, 조회 전용)\n"
             "도움말 -- 이 메시지"
         )
         await self._send(token, chat_id, text)
@@ -564,6 +669,21 @@ class TelegramBot:
             await self._send(token, chat_id, "\n".join(lines))
         except Exception as exc:
             await self._send(token, chat_id, f"⚠ 매수 후보 조회 오류: {str(exc)[:120]}")
+
+    async def _cmd_settings(self, token: str, chat_id: str) -> None:
+        """주요 설정값 조회 (조회 전용 — 변경 불가, P21 사용자 투명성).
+
+        설정 변경은 UI에서만 가능 — 본 명령어는 읽기 전용 (P15/P16).
+        """
+        try:
+            from backend.app.core.settings_file import load_integrated_system_settings
+
+            flat = await load_integrated_system_settings()
+            body = _build_settings_lines(flat)
+            text = f"⚙️ <b>설정 조회</b> (변경은 UI에서만)\n\n{body}"
+            await self._send(token, chat_id, text)
+        except Exception as exc:
+            await self._send(token, chat_id, f"⚠ 설정 조회 오류: {str(exc)[:120]}")
 
 
 # ── 설정 변경 시 폴링 start/stop/restart 단일 진입 (engine_service·settings 공유) ────

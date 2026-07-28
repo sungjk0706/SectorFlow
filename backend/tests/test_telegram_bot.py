@@ -19,6 +19,9 @@ from backend.app.services.telegram_bot import (
     _mask_telegram_url,
     _normalize_chat_id,
     _build_risk_status_lines,
+    _build_settings_lines,
+    _fmt_money,
+    _fmt_pct,
     apply_telegram_polling_change,
     TELEGRAM_POLLING_KEYS,
 )
@@ -1427,6 +1430,294 @@ class TestCmdBuyCandidates:
         mock_send.assert_called_once()
         text = mock_send.call_args[0][2]
         assert "체결강도" not in text
+
+
+# ── _fmt_money / _fmt_pct ──────────────────────────────────────────────────────
+
+class TestFmtMoney:
+    def test_zero(self):
+        assert _fmt_money(0) == "0"
+
+    def test_none(self):
+        assert _fmt_money(None) == "0"
+
+    def test_under_10k_uses_comma(self):
+        assert _fmt_money(5000) == "5,000"
+
+    def test_10k_to_100m_uses_man(self):
+        assert _fmt_money(1_000_000) == "100만"
+        assert _fmt_money(50_000_000) == "5000만"
+
+    def test_over_100m_uses_eok(self):
+        assert _fmt_money(200_000_000) == "2.0억"
+
+    def test_negative_over_100m(self):
+        assert _fmt_money(-500_000_000) == "-5.0억"
+
+    def test_invalid_returns_zero(self):
+        assert _fmt_money("abc") == "0"
+
+
+class TestFmtPct:
+    def test_positive(self):
+        assert _fmt_pct(7.0) == "+7.0%"
+
+    def test_negative(self):
+        assert _fmt_pct(-5.0) == "-5.0%"
+
+    def test_zero(self):
+        assert _fmt_pct(0) == "+0.0%"
+
+    def test_invalid(self):
+        assert _fmt_pct("abc") == "0.0%"
+
+
+# ── _build_settings_lines ──────────────────────────────────────────────────────
+
+class TestBuildSettingsLines:
+    """_build_settings_lines — 주요 설정값 요약 (조회 전용, 단계8)."""
+
+    def _full_flat(self):
+        return {
+            "time_scheduler_on": True,
+            "auto_buy_on": True,
+            "auto_sell_on": False,
+            "buy_time_start": "09:00",
+            "buy_time_end": "15:20",
+            "sell_time_start": "09:00",
+            "sell_time_end": "15:20",
+            "trade_mode": "test",
+            "max_stock_cnt_on": True,
+            "max_stock_cnt": 5,
+            "buy_amt_on": True,
+            "buy_amt": 1_000_000,
+            "max_daily_total_buy_on": False,
+            "max_daily_total_buy_amt": 0,
+            "rebuy_block_on": True,
+            "rebuy_block_period": "today",
+            "tp_apply": True,
+            "tp_val": 5.0,
+            "loss_apply": False,
+            "loss_val": 0,
+            "ts_apply": False,
+            "ts_start_val": 0,
+            "ts_drop_val": 0,
+            "risk_manager_on": True,
+            "daily_loss_limit_on": True,
+            "daily_loss_limit": -500_000,
+            "daily_loss_rate_limit_on": False,
+            "daily_loss_rate_limit": -5.0,
+            "consecutive_loss_limit_on": True,
+            "consecutive_loss_limit": 3,
+            "max_single_stock_exposure": 20_000_000,
+            "sector_min_rise_ratio_pct": 60.0,
+            "sector_min_trade_amt": 0.0,
+            "sector_max_targets": 3,
+            "sector_start_threshold_pct": 70.0,
+            "buy_block_rise_on": True,
+            "buy_block_rise_pct": 7.0,
+            "buy_block_fall_on": True,
+            "buy_block_fall_pct": -7.0,
+        }
+
+    def test_includes_all_section_headers(self):
+        text = _build_settings_lines(self._full_flat())
+        assert "자동매매" in text
+        assert "매수 조건" in text
+        assert "매도 조건" in text
+        assert "리스크 관리" in text
+        assert "업종 필터" in text
+
+    def test_auto_section_shows_master_buy_sell_mode(self):
+        text = _build_settings_lines(self._full_flat())
+        assert "마스터: ON" in text
+        assert "매수: ON" in text
+        assert "매도: OFF" in text
+        assert "투자모드: 테스트" in text
+        assert "09:00~15:20" in text
+
+    def test_real_mode_label(self):
+        flat = self._full_flat()
+        flat["trade_mode"] = "real"
+        text = _build_settings_lines(flat)
+        assert "투자모드: 실전" in text
+
+    def test_buy_section_includes_active_conditions(self):
+        text = _build_settings_lines(self._full_flat())
+        assert "최대 종목: 5개" in text
+        assert "종목당 금액" in text
+        assert "재매수 차단: today" in text
+        # 일일 총매수 한도 OFF → 미포함
+        assert "일일 총매수 한도" not in text
+
+    def test_buy_section_no_conditions_shows_placeholder(self):
+        flat = self._full_flat()
+        for k in ("max_stock_cnt_on", "buy_amt_on", "max_daily_total_buy_on", "rebuy_block_on"):
+            flat[k] = False
+        text = _build_settings_lines(flat)
+        assert "제한 없음" in text
+
+    def test_sell_section_includes_tp_only(self):
+        text = _build_settings_lines(self._full_flat())
+        assert "익절: +5.0%" in text
+        # 손절/트레일링 OFF → 미포함
+        assert "손절" not in text
+        assert "트레일링" not in text
+
+    def test_sell_section_no_conditions_shows_placeholder(self):
+        flat = self._full_flat()
+        flat["tp_apply"] = False
+        text = _build_settings_lines(flat)
+        assert "조건 없음" in text
+
+    def test_sell_section_trailing_format(self):
+        flat = self._full_flat()
+        flat["ts_apply"] = True
+        flat["ts_start_val"] = 10.0
+        flat["ts_drop_val"] = -3.0
+        text = _build_settings_lines(flat)
+        assert "트레일링: 시작 +10.0% / 하락 -3.0%" in text
+
+    def test_risk_section_with_manager_on(self):
+        text = _build_settings_lines(self._full_flat())
+        assert "리스크 매니저: ON" in text
+        assert "일일 손실 한도" in text
+        assert "연속 손실: 3회" in text
+        # 손실률 OFF → 미포함
+        assert "일일 손실률" not in text
+
+    def test_risk_section_manager_off_omits_sub_conditions(self):
+        flat = self._full_flat()
+        flat["risk_manager_on"] = False
+        text = _build_settings_lines(flat)
+        assert "리스크 매니저" not in text
+        assert "일일 손실 한도" not in text
+        # 종목 최대 노출은 항상 표시
+        assert "종목 최대 노출" in text
+
+    def test_risk_section_always_shows_single_stock_exposure(self):
+        text = _build_settings_lines(self._full_flat())
+        assert "종목 최대 노출: 2000만" in text
+
+    def test_sector_section_includes_all_fields(self):
+        text = _build_settings_lines(self._full_flat())
+        assert "최소 상승 비율: +60.0%" in text
+        assert "최대 업종 수: 3개" in text
+        assert "수신률 임계값: +70.0%" in text
+        assert "상승 차단: +7.0%" in text
+        assert "하락 차단: -7.0%" in text
+
+    def test_sector_section_omits_blocks_when_off(self):
+        flat = self._full_flat()
+        flat["buy_block_rise_on"] = False
+        flat["buy_block_fall_on"] = False
+        text = _build_settings_lines(flat)
+        assert "상승 차단" not in text
+        assert "하락 차단" not in text
+
+    def test_missing_keys_do_not_crash(self):
+        """빈 dict에도 예외 없이 기본값 처리 (P25 격리된 실패)."""
+        text = _build_settings_lines({})
+        assert "자동매매" in text
+        assert "매수 조건" in text
+        assert "제한 없음" in text
+        assert "조건 없음" in text
+
+
+# ── _cmd_settings ──────────────────────────────────────────────────────────────
+
+class TestCmdSettings:
+    """_cmd_settings — 설정 조회 명령어 핸들러 (조회 전용, 단계8)."""
+
+    @pytest.mark.asyncio
+    async def test_settings_sends_summary(self):
+        bot = TelegramBot()
+        flat = {
+            "time_scheduler_on": True,
+            "auto_buy_on": True,
+            "auto_sell_on": False,
+            "buy_time_start": "09:00",
+            "buy_time_end": "15:20",
+            "sell_time_start": "09:00",
+            "sell_time_end": "15:20",
+            "trade_mode": "test",
+            "max_stock_cnt_on": True,
+            "max_stock_cnt": 5,
+            "buy_amt_on": True,
+            "buy_amt": 1_000_000,
+            "rebuy_block_on": True,
+            "rebuy_block_period": "today",
+            "tp_apply": False,
+            "loss_apply": False,
+            "ts_apply": False,
+            "risk_manager_on": False,
+            "max_single_stock_exposure": 20_000_000,
+            "sector_min_rise_ratio_pct": 60.0,
+            "sector_min_trade_amt": 0.0,
+            "sector_max_targets": 3,
+            "sector_start_threshold_pct": 70.0,
+            "buy_block_rise_on": True,
+            "buy_block_rise_pct": 7.0,
+            "buy_block_fall_on": True,
+            "buy_block_fall_pct": -7.0,
+        }
+        with patch("backend.app.core.settings_file.load_integrated_system_settings", new_callable=AsyncMock, return_value=flat), \
+             patch.object(bot, "_send", new_callable=AsyncMock) as mock_send:
+            await bot._cmd_settings("tok", "123")
+        mock_send.assert_called_once()
+        text = mock_send.call_args[0][2]
+        assert "설정 조회" in text
+        assert "변경은 UI에서만" in text
+        assert "자동매매" in text
+        assert "업종 필터" in text
+
+    @pytest.mark.asyncio
+    async def test_settings_exception_sends_error(self):
+        bot = TelegramBot()
+        with patch("backend.app.core.settings_file.load_integrated_system_settings", new_callable=AsyncMock, side_effect=Exception("db fail")), \
+             patch.object(bot, "_send", new_callable=AsyncMock) as mock_send:
+            await bot._cmd_settings("tok", "123")
+        mock_send.assert_called_once()
+        text = mock_send.call_args[0][2]
+        assert "오류" in text
+
+
+# ── _handle_command 라우터: 설정 명령어 ─────────────────────────────────────────
+
+class TestHandleCommandSettingsRoute:
+    @pytest.mark.asyncio
+    async def test_cmd_settings_korean_routes(self):
+        bot = TelegramBot()
+        with patch.object(bot, "_cmd_settings", new_callable=AsyncMock) as mock_cmd:
+            await bot._handle_command("tok", "123", "설정")
+        mock_cmd.assert_called_once_with("tok", "123")
+
+    @pytest.mark.asyncio
+    async def test_cmd_settings_english_routes(self):
+        bot = TelegramBot()
+        with patch.object(bot, "_cmd_settings", new_callable=AsyncMock) as mock_cmd:
+            await bot._handle_command("tok", "123", "/settings")
+        mock_cmd.assert_called_once_with("tok", "123")
+
+    @pytest.mark.asyncio
+    async def test_cmd_settings_uppercase_english_lowered(self):
+        bot = TelegramBot()
+        with patch.object(bot, "_cmd_settings", new_callable=AsyncMock) as mock_cmd:
+            await bot._handle_command("tok", "123", "SETTINGS")
+        mock_cmd.assert_called_once_with("tok", "123")
+
+
+# ── _cmd_help: 설정 명령어 포함 ─────────────────────────────────────────────────
+
+class TestCmdHelpSettings:
+    @pytest.mark.asyncio
+    async def test_help_includes_settings_command(self):
+        bot = TelegramBot()
+        with patch.object(bot, "_send", new_callable=AsyncMock) as mock_send:
+            await bot._cmd_help("tok", "123")
+        text = mock_send.call_args[0][2]
+        assert "설정" in text
+        assert "조회" in text
 
 
 # ── TelegramBot.is_running ──────────────────────────────────────────────────────
