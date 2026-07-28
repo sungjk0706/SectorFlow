@@ -328,7 +328,7 @@ SectorFlow 전체 코드베이스를 `ARCHITECTURE.md`에 정의된 P1~P25, 총 
 | 파일 | 줄 수 | 규모 | 점검 완료 |
 |------|-------|------|----------|
 | `services/engine_bootstrap.py` | 206 | 대형 | ☑ |
-| `services/engine_snapshot.py` | 242 | 대형 | ☑ |
+| `services/engine_initial_data.py` | 242 | 대형 | ☑ |
 | `services/engine_cache.py` | 152 | 중형 | ☑ |
 | `services/engine_config.py` | 155 | 중형 | ☑ |
 | `services/engine_utils.py` | 68 | 중형 | ☑ |

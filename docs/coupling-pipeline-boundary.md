@@ -361,7 +361,7 @@
 | `market_phase` | `_apply_market_phase` (scheduler:758-759) | 페이즈 전환 시 | JIF/시간 기반 양쪽 공통 경로 (P10 SSOT) |
 | `confirmed_done` | `_fire_unified_confirmed_fetch` (scheduler:646) / `_do_unified_confirmed_fetch` (scheduler:657,660) / `_on_ws_subscribe_end` (907) / `_on_midnight` (1406) / `retry_pipeline_catchup_after_bootstrap` (727) | 확정 조회 트리거/완료/리셋 | 다중 writer이나 전부 scheduler 내부 (P10 단일 모듈) |
 | `krmx_remove_done` | `_on_krx_closing_auction_start` (623,627,632) / `_on_midnight` (1405) | 15:20 구독 해지 / 자정 리셋 | scheduler 내부 |
-| `last_realtime_reset_date` | `_mark_realtime_reset_done` (engine_snapshot, 단일 경로) | 07:58 실시간 필드 리셋 | P10 SSOT (세션 11) |
+| `last_realtime_reset_date` | `_mark_realtime_reset_done` (engine_initial_data, 단일 경로) | 07:58 실시간 필드 리셋 | P10 SSOT (세션 11) |
 | `last_ws_subscribe_start_date` | `_on_ws_subscribe_start` (876) / `_init_ws_subscribe_state` (1220) | 07:59 / 재기동 시 | 멱등성 가드 (P22) |
 | `last_krx_pre_subscribe_date` | `_on_krx_pre_subscribe` (589) | 08:59 | 멱등성 가드 |
 | `last_confirmed_download_date` | `_on_confirmed_download` (937) / `_on_midnight` (1407) | timetable.confirmed_download / 자정 | P22 멱등성 |

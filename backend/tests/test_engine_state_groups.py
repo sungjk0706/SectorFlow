@@ -387,15 +387,15 @@ class TestUpdateScatterInventory:
         )
 
     def test_sector_summary_cache_single_owner(self, write_locations_by_attr):
-        """sector_summary_cache: 단일 소유자(engine_snapshot)로 단일화 완료 (COUPLING-S1 후속).
+        """sector_summary_cache: 단일 소유자(engine_initial_data)로 단일화 완료 (COUPLING-S1 후속).
 
-        기존 7곳 직접 쓰기를 ``engine_snapshot._set_sector_summary()`` 헬퍼 호출로 전환.
+        기존 7곳 직접 쓰기를 ``engine_initial_data._set_sector_summary()`` 헬퍼 호출로 전환.
         외부 모듈의 직접 쓰기가 추가되면 회귀 감지.
         """
         locs = write_locations_by_attr.get("sector_summary_cache", set())
-        assert locs == {"backend/app/services/engine_snapshot.py"}, (
+        assert locs == {"backend/app/services/engine_initial_data.py"}, (
             f"sector_summary_cache 단일 소유자 위반: {locs} "
-            f"(예상: engine_snapshot.py만 — _set_sector_summary 헬퍼 경유)"
+            f"(예상: engine_initial_data.py만 — _set_sector_summary 헬퍼 경유)"
         )
 
     def test_positions_scatter_3_locations(self, write_locations_by_attr):
@@ -447,13 +447,13 @@ class TestOwnershipContractSession11:
         return locations
 
     def test_last_realtime_reset_date_single_owner(self, write_locations_by_attr_v2):
-        """last_realtime_reset_date (D): 쓰기는 engine_snapshot.py에만 존재 (세션 11 단일화).
+        """last_realtime_reset_date (D): 쓰기는 engine_initial_data.py에만 존재 (세션 11 단일화).
 
-        헬퍼: engine_snapshot._mark_realtime_reset_done()
+        헬퍼: engine_initial_data._mark_realtime_reset_done()
         호출부 (engine_cache, daily_time_scheduler)는 헬퍼를 경유하므로 직접 쓰기 없음.
         """
         locs = write_locations_by_attr_v2.get("last_realtime_reset_date", set())
-        expected = {"backend/app/services/engine_snapshot.py"}
+        expected = {"backend/app/services/engine_initial_data.py"}
         assert locs == expected, (
             f"last_realtime_reset_date 쓰기 위치 불일치.\n"
             f"예상: {expected}\n실제: {locs}\n"

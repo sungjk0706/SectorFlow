@@ -294,7 +294,7 @@ class TestLoadCachesPrebootWsWindow:
             patch("backend.app.services.engine_account_notify._rebuild_layout_cache"),
             patch("backend.app.services.engine_account_notify.notify_cache"),
             patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock, return_value=True),
-            patch("backend.app.services.engine_snapshot._reset_realtime_fields", new_callable=AsyncMock) as mock_reset,
+            patch("backend.app.services.engine_initial_data._reset_realtime_fields", new_callable=AsyncMock) as mock_reset,
             patch("backend.app.services.daily_time_scheduler.retry_pipeline_catchup_after_bootstrap", new_callable=AsyncMock),
             patch.object(engine_cache.asyncio, "create_task", side_effect=swallow_coro_side_effect),
         ):
@@ -346,7 +346,7 @@ class TestLoadCachesPrebootWsWindow:
             patch("backend.app.services.engine_account_notify._rebuild_layout_cache"),
             patch("backend.app.services.engine_account_notify.notify_cache"),
             patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock, return_value=True),
-            patch("backend.app.services.engine_snapshot._reset_realtime_fields", new_callable=AsyncMock),
+            patch("backend.app.services.engine_initial_data._reset_realtime_fields", new_callable=AsyncMock),
             patch("backend.app.services.sector_data_provider.recompute_sector_summary_now", new_callable=AsyncMock) as mock_recompute,
             patch("backend.app.services.daily_time_scheduler.retry_pipeline_catchup_after_bootstrap", new_callable=AsyncMock),
             patch.object(engine_cache.asyncio, "create_task", side_effect=swallow_coro_side_effect),

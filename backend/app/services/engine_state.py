@@ -38,7 +38,7 @@
   - login_ok: 5곳 (kiwoom_connector, ls_connector ×2, engine_lifecycle, engine_loop,
                 engine_ws_dispatch)
   - sector_summary_cache: 7곳 (engine_lifecycle, daily_time_scheduler ×2,
-                engine_sector_confirm ×2, sector_data_provider, engine_snapshot)
+                engine_sector_confirm ×2, sector_data_provider, engine_initial_data)
   - confirmed_done: 5곳 (daily_time_scheduler 단일 파일 내 5곳)
   - positions: 3곳 (engine_account, engine_lifecycle, web/routes/settings)
   - broker_rest_totals: 3곳 (pipeline_compute_tick_handlers, engine_account,
@@ -47,7 +47,7 @@
 
 D/E/F 소유권 계약 (세션 11 — CACHE-STATE-IMPL-11, 비거래 상태 단일화):
   단일화 완료 (헬퍼 경유, 외부 직접 쓰기 제거):
-    - last_realtime_reset_date (D) → engine_snapshot._mark_realtime_reset_done()
+    - last_realtime_reset_date (D) → engine_initial_data._mark_realtime_reset_done()
         호출부: engine_cache, daily_time_scheduler ×2
     - confirmed_refresh_running_confirmed (F) → market_close_pipeline (소유 모듈 직접 쓰기)
         외부 예외 경로: daily_time_scheduler → _reset_confirmed_refresh_running() 헬퍼 경유

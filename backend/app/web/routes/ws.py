@@ -79,13 +79,13 @@ async def _send_initial_snapshot_delayed(websocket: WebSocket, ws_manager) -> No
         # 업종순위 계산은 백그라운드 태스크로 실행되며, 완료 시 WS로 전송됨
 
         # initial-snapshot 전송 (업종순위 계산 완료와 무관하게 즉시 전송)
-        from backend.app.services.engine_snapshot import build_initial_snapshot
+        from backend.app.services.engine_initial_data import build_initial_snapshot
 
         snapshot = await build_initial_snapshot()
         await ws_manager.send_to(websocket, "initial-snapshot", snapshot)
 
         # sector-stocks-refresh 전송
-        from backend.app.services.engine_snapshot import build_sector_stocks_payload
+        from backend.app.services.engine_initial_data import build_sector_stocks_payload
 
         stocks_payload = await build_sector_stocks_payload()
         await ws_manager.send_to(websocket, "sector-stocks-refresh", stocks_payload)

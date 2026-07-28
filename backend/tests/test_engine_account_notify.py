@@ -530,7 +530,7 @@ class TestNotifyCacheConcurrencyScenarios:
     def test_scenario_4_reset_realtime_fields_clears_baseline_and_reinit_restores(self):
         """시나리오 4: _reset_realtime_fields → clear_all() 전역 초기화 + _initialized 리셋 + 재초기화 정상.
 
-        engine_snapshot._reset_realtime_fields가 notify_cache.clear_all()을 호출하여
+        engine_initial_data._reset_realtime_fields가 notify_cache.clear_all()을 호출하여
         모든 delta 기준점을 초기화한다. 본 시점은 엔진 전체 재초기화(장마감·개시 등)이므로
         다중 연결 동시 초기화 정상 (P25 격리 — 한 연결 실패가 다른 연결 블로킹하지 않음).
         세션 6 해소: clear_all이 _initialized=False로 리셋 → 다음 init_sent_caches가

@@ -837,7 +837,7 @@ async def _on_realtime_fields_reset() -> None:
         gc.disable()
         logger.info("[스케줄] 장중 메모리 정리 비활성화 (실시간 처리 지연 방지)")
         # 실시간 필드 초기화 (전일 확정 데이터 제거)
-        from backend.app.services.engine_snapshot import _reset_realtime_fields, _mark_realtime_reset_done
+        from backend.app.services.engine_initial_data import _reset_realtime_fields, _mark_realtime_reset_done
         await _reset_realtime_fields()
         # 수신율 임계값 게이트 리셋 — 새 구독 세션 시작 시 임계값 대기 상태로 전환
         from backend.app.pipelines.pipeline_compute import reset_sector_threshold
@@ -845,7 +845,7 @@ async def _on_realtime_fields_reset() -> None:
         # delta 비교 캐시 초기화 → 다음 sector-scores 전송이 전체 데이터로 나감
         from backend.app.services.engine_account_notify import notify_cache
         notify_cache.prev_scores = []
-        from backend.app.services.engine_snapshot import _set_sector_summary
+        from backend.app.services.engine_initial_data import _set_sector_summary
         _set_sector_summary(None, "daily_time_scheduler.pre_ws_subscribe_reset")
         # last_realtime_reset_date 쓰기는 _mark_realtime_reset_done() 단일 경로 (세션 11 P10 SSOT)
         _mark_realtime_reset_done(today_str)
@@ -1223,7 +1223,7 @@ async def _init_ws_subscribe_state() -> None:
         # 캐시 로드 전이면 스킵 — engine_cache._load_caches_preboot()에서 DB 로드 후 수행
         if engine_state.state.preboot_cache_loaded:
             logger.info("[스케줄] 구독 구간 내 시작 — 실시간 필드 초기화")
-            from backend.app.services.engine_snapshot import _reset_realtime_fields, _mark_realtime_reset_done
+            from backend.app.services.engine_initial_data import _reset_realtime_fields, _mark_realtime_reset_done
             await _reset_realtime_fields()
             # last_realtime_reset_date 쓰기는 _mark_realtime_reset_done() 단일 경로 (세션 11 P10 SSOT)
             _mark_realtime_reset_done(today_str)
@@ -1233,7 +1233,7 @@ async def _init_ws_subscribe_state() -> None:
         try:
             from backend.app.services.engine_account_notify import notify_cache
             notify_cache.prev_scores = []
-            from backend.app.services.engine_snapshot import _set_sector_summary
+            from backend.app.services.engine_initial_data import _set_sector_summary
             _set_sector_summary(None, "daily_time_scheduler.ws_subscribe_in_session_reset")
         except Exception as e:
             logger.warning("[시스템] 캐시 초기화 실패: %s", e, exc_info=True)

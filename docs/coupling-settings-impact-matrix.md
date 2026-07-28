@@ -45,7 +45,7 @@
 | **2. 기본값 보충** | `settings_defaults.DEFAULT_USER_SETTINGS` / `DEFAULT_SYSTEM_CONFIG` | DB 누락 시 채움 (P10 SSOT) |
 | **3. 정규화** | `engine_settings.build_engine_settings_dict()` 9개 `_build_*` 그룹 | 타입 캐스팅 + 복호화 + 키 rename + 파생 필드 생성 |
 | **4. 메모리 캐시** | `engine_state.state.integrated_system_settings_cache` | `.clear() + .update(normalized)` 갱신 |
-| **5. 서비스 소비자** | `engine_config`, `engine_service`, `trading`, `buy_order_executor`, `engine_loop`, `engine_cache`, `engine_snapshot`, `daily_time_scheduler`, `market_close_pipeline`, `engine_sector_confirm`, `sector_data_provider`, `connector_manager`, `broker_router`, `kiwoom_connector`, `ls_connector`, `kiwoom_providers`, `ls_providers`, `telegram_bot`, `trade_history`, `engine_account_notify`, `engine_ws_reg`, `engine_strategy_core`, `engine_lifecycle`, `engine_ws`, `engine_ws_dispatch`, `ws_subscribe_control`, `engine_bootstrap`, `pipeline_compute`, `pipeline_compute_tick_handlers`, `settlement_engine`, `engine_account` | `cache["키"]` 직접 read 또는 `cache.get("키", 기본)` read |
+| **5. 서비스 소비자** | `engine_config`, `engine_service`, `trading`, `buy_order_executor`, `engine_loop`, `engine_cache`, `engine_initial_data`, `daily_time_scheduler`, `market_close_pipeline`, `engine_sector_confirm`, `sector_data_provider`, `connector_manager`, `broker_router`, `kiwoom_connector`, `ls_connector`, `kiwoom_providers`, `ls_providers`, `telegram_bot`, `trade_history`, `engine_account_notify`, `engine_ws_reg`, `engine_strategy_core`, `engine_lifecycle`, `engine_ws`, `engine_ws_dispatch`, `ws_subscribe_control`, `engine_bootstrap`, `pipeline_compute`, `pipeline_compute_tick_handlers`, `settlement_engine`, `engine_account` | `cache["키"]` 직접 read 또는 `cache.get("키", 기본)` read |
 | **6. API 응답** | `GET /api/settings` `build_masked_settings_dict()` + `PATCH /api/settings/{field}` `apply_settings_updates()` → `apply_settings_change()` 디스패처 | 마스킹/검증/후처리 |
 | **7. UI 표시·저장** | `AppSettings` 타입 + 7개 설정 탭 + WS `settings-changed` 이벤트 | `saveSection({키:값})` → PATCH |
 
@@ -239,7 +239,7 @@ GET /api/settings
 | `buy_block_fall_on` | `True` | boolean | 마이그레이션 추론 | (파이프라인) | `_apply_sector_ui_change` | sector-settings |
 | `buy_block_fall_pct` | `-7.0` | number | `float()` (수치 검증 `-100~0`, 음수만) | (파이프라인) | `_apply_sector_ui_change` | sector-settings |
 | `sector_min_trade_amt` | `0.0` | number | `float()` (수치 검증 `1~100000`) | `engine_sector_confirm.py:117,225`, `sector_data_provider.py:74,266`, `engine_config.py:84` (변경 감지) | `_apply_sector_ui_change` + `on_filter_settings_changed` | sector-settings |
-| `sector_max_targets` | `3` | number | `int()` | `engine_account_notify.py:320`, `engine_snapshot.py:63`, `web/routes/ws.py:118` | `_apply_sector_ui_change` | sector-settings |
+| `sector_max_targets` | `3` | number | `int()` | `engine_account_notify.py:320`, `engine_initial_data.py:63`, `web/routes/ws.py:118` | `_apply_sector_ui_change` | sector-settings |
 | `sector_sort_keys` | `["score"]` | json | 외래/기관 net 제거 필터 | (파이프라인) | `_apply_sector_ui_change` | sector-settings |
 | `sector_stock_layout` | `[]` | json (runtime) | (정규화 제외 — `_RUNTIME_ONLY_KEYS` 보존) | `market_close_pipeline.py:106,1148`, `engine_cache.py:43,54`, `web/routes/settings.py:129,140` | (레이아웃 재계산은 `_apply_sector_ui_change` 외부 — 별도 경로) | (UI 간접) |
 | `sector_start_threshold_pct` | `70.0` | number | `float()` | `pipeline_compute.py:598` | (일반) | sector-settings |
@@ -277,7 +277,7 @@ GET /api/settings
 | 키 | 기본값 | DB 타입 | 정규화 | 캐시 read | PATCH 후처리 | UI |
 |----|--------|---------|--------|-----------|--------------|-----|
 | `sell_per_symbol` | `{}` | json | `normalize_symbol_override_map()` (종목코드 6자리 zero-pad) | `engine_lifecycle.py:326` | (일반) | (sell-settings 종목별) |
-| `broker_config` | `{}` | json | `[derive] _normalize_broker_config()` — `{websocket,order,sector,auth}` 모두 현재 broker로 채움 | `broker_router.py:65,97`, `engine_loop.py:58`, `connector_manager.py:40`, `engine_snapshot.py:78` | (일반 — 변경 시 의도적 무효화 경로 없음) | (UI 노출 없음) |
+| `broker_config` | `{}` | json | `[derive] _normalize_broker_config()` — `{websocket,order,sector,auth}` 모두 현재 broker로 채움 | `broker_router.py:65,97`, `engine_loop.py:58`, `connector_manager.py:40`, `engine_initial_data.py:78` | (일반 — 변경 시 의도적 무효화 경로 없음) | (UI 노출 없음) |
 
 > `broker_config`는 DB에 `{}`로 저장되어도 정규화가 모든 값을 현재 `broker`로 파생 채움. 즉 DB 원본과 캐시 내용이 다름 (P10 SSOT — 파생은 정규화 시점에 재계산, 원본은 빈 dict 유지). 사용자가 임의 브로커 매핑을 저장하는 경로는 현재 없음 (코드 주석 "기본값: 동일 브로커 사용").
 
@@ -311,7 +311,7 @@ GET /api/settings
 
 | 키 | 기본값 | DB 타입 | 정규화 | 캐시 read | PATCH 후처리 | UI |
 |----|--------|---------|--------|-----------|--------------|-----|
-| `daily_summary_days` | `20` | number | (정규화 제외 — `_build_*` 미포함) | `trade_history.py:190,213`, `engine_snapshot.py:139` | (일반, 수치 검증 `0~365`) | (수익현황 페이지) |
+| `daily_summary_days` | `20` | number | (정규화 제외 — `_build_*` 미포함) | `trade_history.py:190,213`, `engine_initial_data.py:139` | (일반, 수치 검증 `0~365`) | (수익현황 페이지) |
 
 > `daily_summary_days`도 `build_engine_settings_dict()`에 미포함. DB 원본이 캐시에 주입되는 경로 확인 필요. 캐시 read는 3곳에서 `cache.get("daily_summary_days", 20)` 안전 패턴 사용.
 
@@ -462,7 +462,7 @@ export const MASKED_FIELDS = new Set([
 
 ### 6.2 캐시 소비자 테스트 (integrated_system_settings_cache 모킹 22개 파일)
 
-`test_trading.py`(20), `test_daily_time_scheduler.py`(24), `test_engine_sector_confirm.py`(11), `test_engine_snapshot.py`(12), `test_pipeline_compute.py`(13), `test_buy_order_executor.py`(13), `test_risk_manager.py`(22), `test_engine_settings.py`(7), `test_engine_loop.py`(5), `test_web_routes.py`(8), `test_broker_router.py`(8), `test_telegram_bot.py`(15), `test_engine_bootstrap.py`(3), `test_market_close_pipeline.py`(4), `test_engine_ws.py`(3), `test_engine_cache.py`(2), `test_engine_state_groups.py`(2), `test_engine_ws_dispatch.py`(5), `test_engine_ws_dispatch_isolation.py`(3), `test_trade_history.py`(6), `test_web_app.py`(2), `test_web_ws_routes.py`(8), `test_web_stock_classification.py`(1), `test_settlement_engine.py`(1), `test_settlement_verification.py`(1), `test_dry_run_fill_event.py`(1), `test_connector_manager.py`(2), `test_ls_connector.py`(2), `test_kiwoom_connector.py`(2), `test_ls_providers.py`(1), `test_kiwoom_providers.py`(1), `test_sector_data_provider.py`(3), `test_settings_boost_order_ratio.py`(5)
+`test_trading.py`(20), `test_daily_time_scheduler.py`(24), `test_engine_sector_confirm.py`(11), `test_engine_initial_data.py`(12), `test_pipeline_compute.py`(13), `test_buy_order_executor.py`(13), `test_risk_manager.py`(22), `test_engine_settings.py`(7), `test_engine_loop.py`(5), `test_web_routes.py`(8), `test_broker_router.py`(8), `test_telegram_bot.py`(15), `test_engine_bootstrap.py`(3), `test_market_close_pipeline.py`(4), `test_engine_ws.py`(3), `test_engine_cache.py`(2), `test_engine_state_groups.py`(2), `test_engine_ws_dispatch.py`(5), `test_engine_ws_dispatch_isolation.py`(3), `test_trade_history.py`(6), `test_web_app.py`(2), `test_web_ws_routes.py`(8), `test_web_stock_classification.py`(1), `test_settlement_engine.py`(1), `test_settlement_verification.py`(1), `test_dry_run_fill_event.py`(1), `test_connector_manager.py`(2), `test_ls_connector.py`(2), `test_kiwoom_connector.py`(2), `test_ls_providers.py`(1), `test_kiwoom_providers.py`(1), `test_sector_data_provider.py`(3), `test_settings_boost_order_ratio.py`(5)
 
 > 캐시 모킹은 `state.integrated_system_settings_cache`를 dict로 직접 채워 테스트. 즉 캐시 소비자가 실제 `build_engine_settings_dict()` 정규화를 거치지 않고 테스트되는 경우가 많음 (P22 데이터 정합성 — 정규화 누락 키 테스트 시 주의).
 

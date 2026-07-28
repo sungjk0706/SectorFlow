@@ -279,7 +279,7 @@ async def recompute_sector_summary_now() -> None:
             held_codes=_held,
             bought_today_codes=_bought_today,
         )
-        from backend.app.services.engine_snapshot import _set_sector_summary
+        from backend.app.services.engine_initial_data import _set_sector_summary
         _set_sector_summary(_ss, "sector_data_provider.recompute_sector_summary")
         cancel_sector_recompute()
 

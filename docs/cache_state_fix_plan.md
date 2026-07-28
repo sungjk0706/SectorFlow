@@ -123,7 +123,7 @@
 
 - 핵심: `frontend/src/stores/hotStore.ts`, `frontend/src/binding.ts`
 - 화면: `frontend/src/pages/buy-target.ts`, `frontend/src/components/sector-stock.ts`
-- 백엔드 계약: `backend/app/services/sector_data_provider.py`, `backend/app/services/engine_account_notify.py`, `backend/app/services/engine_snapshot.py`
+- 백엔드 계약: `backend/app/services/sector_data_provider.py`, `backend/app/services/engine_account_notify.py`, `backend/app/services/engine_initial_data.py`
 - 타입/테스트: `frontend/src/types/index.ts`, `frontend` 테스트
 
 #### 예상 작업량
@@ -167,7 +167,7 @@
 
 #### 영향 범위
 
-- 핵심: `backend/app/services/engine_account_notify.py`, `backend/app/services/engine_snapshot.py`
+- 핵심: `backend/app/services/engine_account_notify.py`, `backend/app/services/engine_initial_data.py`
 - WS 연결: `backend/app/web/routes/ws.py`, `backend/app/web/ws_manager.py`
 - 연관: `backend/app/services/engine_lifecycle.py`, `backend/app/services/engine_cache.py`
 - 테스트: WebSocket manager/route/notification 관련 백엔드 테스트
@@ -238,7 +238,7 @@
 #### 영향 범위
 
 - 핵심: `backend/app/services/sector_data_provider.py`, `backend/app/services/engine_account_notify.py`
-- WS/스냅샷: `backend/app/services/engine_snapshot.py`, `backend/app/web/routes/ws.py`
+- WS/스냅샷: `backend/app/services/engine_initial_data.py`, `backend/app/web/routes/ws.py`
 - 프론트: `frontend/src/stores/hotStore.ts`, `frontend/src/binding.ts`, `frontend/src/pages/buy-target.ts`
 - 타입/테스트: `frontend/src/types/index.ts`, 백엔드·프론트 관련 테스트
 

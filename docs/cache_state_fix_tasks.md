@@ -127,7 +127,7 @@
 ### 세션 5 — `notify_cache` 책임과 재연결 경쟁 시나리오 검증
 
 - **목표**: 전역 delta 기준점과 연결별 초기 스냅샷 상태의 실제 책임을 분리해 확인한다.
-- **수정 파일 목록**: `backend/app/services/engine_account_notify.py`, `engine_snapshot.py`, `backend/app/web/routes/ws.py`, `ws_manager.py`, 관련 테스트.
+- **수정 파일 목록**: `backend/app/services/engine_account_notify.py`, `engine_initial_data.py`, `backend/app/web/routes/ws.py`, `ws_manager.py`, 관련 테스트.
 - **파일별 변경점**: 새로고침·강제 재연결·다중 탭·스냅샷 중 실시간 이벤트 시나리오를 테스트로 고정하고 필요한 변경 계약을 정의한다.
 - **변경하지 않을 범위**: 이벤트 버스 도입, 단일 프로세스 구조 변경, 거래 로직.
 - **검증 방법**: 관련 WebSocket 테스트와 백엔드 전체 테스트.
@@ -163,7 +163,7 @@
 ### 세션 8 — 매수 후보 payload 계약 정리
 
 - **목표**: 백엔드 초기 payload/delta와 프론트 읽기 모델의 필드 의미를 일치시킨다.
-- **수정 파일 목록**: `backend/app/services/sector_data_provider.py`, `engine_account_notify.py`, `engine_snapshot.py`, `backend/app/web/routes/ws.py`, `frontend/src/stores/hotStore.ts`, `binding.ts`, `pages/buy-target.ts`, 타입·테스트.
+- **수정 파일 목록**: `backend/app/services/sector_data_provider.py`, `engine_account_notify.py`, `engine_initial_data.py`, `backend/app/web/routes/ws.py`, `frontend/src/stores/hotStore.ts`, `binding.ts`, `pages/buy-target.ts`, 타입·테스트.
 - **파일별 변경점**: 정적 후보 필드와 실시간 필드를 분리하고 null·미수신·원천 부재 표시 규칙을 고정한다. `_BUY_TARGET_CMP_KEYS`와 프론트 비교 기준을 대조한다.
 - **변경하지 않을 범위**: 매수 후보 선정·순위·가드·차단 사유.
 - **검증 방법**: 백엔드 테스트, `cd frontend && npm run typecheck && npm run test && npm run build`.

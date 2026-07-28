@@ -470,8 +470,8 @@ class TestSendInitialSnapshotDelayed:
              patch("backend.app.core.sector_mapping.get_merged_all_sectors", new_callable=AsyncMock, return_value=[]), \
              patch("backend.app.services.sector_data_provider.get_all_sector_stocks", new_callable=AsyncMock, return_value=[]), \
              patch("backend.app.core.sector_stock_cache.assemble_filter_summary", return_value=""), \
-             patch("backend.app.services.engine_snapshot.build_initial_snapshot", new_callable=AsyncMock, return_value={"_v": 1}), \
-             patch("backend.app.services.engine_snapshot.build_sector_stocks_payload", new_callable=AsyncMock, return_value={"_v": 1}), \
+             patch("backend.app.services.engine_initial_data.build_initial_snapshot", new_callable=AsyncMock, return_value={"_v": 1}), \
+             patch("backend.app.services.engine_initial_data.build_sector_stocks_payload", new_callable=AsyncMock, return_value={"_v": 1}), \
              patch("backend.app.pipelines.pipeline_compute.is_sector_threshold_passed", return_value=True), \
              patch("backend.app.services.sector_data_provider.get_sector_scores_snapshot", return_value=([], 0)), \
              patch("backend.app.services.sector_data_provider.get_buy_targets_sector_stocks", new_callable=AsyncMock, return_value=[]), \
@@ -503,8 +503,8 @@ class TestSendInitialSnapshotDelayed:
              patch("backend.app.core.sector_mapping.get_merged_all_sectors", new_callable=AsyncMock, return_value=[]), \
              patch("backend.app.services.sector_data_provider.get_all_sector_stocks", new_callable=AsyncMock, return_value=[]), \
              patch("backend.app.core.sector_stock_cache.assemble_filter_summary", return_value=""), \
-             patch("backend.app.services.engine_snapshot.build_initial_snapshot", new_callable=AsyncMock, return_value={"_v": 1}), \
-             patch("backend.app.services.engine_snapshot.build_sector_stocks_payload", new_callable=AsyncMock, return_value={"_v": 1}), \
+             patch("backend.app.services.engine_initial_data.build_initial_snapshot", new_callable=AsyncMock, return_value={"_v": 1}), \
+             patch("backend.app.services.engine_initial_data.build_sector_stocks_payload", new_callable=AsyncMock, return_value={"_v": 1}), \
              patch("backend.app.pipelines.pipeline_compute.is_sector_threshold_passed", return_value=False), \
              patch("backend.app.services.sector_data_provider.get_buy_targets_sector_stocks", new_callable=AsyncMock, return_value=[]), \
              patch("backend.app.services.engine_lifecycle.get_engine_status", return_value={}):
@@ -532,8 +532,8 @@ class TestSendInitialSnapshotDelayed:
              patch("backend.app.core.sector_mapping.get_merged_all_sectors", new_callable=AsyncMock, return_value=[]), \
              patch("backend.app.services.sector_data_provider.get_all_sector_stocks", new_callable=AsyncMock, return_value=[]), \
              patch("backend.app.core.sector_stock_cache.assemble_filter_summary", return_value=""), \
-             patch("backend.app.services.engine_snapshot.build_initial_snapshot", new_callable=AsyncMock, return_value={"_v": 1}), \
-             patch("backend.app.services.engine_snapshot.build_sector_stocks_payload", new_callable=AsyncMock, return_value={"_v": 1}), \
+             patch("backend.app.services.engine_initial_data.build_initial_snapshot", new_callable=AsyncMock, return_value={"_v": 1}), \
+             patch("backend.app.services.engine_initial_data.build_sector_stocks_payload", new_callable=AsyncMock, return_value={"_v": 1}), \
              patch("backend.app.pipelines.pipeline_compute.is_sector_threshold_passed", return_value=True), \
              patch("backend.app.services.sector_data_provider.get_sector_scores_snapshot", return_value=([], 0)), \
              patch("backend.app.services.sector_data_provider.get_buy_targets_sector_stocks", new_callable=AsyncMock, return_value=targets), \

@@ -181,7 +181,7 @@ async def _reset_realtime_fields() -> None:
             pos["ask_depth"] = None
 
     # 업종 점수 캐시 초기화 (실시간 데이터 재계산 유도)
-    _set_sector_summary(None, "engine_snapshot.reset_realtime_fields")
+    _set_sector_summary(None, "engine_initial_data.reset_realtime_fields")
     # 캡슐화된 notify_cache.clear_all() 호출로 결합성 제거.
     # 본 시점은 엔진 전체 재초기화(장마감·개시 등)이며 다중 WS 연결 동시 초기화 정상.
     # clear_all은 _initialized=False로 리셋 → 다음 init_sent_caches가 정상 재설정.
@@ -246,7 +246,7 @@ def _set_sector_summary(summary: "SectorSummary | None", source: str) -> None:
       - ``engine_lifecycle.reset_for_restart`` — 재기동 시 리셋
       - ``daily_time_scheduler._on_pre_ws_subscribe`` — 07:58 사전 리셋
       - ``daily_time_scheduler._on_ws_subscribe_start`` — 구독 구간 내 시작 리셋
-      - ``engine_snapshot._reset_realtime_fields`` — WS 구독 시작 시 리셋
+      - ``engine_initial_data._reset_realtime_fields`` — WS 구독 시작 시 리셋
       - ``engine_sector_confirm._incremental_recompute`` — 증분 재계산 갱신
       - ``engine_sector_confirm._full_recompute`` — 전체 재계산 갱신
       - ``sector_data_provider.recompute_sector_summary`` — 사용자 요청 재계산 갱신

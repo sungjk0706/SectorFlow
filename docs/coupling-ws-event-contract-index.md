@@ -26,7 +26,7 @@ WebSocket 이벤트의 **이름 · 채널 · producer · payload 필드 · Store
 - 백엔드 producer 허브: `backend/app/services/engine_account_notify.py`(`_broadcast`/`_safe_broadcast` 래퍼 + 11개 notify_* 함수)
 - 백엔드 페이지 분리: `backend/app/services/engine_account_broadcast.py`(account-update 경량화/전체)
 - 백엔드 큐 기반 producer: `backend/app/pipelines/pipeline_gateway.py`(`broadcast_queue` 컨슘 → ws_manager.broadcast)
-- 백엔드 직접 producer: `trade_history.py`, `engine_loop.py`, `trading.py`, `daily_time_scheduler.py`, `engine_ws_dispatch.py`, `engine_account.py`, `ws_subscribe_control.py`, `engine_snapshot.py`, `pipeline_compute.py`, `pipeline_compute_tick_handlers.py`, `market_close_pipeline.py`, `stock_classification.py`(라우트), `settings.py`(라우트)
+- 백엔드 직접 producer: `trade_history.py`, `engine_loop.py`, `trading.py`, `daily_time_scheduler.py`, `engine_ws_dispatch.py`, `engine_account.py`, `ws_subscribe_control.py`, `engine_initial_data.py`, `pipeline_compute.py`, `pipeline_compute_tick_handlers.py`, `market_close_pipeline.py`, `stock_classification.py`(라우트), `settings.py`(라우트)
 - 프론트엔드 바인딩: `frontend/src/binding.ts` `bindWSToStore()` (36개 onEvent 핸들러)
 - 프론트엔드 WS 클라: `frontend/src/api/ws.ts` `WSClient`(3 채널 분리, onEvent Map)
 - 프론트엔드 Store: `hotStore.ts`(14 액션), `uiStore.ts`(15 액션), `stockClassificationStore.ts`(1 액션)
@@ -89,7 +89,7 @@ WebSocket 이벤트의 **이름 · 채널 · producer · payload 필드 · Store
 | 14 | `confirmed-progress` | prices | `market_close_pipeline.py:65` (broadcast_queue → gateway) | binding.ts:235 | `applyAvgAmtProgress` | 장마감 파이프라인 진행 시 |
 | 15 | `sell-history-update` | prices | `trade_history.py:212` (broadcast) | binding.ts:239 | `applySellHistoryUpdate` | 매도 내역 전체 갱신 시 |
 | 16 | `buy-history-update` | prices | `trade_history.py:225` (broadcast) | binding.ts:243 | `applyBuyHistoryUpdate` | 매수 내역 전체 갱신 시 |
-| 17 | `realtime-reset` | prices | `engine_snapshot.py:209` (broadcast) | binding.ts:247 | `applyRealtimeReset` | 엔진 재초기화 시 |
+| 17 | `realtime-reset` | prices | `engine_initial_data.py:213` (broadcast) | binding.ts:247 | `applyRealtimeReset` | 엔진 재초기화 시 |
 | 18 | `market-phase` | prices | `daily_time_scheduler.py:761,1137` (broadcast), `engine_ws_dispatch.py:343,372` (broadcast) | binding.ts:252 | `applyMarketPhase` | 장 페이즈/카운트다운 변경 시 |
 | 19 | `receive-rate` | prices | `pipeline_compute.py:97` (broadcast_queue → gateway) | binding.ts:265 | 인라인 setState (`receiveRate`) | 수신율 계산 시 |
 | 20 | `sector-scores` | prices | `engine_account_notify.py:267` (broadcast) | binding.ts:274 | `applySectorScores` + 인라인 setState (`sectorScoresDelta`, `receiveRate`) | 업종순위 변경 시 (delta/전체) |
@@ -231,7 +231,7 @@ WebSocket 이벤트의 **이름 · 채널 · producer · payload 필드 · Store
 - **계약 상태**: ✅ 단일 producer
 
 #### `realtime-reset` (실시간 데이터 리셋)
-- **Producer**: `engine_snapshot.py:209` (broadcast)
+- **Producer**: `engine_initial_data.py:213` (broadcast)
 - **Payload**: `{}` (빈 dict)
 - **Consumer**: binding.ts:247 → `applyRealtimeReset()`
 - **수정 상태**: hotStore(`sectorStocks`, `buyTargets`, `positions`)

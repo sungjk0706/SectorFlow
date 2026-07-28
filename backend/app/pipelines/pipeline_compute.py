@@ -183,7 +183,7 @@ def _calc_market_receive_rate(codes: list[str], received_set: set[str]) -> dict:
 
 
 def get_current_receive_rate() -> dict:
-    """현재 수신율 반환 (notify_desktop_sector_scores, engine_snapshot, ws.py에서 사용).
+    """현재 수신율 반환 (notify_desktop_sector_scores, engine_initial_data, ws.py에서 사용).
 
     분리 구조: {krx: {received, total, pct}, nxt: {received, total, pct}}
     """

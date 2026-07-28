@@ -228,8 +228,8 @@
 - **초기값**: `[]` (line 188)
 - **owner**: 다중 writer (3곳: engine_account, web/routes/settings, kiwoom_account_parsing) — 단일화 후보
 - **writers (운영)**: `engine_lifecycle.py:138` ([] 리셋), `engine_account.py:255` (REST merged 재할당, _apply_account_yield_to_state), `kiwoom_account_parsing.py:126` (positions.append, real04_official_apply_position_line — 신규 포지션 추가), `web/routes/settings.py:132` ([] 리셋, _reset_positions_and_account)
-- **readers (운영)**: `engine_bootstrap.py:34, 36, 38`, `engine_account.py:53, 301, 350-353, 389, 402`, `engine_snapshot.py:163`, `buy_order_executor.py:103`, `pipeline_compute_tick_handlers.py:168, 194`
-- **readers (테스트)**: `test_broker_change`, `test_risk_manager`, `test_engine_snapshot`, `test_pipeline_compute`, `test_engine_account`, `test_engine_state_groups.py:48`
+- **readers (운영)**: `engine_bootstrap.py:34, 36, 38`, `engine_account.py:53, 301, 350-353, 389, 402`, `engine_initial_data.py:163`, `buy_order_executor.py:103`, `pipeline_compute_tick_handlers.py:168, 194`
+- **readers (테스트)**: `test_broker_change`, `test_risk_manager`, `test_engine_initial_data`, `test_pipeline_compute`, `test_engine_account`, `test_engine_state_groups.py:48`
 - **생명주기**: 세션 시작 (bootstrap) + 틱 단위 (REAL 04) + 사용자 요청 (settings reset)
 - **비고**: docstring(세션 10) "갱신 분산 주의 속성 - 3곳" 일치. `kiwoom_account_parsing`의 append는 REAL 04 이벤트 핸들러 경로. `web/routes/settings`의 리셋은 사용자 요청. 단일화 시 append 경로와 리셋 경로를 별도 헬퍼로 분리 검토.
 
@@ -239,9 +239,9 @@
 
 #### C1. `sector_summary_cache` (SectorSummary | None)
 - **초기값**: `None` (line 147)
-- **owner**: `engine_snapshot._set_sector_summary()` 헬퍼 단일 경로 — **☑ 단일화 완료 (COUPLING-S1 후속)**
-- **writers (운영)**: 헬퍼 내부 1곳 — `engine_snapshot.py:254` (`engine_state.state.sector_summary_cache = summary`). 기존 7곳 직접 쓰기는 헬퍼 호출로 전환 완료.
-- **헬퍼 호출부 (7곳)**: `engine_lifecycle.py:161` (reset_for_restart), `daily_time_scheduler.py:849, 1237` (pre_ws_subscribe_reset / ws_subscribe_in_session_reset), `engine_sector_confirm.py:180, 245` (incremental_recompute / full_recompute), `sector_data_provider.py:283` (recompute_sector_summary), `engine_snapshot.py:180` (reset_realtime_fields)
+- **owner**: `engine_initial_data._set_sector_summary()` 헬퍼 단일 경로 — **☑ 단일화 완료 (COUPLING-S1 후속)**
+- **writers (운영)**: 헬퍼 내부 1곳 — `engine_initial_data.py:254` (`engine_state.state.sector_summary_cache = summary`). 기존 7곳 직접 쓰기는 헬퍼 호출로 전환 완료.
+- **헬퍼 호출부 (7곳)**: `engine_lifecycle.py:161` (reset_for_restart), `daily_time_scheduler.py:849, 1237` (pre_ws_subscribe_reset / ws_subscribe_in_session_reset), `engine_sector_confirm.py:180, 245` (incremental_recompute / full_recompute), `sector_data_provider.py:283` (recompute_sector_summary), `engine_initial_data.py:180` (reset_realtime_fields)
 - **readers (운영)**: `web/routes/settings.py:163`, `web/routes/ws.py:126`, `buy_order_executor.py:89`, `engine_bootstrap.py:63`, `engine_sector_confirm.py:88, 215`, `sector_data_provider.py:107, 120, 219`
 - **readers (테스트)**: `test_engine_sector_confirm`, `test_buy_order_executor`, `test_web_routes.py:577` 다수
 - **생명주기**: 세션 시작 / 이벤트 기반 (설정 변경, 재계산, 장마감)
@@ -250,8 +250,8 @@
 #### C2. `master_stocks_cache` (dict[str, dict])
 - **초기값**: `{}` (line 152)
 - **owner**: 전체 재할당은 `engine_cache` 단일, dict 항목 쓰기는 다중 (구독 관리 로직 산재)
-- **writers (운영)**: 전체 재할당 — `engine_cache.py:31, 77`. 항목 쓰기(_subscribed, _filtered 등) — `market_close_pipeline.py:179, 294, 345, 459, 821, 838, 955`, `engine_ws_reg.py:239, 302, 310, 321, 329, 423, 431, 462, 467, 475`, `daily_time_scheduler.py:1306`, `engine_sector_confirm.py:382`, `engine_bootstrap.py:47`, `engine_lifecycle.py:149`, `engine_loop.py:145`, `ws_subscribe_control.py:213`, `web/routes/settings.py:134`, `engine_snapshot.py:159`
-- **readers (운영)**: 27곳 — `trading.py:344`, `web/routes/status.py:59, 66, 86`, `engine_ws_reg.py:298, 315, 417`, `sector_data_provider.py:83, 155`, `engine_radar.py:65`, `sector_calculator.py:61`, `engine_symbol_utils.py:17, 44`, `data_manager.py:27`, `pipeline_compute.py:177`, `sector_mapping.py:25`, `stock_classification_data.py:38`, `market_close_pipeline.py:1131`, `daily_time_scheduler.py:686`, `web/routes/settings.py:125, 133`, `ws_subscribe_control.py:213`, `engine_lifecycle.py:149`, `engine_loop.py:145`, `engine_cache.py:90`, `engine_snapshot.py:159`, `engine_bootstrap.py:47`
+- **writers (운영)**: 전체 재할당 — `engine_cache.py:31, 77`. 항목 쓰기(_subscribed, _filtered 등) — `market_close_pipeline.py:179, 294, 345, 459, 821, 838, 955`, `engine_ws_reg.py:239, 302, 310, 321, 329, 423, 431, 462, 467, 475`, `daily_time_scheduler.py:1306`, `engine_sector_confirm.py:382`, `engine_bootstrap.py:47`, `engine_lifecycle.py:149`, `engine_loop.py:145`, `ws_subscribe_control.py:213`, `web/routes/settings.py:134`, `engine_initial_data.py:159`
+- **readers (운영)**: 27곳 — `trading.py:344`, `web/routes/status.py:59, 66, 86`, `engine_ws_reg.py:298, 315, 417`, `sector_data_provider.py:83, 155`, `engine_radar.py:65`, `sector_calculator.py:61`, `engine_symbol_utils.py:17, 44`, `data_manager.py:27`, `pipeline_compute.py:177`, `sector_mapping.py:25`, `stock_classification_data.py:38`, `market_close_pipeline.py:1131`, `daily_time_scheduler.py:686`, `web/routes/settings.py:125, 133`, `ws_subscribe_control.py:213`, `engine_lifecycle.py:149`, `engine_loop.py:145`, `engine_cache.py:90`, `engine_initial_data.py:159`, `engine_bootstrap.py:47`
 - **생명주기**: 기동 시 (engine_cache 초기화) / 틱 단위 (구독 상태 갱신)
 - **비고**: 전체 dict 재할당은 engine_cache 단일 경로(P10 SSOT 준수). 항목 쓰기는 구독 관리 로직의 자연스러운 분산 — 단일화 대상 아님. 다만 항목 쓰기 패턴이 _subscribed/_filtered 등 예약 필드에 한정되므로, 헬퍼 `mark_subscribed(code)` / `mark_filtered(code)`로 수렴 가능성은 존재(후속 검토).
 
@@ -393,12 +393,12 @@
 
 #### D10. `last_realtime_reset_date` (str)
 - **초기값**: `""` (line 207)
-- **owner**: `engine_snapshot` (helper 경유 단일 writer) — **세션 11 단일화 완료**
-- **writers (운영)**: `engine_snapshot.py:231` (_mark_realtime_reset_done helper 본체)
+- **owner**: `engine_initial_data` (helper 경유 단일 writer) — **세션 11 단일화 완료**
+- **writers (운영)**: `engine_initial_data.py:231` (_mark_realtime_reset_done helper 본체)
 - **간접 writers (helper 호출부)**: `engine_cache.py:105`, `daily_time_scheduler.py:850, 1228`
 - **readers (운영)**: `daily_time_scheduler.py:830, 879`
 - **생명주기**: 사전 트리거 07:58 / WS 구독 구간 기동 시
-- **비고**: docstring(세션 11) "last_realtime_reset_date → engine_snapshot._mark_realtime_reset_done()" 일치. 외부 직접 쓰기 없음, helper 경유만 존재. 단일화 완료 모범 사례.
+- **비고**: docstring(세션 11) "last_realtime_reset_date → engine_initial_data._mark_realtime_reset_done()" 일치. 외부 직접 쓰기 없음, helper 경유만 존재. 단일화 완료 모범 사례.
 
 #### D11. `last_ws_subscribe_start_date` (str)
 - **초기값**: `""` (line 208)
@@ -456,7 +456,7 @@
 - **초기값**: `LazyEvent()` (line 131)
 - **owner**: `engine_cache` (단일 writer)
 - **writers (운영)**: `engine_cache.py:122` (set), `engine_lifecycle.py:143` (clear)
-- **readers (운영)**: `web/routes/ws.py:35, 37, 41`, `web/routes/status.py:19, 90`, `engine_snapshot.py:75`
+- **readers (운영)**: `web/routes/ws.py:35, 37, 41`, `web/routes/status.py:19, 90`, `engine_initial_data.py:75`
 - **생명주기**: 기동 시 (캐시 로드 완료 시 set)
 - **비고**: 단일 writer(set), clear는 lifecycle. 계약 일치.
 
@@ -631,7 +631,7 @@
 - **초기값**: `False` (line 135)
 - **owner**: 다중 writer (2곳: engine_loop init, engine_cache 성공 시) — 자연스러운 산재 (init/성공 패턴)
 - **writers (운영)**: `engine_loop.py:155` (False, 루프 시작 시 초기화), `engine_cache.py:94` (True, _load_caches_preboot 성공)
-- **readers (운영)**: `daily_time_scheduler.py:1223`, `engine_snapshot.py:75`
+- **readers (운영)**: `daily_time_scheduler.py:1223`, `engine_initial_data.py:75`
 - **생명주기**: 기동 시 / 캐시 로드 성공 시
 - **비고**: docstring(세션 11) "자연스러운 산재" 일치. 실시간 필드 초기화 타이밍 조절에 사용.
 
@@ -669,7 +669,7 @@
 - **초기값**: `{}` (line 184)
 - **owner**: 다중 writer (10+ 곳: web/app, engine_config, trading, market_close_pipeline, engine_loop, engine_cache) — **거래 관련 산재 (변경 금지)**
 - **writers (운영)**: `web/app.py:103-104` (clear+update, 기동 시 DB 로드), `engine_config.py:94-96` (clear+update, 전체 갱신), `trading.py:437, 646` (항목 쓰기, 매수/매도 후 auto_buy_on 등), `market_close_pipeline.py:1019, 1025, 1148, 1161` (항목 쓰기, 파이프라인 단계별), `engine_loop.py:149` (항목 쓰기), `engine_cache.py:54` (항목 쓰기)
-- **readers (운영)**: 20+ 곳 — `ls_connector:827-828`, `kiwoom_connector:536-537`, `broker_router:65-67, 77, 97, 103`, `engine_settings:110`, `telegram_bot:122, 293`, `web/routes/settings:59, 71, 129, 140, 175`, `trade_history:190, 213`, `engine_account_notify:320`, `settlement_engine:251, 338`, `daily_time_scheduler:488, 681, 976, 1202, 1294`, `engine_lifecycle:324, 326`, `engine_loop:58, 164`, `engine_cache:43, 110, 112`, `engine_snapshot:63`, `engine_sector_confirm:117, 153, 157-159, 224-228`
+- **readers (운영)**: 20+ 곳 — `ls_connector:827-828`, `kiwoom_connector:536-537`, `broker_router:65-67, 77, 97, 103`, `engine_settings:110`, `telegram_bot:122, 293`, `web/routes/settings:59, 71, 129, 140, 175`, `trade_history:190, 213`, `engine_account_notify:320`, `settlement_engine:251, 338`, `daily_time_scheduler:488, 681, 976, 1202, 1294`, `engine_lifecycle:324, 326`, `engine_loop:58, 164`, `engine_cache:43, 110, 112`, `engine_initial_data:63`, `engine_sector_confirm:117, 153, 157-159, 224-228`
 - **생명주기**: 기동 시 / 설정 변경 / 파이프라인 실행 / 주문 후
 - **비고**: docstring(세션 11) "거래 관련 산재 (변경 금지 — 본 세션 범위 외). engine_config 전체 갱신 + 각 모듈 항목 수정. 10+ 파일" 일치. P13 메모리 상주 준수. 가장 분산도 높은 속성이나, 거래 안전성 때문에 본 세션 및 후속 COUPLING 세션 범위 외. 별도 승인 필요.
 
@@ -682,7 +682,7 @@
 ### 4.1 1순위 후보: `sector_summary_cache` (7곳 writer) — ☑ 단일화 완료 (COUPLING-S1 후속)
 
 - **이유**: docstring이 "가장 분산도 높음"으로 명시. 거래 관련이 아니므로 safe-trade 제약 없음. 7곳 writer 중 6곳이 engine_* 모듈이므로 헬퍼 수렴 가능성 높음.
-- **단일화 방향**: `engine_snapshot._set_sector_summary(summary, source: str)` helper 신설. 기존 7곳 직접 쓰기를 helper 호출로 전환. `source` 인자로 갱신 출처 로깅(P21 사용자 투명성).
+- **단일화 방향**: `engine_initial_data._set_sector_summary(summary, source: str)` helper 신설. 기존 7곳 직접 쓰기를 helper 호출로 전환. `source` 인자로 갱신 출처 로깅(P21 사용자 투명성).
 - **위험도**: 중간. 7곳 writer 중 일부는 예외 경로(setup 중 오류 시 None 복원)이므로 helper가 예외 경로도 커버해야 함.
 - **검증**: `test_engine_sector_confirm`, `test_buy_order_executor`, `test_web_routes` + 백엔드 전체 테스트 + RuntimeWarning 기동.
 - **완료 결과**: 헬퍼 신설 + 7곳 호출 전환 + 회귀 테스트 `test_sector_summary_cache_single_owner` 전환. 백엔드 2760 passed (회귀 0건), RuntimeWarning 기동 정상 (168ms, Traceback 0건), 잔존 프로세스 0건.
@@ -713,12 +713,12 @@
 | 항목 | docstring 기록 | 실제 조사 결과 | 일치 여부 |
 |------|----------------|----------------|-----------|
 | `login_ok` 5곳 | kiwoom_connector, ls_connector ×2, engine_lifecycle, engine_loop, engine_ws_dispatch | 동일 (5곳: ls_connector ×2, kiwoom_connector, engine_lifecycle, engine_loop, engine_ws_dispatch — 총 7 write 라인이나 모듈은 5곳) | 일치 |
-| `sector_summary_cache` 7곳 | engine_lifecycle, daily_time_scheduler ×2, engine_sector_confirm ×2, sector_data_provider, engine_snapshot | 단일화 완료 — `_set_sector_summary` 헬퍼 1곳(세션 COUPLING-S1 후속) | 일치(과거 기준) → 단일화 완료 |
+| `sector_summary_cache` 7곳 | engine_lifecycle, daily_time_scheduler ×2, engine_sector_confirm ×2, sector_data_provider, engine_initial_data | 단일화 완료 — `_set_sector_summary` 헬퍼 1곳(세션 COUPLING-S1 후속) | 일치(과거 기준) → 단일화 완료 |
 | `confirmed_done` 5곳 | daily_time_scheduler 단일 파일 내 5곳 | 실제 6곳 (646, 657, 660, 727, 907, 1406) | 대체 일치 (1곳 추가) |
 | `positions` 3곳 | engine_account, engine_lifecycle, web/routes/settings | 실제 4곳 (engine_lifecycle, engine_account, kiwoom_account_parsing, web/routes/settings) | 불일치 — `kiwoom_account_parsing.py:126`이 빠져 있음. docstring 업데이트 권장. |
 | `broker_rest_totals` 3곳 | pipeline_compute_tick_handlers, engine_account, engine_lifecycle | 동일 | 일치 |
 | `access_token` 3곳 | engine_lifecycle, engine_loop ×2 | 동일 (engine_loop:238, 242 / engine_lifecycle:133) | 일치 |
-| `last_realtime_reset_date` helper 경유 | engine_snapshot._mark_realtime_reset_done(), 호출부 engine_cache, daily_time_scheduler ×2 | 동일 | 일치 |
+| `last_realtime_reset_date` helper 경유 | engine_initial_data._mark_realtime_reset_done(), 호출부 engine_cache, daily_time_scheduler ×2 | 동일 | 일치 |
 | `confirmed_refresh_running_confirmed` 단일화 | market_close_pipeline (소유 모듈 직접 쓰기) + daily_time_scheduler helper 경유 | 동일 | 일치 |
 | `latest_filter_summary_meta` 단일화 | market_close_pipeline._set_latest_filter_summary_meta(), 호출부 4단계 + web/app.py | 동일 | 일치 |
 | `connector_manager` 단일 소유자 | engine_loop에서만 생성·해제·None | 동일 | 일치 |

@@ -1218,7 +1218,7 @@ class TestOnWsSubscribeStart:
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(8, 0)), \
              patch("backend.app.core.trading_calendar.is_trading_day", return_value=True), \
              patch("backend.app.services.daily_time_scheduler.gc"), \
-             patch("backend.app.services.engine_snapshot._reset_realtime_fields", new_callable=AsyncMock), \
+             patch("backend.app.services.engine_initial_data._reset_realtime_fields", new_callable=AsyncMock), \
              patch("backend.app.services.engine_account_notify.notify_cache"), \
              patch("backend.app.services.daily_time_scheduler._broadcast_market_phase"):
             await _on_ws_subscribe_start()
@@ -1239,7 +1239,7 @@ class TestOnRealtimeFieldsReset:
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(7, 58)), \
              patch("backend.app.core.trading_calendar.is_trading_day", return_value=True), \
              patch("backend.app.services.daily_time_scheduler.gc") as mock_gc, \
-             patch("backend.app.services.engine_snapshot._reset_realtime_fields", new_callable=AsyncMock) as mock_reset, \
+             patch("backend.app.services.engine_initial_data._reset_realtime_fields", new_callable=AsyncMock) as mock_reset, \
              patch("backend.app.pipelines.pipeline_compute.reset_sector_threshold") as mock_reset_threshold, \
              patch("backend.app.services.engine_account_notify.notify_cache") as mock_notify_cache:
             await _on_realtime_fields_reset()
@@ -1258,7 +1258,7 @@ class TestOnRealtimeFieldsReset:
         with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(7, 58)), \
              patch("backend.app.core.trading_calendar.is_trading_day", return_value=True), \
-             patch("backend.app.services.engine_snapshot._reset_realtime_fields", new_callable=AsyncMock) as mock_reset:
+             patch("backend.app.services.engine_initial_data._reset_realtime_fields", new_callable=AsyncMock) as mock_reset:
             await _on_realtime_fields_reset()
             mock_reset.assert_not_awaited()
 
@@ -1270,7 +1270,7 @@ class TestOnRealtimeFieldsReset:
         with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(7, 58, weekday=5)), \
              patch("backend.app.services.daily_time_scheduler.gc") as mock_gc, \
-             patch("backend.app.services.engine_snapshot._reset_realtime_fields", new_callable=AsyncMock) as mock_reset:
+             patch("backend.app.services.engine_initial_data._reset_realtime_fields", new_callable=AsyncMock) as mock_reset:
             await _on_realtime_fields_reset()
             mock_reset.assert_not_awaited()
             # 주말 시 GC 비활성화 미실행 (개선 — 거래일 체크 이후 GC 비활성화)
@@ -1284,7 +1284,7 @@ class TestOnRealtimeFieldsReset:
         with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(7, 58)), \
              patch("backend.app.core.trading_calendar.is_trading_day", return_value=False), \
-             patch("backend.app.services.engine_snapshot._reset_realtime_fields", new_callable=AsyncMock) as mock_reset:
+             patch("backend.app.services.engine_initial_data._reset_realtime_fields", new_callable=AsyncMock) as mock_reset:
             await _on_realtime_fields_reset()
             mock_reset.assert_not_awaited()
 
@@ -1393,7 +1393,7 @@ class TestOnWsSubscribeStartIdempotency:
         with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(8, 0)), \
              patch("backend.app.services.daily_time_scheduler.gc"), \
-             patch("backend.app.services.engine_snapshot._reset_realtime_fields", new_callable=AsyncMock) as mock_reset:
+             patch("backend.app.services.engine_initial_data._reset_realtime_fields", new_callable=AsyncMock) as mock_reset:
             await _on_ws_subscribe_start()
             # 멱등성 가드로 스킵 — 필드 초기화 호출 없음
             mock_reset.assert_not_awaited()
@@ -1513,7 +1513,7 @@ class TestInitWsSubscribeState:
         with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock, return_value=True), \
              patch("backend.app.services.daily_time_scheduler.gc"), \
-             patch("backend.app.services.engine_snapshot._reset_realtime_fields", new_callable=AsyncMock), \
+             patch("backend.app.services.engine_initial_data._reset_realtime_fields", new_callable=AsyncMock), \
              patch("backend.app.services.engine_account_notify.notify_cache"), \
              patch("backend.app.services.daily_time_scheduler._broadcast_market_phase"):
             await _init_ws_subscribe_state()
@@ -1546,7 +1546,7 @@ class TestInitWsSubscribeState:
         with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock, return_value=True), \
              patch("backend.app.services.daily_time_scheduler.gc") as mock_gc, \
-             patch("backend.app.services.engine_snapshot._reset_realtime_fields", new_callable=AsyncMock) as mock_reset, \
+             patch("backend.app.services.engine_initial_data._reset_realtime_fields", new_callable=AsyncMock) as mock_reset, \
              patch("backend.app.services.engine_account_notify.notify_cache") as mock_notify_cache, \
              patch("backend.app.services.daily_time_scheduler._broadcast_market_phase"):
             await _init_ws_subscribe_state()
@@ -2181,7 +2181,7 @@ class TestTimetableScheduler:
         with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(7, 58)), \
              patch("backend.app.services.daily_time_scheduler._schedule_next_timetable_event"), \
-             patch("backend.app.services.engine_snapshot._reset_realtime_fields", new_callable=AsyncMock) as mock_reset:
+             patch("backend.app.services.engine_initial_data._reset_realtime_fields", new_callable=AsyncMock) as mock_reset:
             await _timetable_event_fired(entry)
             mock_reset.assert_not_awaited()  # 가드로 인해 no-op
 

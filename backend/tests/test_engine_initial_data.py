@@ -1,10 +1,10 @@
-"""engine_snapshot.py 단위 테스트 — 초기 데이터/필터링/실시간 필드 초기화."""
+"""engine_initial_data.py 단위 테스트 — 초기 데이터/필터링/실시간 필드 초기화."""
 from __future__ import annotations
 
 import pytest
 from unittest.mock import patch, AsyncMock, MagicMock
 
-from backend.app.services.engine_snapshot import (
+from backend.app.services.engine_initial_data import (
     _filter_stock_fields,
     _get_trade_history_for_snapshot,
     _get_daily_summary_for_snapshot,
@@ -175,8 +175,8 @@ class TestBuildInitialSnapshot:
              patch("backend.app.services.daily_time_scheduler.get_market_phase", return_value="open"), \
              patch("backend.app.services.ws_subscribe_control.get_subscribe_status", return_value={"subscribed": True}), \
              patch("backend.app.services.engine_account_notify.init_sent_caches") as mock_init, \
-             patch("backend.app.services.engine_snapshot._get_trade_history_for_snapshot", new=AsyncMock(return_value=[])), \
-             patch("backend.app.services.engine_snapshot._get_daily_summary_for_snapshot", new=AsyncMock(return_value=[])):
+             patch("backend.app.services.engine_initial_data._get_trade_history_for_snapshot", new=AsyncMock(return_value=[])), \
+             patch("backend.app.services.engine_initial_data._get_daily_summary_for_snapshot", new=AsyncMock(return_value=[])):
             mock_state.master_stocks_cache = {"005930": {}, "005935": {}}
             mock_state.integrated_system_settings_cache = {"sector_max_targets": 5, "broker_config": {"name": "test_broker"}}
             mock_state.bootstrap_event = MagicMock()
@@ -218,8 +218,8 @@ class TestBuildInitialSnapshot:
              patch("backend.app.services.daily_time_scheduler.get_market_phase", return_value="open"), \
              patch("backend.app.services.ws_subscribe_control.get_subscribe_status", return_value={"subscribed": True}), \
              patch("backend.app.services.engine_account_notify.init_sent_caches"), \
-             patch("backend.app.services.engine_snapshot._get_trade_history_for_snapshot", new=AsyncMock(side_effect=Exception("fail"))), \
-             patch("backend.app.services.engine_snapshot._get_daily_summary_for_snapshot", new=AsyncMock(side_effect=Exception("fail"))):
+             patch("backend.app.services.engine_initial_data._get_trade_history_for_snapshot", new=AsyncMock(side_effect=Exception("fail"))), \
+             patch("backend.app.services.engine_initial_data._get_daily_summary_for_snapshot", new=AsyncMock(side_effect=Exception("fail"))):
             mock_state.master_stocks_cache = {}
             mock_state.integrated_system_settings_cache = {"sector_max_targets": 3, "broker_config": {}}
             mock_state.bootstrap_event = MagicMock()
@@ -253,8 +253,8 @@ class TestBuildInitialSnapshot:
              patch("backend.app.services.daily_time_scheduler.get_market_phase", return_value="closed"), \
              patch("backend.app.services.ws_subscribe_control.get_subscribe_status", return_value={}), \
              patch("backend.app.services.engine_account_notify.init_sent_caches"), \
-             patch("backend.app.services.engine_snapshot._get_trade_history_for_snapshot", new=AsyncMock(return_value=[])), \
-             patch("backend.app.services.engine_snapshot._get_daily_summary_for_snapshot", new=AsyncMock(return_value=[])):
+             patch("backend.app.services.engine_initial_data._get_trade_history_for_snapshot", new=AsyncMock(return_value=[])), \
+             patch("backend.app.services.engine_initial_data._get_daily_summary_for_snapshot", new=AsyncMock(return_value=[])):
             mock_state.master_stocks_cache = {"005930": {}}
             mock_state.integrated_system_settings_cache = {"sector_max_targets": 5, "broker_config": {}}
             mock_state.bootstrap_event = MagicMock()
@@ -281,8 +281,8 @@ class TestBuildInitialSnapshot:
              patch("backend.app.services.daily_time_scheduler.get_market_phase", return_value="closed"), \
              patch("backend.app.services.ws_subscribe_control.get_subscribe_status", return_value={}), \
              patch("backend.app.services.engine_account_notify.init_sent_caches"), \
-             patch("backend.app.services.engine_snapshot._get_trade_history_for_snapshot", new=AsyncMock(return_value=[])), \
-             patch("backend.app.services.engine_snapshot._get_daily_summary_for_snapshot", new=AsyncMock(return_value=[])):
+             patch("backend.app.services.engine_initial_data._get_trade_history_for_snapshot", new=AsyncMock(return_value=[])), \
+             patch("backend.app.services.engine_initial_data._get_daily_summary_for_snapshot", new=AsyncMock(return_value=[])):
             mock_state.master_stocks_cache = {}
             mock_state.integrated_system_settings_cache = {"sector_max_targets": 5, "broker_config": {}}
             mock_state.bootstrap_event = None
@@ -307,8 +307,8 @@ class TestBuildInitialSnapshot:
              patch("backend.app.services.daily_time_scheduler.get_market_phase", return_value="closed"), \
              patch("backend.app.services.ws_subscribe_control.get_subscribe_status", return_value={}), \
              patch("backend.app.services.engine_account_notify.init_sent_caches", side_effect=Exception("init fail")), \
-             patch("backend.app.services.engine_snapshot._get_trade_history_for_snapshot", new=AsyncMock(return_value=[])), \
-             patch("backend.app.services.engine_snapshot._get_daily_summary_for_snapshot", new=AsyncMock(return_value=[])):
+             patch("backend.app.services.engine_initial_data._get_trade_history_for_snapshot", new=AsyncMock(return_value=[])), \
+             patch("backend.app.services.engine_initial_data._get_daily_summary_for_snapshot", new=AsyncMock(return_value=[])):
             mock_state.master_stocks_cache = {}
             mock_state.integrated_system_settings_cache = {"sector_max_targets": 5, "broker_config": {}}
             mock_state.bootstrap_event = MagicMock()

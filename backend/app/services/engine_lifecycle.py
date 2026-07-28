@@ -157,7 +157,7 @@ def reset_broker_session_state() -> None:
     _PENDING_REG_CODES.clear()
 
     # 2. sector_summary_cache 초기화 — are_buy_targets_changed가 True 반환 유도
-    from backend.app.services.engine_snapshot import _set_sector_summary
+    from backend.app.services.engine_initial_data import _set_sector_summary
     _set_sector_summary(None, "engine_lifecycle.reset_for_restart")
 
     # 3. 동적 구독 해지 타이머 일괄 취소

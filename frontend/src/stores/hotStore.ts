@@ -759,7 +759,7 @@ export function applyInitialSnapshotHot(data: Record<string, unknown>): void {
   const accountSnap = (data.account as AccountSnapshot) ?? null
   rebuildBuyTargetIndex(newBuyTargets)
   rebuildPositionIndex(newPositions)
-  // sector_stocks는 설계상 initial-snapshot에서 빈 배열로 전송됨 (engine_snapshot.py 참조).
+  // sector_stocks는 설계상 initial-snapshot에서 빈 배열로 전송됨 (engine_initial_data.py 참조).
   // 실제 데이터는 sector-stocks-refresh 이벤트로 별도 수신.
   // 재연결 시 빈 배열로 기존 데이터를 리셋하지 않도록 기존 값을 보존한다.
   const prev = hotStore.getState()

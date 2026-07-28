@@ -1323,7 +1323,7 @@ SectorFlow/
 │       │   ├── engine_ws_reg.py     — WS 종목 구독 등록/해제
 │       │   ├── engine_ws_parsing.py — WS 데이터 파싱
 │       │   ├── engine_sector_confirm.py — 업종 재계산 (증분)
-│       │   ├── engine_snapshot.py   — 스냅샷 생성
+│       │   ├── engine_initial_data.py — 초기 데이터 생성
 │       │   ├── engine_account*.py   — 계좌 관리/조회/알림
 │       │   ├── engine_radar*.py     — 레이더 종목 관리
 │       │   ├── engine_strategy_core.py — 매수 전략 코어
