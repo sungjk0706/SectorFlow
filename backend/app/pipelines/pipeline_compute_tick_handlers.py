@@ -337,13 +337,14 @@ async def _handle_real_pgm_tick(
 
 
 async def _handle_nws_news(item: dict) -> None:
-    """NWS 실시간 뉴스 처리 — 호재 키워드 매칭 시 news_boost_cache 갱신 (5분 TTL).
+    """NWS 실시간 뉴스 처리 — 호재 키워드 매칭 시 news_boost_cache 갱신 (5분 TTL) + news-hit 브로드캐스트.
 
     JIF와 동일하게 tick_queue를 우회하여 engine_ws_dispatch → 본 핸들러 직접 호출 (P23).
     P7: 매 뉴스마다 매수후보 전체 순회 금지 — master_stocks_cache O(1) 조회.
+    P10: news_boost 단일 전달 경로 = news-hit 이벤트 (buy-targets-delta에서는 제외).
     P13: 키워드 사전은 메모리 상주 (engine_state.news_keywords_cache).
-    P20: code 빈 뉴스는 폴백 없이 스킵 + debug 로깅.
-    P25: NWS 처리 실패가 다른 틱 처리 블로킹 금지.
+    P20: code 빈 뉴스는 폴백 없이 스킵 + debug 로깅. 종목명 부재 시 빈 문자열(명시적 값).
+    P25: NWS 처리 실패가 다른 틱 처리 블로킹 금지. _safe_broadcast 실패 시에도 캐시 갱신·로그 정상 완료.
     """
     import time
     from backend.app.services import engine_state
@@ -383,6 +384,20 @@ async def _handle_nws_news(item: dict) -> None:
                 hit_codes.append(code)
         if hit_codes:
             logger.info("[연산] 뉴스 가산점 부여 — 종목=%s 키워드 매칭: %s", hit_codes, title[:60])
+            # news-hit WS 이벤트 브로드캐스트 — news_boost 단일 전달 경로 (P10 SSOT).
+            # buy-targets-delta에서는 news_boost 제외(세션 1)하고 본 이벤트로만 전달.
+            # P7: 1회 O(len(hit_codes)). P25: _safe_broadcast 내부 예외 처리 — 전송 실패 시에도
+            # 캐시 갱신·로그는 정상 완료(엔진 루프 블로킹 금지).
+            # P20: 종목명 부재 시 빈 문자열(명시적 값, 폴백 아님).
+            names = [master_cache[c].get("name", "") for c in hit_codes]
+            scores = [score for _ in hit_codes]
+            from backend.app.services.engine_account_notify import _safe_broadcast
+            await _safe_broadcast("news-hit", {
+                "codes": hit_codes,
+                "names": names,
+                "scores": scores,
+                "title": title,
+            })
 
     except Exception as e:
         logger.error("[연산] 뉴스(NWS) 처리 오류: %s", e, exc_info=True)
