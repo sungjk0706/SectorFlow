@@ -1029,7 +1029,7 @@ WSManager (싱글톤)
 | 이벤트형 | 순서 보장 | `_event_queue`에 순차 누적 |
 | 페이지별 | 타겟 전송 | 활성 페이지 클라이언트에게만 전송 |
 
-**Graceful Shutdown:** 전체 WS 끊김 후 1초 대기 → 재연결 없으면 SIGTERM
+**Graceful Shutdown:** WS 클라이언트(브라우저)가 모두 닫혀도 백엔드는 계속 실행 — 브라우저를 닫아도 자동매매는 중단되지 않으며, 다시 접속하면 이어서 확인 가능. 앱 종료는 실행 스크립트 종료(Ctrl+C, 터미널 닫기) 시에만 발생.
 
 ### 11.2 주요 이벤트
 
@@ -1197,7 +1197,6 @@ ConnectorManager
 | 예수금 | RiskManager | 주문액 > 잔액 | 매수 차단 |
 | 틱 폭주 | tick_queue 드롭 | 5000개 | 가장 오래된 데이터 버림 |
 | 이벤트 루프 | `asyncio.sleep(0)` | 매 틱 | 협력적 양보 |
-| WS 끊김 | shutdown timer | 1초 | 재연결 없으면 SIGTERM |
 
 ---
 
@@ -1431,13 +1430,12 @@ python main.py
 
 **SectorFlow.command 수행 과정:**
 1. 가상환경 활성화
-2. 이전 프로세스 안전 종료 (SIGTERM → SIGKILL)
-3. 백엔드 실행 (`python main.py`)
-4. 백엔드 준비 대기 (포트 8000 체크)
-5. 프론트엔드 실행 (`npx vite`)
-6. 프론트엔드 준비 대기 (포트 5173 체크)
-7. 브라우저 자동 열기 (Chrome http://localhost:5173)
-8. 종료 시 안전 정리 (trap cleanup)
+2. 이전 프로세스 안전 종료 (SIGTERM → SIGKILL, 포트 8000/5173 기준)
+3. 잔여 lock 파일 정리
+4. 백엔드(`python main.py`) + 프론트엔드(`npm run dev`) 병렬 실행
+5. 양쪽 준비 대기 (0.2초 간격, 최대 30초 — 백엔드 미기동 시 중단)
+6. 접속 안내 출력 (사용자가 브라우저에서 http://localhost:5173 직접 접속)
+7. 종료 시 안전 정리 (trap cleanup — Ctrl+C/터미널 닫기 시 백엔드·프론트엔드 SIGTERM)
 
 ### 1.2 종료
 
