@@ -83,3 +83,6 @@ venv/
 venv312/
 ENV/
 env/
+
+# Handover — 세션 간 에이전트 간략 소통 문서 (git 추적 제외, 규칙 0-6-2/8-1/8-2)
+HANDOVER.md
