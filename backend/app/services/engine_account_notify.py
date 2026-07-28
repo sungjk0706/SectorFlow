@@ -355,14 +355,17 @@ async def notify_desktop_sector_stocks_refresh(*, force: bool = False) -> None:
             notify_cache.prev_sent[code] = {}
 
 
-# 매수 후보 delta 비교 키 — 정적 필드만 포함 (실시간 필드는 sectorStocks SSOT에서 파생).
+# 매수 후보 delta 비교 키 — 정적 필드만 포함 (실시간·이벤트 필드는 sectorStocks SSOT에서 파생).
 # P10(SSOT) + P22(데이터 정합성) + P23(일관성): 프론트 applyBuyTargetsUpdate same 비교 키와 동일 기준.
 # 실시간 필드(cur_price/change/change_rate/strength/trade_amount)는 매 틱마다 변하므로
 # delta changed 판정에서 제외 — 틱 디스패치가 별도 경로(real-data-tick)로 갱신 담당.
-_BUY_TARGET_REALTIME_KEYS = ("cur_price", "change", "change_rate", "strength", "trade_amount")
+# news_boost는 뉴스 호재 이벤트 기반 갱신이므로 news-hit 이벤트가 단일 전달 경로(P10).
+#   상수명 REALTIME은 틱 실시간 필드 의미이나, delta 제외 대상 그룹으로 함께 묶어
+#   일괄 pop 루프를 재사용(P24 중복 제거). news_boost만 별도 상수로 분리 시 코드 증가.
+_BUY_TARGET_REALTIME_KEYS = ("cur_price", "change", "change_rate", "strength", "trade_amount", "news_boost")
 _BUY_TARGET_CMP_KEYS = (
     "rank", "boost_score", "guard_pass", "reason",
-    "order_ratio", "program_net_buy", "high_5d", "avg_amt_5d", "news_boost",
+    "order_ratio", "program_net_buy", "high_5d", "avg_amt_5d",
 )
 
 
@@ -374,9 +377,9 @@ async def notify_buy_targets_update() -> None:
         `_BUY_TARGET_REALTIME_KEYS` 리스트 기반으로 일괄 제거 (P24 중복 제거 — 2곳 하드코딩 → 상수).
       - 프론트엔드는 sectorStocks(실시간 SSOT)에서 실시간 필드를 재결합하여 단일 소스 일관성 유지.
       - removed: 종목 코드 문자열 리스트만 전송 (정적·실시간 필드 모두 불필요).
-      - changed 판정: `_BUY_TARGET_CMP_KEYS`(정적 필드) 기준. 실시간 필드 제외.
-        `news_boost` 포함 — 뉴스 호재 가산점 변경 시 화면 갱신 보장 (세션 8 결함 B 수정).
-      - 초기 상태(prev_buy_targets_map is None): buy-targets-update 전체 리스트 전송 (실시간 필드 포함).
+      - changed 판정: `_BUY_TARGET_CMP_KEYS`(정적 필드) 기준. 실시간 필드·news_boost 제외.
+        `news_boost`는 news-hit 이벤트가 단일 전달(P10 SSOT) — delta changed에서 제외.
+      - 초기 상태(prev_buy_targets_map is None): buy-targets-update 전체 리스트 전송 (실시간 필드·news_boost 포함).
         이후 sector-stocks-refresh → 프론트 rebindBuyTargetsRealtime이 실시간 필드 정정.
     """
     from backend.app.services.sector_data_provider import get_buy_targets_sector_stocks

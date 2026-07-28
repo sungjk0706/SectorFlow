@@ -627,10 +627,10 @@ class TestNotifyCacheConcurrencyScenarios:
 
 # ── notify_buy_targets_update delta 계약 (세션 8 — payload 계약 정리) ────────────
 # 본 클래스는 buy-targets-update/buy-targets-delta의 payload 계약을 고정한다.
-# - 초기 전송: buy-targets-update 전체 리스트 (실시간 필드 포함)
-# - delta 전송: added/changed는 정적 필드만 (실시간 필드 제거), removed는 코드 리스트
-# - changed 판정: _BUY_TARGET_CMP_KEYS(정적 필드) 기준, news_boost 포함
-# - 실시간 필드 제거: _BUY_TARGET_REALTIME_KEYS 상수 기반 (P24 중복 제거)
+# - 초기 전송: buy-targets-update 전체 리스트 (실시간 필드·news_boost 포함)
+# - delta 전송: added/changed는 정적 필드만 (실시간 필드·news_boost 제거), removed는 코드 리스트
+# - changed 판정: _BUY_TARGET_CMP_KEYS(정적 필드) 기준, news_boost 제외 (news-hit 단일 전달, P10)
+# - 실시간 필드·news_boost 제거: _BUY_TARGET_REALTIME_KEYS 상수 기반 (P24 중복 제거)
 
 class TestNotifyBuyTargetsUpdate:
     """세션 8 — notify_buy_targets_update payload 계약 단위 테스트."""
@@ -660,13 +660,14 @@ class TestNotifyBuyTargetsUpdate:
         base.update(overrides)
         return base
 
-    def test_cmp_keys_excludes_realtime_and_includes_news_boost(self):
-        """_BUY_TARGET_CMP_KEYS는 실시간 필드 제외 + news_boost 포함 (세션 8 결함 B 수정)."""
-        # 실시간 필드 모두 제외
+    def test_cmp_keys_excludes_realtime_and_news_boost(self):
+        """_BUY_TARGET_CMP_KEYS는 실시간 필드·news_boost 제외 (news-hit 단일 전달, P10)."""
+        # 실시간 필드·news_boost 모두 제외
         for k in _BUY_TARGET_REALTIME_KEYS:
             assert k not in _BUY_TARGET_CMP_KEYS
-        # news_boost 포함 (세션 8 결함 B 수정)
-        assert "news_boost" in _BUY_TARGET_CMP_KEYS
+        # news_boost 제외 (news-hit 이벤트가 단일 전달 경로, P10 SSOT)
+        assert "news_boost" not in _BUY_TARGET_CMP_KEYS
+        assert "news_boost" in _BUY_TARGET_REALTIME_KEYS  # delta 제외 그룹 포함 (안 A)
         # 정적 필드 포함
         for k in ("rank", "boost_score", "guard_pass", "reason", "order_ratio",
                   "program_net_buy", "high_5d", "avg_amt_5d"):
@@ -717,7 +718,8 @@ class TestNotifyBuyTargetsUpdate:
                 # 정적 필드 유지 확인
                 assert added["rank"] == 2
                 assert added["avg_amt_5d"] == 800000
-                assert added["news_boost"] == 0.0
+                # news_boost는 delta에서 제외 (news-hit 단일 전달, P10)
+                assert "news_boost" not in added
         finally:
             notify_cache.prev_buy_targets_map = None
 
@@ -768,22 +770,19 @@ class TestNotifyBuyTargetsUpdate:
             notify_cache.prev_buy_targets_map = None
 
     @pytest.mark.asyncio
-    async def test_delta_changed_news_boost_triggers_change(self):
-        """delta changed: news_boost 변경 시 changed 전송 (세션 8 결함 B 수정 검증)."""
+    async def test_delta_changed_news_boost_does_not_trigger(self):
+        """delta changed: news_boost만 변경 시 changed 미전송 (news-hit 단일 전달, P10)."""
         prev_map = {"005930": self._make_target("005930", news_boost=0.0)}
         notify_cache.prev_buy_targets_map = prev_map
-        # news_boost 변경 (0.0 → 1.5)
+        # news_boost만 변경 (0.0 → 1.5), 정적 필드 모두 동일
         new_targets = [self._make_target("005930", news_boost=1.5)]
         try:
             with patch("backend.app.services.engine_account_notify._safe_broadcast", new_callable=AsyncMock) as mock_bc, \
                  patch("backend.app.services.sector_data_provider.get_buy_targets_sector_stocks",
                        new_callable=AsyncMock, return_value=new_targets):
                 await notify_buy_targets_update()
-                mock_bc.assert_awaited_once()
-                event, payload = mock_bc.call_args.args
-                assert event == "buy-targets-delta"
-                assert len(payload["changed"]) == 1
-                assert payload["changed"][0]["news_boost"] == 1.5
+                # news_boost는 cmp_keys에서 제외 → changed 없음 → 전송 생략
+                mock_bc.assert_not_awaited()
         finally:
             notify_cache.prev_buy_targets_map = None
 
