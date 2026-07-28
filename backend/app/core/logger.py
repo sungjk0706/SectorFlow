@@ -5,6 +5,8 @@ Loguru 기반 트레이딩 로거 — 안전한 파일 로깅 포함.
 - 콘솔: LOG_LEVEL 이상 출력 (Windows cp949 환경 UTF-8 강제)
 - trading.log: INFO 이상 (일별 분할, 10MB 로테이션, 2일 보관)
   LOG_LEVEL=DEBUG 시 DEBUG 로그도 trading.log에 기록됨
+- trades.log: [매매]/[정산] 태그 로그만 별도 파일 (일별 분할, 10MB 로테이션, 2일 보관)
+  거래 이력 추적 용이 — 시스템 로그 바다에서 거래 로그를 분리.
 
 파일 로깅 안전 전략:
   loguru enqueue=True → multiprocessing.SimpleQueue → asyncio IOCP 충돌 (크래시)
@@ -28,18 +30,30 @@ _configured = False
 
 
 # ── 안전한 파일 쓰기 큐 + asyncio 태스크 ──────────────────────────────────────
+# 전체 로그(trading.log)와 거래 로그(trades.log) 각각 독립 큐/태스크 운영 (P24 단순성:
+# _async_file_writer_loop를 큐 파라미터로 재사용, 신규 추상화 없음).
 
 _file_queue: asyncio.Queue[str | None] | None = None
+_trade_file_queue: asyncio.Queue[str | None] | None = None
 _writer_task: asyncio.Task | None = None
+_trade_writer_task: asyncio.Task | None = None
 _loop_ref: asyncio.AbstractEventLoop | None = None
 
 
 def _get_file_queue() -> asyncio.Queue[str | None]:
-    """asyncio.Queue 지연 초기화 — 단일 이벤트 루프 내에서 생성."""
+    """전체 로그용 asyncio.Queue 지연 초기화 — 단일 이벤트 루프 내에서 생성."""
     global _file_queue
     if _file_queue is None:
         _file_queue = asyncio.Queue(maxsize=50_000)
     return _file_queue
+
+
+def _get_trade_file_queue() -> asyncio.Queue[str | None]:
+    """거래 로그용 asyncio.Queue 지연 초기화 — 단일 이벤트 루프 내에서 생성."""
+    global _trade_file_queue
+    if _trade_file_queue is None:
+        _trade_file_queue = asyncio.Queue(maxsize=50_000)
+    return _trade_file_queue
 
 
 _MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB — 파일 크기 제한
@@ -67,10 +81,11 @@ async def _rotate_old_logs(pattern: str, keep_days: int) -> None:
         sys.stderr.write(f"[logger] _rotate_old_logs 실패: {e}\n")
 
 
-async def _async_file_writer_loop(base_name: str, keep_days: int) -> None:
+async def _async_file_writer_loop(base_name: str, keep_days: int, queue: asyncio.Queue[str | None]) -> None:
     """단일 asyncio 이벤트 루프 내 파일 쓰기 태스크 — 큐에서 로그 메시지를 꺼내 파일에 쓴다.
 
     10MB 초과 시 .1, .2 … 로 로테이션하고 오래된 파일은 자동 삭제.
+    queue: 이 태스크가 소비할 전용 큐 (전체 로그 / 거래 로그 각각 독립 큐 전달).
     """
     current_date = ""
     fh = None
@@ -92,7 +107,7 @@ async def _async_file_writer_loop(base_name: str, keep_days: int) -> None:
     try:
         while True:
             try:
-                msg = await asyncio.wait_for(_get_file_queue().get(), timeout=2.0)
+                msg = await asyncio.wait_for(queue.get(), timeout=2.0)
             except asyncio.TimeoutError:
                 continue
             if msg is None:  # 종료 신호
@@ -149,26 +164,32 @@ async def _async_file_writer_loop(base_name: str, keep_days: int) -> None:
 
 
 async def _start_file_writers() -> None:
-    """파일 쓰기 asyncio 태스크 시작 — setup_loguru()에서 호출 (이벤트 루프 실행 중)."""
-    global _writer_task, _loop_ref
+    """파일 쓰기 asyncio 태스크 시작 — setup_loguru()에서 호출 (이벤트 루프 실행 중).
+
+    전체 로그(trading.log)와 거래 로그(trades.log) 각각 전용 큐/태스크로 운영.
+    """
+    global _writer_task, _trade_writer_task, _loop_ref
     if _writer_task is not None and not _writer_task.done():
         return
     _loop_ref = asyncio.get_running_loop()
     await asyncio.to_thread(LOG_DIR.mkdir, parents=True, exist_ok=True)
-    _writer_task = asyncio.create_task(_async_file_writer_loop("trading.log", 2))
+    _writer_task = asyncio.create_task(_async_file_writer_loop("trading.log", 2, _get_file_queue()))
+    _trade_writer_task = asyncio.create_task(_async_file_writer_loop("trades.log", 2, _get_trade_file_queue()))
 
 
 async def stop_file_writers() -> None:
-    """파일 쓰기 태스크 정지 — 앱 종료 시 호출."""
-    global _writer_task
-    q = _get_file_queue()
-    await q.put(None)  # 종료 신호
-    if _writer_task is not None:
-        try:
-            await asyncio.wait_for(_writer_task, timeout=5.0)
-        except (asyncio.TimeoutError, asyncio.CancelledError):
-            _writer_task.cancel()
-        _writer_task = None
+    """파일 쓰기 태스크 정지 — 앱 종료 시 호출. 전체/거래 태스크 모두 정지 (P25 격리)."""
+    global _writer_task, _trade_writer_task
+    await _get_file_queue().put(None)  # 종료 신호
+    await _get_trade_file_queue().put(None)
+    for task_ref in (_writer_task, _trade_writer_task):
+        if task_ref is not None:
+            try:
+                await asyncio.wait_for(task_ref, timeout=5.0)
+            except (asyncio.TimeoutError, asyncio.CancelledError):
+                task_ref.cancel()
+    _writer_task = None
+    _trade_writer_task = None
 
 
 # ── loguru 커스텀 싱크 (큐에 넣기만 함, 파일 I/O 없음) ──────────────────────
@@ -185,6 +206,32 @@ def _info_file_sink(message) -> None:
     try:
         if _loop_ref is not None and not _loop_ref.is_closed():
             q = _get_file_queue()
+            def _safe_put(msg=str(message)):
+                try:
+                    q.put_nowait(msg)
+                except asyncio.QueueFull:
+                    pass
+            _loop_ref.call_soon_threadsafe(_safe_put)
+    except RuntimeError:
+        pass  # 루프가 닫혀 있음 — 로그 버림
+
+
+# ── 거래 로그 전용 싱크 ([매매]/[정산] 태그만 trades.log로 분리) ──────────────
+# 태그 기반 분리 — 호출부 0건 수정, loguru filter로 라우팅 (P23 기존 태그 표준 활용).
+
+_TRADE_TAGS = ("[매매]", "[정산]")
+
+
+def _trade_filter(record) -> bool:
+    """[매매] 또는 [정산] 태그로 시작하는 메시지만 거래 로그로 분류."""
+    return record["message"].startswith(_TRADE_TAGS)
+
+
+def _trade_file_sink(message) -> None:
+    """거래 태그 로그를 거래 전용 asyncio.Queue에 적재 — _info_file_sink와 동일 패턴."""
+    try:
+        if _loop_ref is not None and not _loop_ref.is_closed():
+            q = _get_trade_file_queue()
             def _safe_put(msg=str(message)):
                 try:
                     q.put_nowait(msg)
@@ -445,5 +492,14 @@ async def setup_loguru(log_level: str = "INFO") -> None:
         colorize=False,
     )
 
-    # 파일 쓰기 asyncio 태스크 시작
+    # ── 거래 로그 — [매매]/[정산] 태그만 trades.log로 분리 (별도 큐/태스크) ──────────
+    _loguru_logger.add(
+        _trade_file_sink,
+        level=log_level,
+        format=_FILE_FORMAT,
+        colorize=False,
+        filter=_trade_filter,
+    )
+
+    # 파일 쓰기 asyncio 태스크 시작 (전체 + 거래)
     await _start_file_writers()
