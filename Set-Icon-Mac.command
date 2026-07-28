@@ -1,8 +1,7 @@
 #!/bin/bash
 cd "$(dirname "$0")"
 
-ICONS_DIR="assets/icons"
-ICON_FILE="$ICONS_DIR/SectorFlow-Mac.icns"
+ICON_FILE="frontend/public/logo.png"
 TARGET_FILE="SectorFlow.command"
 
 echo "============================================"
