@@ -1112,3 +1112,97 @@ class TestBroadcastHistory:
                 await trade_history.broadcast_history("test")
         mock_buy.assert_called_once_with("test")
         mock_sell.assert_called_once_with("test")
+
+
+# ── _backfill_sell_sector ──────────────────────────────────────────────────────
+
+class TestBackfillSellSector:
+    """_backfill_sell_sector: 과거 매도 이력 sector=NULL 복구 (P22 데이터 정합성)."""
+
+    async def test_no_null_sector_skips(self):
+        """sector=NULL 0건이면 즉시 return (idempotent)."""
+        from backend.app.services import trade_history
+        mock_conn = MagicMock()
+        mock_cur = AsyncMock()
+        mock_row = MagicMock()
+        mock_row.__getitem__ = MagicMock(return_value=0)
+        mock_cur.fetchone.return_value = mock_row
+        mock_cm = AsyncMock()
+        mock_cm.__aenter__.return_value = mock_cur
+        mock_conn.execute.return_value = mock_cm
+        with patch("backend.app.db.database.get_db_connection", return_value=mock_conn):
+            with patch("backend.app.services.trade_history._lookup_sector", new_callable=AsyncMock) as mock_lookup:
+                await trade_history._backfill_sell_sector()
+        mock_lookup.assert_not_called()
+
+    async def test_backfill_matched_sector(self):
+        """sector=NULL 매도를 _lookup_sector 업종명으로 채운다."""
+        from backend.app.services import trade_history
+        trade_history._sell_history.clear()
+        trade_history._sell_history.extend([
+            _make_sell_rec(stk_cd="005930", sector=None),
+            _make_sell_rec(stk_cd="066570", sector=None),
+        ])
+        mock_conn = MagicMock()
+        # 첫 번째 execute: COUNT 조회 → 2
+        # 두 번째 execute: DISTINCT stk_cd 조회 → 005930, 066570
+        mock_cur_count = AsyncMock()
+        mock_row_count = MagicMock()
+        mock_row_count.__getitem__ = MagicMock(return_value=2)
+        mock_cur_count.fetchone.return_value = mock_row_count
+        mock_cm_count = AsyncMock()
+        mock_cm_count.__aenter__.return_value = mock_cur_count
+        mock_cur_distinct = AsyncMock()
+        mock_row1 = MagicMock()
+        mock_row1.__getitem__ = MagicMock(return_value="005930")
+        mock_row2 = MagicMock()
+        mock_row2.__getitem__ = MagicMock(return_value="066570")
+        mock_cur_distinct.fetchall.return_value = [mock_row1, mock_row2]
+        mock_cm_distinct = AsyncMock()
+        mock_cm_distinct.__aenter__.return_value = mock_cur_distinct
+        mock_conn.execute.side_effect = [mock_cm_count, mock_cm_distinct]
+        with patch("backend.app.db.database.get_db_connection", return_value=mock_conn):
+            with patch("backend.app.services.trade_history._lookup_sector", new_callable=AsyncMock, side_effect=["반도체", "에너지/유틸리티"]) as mock_lookup:
+                with patch("backend.app.services.trade_history._history_lock"):
+                    with patch("backend.app.db.db_writer.execute_db_write", new_callable=AsyncMock):
+                        await trade_history._backfill_sell_sector()
+        # _lookup_sector가 각 종목코드별로 1회 호출
+        assert mock_lookup.call_count == 2
+        # 메모리 갱신 확인
+        assert trade_history._sell_history[0]["sector"] == "반도체"
+        assert trade_history._sell_history[1]["sector"] == "에너지/유틸리티"
+
+    async def test_backfill_unclassified_when_no_match(self):
+        """custom_sectors 미매칭 시 '미분류'로 채운다 (record_sell 정책과 일치)."""
+        from backend.app.services import trade_history
+        trade_history._sell_history.clear()
+        trade_history._sell_history.append(_make_sell_rec(stk_cd="999999", sector=None))
+        mock_conn = MagicMock()
+        mock_cur_count = AsyncMock()
+        mock_row_count = MagicMock()
+        mock_row_count.__getitem__ = MagicMock(return_value=1)
+        mock_cur_count.fetchone.return_value = mock_row_count
+        mock_cm_count = AsyncMock()
+        mock_cm_count.__aenter__.return_value = mock_cur_count
+        mock_cur_distinct = AsyncMock()
+        mock_row = MagicMock()
+        mock_row.__getitem__ = MagicMock(return_value="999999")
+        mock_cur_distinct.fetchall.return_value = [mock_row]
+        mock_cm_distinct = AsyncMock()
+        mock_cm_distinct.__aenter__.return_value = mock_cur_distinct
+        mock_conn.execute.side_effect = [mock_cm_count, mock_cm_distinct]
+        with patch("backend.app.db.database.get_db_connection", return_value=mock_conn):
+            with patch("backend.app.services.trade_history._lookup_sector", new_callable=AsyncMock, return_value="미분류"):
+                with patch("backend.app.services.trade_history._history_lock"):
+                    with patch("backend.app.db.db_writer.execute_db_write", new_callable=AsyncMock):
+                        await trade_history._backfill_sell_sector()
+        assert trade_history._sell_history[0]["sector"] == "미분류"
+
+    async def test_failure_does_not_raise(self):
+        """DB 조회 실패 시 예외 전파 없이 기동 계속 (P25 격리된 실패)."""
+        from backend.app.services import trade_history
+        mock_conn = MagicMock()
+        mock_conn.execute.side_effect = Exception("DB error")
+        with patch("backend.app.db.database.get_db_connection", return_value=mock_conn):
+            # 예외 발생하지 않고 정상 return
+            await trade_history._backfill_sell_sector()

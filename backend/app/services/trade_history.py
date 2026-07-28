@@ -73,6 +73,7 @@ async def _ensure_loaded() -> None:
             return
     await _trim_expired()
     await _cleanup_legacy_buy_reason()
+    await _backfill_sell_sector()
 
 
 _TRADE_INSERT_SQL = (
@@ -219,6 +220,69 @@ async def _cleanup_legacy_buy_reason() -> None:
         logger.info("[정산] 과거 매수 이력 reason 정리 완료 — %d건 (업종자동매수/자동매수 → 빈 문자열)", db_count)
     except Exception as e:
         logger.warning("[정산] 과거 매수 이력 reason 정리 실패 (기동 계속): %s", e, exc_info=True)
+
+
+async def _backfill_sell_sector() -> None:
+    """과거 매도 이력의 sector=NULL을 _lookup_sector()로 채운다.
+
+    99dd661(2026-07-07)이 record_sell() rec에 sector 필드를 추가했으나
+    _TRADE_INSERT_SQL에 sector 컬럼이 누락되어(P16 위반) DB에 sector가 저장되지 않았고,
+    2b18602(2026-07-28 17:09)가 INSERT SQL에 sector를 추가하면서 비로소 영속화가 시작됨.
+    그 사이(2026-07-23~28 17:09) 저장된 매도 39건의 sector가 NULL로 방치된 것을 복구.
+    a9ccebb가 _ensure_loaded()의 LEFT JOIN custom_sectors를 제거했으므로,
+    DB sector=NULL은 더 이상 기동 시 보완되지 않아 backfill이 필요.
+
+    _cleanup_legacy_buy_reason()과 동일 패턴 (P23 일관성):
+      사전 COUNT 조회 → 0건 스킵 → DB UPDATE → 메모리 동시 갱신 → 로깅.
+    _lookup_sector() 재사용으로 custom_sectors 단일 진리 경로 유지 (P10).
+    idempotent: sector가 이미 있으면 스킵. 실패 시 기동 계속 (P25 격리된 실패).
+    """
+    try:
+        from backend.app.db.database import get_db_connection
+        conn = await get_db_connection()
+        # DB 대상 건수 사전 조회 (sector NULL 또는 빈 문자열)
+        async with conn.execute(
+            "SELECT COUNT(*) FROM trades WHERE side='SELL' AND (sector IS NULL OR sector='')"
+        ) as cur:
+            db_count = (await cur.fetchone())[0]
+        if db_count == 0:
+            return
+        # 대상 종목코드별 업종 조회 (중복 stk_cd 한 번에 해결)
+        async with conn.execute(
+            "SELECT DISTINCT stk_cd FROM trades WHERE side='SELL' AND (sector IS NULL OR sector='')"
+        ) as cur:
+            stk_codes = [row["stk_cd"] for row in await cur.fetchall()]
+        matched = 0
+        unclassified = 0
+        updates: list[tuple[str, str]] = []  # (stk_cd, sector)
+        for stk_cd in stk_codes:
+            sector = await _lookup_sector(stk_cd)
+            if sector == "미분류":
+                unclassified += 1
+            else:
+                matched += 1
+            updates.append((stk_cd, sector))
+        # DB UPDATE — 종목코드별 sector 채우기
+        from backend.app.db.db_writer import execute_db_write, DBWriteOperation
+        for stk_cd, sector in updates:
+            await execute_db_write(DBWriteOperation(
+                table="trades", operation="UPDATE", data={},
+                query="UPDATE trades SET sector=? WHERE side='SELL' AND stk_cd=? "
+                      "AND (sector IS NULL OR sector='')",
+                params=(sector, stk_cd),
+            ))
+        # 메모리 동시 갱신 (P22 데이터 정합성)
+        sector_map = dict(updates)
+        async with _history_lock:
+            for r in _sell_history:
+                if (r.get("sector") is None or r.get("sector") == "") and r.get("stk_cd") in sector_map:
+                    r["sector"] = sector_map[r["stk_cd"]]
+        logger.info(
+            "[정산] 과거 매도 이력 sector backfill 완료 — %d건 (업종 매칭 %d건, 미분류 %d건)",
+            db_count, matched, unclassified,
+        )
+    except Exception as e:
+        logger.warning("[정산] 과거 매도 이력 sector backfill 실패 (기동 계속): %s", e, exc_info=True)
 
 
 # ── 날짜 유틸 ──────────────────────────────────────────────────────────────
