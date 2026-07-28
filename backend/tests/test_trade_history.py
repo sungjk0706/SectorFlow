@@ -529,30 +529,8 @@ class TestRecordBuy:
                     )
         mock_bc.assert_called_once()
 
-    async def test_sector_and_rank_persisted_in_rec(self):
-        """record_buy에 sector/buy_rank 전달 시 rec에 포함되어 반환 + INSERT 파라미터에 전달."""
-        from backend.app.services import trade_history
-        trade_history._loaded = True
-        with patch("backend.app.services.trade_history._history_lock"):
-            with patch("backend.app.services.trade_history._insert_trade", new_callable=AsyncMock) as mock_insert:
-                with patch("backend.app.services.trade_history._broadcast_buy_append", new_callable=AsyncMock):
-                    rec = await trade_history.record_buy(
-                        stk_cd="005930", stk_nm="삼성전자", price=70000, qty=10,
-                        sector="반도체", buy_rank=3,
-                    )
-        assert rec["sector"] == "반도체"
-        assert rec["buy_rank"] == 3
-        # _insert_trade에 전달된 rec가 동일 객체 — sector/buy_rank 포함 확인
-        inserted_rec = mock_insert.call_args.args[0]
-        assert inserted_rec["sector"] == "반도체"
-        assert inserted_rec["buy_rank"] == 3
-        # _trade_params가 sector/buy_rank를 튜플 끝에 포함하는지 확인
-        params = trade_history._trade_params(inserted_rec)
-        assert params[-2] == "반도체"
-        assert params[-1] == 3
-
-    async def test_sector_and_rank_defaults_when_omitted(self):
-        """sector/buy_rank 미전달 시 기본값("", None)으로 기존 호출 호환성 유지."""
+    async def test_rec_has_no_sector_buy_rank_keys(self):
+        """record_buy 반환 rec에서 sector/buy_rank 키 제거 검증 (매수 파이프라인 정리 — P24)."""
         from backend.app.services import trade_history
         trade_history._loaded = True
         with patch("backend.app.services.trade_history._history_lock"):
@@ -561,8 +539,8 @@ class TestRecordBuy:
                     rec = await trade_history.record_buy(
                         stk_cd="005930", stk_nm="삼성전자", price=70000, qty=10,
                     )
-        assert rec["sector"] == ""
-        assert rec["buy_rank"] is None
+        assert "sector" not in rec
+        assert "buy_rank" not in rec
 
 
 # ── record_sell ───────────────────────────────────────────────────────────────

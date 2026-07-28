@@ -1112,7 +1112,7 @@ class TestRejectReasonRecording:
 
 class TestBuyReasonBoostString:
     """트리거 필드 조합별 가산점 통합 문자열(reason) 생성 + execute_buy 전달 검증.
-    표시 순서 고정: 고가돌파 → 잔량비율 → 뉴스 → 프로그램순매수 (P23 일관성).
+    표시 순서 고정: 5거래일 고가 → 호가잔량비 → 뉴스 → 프.순.매 (P23 — 매수 후보 화면 라벨과 일치).
     미발생 시 빈 문자열 (P20 폴백 금지).
     """
 
@@ -1139,13 +1139,11 @@ class TestBuyReasonBoostString:
             mock_rm.return_value.get_withdrawable_deposit.return_value = 10_000_000
             await evaluate_buy_candidates()
         _kwargs = fresh_state.auto_trade.execute_buy.call_args.kwargs
-        assert _kwargs["reason"] == "📈고가돌파 · 📊잔량비율 · 📰뉴스 · 💹프로그램순매수"
-        assert _kwargs["sector"] == "반도체"
-        assert _kwargs["buy_rank"] == 1
+        assert _kwargs["reason"] == "5거래일 고가 · 호가잔량비 · 📰뉴스 · 프.순.매"
 
     @pytest.mark.asyncio
     async def test_partial_boosts_triggered(self, fresh_state, reset_cash_gate):
-        """고가돌파·뉴스만 발생 → 해당 가산점만 연결 (P20 — 미발생 항목 제외)."""
+        """5거래일 고가·뉴스만 발생 → 해당 가산점만 연결 (P20 — 미발생 항목 제외)."""
         s = _stock(boost_high_triggered=True, boost_news_triggered=True)
         self._state_with_stock(s, fresh_state)
         with patch("backend.app.services.engine_state.state", fresh_state), \
@@ -1157,7 +1155,7 @@ class TestBuyReasonBoostString:
             mock_rm.return_value.get_withdrawable_deposit.return_value = 10_000_000
             await evaluate_buy_candidates()
         _kwargs = fresh_state.auto_trade.execute_buy.call_args.kwargs
-        assert _kwargs["reason"] == "📈고가돌파 · 📰뉴스"
+        assert _kwargs["reason"] == "5거래일 고가 · 📰뉴스"
 
     @pytest.mark.asyncio
     async def test_no_boost_triggered_empty_string(self, fresh_state, reset_cash_gate):
@@ -1174,5 +1172,3 @@ class TestBuyReasonBoostString:
             await evaluate_buy_candidates()
         _kwargs = fresh_state.auto_trade.execute_buy.call_args.kwargs
         assert _kwargs["reason"] == ""
-        assert _kwargs["sector"] == "반도체"
-        assert _kwargs["buy_rank"] == 1

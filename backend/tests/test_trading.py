@@ -907,14 +907,14 @@ class TestDailyBuySpentFeeInclusive:
 # ── execute_buy 매수 근거 전달 (BUY-REASON-S4: P10 SSOT, P15 단일 경로, P16 살아있는 경로, P20 폴백 금지) ──
 
 class TestExecuteBuyReasonPassThrough:
-    """execute_buy에 sector/buy_rank/reason 전달 시 record_buy에 그대로 전달되는지 검증.
-    P20: reason or "자동매수" 폴백 제거 — 빈 reason은 빈 문자열 그대로 저장.
-    P16: sector/buy_rank가 execute_buy → record_buy까지 단일 배선.
+    """execute_buy에 reason 전달 시 record_buy에 그대로 전달되는지 검증.
+    P20: reason or "자동매수" 폴밭 제거 — 빈 reason은 빈 문자열 그대로 저장.
+    P16: reason이 execute_buy → record_buy까지 단일 배선.
     """
 
     @pytest.mark.asyncio
-    async def test_sector_buy_rank_reason_passed_to_record_buy(self):
-        """sector/buy_rank/reason 전달 시 record_buy 호출 인자에 그대로 전달 (P16)."""
+    async def test_reason_passed_to_record_buy(self):
+        """reason 전달 시 record_buy 호출 인자에 그대로 전달 (P16)."""
         mgr = _make_manager(_raw_settings(rebuy_block_on=False))
         with patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.services.trading.auto_buy_effective", return_value=True), \
@@ -941,13 +941,11 @@ class TestExecuteBuyReasonPassThrough:
             mock_rm.return_value.check_buy_order_allowed = AsyncMock(return_value=(True, "승인"))
             await mgr.execute_buy(
                 "005930", 70000, "token",
-                reason="📈고가돌파 · 📰뉴스", sector="반도체", buy_rank=1,
+                reason="5거래일 고가 · 📰뉴스",
             )
-        # record_buy에 sector/buy_rank/reason이 그대로 전달되었는지 검증 (P16)
+        # record_buy에 reason이 그대로 전달되었는지 검증 (P16)
         _kwargs = mock_record_buy.call_args.kwargs
-        assert _kwargs["sector"] == "반도체"
-        assert _kwargs["buy_rank"] == 1
-        assert _kwargs["reason"] == "📈고가돌파 · 📰뉴스"
+        assert _kwargs["reason"] == "5거래일 고가 · 📰뉴스"
 
     @pytest.mark.asyncio
     async def test_empty_reason_no_fallback(self):
@@ -976,12 +974,10 @@ class TestExecuteBuyReasonPassThrough:
             mock_rm.return_value.circuit_breaker.get_state.return_value = "CLOSED"
             mock_rm.return_value.get_withdrawable_deposit.return_value = 10_000_000
             mock_rm.return_value.check_buy_order_allowed = AsyncMock(return_value=(True, "승인"))
-            await mgr.execute_buy("005930", 70000, "token")  # reason/sector/buy_rank 생략
+            await mgr.execute_buy("005930", 70000, "token")  # reason 생략
         _kwargs = mock_record_buy.call_args.kwargs
         # P20: 폴백 금지 — reason은 빈 문자열, "자동매수" 아님
         assert _kwargs["reason"] == ""
-        assert _kwargs["sector"] == ""
-        assert _kwargs["buy_rank"] is None
 
 
 # ── execute_buy 주문 전송 실패 (P22 정합성, P15 단일 경로, P18 테스트모드 동등성) ──

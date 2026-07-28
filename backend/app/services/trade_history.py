@@ -72,6 +72,7 @@ async def _ensure_loaded() -> None:
             logger.error("[정산] 체결 이력 로드 실패: %s", e, exc_info=True)
             return
     await _trim_expired()
+    await _cleanup_legacy_buy_reason()
 
 
 _TRADE_INSERT_SQL = (
@@ -181,6 +182,45 @@ async def _trim_expired() -> None:
         logger.error("[정산] 만료 기록 정리 실패: %s", e, exc_info=True)
 
 
+async def _cleanup_legacy_buy_reason() -> None:
+    """과거 매수 이력의 의미 없는 reason(업종자동매수/자동매수)을 빈 문자열로 정리.
+
+    BUY-REASON 시리즈 이전 포맷("업종자동매수 업종=X 순위=N", "자동매수")은
+    매수 근거 컬럼에서 가산점 4종(5거래일 고가/호가잔량비/📰뉴스/프.순.매)만
+    표시하는 현재 정책과 충돌하므로 빈 문자열로 정리 (P21 사용자 투명성).
+    idempotent: 이미 빈 문자열이거나 가산점 라벨 포맷이면 LIKE 조건으로 자동 제외.
+    메모리 + DB 동시 정리 (P22 데이터 정합성). 실패 시 기동 계속 (P25 격리된 실패).
+    """
+    try:
+        from backend.app.db.database import get_db_connection
+        conn = await get_db_connection()
+        # DB 정리 대상 건수 사전 조회
+        async with conn.execute(
+            "SELECT COUNT(*) FROM trades WHERE side='BUY' AND "
+            "(reason LIKE '업종자동매수%' OR reason = '자동매수')"
+        ) as cur:
+            db_count = (await cur.fetchone())[0]
+        if db_count == 0:
+            return
+        # DB UPDATE — 빈 문자열로 정리
+        from backend.app.db.db_writer import execute_db_write, DBWriteOperation
+        await execute_db_write(DBWriteOperation(
+            table="trades", operation="UPDATE", data={},
+            query="UPDATE trades SET reason='' WHERE side='BUY' AND "
+                  "(reason LIKE '업종자동매수%' OR reason = '자동매수')",
+            params=(),
+        ))
+        # 메모리 정리 — 동일 조건으로 reason 빈 문자열화
+        async with _history_lock:
+            for r in _buy_history:
+                reason = r.get("reason", "")
+                if reason.startswith("업종자동매수") or reason == "자동매수":
+                    r["reason"] = ""
+        logger.info("[정산] 과거 매수 이력 reason 정리 완료 — %d건 (업종자동매수/자동매수 → 빈 문자열)", db_count)
+    except Exception as e:
+        logger.warning("[정산] 과거 매수 이력 reason 정리 실패 (기동 계속): %s", e, exc_info=True)
+
+
 # ── 날짜 유틸 ──────────────────────────────────────────────────────────────
 
 async def _broadcast_sell_append(rec: dict) -> None:
@@ -255,8 +295,6 @@ async def record_buy(
     qty: int,
     reason: str = "",
     trade_mode: str = "test",
-    sector: str = "",
-    buy_rank: int | None = None,
 ) -> dict:
     """매수 체결 기록. 반환: 저장된 레코드.
 
@@ -286,8 +324,6 @@ async def record_buy(
         "reason": reason,
         "trade_mode": trade_mode,
         "buy_date": "",
-        "sector": sector,
-        "buy_rank": buy_rank,
     }
     logger.info(
         "[정산] 매수 기록 -- %s(%s) %d주 @%s 수수료=%s %s",

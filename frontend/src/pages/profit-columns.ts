@@ -6,7 +6,7 @@ import { pnlColor, fmtWon, fmtComma, createStockNameColumn, createCodeCell, crea
 import { hotStore, normalizeStockCode } from '../stores/hotStore'
 import type { DailyDrilldownRow } from './profit-shared'
 
-/* ── 매수 컬럼 (10개) ── */
+/* ── 매수 컬럼 (9개) — 업종/매수순위 제거 (P24 단순성, 매수 후보 화면에서 이미 확인 가능) ── */
 export const BUY_COLS: ColumnDef<Record<string, unknown>>[] = [
   { key: 'no', label: '순번', align: 'center', type: 'seq', render: (_, i) => String(i + 1) },
   { key: 'datetime', label: '일시', align: 'center', type: 'datetime', render: r => { const d = String(r.date ?? ''); const t = String(r.time ?? ''); const dd = d.length >= 10 ? d.slice(5, 7) + '/' + d.slice(8, 10) : d; return dd + (t ? ' ' + t : '') } },
@@ -22,9 +22,6 @@ export const BUY_COLS: ColumnDef<Record<string, unknown>>[] = [
       }
     }
   ),
-  { key: 'sector', label: '업종', align: 'left', type: 'sector', render: r => String(r.sector ?? ''),
-    cellStyle: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } },
-  { key: 'buy_rank', label: '매수순위', align: 'center', type: 'rank', render: r => r.buy_rank != null ? String(r.buy_rank) : '' },
   { key: 'price', label: '매수가', align: 'right', type: 'buy_price', render: r => createNumberCell(Number(r.price ?? 0)) },
   { key: 'qty', label: '수량', align: 'right', type: 'qty', render: r => createNumberCell(Number(r.qty ?? 0)) },
   { key: 'total_amt', label: '매수 지출(수수료 포함)', align: 'right', type: 'total_amt', render: r => fmtWon(Number(r.total_amt ?? 0)) },

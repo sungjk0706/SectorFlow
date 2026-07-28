@@ -254,23 +254,19 @@ class AutoTradeManager:
                 await _broadcast_daily_buy_state_status(failed=False)
 
     async def execute_buy(self, stk_cd: str, current_price: float,
-                    access_token: str, reason: str = "",
-                    sector: str = "", buy_rank: int | None = None) -> tuple[bool, str]:
+                    access_token: str, reason: str = "") -> tuple[bool, str]:
         """
         매수 주문 실행 (글로벌 매수 락으로 순차 처리).
         reason: 매수 사유 (체결 이력 기록용 — 가산점 통합 문자열).
-        sector: 매수 종목 업종명 (체결 이력 구조화 컬럼 — P10 SSOT).
-        buy_rank: 매수 후보 전체 순위 (체결 이력 구조화 컬럼 — P10 SSOT).
         반환값: (True, "")=주문 전송 성공, (False, 사유코드)=가드에 의해 차단/실패
         """
         if self._buy_lock is None:
             self._buy_lock = asyncio.Lock()
         async with self._buy_lock:
-            return await self._execute_buy_locked(stk_cd, current_price, access_token, reason, sector, buy_rank)
+            return await self._execute_buy_locked(stk_cd, current_price, access_token, reason)
 
     async def _execute_buy_locked(self, stk_cd: str, current_price: float,
-                    access_token: str, reason: str = "",
-                    sector: str = "", buy_rank: int | None = None) -> tuple[bool, str]:
+                    access_token: str, reason: str = "") -> tuple[bool, str]:
         """
         매수 주문 실행 본문 (글로벌 매수 락 내부).
         TOCTOU 경쟁 상태 방지: reserve_buy_power로 검증+즉시 차감을 원자적 수행.
@@ -526,7 +522,6 @@ class AutoTradeManager:
             stk_cd=stk_cd, stk_nm=stk_nm,
             price=fill_price, qty=buy_qty,
             reason=reason, trade_mode=_mode,
-            sector=sector, buy_rank=buy_rank,
         )
 
         # ── 매수 한도 상태 WS 브로드캐스트 (account-update보다 선행) ────────
