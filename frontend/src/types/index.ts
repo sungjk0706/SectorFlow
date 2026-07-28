@@ -27,36 +27,38 @@ export interface Position {
   sectorStock?: SectorStock;
 }
 
-export interface SectorStock {
+// 매수후보는 StockScore, 업종분류는 SectorStock으로 분리 (P10 SSOT — 컨텍스트별 단일 진실 소스).
+// 공통 실시간 파생 필드 null 표시 규칙 (세션 8 — P22 데이터 정합성, 백엔드 _build_target_entry 계약 반영):
+//   cur_price: null = 틱 미수신 (테스트모드 기동 직후, 장 전, 구독 지연).
+//              첫 틱 도달 후 applyRealData가 number로 갱신.
+//   change_rate/trade_amount/change/strength: 백엔드 None 시 null/undefined 가능.
+//              현재 타입은 기존 호환성 유지 (change_rate는 number, 나머지 optional).
+//              백엔드가 null을 보내면 런타임 값은 null이나 타입은 좁게 선언 —
+//              소비 측는 null 가드(== null)로 처리 권장.
+
+export interface StockScore {
+  // ── 식별 필드 ──
   code: string;
   name: string;
-  // ── 실시간 파생 필드 (sectorStocks가 SSOT, buyTargets는 파생 캐시) ──
+  sector?: string;
+  market_type?: string;
+  nxt_enable?: boolean;
+  // ── 실시간 파생 필드 (sectorStocks SSOT에서 파생 — null 허용) ──
   // P10: sectorStocks Record가 실시간 시세의 단일 진실 소스.
   // buyTargets 배열 요소의 이 필드들은 DataTable O(1) updateItemByKey 갱신을 위한
   // 파생 캐시 — applyRealData가 in-place mutation으로 동기화,
   // applySectorStocksRefresh/applyRealtimeReset이 rebindBuyTargetsRealtime으로 재결합.
-  // null 표시 규칙 (세션 8 — P22 데이터 정합성, 백엔드 _build_target_entry 계약 반영):
-  //   cur_price: null = 틱 미수신 (테스트모드 기동 직후, 장 전, 구독 지연).
-  //              첫 틱 도달 후 applyRealData가 number로 갱신.
-  //   change_rate/trade_amount/change/strength: 백엔드 None 시 null/undefined 가능.
-  //              현재 타입은 기존 호환성 유지 (change_rate는 number, 나머지 optional).
-  //              백엔드가 null을 보내면 런타임 값은 null이나 타입은 좁게 선언 —
-  //              소비 측는 null 가드(== null)로 처리 권장.
   cur_price: number | null;
   change_rate: number;
   trade_amount?: number;
   change?: number;
   strength?: number;
-  // ── 정적·식별 필드 (업종 종목·매수 후보 공통) ──
-  sector?: string;
-  avg_amt_5d?: number;
-  market_type?: string;
-  nxt_enable?: boolean;
-  // ── 매수 후보 전용 정적 필드 (buyTargets에만 의미 있음) ──
+  // ── 정적 스코어 필드 (백엔드 StockScore + BuyTarget) ──
   rank?: number;
   guard_pass?: boolean;
   reason?: string;
   boost_score?: number;
+  // ── 매수후보 전용 파생 필드 (캐시 병합) ──
   order_ratio?: [number, number] | null;
   high_5d?: number;  // 0 = 원천 부재/미다운로드 (5거래일 일봉 전), >0 = 유효 고가
   program_net_buy?: number | null;  // null/undefined = 프로그램 순매수 미수신
@@ -64,7 +66,25 @@ export interface SectorStock {
   news_boost_title?: string;  // 뉴스 호재 제목 (📰 툴팁 표시용, applyNewsHit이 보관 — P10 SSOT)
 }
 
-// BuyTarget 제거: 매수후보 테이블은 SectorStock 타입 사용 (단일 소스 진리)
+export interface SectorStock {
+  // ── 식별 필드 (백엔드 get_all_sector_stocks — 5개) ──
+  code: string;
+  name: string;
+  sector?: string;
+  market_type?: string;
+  nxt_enable?: boolean;
+  // ── 실시간 파생 필드 (sectorStocks SSOT — applyRealData가 갱신) ──
+  cur_price: number | null;
+  change_rate: number;
+  trade_amount?: number;
+  change?: number;
+  strength?: number;
+  // ── 5거래일 평균 거래대금 (우측 패널 표시용 — T1 설계 수정) ──
+  // P10 SSOT: avg_amt_5d 주인은 SectorStock (1차 필터링·우측 패널 표시).
+  // 매수후보(StockScore)에서는 사용하지 않으므로 제거. 백엔드 get_all_sector_stocks()에서
+  // master_stocks_cache["avg_5d_trade_amount"](백만원)을 억 단위로 변환하여 전송.
+  avg_amt_5d?: number;
+}
 
 export interface EngineStatus {
   running: boolean;
