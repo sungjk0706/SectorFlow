@@ -1265,9 +1265,6 @@ def _trigger_reg_pipeline() -> None:
 async def _trigger_unreg_all() -> None:
     """구독 중인 종목 전체 UNREG 전송 + WS 캐시 클리어."""
     try:
-        # 실시간 틱 데이터 캐시 clear() 로직 삭제 (_latest_trade_prices, _latest_trade_amounts, _latest_strength)
-        logger.info("[스케줄] 캐시 데이터 삭제")
-
         ws = engine_state.state.connector_manager
         if not ws or not ws.is_connected() or not engine_state.state.login_ok:
             return
