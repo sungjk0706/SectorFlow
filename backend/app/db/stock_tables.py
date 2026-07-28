@@ -38,7 +38,9 @@ async def _create_runtime_tables(conn) -> None:
             pnl_rate REAL,
             reason TEXT,
             trade_mode TEXT NOT NULL,
-            buy_date TEXT
+            buy_date TEXT,
+            sector TEXT,
+            buy_rank INTEGER
         )
     ''')
     await conn.execute('''
@@ -275,6 +277,34 @@ async def migrate_add_buy_date_to_trades():
         logger.info("[데이터] 체결 이력 테이블에 매수일 컬럼 추가")
     else:
         logger.debug("[데이터] 체결 이력 매수일 컬럼 이미 존재 - 생략")
+
+
+async def migrate_add_buy_reason_columns_to_trades():
+    """기존 trades에 매수 근거 구조화 컬럼 2개(sector, buy_rank) 추가 (마이그레이션).
+
+    매수 레코드에 한해 매수 시점 업종(sector)과 매수순위(buy_rank) 저장.
+    과거 레코드 및 매도 레코드는 NULL (P20 폴백 아님 — 명시적 미적용).
+    앱 기동 시마다 1회 실행하여 구 버전 DB에서도 컬럼이 보장되도록 한다.
+    """
+    conn = await get_db_connection()
+
+    cursor = await conn.execute("PRAGMA table_info(trades)")
+    columns = await cursor.fetchall()
+    column_names = {col["name"] for col in columns}
+
+    added = []
+    if "sector" not in column_names:
+        await conn.execute("ALTER TABLE trades ADD COLUMN sector TEXT")
+        added.append("sector")
+    if "buy_rank" not in column_names:
+        await conn.execute("ALTER TABLE trades ADD COLUMN buy_rank INTEGER")
+        added.append("buy_rank")
+
+    if added:
+        await conn.commit()
+        logger.info("[데이터] 체결 이력 테이블에 매수 근거 컬럼 추가: %s", ", ".join(added))
+    else:
+        logger.debug("[데이터] 체결 이력 매수 근거 컬럼 이미 존재 - 생략")
 
 
 # load_stock_name_cache 함수 삭제: 메모리 캐시(_master_stocks_cache)로 단일화
