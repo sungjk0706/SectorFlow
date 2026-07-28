@@ -245,7 +245,7 @@ async def test_daily_summary_no_sell_zero_fee_tax():
 def _make_buy_rec(
     stk_cd="005930", stk_nm="삼성전자", price=70000, qty=10,
     date="2026-07-08", time="09:10:00", fee=105, trade_mode="test",
-    reason="테스트",
+    reason="테스트", sector="", buy_rank=None,
 ):
     total_amt = price * qty
     return {
@@ -254,6 +254,7 @@ def _make_buy_rec(
         "total_amt": total_amt + fee, "fee": fee, "tax": 0,
         "avg_buy_price": 0, "buy_total_amt": 0, "realized_pnl": 0,
         "pnl_rate": 0.0, "reason": reason, "trade_mode": trade_mode,
+        "sector": sector, "buy_rank": buy_rank,
     }
 
 
@@ -440,11 +441,11 @@ class TestTrimExpired:
 # ── _trade_params ─────────────────────────────────────────────────────────────
 
 class TestTradeParams:
-    """_trade_params: 18필드 튜플 순서 검증."""
+    """_trade_params: 20필드 튜플 순서 검증 (sector, buy_rank 추가)."""
 
     def test_params_order(self):
         from backend.app.services import trade_history
-        rec = _make_buy_rec()
+        rec = _make_buy_rec(sector="반도체", buy_rank=3)
         params = trade_history._trade_params(rec)
         assert params == (
             rec["ts"], rec["date"], rec["time"], rec["side"],
@@ -454,8 +455,21 @@ class TestTradeParams:
             rec["realized_pnl"], rec["pnl_rate"],
             rec["reason"], rec["trade_mode"],
             rec.get("buy_date", ""),
+            rec.get("sector", ""),
+            rec.get("buy_rank"),
         )
-        assert len(params) == 18
+        assert len(params) == 20
+
+    def test_params_defaults_when_missing(self):
+        """rec에 sector/buy_rank 키가 없어도 기본값으로 안전 처리."""
+        from backend.app.services import trade_history
+        rec = _make_buy_rec()
+        del rec["sector"]
+        del rec["buy_rank"]
+        params = trade_history._trade_params(rec)
+        assert params[-2] == ""
+        assert params[-1] is None
+        assert len(params) == 20
 
 
 # ── record_buy ────────────────────────────────────────────────────────────────
@@ -514,6 +528,41 @@ class TestRecordBuy:
                         stk_cd="005930", stk_nm="삼성전자", price=70000, qty=10,
                     )
         mock_bc.assert_called_once()
+
+    async def test_sector_and_rank_persisted_in_rec(self):
+        """record_buy에 sector/buy_rank 전달 시 rec에 포함되어 반환 + INSERT 파라미터에 전달."""
+        from backend.app.services import trade_history
+        trade_history._loaded = True
+        with patch("backend.app.services.trade_history._history_lock"):
+            with patch("backend.app.services.trade_history._insert_trade", new_callable=AsyncMock) as mock_insert:
+                with patch("backend.app.services.trade_history._broadcast_buy_append", new_callable=AsyncMock):
+                    rec = await trade_history.record_buy(
+                        stk_cd="005930", stk_nm="삼성전자", price=70000, qty=10,
+                        sector="반도체", buy_rank=3,
+                    )
+        assert rec["sector"] == "반도체"
+        assert rec["buy_rank"] == 3
+        # _insert_trade에 전달된 rec가 동일 객체 — sector/buy_rank 포함 확인
+        inserted_rec = mock_insert.call_args.args[0]
+        assert inserted_rec["sector"] == "반도체"
+        assert inserted_rec["buy_rank"] == 3
+        # _trade_params가 sector/buy_rank를 튜플 끝에 포함하는지 확인
+        params = trade_history._trade_params(inserted_rec)
+        assert params[-2] == "반도체"
+        assert params[-1] == 3
+
+    async def test_sector_and_rank_defaults_when_omitted(self):
+        """sector/buy_rank 미전달 시 기본값("", None)으로 기존 호출 호환성 유지."""
+        from backend.app.services import trade_history
+        trade_history._loaded = True
+        with patch("backend.app.services.trade_history._history_lock"):
+            with patch("backend.app.services.trade_history._insert_trade", new_callable=AsyncMock):
+                with patch("backend.app.services.trade_history._broadcast_buy_append", new_callable=AsyncMock):
+                    rec = await trade_history.record_buy(
+                        stk_cd="005930", stk_nm="삼성전자", price=70000, qty=10,
+                    )
+        assert rec["sector"] == ""
+        assert rec["buy_rank"] is None
 
 
 # ── record_sell ───────────────────────────────────────────────────────────────

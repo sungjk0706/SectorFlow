@@ -79,8 +79,9 @@ _TRADE_INSERT_SQL = (
     "INSERT OR IGNORE INTO trades"
     " (ts, date, time, side, stk_cd, stk_nm, price, qty,"
     "  total_amt, fee, tax, avg_buy_price, buy_total_amt,"
-    "  realized_pnl, pnl_rate, reason, trade_mode, buy_date)"
-    " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+    "  realized_pnl, pnl_rate, reason, trade_mode, buy_date,"
+    "  sector, buy_rank)"
+    " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
 )
 
 
@@ -93,6 +94,8 @@ def _trade_params(rec: dict) -> tuple:
         rec["realized_pnl"], rec["pnl_rate"],
         rec["reason"], rec["trade_mode"],
         rec.get("buy_date", ""),
+        rec.get("sector", ""),
+        rec.get("buy_rank"),
     )
 
 
@@ -253,6 +256,8 @@ async def record_buy(
     qty: int,
     reason: str = "",
     trade_mode: str = "test",
+    sector: str = "",
+    buy_rank: int | None = None,
 ) -> dict:
     """매수 체결 기록. 반환: 저장된 레코드.
 
@@ -282,6 +287,8 @@ async def record_buy(
         "reason": reason,
         "trade_mode": trade_mode,
         "buy_date": "",
+        "sector": sector,
+        "buy_rank": buy_rank,
     }
     logger.info(
         "[정산] 매수 기록 -- %s(%s) %d주 @%s 수수료=%s %s",
