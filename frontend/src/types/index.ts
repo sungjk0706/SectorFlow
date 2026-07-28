@@ -61,6 +61,7 @@ export interface SectorStock {
   high_5d?: number;  // 0 = 원천 부재/미다운로드 (5거래일 일봉 전), >0 = 유효 고가
   program_net_buy?: number | null;  // null/undefined = 프로그램 순매수 미수신
   news_boost?: number;  // 뉴스 호재 가산점 (0 = 미부여, >0 = 부여됨)
+  news_boost_title?: string;  // 뉴스 호재 제목 (📰 툴팁 표시용, applyNewsHit이 보관 — P10 SSOT)
 }
 
 // BuyTarget 제거: 매수후보 테이블은 SectorStock 타입 사용 (단일 소스 진리)

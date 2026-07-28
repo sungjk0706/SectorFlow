@@ -436,6 +436,58 @@ describe('hotStore — 이벤트 계약 정합성 (세션 4)', () => {
       expect(state.buyTargets[0].program_net_buy).toBe(5000000)
     })
   })
+
+  // ── 세션 4 — news_boost_title 보존 (P22 데이터 정합성) ──
+  // news_boost_title은 백엔드 스냅샷에 없음 (news-hit 이벤트가 단일 소스).
+  // 전체 새로고침(buy-targets-update) 시 prev에서 보존 — news_boost > 0일 때만.
+  describe('applyBuyTargetsUpdate — news_boost_title 보존 (세션 4, P22)', () => {
+    it('news_boost > 0 시 prev의 news_boost_title 보존 (전체 새로고침 후에도 툴팁 유지)', () => {
+      // 1. applyNewsHit으로 news_boost + title 설정
+      applyNewsHit({ codes: ['000001'], scores: [1.5], title: 'A기업 수주 계약' })
+      expect(hotStore.getState().buyTargets[0].news_boost_title).toBe('A기업 수주 계약')
+
+      // 2. 전체 새로고침 — 백엔드 스냅샷은 news_boost 포함하지만 title 미포함
+      const refreshed: SectorStock[] = [
+        {
+          code: '000001', name: '종목A', cur_price: 11000, change: 200, change_rate: 2.0,
+          trade_amount: 6000, strength: 85, sector: '업종1', rank: 1, guard_pass: true,
+          reason: '', boost_score: 5.0, high_5d: 12000, avg_amt_5d: 4000, news_boost: 1.5,
+          order_ratio: [100, 200], program_net_buy: null,
+        },
+        {
+          code: '000002', name: '종목B', cur_price: 20000, change: -200, change_rate: -0.9,
+          trade_amount: 3000, strength: 60, sector: '업종2', rank: 2, guard_pass: true,
+          reason: '', boost_score: 3.0, high_5d: 22000, avg_amt_5d: 5000, news_boost: 0,
+          order_ratio: [100, 200], program_net_buy: null,
+        },
+      ]
+      applyBuyTargetsUpdate({ buy_targets: refreshed })
+
+      // 3. news_boost > 0 → title 보존됨
+      expect(hotStore.getState().buyTargets[0].news_boost).toBe(1.5)
+      expect(hotStore.getState().buyTargets[0].news_boost_title).toBe('A기업 수주 계약')
+    })
+
+    it('news_boost = 0 시 news_boost_title 소멸 (뉴스 만료 일관성, P22)', () => {
+      // 1. applyNewsHit으로 news_boost + title 설정
+      applyNewsHit({ codes: ['000001'], scores: [1.5], title: 'A기업 수주 계약' })
+
+      // 2. 전체 새로고침 — news_boost 0 (뉴스 만료/TTL 경과)
+      const refreshed: SectorStock[] = [
+        {
+          code: '000001', name: '종목A', cur_price: 11000, change: 200, change_rate: 2.0,
+          trade_amount: 6000, strength: 85, sector: '업종1', rank: 1, guard_pass: true,
+          reason: '', boost_score: 5.0, high_5d: 12000, avg_amt_5d: 4000, news_boost: 0,
+          order_ratio: [100, 200], program_net_buy: null,
+        },
+      ]
+      applyBuyTargetsUpdate({ buy_targets: refreshed })
+
+      // 3. news_boost = 0 → title 소멸 (만료 일관성)
+      expect(hotStore.getState().buyTargets[0].news_boost).toBe(0)
+      expect(hotStore.getState().buyTargets[0].news_boost_title).toBeUndefined()
+    })
+  })
 })
 
 // ── COUPLING-S8 후속 — binding.ts 인라인 → action 추출 (P23/P24) ──────────────
@@ -661,8 +713,8 @@ describe('hotStore — applyNewsHit (news-hit 단일 갱신 경로, 세션 3)', 
     const state = hotStore.getState()
     // 종목A: news_boost만 1.5로 갱신, 나머지 필드 불변
     expect(state.buyTargets[0].news_boost).toBe(1.5)
-    const { news_boost: _a, ...restA } = state.buyTargets[0]
-    const { news_boost: _pa, ...restPrevA } = prevA
+    const { news_boost: _a, news_boost_title: _at, ...restA } = state.buyTargets[0]
+    const { news_boost: _pa, news_boost_title: _pat, ...restPrevA } = prevA
     expect(restA).toEqual(restPrevA)
     // 종목B: 미해당 — 불변 (참조 동일)
     expect(state.buyTargets[1]).toBe(prev[1])
@@ -707,6 +759,24 @@ describe('hotStore — applyNewsHit (news-hit 단일 갱신 경로, 세션 3)', 
   it('scores 요소 부재 시 0으로 처리 (P20 명시적 값)', () => {
     applyNewsHit({ codes: ['000001'], scores: [] })
     expect(hotStore.getState().buyTargets[0].news_boost).toBe(0)
+  })
+
+  // ── 세션 4 — title 보관 (📰 툴팁 표시용, P21 투명성) ──
+  it('title 보관 — buyTargets[i].news_boost_title에 저장 (세션 4)', () => {
+    applyNewsHit({ codes: ['000001'], scores: [1.5], title: 'A기업 대규모 수주 계약 체결' })
+    expect(hotStore.getState().buyTargets[0].news_boost_title).toBe('A기업 대규모 수주 계약 체결')
+  })
+
+  it('title 누락 시 빈 문자열 보관 (P20 명시적 값)', () => {
+    applyNewsHit({ codes: ['000001'], scores: [1.5] })
+    expect(hotStore.getState().buyTargets[0].news_boost_title).toBe('')
+  })
+
+  it('복수 종목 동시 갱신 시 동일 title 적용 (단일 뉴스 = 단일 title)', () => {
+    applyNewsHit({ codes: ['000001', '000002'], scores: [1.5, 2.0], title: '업종 호재 뉴스' })
+    const state = hotStore.getState()
+    expect(state.buyTargets[0].news_boost_title).toBe('업종 호재 뉴스')
+    expect(state.buyTargets[1].news_boost_title).toBe('업종 호재 뉴스')
   })
 })
 

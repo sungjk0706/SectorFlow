@@ -110,7 +110,12 @@ export const COLUMNS: ColumnDef<SectorStock>[] = [
       span.style.color = COLOR.up
       span.style.fontSize = FONT_SIZE.body
       span.style.fontWeight = FONT_WEIGHT.bold
-      span.title = `뉴스 가산점 ${newsScore.toFixed(1)}점 부여됨`
+      // P21: 뉴스 제목이 있으면 툴팁에 호재 정보 노출 (news_boost_title — applyNewsHit이 보관, 세션 4).
+      //      title 부재 시 가산점 점수만 표시 (P20 명시적 값).
+      const title = t.news_boost_title || ''
+      span.title = title
+        ? `${title}\n뉴스 가산점 ${newsScore.toFixed(1)}점 부여됨`
+        : `뉴스 가산점 ${newsScore.toFixed(1)}점 부여됨`
       return span
     },
   },
