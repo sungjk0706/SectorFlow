@@ -26,16 +26,16 @@ async def _send_initial_snapshot_delayed(websocket: WebSocket, ws_manager) -> No
         # 이벤트 구동 방식: 데이터 준비 완료 시 즉시 전송 (타임아웃/폴링 제거)
         # 테스트모드와 실전모드 동일하게 데이터 준비 대기 (앱 기동 준비는 돈과 무관)
         if not state.data_ready_event.is_set():
-            logger.info("[연결] 데이터 로드 대기 중 — 초기 스냅샷 전송 지연")
+            logger.info("[연결] 데이터 로드 대기 중 — 초기 데이터 전송 지연")
             await state.data_ready_event.wait()
-            logger.info("[연결] 데이터 로드 — 초기 스냅샷 전송 시작")
+            logger.info("[연결] 데이터 로드 — 초기 데이터 전송 시작")
 
         # 앱 준비 완료 대기 (이벤트 구동)
         # 테스트모드와 실전모드 동일하게 앱 준비 대기 (앱 기동 준비는 돈과 무관)
         if not state.bootstrap_event.is_set():
-            logger.info("[연결] 앱 기동 대기 중 — 초기 스냅샷 전송 지연")
+            logger.info("[연결] 앱 기동 대기 중 — 초기 데이터 전송 지연")
             await state.bootstrap_event.wait()
-            logger.info("[연결] 앱 기동 — 초기 스냅샷 전송 시작")
+            logger.info("[연결] 앱 기동 — 초기 데이터 전송 시작")
 
         # 엔진 준비 완료 유니캐스트 전송 (engine-ready)
         if state.bootstrap_event.is_set():
@@ -60,7 +60,7 @@ async def _send_initial_snapshot_delayed(websocket: WebSocket, ws_manager) -> No
                 getattr(_es.state, "latest_filter_summary_meta", ""), len(stocks)
             )
         except Exception as e:
-            logger.warning("[연결] 초기 스냅샷 생성 실패: %s", e, exc_info=True)
+            logger.warning("[연결] 초기 데이터 생성 실패: %s", e, exc_info=True)
 
         stock_classification_payload = {
             "_v": 1,
@@ -163,7 +163,7 @@ async def _send_initial_snapshot_delayed(websocket: WebSocket, ws_manager) -> No
             except Exception:
                 logger.warning("[연결] 업종지수 캐시 재전송 실패: upcode=%s", upcode, exc_info=True)
     except Exception as e:
-        logger.error("[연결] 초기 스냅샷 전송 실패: %s", e, exc_info=True)
+        logger.error("[연결] 초기 데이터 전송 실패: %s", e, exc_info=True)
 
 
 @router.websocket("/prices")

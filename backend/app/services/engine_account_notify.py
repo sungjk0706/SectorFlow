@@ -35,7 +35,7 @@ class NotificationCache:
       - `_reset_realtime_fields`는 장마감·개시 등 엔진 전체 재초기화 시점에만 호출.
       - `clear_all()`이 `_initialized=False`로 리셋 → 다음 `init_sent_caches`가 정상 재설정.
       - clear_all 직후 delta 계산 시 모든 항목이 changed로 나오는 것은 정상 —
-        첫 delta는 full snapshot으로 전송되어 정합성 보장 (P25 격리, 세션 5 시나리오 4 정상화).
+        첫 delta는 전체 데이터로 전송되어 정합성 보장 (P25 격리, 세션 5 시나리오 4 정상화).
 
     시나리오 테스트 5건은 `test_engine_account_notify.py::TestNotifyCacheConcurrencyScenarios` 참조.
     실전 주문 경로에는 영향 없음.
@@ -238,7 +238,7 @@ async def notify_desktop_sector_scores(*, force: bool = False) -> None:
     수신율은 receive-rate 이벤트가 단일 소스(P10 SSOT) — sector-scores에서 중복 전송 제거.
     """
     # ── 수신율 임계값 게이트 — WS 구독 구간 내 임계값 미달 시 sector-scores 전송 차단 ──
-    # 임계값 통과 후 첫 전송이 전체 스냅샷이 되도록 delta 비교 캐시 클리어.
+    # 임계값 통과 후 첫 전송이 전체 데이터가 되도록 delta 비교 캐시 클리어.
     try:
         from backend.app.pipelines.pipeline_compute import is_sector_threshold_passed
         if not is_sector_threshold_passed():
@@ -256,7 +256,7 @@ async def notify_desktop_sector_scores(*, force: bool = False) -> None:
         if payload is None:
             return  # 변경 없음 → 전송 생략
     else:
-        # 최초 전송 또는 force → 전체 스냅샷
+        # 최초 전송 또는 force → 전체 데이터
         payload = _build_sector_score_full_payload(scores, ranked_count)
 
     await _safe_broadcast("sector-scores", payload)
@@ -288,7 +288,7 @@ def _build_sector_score_delta_payload(scores: list, ranked_count: int) -> dict |
 
 
 def _build_sector_score_full_payload(scores: list, ranked_count: int) -> dict:
-    """전체 스냅샷 페이로드 조립 (최초 전송 또는 force)."""
+    """전체 데이터 페이로드 조립 (최초 전송 또는 force)."""
     return {
         "scores": scores,
         "status": _build_sector_score_status(scores, ranked_count),
@@ -320,7 +320,7 @@ async def notify_desktop_sector_stocks_refresh(*, force: bool = False) -> None:
     """종목 목록 또는 데이터가 변경되었을 때 delta 또는 전체 리스트를 WS로 전송.
 
     Args:
-        force: True 시 delta 계산 없이 전체 스냅샷 전송 (확정시세/5거래일 일봉 다운로드 등 전 종목 데이터 변경 시).
+        force: True 시 delta 계산 없이 전체 데이터 전송 (확정시세/5거래일 일봉 다운로드 등 전 종목 데이터 변경 시).
     """
     from backend.app.services.sector_data_provider import get_sector_stocks
     stocks = await get_sector_stocks()

@@ -453,7 +453,7 @@ class TestNotifyCacheConcurrencyScenarios:
         assert notify_cache.prev_sector_stock_codes == {"005930", "000660"}
         assert notify_cache.position_sent["005930"]["cur_price"] == 80000
         assert notify_cache.snapshot_sent == snapshot
-        # 초기화 직후 delta 캐시는 비어 있어야 함 (다음 전송이 전체 스냅샷 기준)
+        # 초기화 직후 delta 캐시는 비어 있어야 함 (다음 전송이 전체 데이터 기준)
         assert notify_cache.prev_scores == []
         assert notify_cache.prev_buy_targets_map is None
         # 세션 6: _initialized 플래그가 True로 설정되어 후속 init 스킵 가드 활성화

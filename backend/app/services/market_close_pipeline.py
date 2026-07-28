@@ -511,7 +511,7 @@ async def _run_post_confirmed_pipeline(eligible_codes: set[str] | None = None) -
     """
     전종목 일봉 차트 시세 조회(ka10081) 도입으로 5거래일 거래대금 및 최고가를 즉시 추출하므로,
     기존의 복잡한 v2 캐시 롤링 갱신 로직은 제거되었습니다.
-    단순히 최종 스냅샷 및 캐시를 저장합니다.
+    단순히 최종 메모리 캐시를 DB에 저장합니다.
     """
     try:
         await _save_confirmed_cache(eligible_codes=eligible_codes)

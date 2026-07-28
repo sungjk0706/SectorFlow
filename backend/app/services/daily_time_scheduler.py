@@ -842,7 +842,7 @@ async def _on_realtime_fields_reset() -> None:
         # 수신율 임계값 게이트 리셋 — 새 구독 세션 시작 시 임계값 대기 상태로 전환
         from backend.app.pipelines.pipeline_compute import reset_sector_threshold
         reset_sector_threshold()
-        # delta 비교 캐시 초기화 → 다음 sector-scores 전송이 전체 스냅샷으로 나감
+        # delta 비교 캐시 초기화 → 다음 sector-scores 전송이 전체 데이터로 나감
         from backend.app.services.engine_account_notify import notify_cache
         notify_cache.prev_scores = []
         from backend.app.services.engine_snapshot import _set_sector_summary
@@ -1229,7 +1229,7 @@ async def _init_ws_subscribe_state() -> None:
             _mark_realtime_reset_done(today_str)
         else:
             logger.info("[스케줄] 구독 구간 내 시작 — 실시간 필드 초기화는 캐시 로드 후 수행")
-        # delta 비교 캐시 초기화 → 다음 sector-scores 전송이 전체 스냅샷으로 나감
+        # delta 비교 캐시 초기화 → 다음 sector-scores 전송이 전체 데이터로 나감
         try:
             from backend.app.services.engine_account_notify import notify_cache
             notify_cache.prev_scores = []

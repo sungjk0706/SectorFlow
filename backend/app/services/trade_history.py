@@ -204,7 +204,7 @@ async def _broadcast_buy_append(rec: dict) -> None:
 
 
 async def _broadcast_full_sell_history(trade_mode: str) -> None:
-    """초기 스냅샷용: 해당 trade_mode의 전체 매도 내역 + 최근 N거래일 요약을 브로드캐스트."""
+    """초기 데이터 전송용: 해당 trade_mode의 전체 매도 내역 + 최근 N거래일 요약을 브로드캐스트."""
     try:
         from backend.app.web.ws_manager import ws_manager
         from backend.app.services import engine_state
@@ -218,7 +218,7 @@ async def _broadcast_full_sell_history(trade_mode: str) -> None:
 
 
 async def _broadcast_full_buy_history(trade_mode: str) -> None:
-    """초기 스냅샷용: 해당 trade_mode의 전체 매수 내역을 브로드캐스트."""
+    """초기 데이터 전송용: 해당 trade_mode의 전체 매수 내역을 브로드캐스트."""
     try:
         from backend.app.web.ws_manager import ws_manager
         rows = await get_buy_history(trade_mode=trade_mode)
@@ -585,7 +585,7 @@ async def clear_test_history() -> None:
 
 
 async def broadcast_history(trade_mode: str) -> None:
-    """해당 trade_mode의 매수/매도 이력 및 일별 요약을 브로드캐스트 (초기 스냅샷용)."""
+    """해당 trade_mode의 매수/매도 이력 및 일별 요약을 브로드캐스트 (초기 데이터 전송용)."""
     await _broadcast_full_buy_history(trade_mode)
     await _broadcast_full_sell_history(trade_mode)
 

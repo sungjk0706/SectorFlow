@@ -662,7 +662,7 @@ export function applySectorScores(data: SectorScoresEvent): void {
     }
     hotStore.setState({ sectorScores: merged })
   } else if (data.scores) {
-    // 전체 스냅샷: 전체 교체
+    // 전체 데이터: 전체 교체
     hotStore.setState({ sectorScores: data.scores })
   }
 }
@@ -766,8 +766,8 @@ export function applyInitialSnapshotHot(data: Record<string, unknown>): void {
   const prevSectorStocks = prev.sectorStocks
   const newSectorStocks = stocks.length > 0 ? stocksToMap(stocks) : prevSectorStocks
   // P22(데이터 정합성) + P23(일관성): sellHistory/buyHistory/dailySummary도
-  // sectorStocks와 동일하게, 재연결 시 빈 스냅샷으로 기존 정상 값을 리셋하지 않도록 보존.
-  // 빈 배열은 "데이터 없음"이 아니라 "스냅샷 미준비/일시적 조회 실패"일 수 있으므로
+  // sectorStocks와 동일하게, 재연결 시 빈 데이터로 기존 정상 값을 리셋하지 않도록 보존.
+  // 빈 배열은 "데이터 없음"이 아니라 "초기 데이터 미준비/일시적 조회 실패"일 수 있으므로
   // 기존 값을 권위 있는 값으로 유지하고 다음 거래 이벤트로 갱신.
   const newSellHistory = (data.sell_history as Record<string, unknown>[]) ?? []
   const newBuyHistory = (data.buy_history as Record<string, unknown>[]) ?? []

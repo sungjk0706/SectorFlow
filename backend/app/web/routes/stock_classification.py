@@ -56,7 +56,7 @@ class MoveStocksRequest(BaseModel):
 async def broadcast_stock_classification_changed() -> None:
     """stock-classification-changed WS 이벤트 브로드캐스트.
 
-    메모리 캐시(_master_stocks_cache)에서 데이터를 조회하여 실시간 스냅샷 전송.
+    메모리 캐시(_master_stocks_cache)에서 데이터를 조회하여 실시간 데이터 전송.
     """
     from backend.app.core.sector_mapping import get_merged_all_sectors
     from backend.app.web.ws_manager import ws_manager

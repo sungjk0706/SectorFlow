@@ -128,7 +128,7 @@ async def lifespan(app: FastAPI):
     state.server_ready_event.set()
 
     # 엔진 초기화 백그라운드 실행 (프론트엔드 접속과 병렬)
-    # WS 핸들러가 data_ready_event / bootstrap_event 대기 후 스냅샷 전송하므로
+    # WS 핸들러가 data_ready_event / bootstrap_event 대기 후 초기 데이터 전송하므로
     # 엔진 초기화 완료 전에 프론트엔드 접속해도 데이터는 자동 대기됨
     logger.info("[웹서버] 엔진 백그라운드 초기화 시작")
     async def _engine_init_background():

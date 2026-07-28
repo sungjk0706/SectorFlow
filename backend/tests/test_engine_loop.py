@@ -582,7 +582,7 @@ class TestRunEngineLoopInit:
 
     @pytest.mark.asyncio
     async def test_token_failure_sets_access_token_none(self):
-        """토큰 발급 실패 → state.access_token = None + 스냅샷 전용 모드 로그."""
+        """토큰 발급 실패 → state.access_token = None + 시세 전용 모드 로그."""
         mock_state = _mock_state()
         mock_state.broker_tokens = {}  # 토큰 없음
         mock_state.engine_stop_event.is_set.return_value = True
@@ -611,7 +611,7 @@ class TestRunEngineLoopInit:
 
         assert mock_state.access_token is None
         log_msgs = [str(c) for c in mock_log.call_args_list]
-        assert any("스냅샷 전용 모드" in m for m in log_msgs)
+        assert any("시세 전용 모드" in m for m in log_msgs)
 
     @pytest.mark.asyncio
     async def test_finally_clears_broker_rest_apis(self):

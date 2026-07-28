@@ -197,7 +197,7 @@ async def run_engine_loop() -> None:
             from backend.app.services.engine_lifecycle import log_message, broadcast_engine_status
             log_message(f" [구동] 유효한 API 키가 없습니다 (대상: {', '.join(BROKER_DISPLAY_NAMES.get(b, b) for b in ws_brokers)}). 일반설정에서 증권사 API 키를 입력하세요.")
             await broadcast_engine_status()
-            # 엔진 중단하지 않고 계속 진행 (테스트모드/스냅샷 전용 모드 허용)
+            # 엔진 중단하지 않고 계속 진행 (테스트모드/시세 전용 모드 허용)
 
         # REST/토큰 발급은 기준 증권사(broker_nm) 기준 유지
 
@@ -238,7 +238,7 @@ async def run_engine_loop() -> None:
             engine_state.state.access_token = token
         else:
             from backend.app.services.engine_lifecycle import log_message
-            log_message(f" [연결] {BROKER_DISPLAY_NAMES.get(broker_nm, broker_nm)} 토큰 발급 실패. 스냅샷 전용 모드로 기동.")
+            log_message(f" [연결] {BROKER_DISPLAY_NAMES.get(broker_nm, broker_nm)} 토큰 발급 실패. 시세 전용 모드로 기동.")
             engine_state.state.access_token = None
 
         # ── 계좌 조회용 REST = Router의 AuthProvider에서 REST 실시간 인스턴스 공유 ──

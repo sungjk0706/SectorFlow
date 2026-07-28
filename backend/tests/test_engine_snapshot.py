@@ -1,4 +1,4 @@
-"""engine_snapshot.py 단위 테스트 — 스냅샷/데이터 필터링/실시간 필드 초기화."""
+"""engine_snapshot.py 단위 테스트 — 초기 데이터/필터링/실시간 필드 초기화."""
 from __future__ import annotations
 
 import pytest
@@ -143,7 +143,7 @@ class TestGetDailySummaryForSnapshot:
 # ── build_initial_snapshot ─────────────────────────────────────────
 
 class TestBuildInitialSnapshot:
-    """build_initial_snapshot — WS 연결 시 메타 상태 스냅샷 조립 (L20-90)."""
+    """build_initial_snapshot — WS 연결 시 메타 상태 데이터 조립 (L20-90)."""
 
     @pytest.fixture(autouse=True)
     def _mock_pipeline_compute(self):
@@ -158,7 +158,7 @@ class TestBuildInitialSnapshot:
 
     @pytest.mark.asyncio
     async def test_happy_path(self, _mock_pipeline_compute):
-        """모든 getter 정상 반환 — 스냅샷 dict 조립 확인."""
+        """모든 getter 정상 반환 — 데이터 dict 조립 확인."""
         _mock_pipeline_compute.get_current_receive_rate.return_value = {
             "krx": {"received": 8, "total": 10, "pct": 80.0},
             "nxt": {"received": 4, "total": 5, "pct": 80.0},
@@ -294,7 +294,7 @@ class TestBuildInitialSnapshot:
 
     @pytest.mark.asyncio
     async def test_init_sent_caches_exception(self):
-        """init_sent_caches 예외 시 로깅만 수행, 스냅샷 정상 반환 (L87-88)."""
+        """init_sent_caches 예외 시 로깅만 수행, 데이터 정상 반환 (L87-88)."""
         with patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.services.engine_account.get_positions", new=AsyncMock(return_value=[])), \
              patch("backend.app.services.engine_account.get_account_snapshot", new=AsyncMock(return_value={})), \

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-스냅샷/데이터 관련 모듈
-- 초기 스냅샷 생성
+초기 데이터 관련 모듈
+- 초기 데이터 생성
 - 업종 종목 페이로드 생성
 - 데이터 필드 필터링
 - 실시간 필드 초기화
@@ -17,10 +17,10 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-# ── 스냅샷 생성 ─────────────────────────────────────────────────────
+# ── 초기 데이터 생성 ─────────────────────────────────────────────────────
 
 async def build_initial_snapshot() -> dict:
-    """WS 연결 시 클라이언트에게 보낼 메타 상태 스냅샷을 조립한다.
+    """WS 연결 시 클라이언트에게 보낼 메타 상태 데이터를 조립한다.
 
     sector_stocks는 별도 이벤트(sector-stocks-refresh)로 분할 전송하므로 여기서는 빈 리스트.
     """
@@ -185,7 +185,7 @@ async def _reset_realtime_fields() -> None:
     # 캡슐화된 notify_cache.clear_all() 호출로 결합성 제거.
     # 본 시점은 엔진 전체 재초기화(장마감·개시 등)이며 다중 WS 연결 동시 초기화 정상.
     # clear_all은 _initialized=False로 리셋 → 다음 init_sent_caches가 정상 재설정.
-    # clear_all 직후 첫 delta는 full snapshot으로 전송되어 정합성 보장 (P25 격리).
+    # clear_all 직후 첫 delta는 전체 데이터로 전송되어 정합성 보장 (P25 격리).
     notify_cache.clear_all()
 
     # DB master_stocks_table 실시간 필드 초기화 (과거 데이터 혼입 방지)

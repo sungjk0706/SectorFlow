@@ -230,7 +230,7 @@ function main(): void {
         const health = await api.healthCheck()
 
         // 서버가 응답하면 즉시 WS 연결 (initializing 상태도 허용)
-        // WS 핸들러가 data_ready_event / bootstrap_event 대기 후 스냅샷 전송
+        // WS 핸들러가 data_ready_event / bootstrap_event 대기 후 초기 데이터 전송
         if (health.status === 'ready' || health.status === 'initializing' || health.status === 'error') {
           shell.setOverlay(false, '')
           return

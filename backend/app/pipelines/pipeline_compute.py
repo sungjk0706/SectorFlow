@@ -54,7 +54,7 @@ _received_codes_nxt: set[str] = set()
 # ── 업종순위 수신율 임계값 게이트 (단일 소스 진리) ──
 # WS 구독 구간 진입 시 False로 리셋 → Phase 1 루프에서 임계값 통과 시 True로 전환.
 # 비-WS 구간(확정 데이터 기반)은 기본값 True로 항상 허용.
-# notify_desktop_sector_scores() 및 초기 스냅샷 전송이 이 플래그를 참조하여
+# notify_desktop_sector_scores() 및 초기 데이터 전송이 이 플래그를 참조하여
 # 임계값 미달 시 sector-scores 프론트엔드 전송을 차단함.
 _sector_threshold_passed: bool = True
 

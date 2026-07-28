@@ -455,7 +455,7 @@ class TestWsSubscribeRouter:
 # ── ws.py ─────────────────────────────────────────────────────────────────────
 
 class TestSendInitialSnapshotDelayed:
-    """ws.py: _send_initial_snapshot_delayed — 초기 스냅샷 순차 유니캐스트."""
+    """ws.py: _send_initial_snapshot_delayed — 초기 데이터 순차 유니캐스트."""
 
     async def test_full_snapshot_sequence(self):
         from backend.app.web.routes.ws import _send_initial_snapshot_delayed
