@@ -52,9 +52,8 @@ async def _ensure_loaded() -> None:
                 "SELECT t.ts, t.date, t.time, t.side, t.stk_cd, t.stk_nm, t.price, t.qty,"
                 " t.total_amt, t.fee, t.tax, t.avg_buy_price, t.buy_total_amt,"
                 " t.realized_pnl, t.pnl_rate, t.reason, t.trade_mode, t.buy_date,"
-                " cs.name AS sector"
+                " t.sector, t.buy_rank"
                 " FROM trades t"
-                " LEFT JOIN custom_sectors cs ON t.stk_cd = cs.stock_code"
                 " ORDER BY t.ts DESC"
             ) as cur:
                 rows = await cur.fetchall()
