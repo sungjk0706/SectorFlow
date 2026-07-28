@@ -58,8 +58,8 @@ function ensureDialogKeyframes() {
         to { background: ${SURFACE_ALPHA.overlay}; backdrop-filter: ${BLUR.overlay}; -webkit-backdrop-filter: ${BLUR.overlay}; }
       }
       @keyframes dialog-box-in {
-        from { opacity: 0; transform: scale(0.96) translateY(8px); }
-        to { opacity: 1; transform: scale(1) translateY(0); }
+        from { opacity: 0; transform: translateY(-24px); }
+        to { opacity: 1; transform: translateY(0); }
       }
     `
     document.head.appendChild(style)
@@ -126,8 +126,15 @@ function createMessageElement(message: string): HTMLElement {
 
 /* ── 내부 공통 렌더링 함수 (유일한 구현) ── */
 
+// 싱글톤 — 동시 다중 모달 방지 (context-popup 패턴 참조, P24 단순성)
+// 새 다이얼로그 오픈 시 기존 다이얼로그를 닫고 onEscape로 Promise resolve (P22 정합성)
+let _currentDialogClose: (() => void) | null = null
+
 function renderDialog(config: DialogConfig): HTMLElement {
   ensureDialogKeyframes()
+
+  // 기존 다이얼로그 강제 닫기 (싱글톤)
+  if (_currentDialogClose) _currentDialogClose()
 
   let closed = false
   const overlay = document.createElement('div')
@@ -167,9 +174,18 @@ function renderDialog(config: DialogConfig): HTMLElement {
   function close() {
     if (closed) return
     closed = true
+    if (_currentDialogClose === forceClose) _currentDialogClose = null
     document.removeEventListener('keydown', onKeyDown, true)
     overlay.remove()
   }
+
+  // 싱글톤 등록용 — 기존 다이얼로그를 닫고 onEscape로 Promise resolve
+  function forceClose() {
+    if (closed) return
+    close()
+    config.onEscape?.()
+  }
+  _currentDialogClose = forceClose
 
   if (config.closeOnExternalClick) {
     overlay.addEventListener('mousedown', (e) => {

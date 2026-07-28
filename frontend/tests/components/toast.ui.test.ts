@@ -86,12 +86,15 @@ describe('showToast', () => {
     expect(container.children.length).toBe(0)
   })
 
-  it('appends multiple toasts', async () => {
+  it('replaces previous toast — single slot (macOS banner style)', async () => {
     const { showToast } = await import('../../src/components/common/toast')
     showToast('success', '첫 번째')
     showToast('error', '두 번째')
     const container = document.getElementById('toast-container')!
-    expect(container.children.length).toBe(2)
+    // 단일 슬롯 — 새 토스트가 기존을 덮어씀 (쌓이지 않음)
+    expect(container.children.length).toBe(1)
+    expect(container.textContent).toContain('두 번째')
+    expect(container.textContent).not.toContain('첫 번째')
   })
 })
 

@@ -7,16 +7,16 @@ export type ToastType = 'success' | 'error' | 'warning' | 'info'
 export type LegacyToastType = 'saved' | 'error'
 
 interface Toast {
-  id: number
   type: ToastType
   message: string
 }
 
 const DURATION_DEFAULT = 2500
 const DURATION_ERROR = 4500
-let _nextId = 0
 let _container: HTMLElement | null = null
-const _timers = new Map<number, ReturnType<typeof setTimeout>>()
+// 단일 슬롯 — 동시 1개 토스트만 표시 (macOS 배너 스타일, 쌓임 방지)
+let _currentEl: HTMLElement | null = null
+let _currentTimer: ReturnType<typeof setTimeout> | null = null
 
 const TYPE_CONFIG = {
   success: {
@@ -51,18 +51,25 @@ function addToast(t: Toast, duration?: number) {
     initToastContainer(document.body)
   }
 
+  // 단일 슬롯 — 기존 토스트 즉시 제거 후 새 토스트로 교체 (쌓임 방지, macOS 배너 스타일)
+  if (_currentEl) {
+    clearCurrentTimer()
+    _currentEl.remove()
+    _currentEl = null
+  }
+
   const cfg = TYPE_CONFIG[t.type]
   const div = document.createElement('div')
-  
+
   Object.assign(div.style, {
     padding: '10px 18px',
-    borderRadius: RADIUS.lg,
+    borderRadius: RADIUS.xl,
     fontSize: '12px',
     fontWeight: '500',
     background: cfg.bg,
     color: cfg.color,
     border: `1px solid ${cfg.border}`,
-    boxShadow: SHADOW.popup,
+    boxShadow: SHADOW.modal,
     backdropFilter: BLUR.overlay,
     webkitBackdropFilter: BLUR.overlay,
     animation: 'toast-in 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards',
@@ -101,25 +108,29 @@ function addToast(t: Toast, duration?: number) {
 
   // 클릭 시 즉시 닫기
   div.addEventListener('click', () => {
-    removeToast(t.id, div)
+    removeToast(div)
   })
 
   _container!.appendChild(div)
+  _currentEl = div
 
   const d = duration ?? (t.type === 'error' ? DURATION_ERROR : DURATION_DEFAULT)
-  const timer = setTimeout(() => {
-    removeToast(t.id, div)
+  _currentTimer = setTimeout(() => {
+    removeToast(div)
   }, d)
-  _timers.set(t.id, timer)
 }
 
-function removeToast(id: number, el: HTMLElement) {
-  const timer = _timers.get(id)
-  if (timer) {
-    clearTimeout(timer)
-    _timers.delete(id)
+function clearCurrentTimer() {
+  if (_currentTimer) {
+    clearTimeout(_currentTimer)
+    _currentTimer = null
   }
-  
+}
+
+function removeToast(el: HTMLElement) {
+  clearCurrentTimer()
+  if (_currentEl === el) _currentEl = null
+
   // 페이드 아웃 애니메이션 후 삭제
   el.style.animation = 'toast-out 0.2s ease-in forwards'
   el.addEventListener('animationend', () => {
@@ -129,7 +140,7 @@ function removeToast(id: number, el: HTMLElement) {
 
 /** 새로운 공통 토스트 트리거 함수 */
 export function showToast(type: ToastType, message: string, duration?: number) {
-  addToast({ id: ++_nextId, type, message }, duration)
+  addToast({ type, message }, duration)
 }
 
 /** 하위 호환용 showSaveToast 함수 */
@@ -161,9 +172,8 @@ export function initToastContainer(parent: HTMLElement) {
     transform: 'translateX(-50%)',
     zIndex: '99999',
     display: 'flex',
-    flexDirection: 'column',
     alignItems: 'center',
-    gap: '8px',
+    justifyContent: 'center',
     pointerEvents: 'none',
   })
   
