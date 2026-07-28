@@ -56,13 +56,14 @@ async def compute_sector_scores(
             if code not in state.master_stocks_cache:
                 continue
 
-            # 현재가 조회
-            cur_price = int(trade_prices.get(code, 0) or 0)
+            # 현재가: trade_prices(REAL) > master_stocks_cache (P10 SSOT)
+            # None = 실시간 데이터 미수신 — 0으로 폴백하지 않고 None 유지 (P20/P22)
             detail = state.master_stocks_cache.get(code, {})
-
-            if cur_price <= 0:
-                cur_price = int(detail.get("cur_price", 0) or 0)
-            # cur_price 0도 유효한 데이터 -- WS 틱 미수신 상태일 뿐, 스킵하지 않음
+            _tp_raw = trade_prices.get(code)
+            cur_price = int(_tp_raw) if _tp_raw is not None else None
+            if cur_price is None or cur_price <= 0:
+                _cp_raw = detail.get("cur_price")
+                cur_price = int(_cp_raw) if _cp_raw is not None else None
 
             # 등락률: master_stocks_cache(change_rate) 사용 (단일 소스 진리)
             # None = 실시간 데이터 미수신 — 0으로 폴백하지 않고 None 유지 (P20/P22)
@@ -81,8 +82,8 @@ async def compute_sector_scores(
                 _ta_raw = detail.get("trade_amount")
                 ta = int(_ta_raw) if _ta_raw is not None else None
 
-            # 미수신 종목(change_rate 또는 trade_amount가 None)은 업종 점수 계산에서 제외 (P22)
-            if change_rate is None or ta is None:
+            # 미수신 종목(change_rate, trade_amount, cur_price 중 하나라도 None)은 업종 점수 계산에서 제외 (P20/P22)
+            if change_rate is None or ta is None or cur_price is None:
                 continue
 
             # 5거래일 평균 거래대금: avg_amt_5d dict는 master_stocks_cache["avg_5d_trade_amount"] = 백만원 단위

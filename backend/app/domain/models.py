@@ -16,7 +16,7 @@ class StockScore:
     trade_amount: int           # 당일 거래대금 (원)
     avg_amt_5d: int             # 5거래일 평균 거래대금 (억 단위)
     strength: float             # 체결강도 (%, -1 = 미수신)
-    cur_price: int              # 현재가
+    cur_price: int | None       # 현재가 (None = 틱 미수신, P20/P22)
     change: int = 0             # 전일 대비 (원)
     market_type: str = ""       # 시장구분 ("0"=코스피, "10"=코스닥, ""=미확인)
     nxt_enable: bool = False    # KRX+NXT 중복상장 여부

@@ -64,9 +64,9 @@ def _refresh_buyable_prices(ss, available: int, effective_buy_amt: int | None, i
             continue
         if _rebuy_block_on and s.code in state.auto_trade._bought_today:
             continue
-        _price = int(s.cur_price or 0)
-        if _price <= 0:
+        if s.cur_price is None or s.cur_price <= 0:
             continue
+        _price = s.cur_price
         # 테스트모드 슬리피지 적용 (trading.py:254와 동일)
         _est_price = dry_run.estimate_fill_price(_price, "BUY") if is_test else _price
         # 종목별 가용 금액 = min(effective_buy_amt, available) 또는 available
@@ -223,9 +223,9 @@ async def evaluate_buy_candidates() -> None:
         logger.info("[매매] 매수 시도: %s(%s) 순위=%d 업종=%s",
                     s.name, s.code, bt.rank, s.sector)
         try:
-            _price = int(s.cur_price or 0)
-            if _price <= 0:
-                break  # 현재가 0은 전역 이상 → 루프 종료
+            if s.cur_price is None or s.cur_price <= 0:
+                break  # 현재가 미수신/0은 전역 이상 → 루프 종료
+            _price = s.cur_price
             # 매수 근거(가산점 통합 문자열) 생성 — 발생한 가산점만 라벨 연결 (P20/P21/P23).
             # 표시 순서 고정: 5거래일 고가 → 호가잔량비 → 뉴스 → 프.순.매.
             # 라벨은 매수 후보 화면(buy-target-columns.ts)과 동일 텍스트 (P23 일관성).

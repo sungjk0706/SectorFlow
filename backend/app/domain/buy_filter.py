@@ -36,7 +36,7 @@ def calculate_boost_score(
     # 1. 5거래일 고가 돌파
     if boost_high_on:
         high_val = high_5d_cache.get(stock.code, 0)
-        if high_val > 0 and stock.cur_price > high_val:
+        if high_val > 0 and stock.cur_price is not None and stock.cur_price > high_val:
             score += boost_high_score
             stock.boost_high_triggered = True
 
