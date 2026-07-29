@@ -51,6 +51,11 @@ export interface UIState {
   /* ── 업종 점수 델타 ── */
   sectorScoresDelta: { delta: boolean; changed_sectors: string[]; removed_sectors: string[] } | null
 
+  /* ── 업종 점수 수신 대기 상태 (P21 투명성) ──
+   * 수신율 임계값 미통과 시 true — "데이터 수신 대기 중" 표시.
+   * 임계값 통과 후 정상 sector-scores 전송 시 false로 해제. */
+  sectorScoresWaiting: boolean
+
   /* ── 업종 요약 ── */
   sectorSummary: Record<string, unknown> | null
 
@@ -98,6 +103,7 @@ const initialState: UIState = {
   buyLimitStatus: { daily_buy_spent: 0 },
   wsSubscribeStatus: { index_subscribed: false, quote_subscribed: false },
   sectorScoresDelta: null,
+  sectorScoresWaiting: false,
   sectorSummary: null,
   engineReloadComplete: false,
   receiveRate: null,

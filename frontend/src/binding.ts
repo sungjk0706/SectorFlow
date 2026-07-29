@@ -227,14 +227,15 @@ export function bindWSToStore(
       delta?: boolean
       changed_sectors?: string[]
       removed_sectors?: string[]
-      status?: Record<string, unknown>
+      status?: { waiting?: boolean } & Record<string, unknown>
     }
     applySectorScores(d as unknown as SectorScoresEvent)
-    // sectorScoresDelta (uiStore) 갱신
+    // sectorScoresDelta (uiStore) 갱신 + 수신 대기 상태 (P21 투명성)
     uiStore.setState({
       sectorScoresDelta: d.delta
         ? { delta: true, changed_sectors: d.changed_sectors ?? [], removed_sectors: d.removed_sectors ?? [] }
         : null,
+      sectorScoresWaiting: d.status?.waiting === true,
     })
     // receiveRate는 receive-rate 이벤트가 단일 소스(P10 SSOT) — sector-scores에서 중복 갱신 제거
   })

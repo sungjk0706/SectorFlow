@@ -23,6 +23,7 @@ function makeCleanUiState(): UIState {
     buyLimitStatus: { daily_buy_spent: 0 },
     wsSubscribeStatus: { index_subscribed: true, quote_subscribed: true },
     sectorScoresDelta: null,
+    sectorScoresWaiting: false,
     sectorSummary: null,
     engineReloadComplete: true,
     receiveRate: null,

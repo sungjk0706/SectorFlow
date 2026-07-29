@@ -13,7 +13,6 @@ import type { PageModule } from '../router'
 
 /* ── 모듈 상태 ── */
 let _mounted = false
-let rafHandle: number | null = null
 let unsubStore: (() => void) | null = null
 let unsubUiStore: (() => void) | null = null
 
@@ -27,6 +26,9 @@ let currentMaxScore = 1
 let currentMaxTargets = DEFAULT_SECTOR_MAX_TARGETS
 // 현재 선택 업종 (rowStyle 클로저가 참조)
 let currentSelected: string | null = null
+
+// 수신 대기 중 메시지 요소 (P21 투명성 — 임계값 미통과 시 표시)
+let waitingNoticeEl: HTMLElement | null = null
 
 function updateMaxTargetsStatus(scores: SectorScoreRow[], maxTargets: number): void {
   const el = getMaxTargetsStatusEl()
@@ -212,6 +214,24 @@ function mount(container: HTMLElement): void {
   Object.assign(root.style, { padding: '0', margin: '0', width: '100%', height: '100%', display: 'flex', flexDirection: 'column' })
   root.appendChild(createCardTitle('업종순위'))
 
+  // 수신 대기 중 안내 배지 (P21 투명성 — 임계값 미통과 시 "데이터 수신 대기 중" 표시)
+  // sector-stock.ts의 nxtOnlyNoticeBadge와 동일 패턴 (P23 일관성)
+  waitingNoticeEl = document.createElement('div')
+  Object.assign(waitingNoticeEl.style, {
+    display: 'none',
+    alignItems: 'center',
+    gap: '8px',
+    marginBottom: '8px',
+    padding: '6px 12px',
+    background: COLOR.warningBg,
+    borderRadius: RADIUS.sm,
+    border: '1px solid ' + COLOR.warning,
+    fontSize: FONT_SIZE.badge,
+    color: COLOR.warning,
+  })
+  waitingNoticeEl.textContent = '업종순위 데이터 수신 대기 중...'
+  root.appendChild(waitingNoticeEl)
+
   // DataTable 생성 — 가상 스크롤 활성화 (전체 업종 표시, P21)
   const initUi = uiStore.getState()
   currentMaxTargets = typeof initUi.settings?.sector_max_targets === 'number'
@@ -263,13 +283,49 @@ function mount(container: HTMLElement): void {
 
   container.appendChild(root)
 
-  // hotStore/uiStore 구독 — sectorScores/selectedSector/settings 변동 시 갱신
+  // hotStore/uiStore 구독 — sectorScores/selectedSector/settings/waiting 변동 시 동기 갱신
+  // rAF 제거: sectorScores는 0.2초마다 갱신되는 저빈도 데이터이므로 동기 갱신해도 P7 위반 없음.
+  // 우측 패널(sector-stock.ts)도 같은 store 변경 시 동기 갱신하여 두 패널이 같은 타이밍에 갱신 (P22 정합성).
   {
     const initHot = hotStore.getState()
     let prevSectorScores = initHot.sectorScores
     let prevSelectedSector = initUi.selectedSector
     let prevSettings = initUi.settings
     let prevDelta: { delta: boolean; changed_sectors: string[]; removed_sectors: string[] } | null = initUi.sectorScoresDelta
+    let prevWaiting = initUi.sectorScoresWaiting
+
+    const renderNow = (sectorChanged: boolean, settingsChanged: boolean, waitingChanged: boolean) => {
+      if (!_mounted) return
+      const latest = hotStore.getState()
+      const latestUi = uiStore.getState()
+      const rawT = latestUi.settings?.sector_max_targets
+      const maxTargets = typeof rawT === 'number' ? rawT : DEFAULT_SECTOR_MAX_TARGETS
+      currentMaxTargets = maxTargets
+      currentSelected = latestUi.selectedSector
+
+      // 수신 대기 중 상태 표시 (P21 투명성)
+      if (waitingNoticeEl) {
+        waitingNoticeEl.style.display = latestUi.sectorScoresWaiting ? 'flex' : 'none'
+      }
+
+      // delta 모드: changed_sectors만 개별 갱신 (성능 최적화)
+      // 단, settings/selected/maxScore/waiting 변경 시는 전체 갱신 필요 (바 비율·rowStyle 영향)
+      const delta = latestUi.sectorScoresDelta
+      const sorted = [...latest.sectorScores].sort((a, b) => a.rank - b.rank)
+      const newMaxScore = sorted.length > 0 ? Math.max(...sorted.map(s => s.final_score), 1) : 1
+      const maxScoreChanged = newMaxScore !== currentMaxScore
+      const needFullRefresh = settingsChanged || sectorChanged || maxScoreChanged || waitingChanged
+      if (delta && delta.delta && !needFullRefresh && dataTable && dataTable.updateItemByKey) {
+        currentMaxScore = newMaxScore
+        for (const sector of delta.changed_sectors) {
+          dataTable.updateItemByKey(sector)
+        }
+      } else if (dataTable) {
+        currentMaxScore = newMaxScore
+        dataTable.updateRows(sorted)
+      }
+      updateMaxTargetsStatus(latest.sectorScores, maxTargets)
+    }
 
     const checkAndRender = () => {
       const state = hotStore.getState()
@@ -278,43 +334,17 @@ function mount(container: HTMLElement): void {
       const sectorChanged = uiState.selectedSector !== prevSelectedSector
       const settingsChanged = uiState.settings !== prevSettings
       const deltaChanged = uiState.sectorScoresDelta !== prevDelta
+      const waitingChanged = uiState.sectorScoresWaiting !== prevWaiting
       prevSectorScores = state.sectorScores
       prevSelectedSector = uiState.selectedSector
       prevSettings = uiState.settings
       prevDelta = uiState.sectorScoresDelta
+      prevWaiting = uiState.sectorScoresWaiting
 
-      if (!scoresChanged && !sectorChanged && !settingsChanged && !deltaChanged) return
+      if (!scoresChanged && !sectorChanged && !settingsChanged && !deltaChanged && !waitingChanged) return
 
-      if (rafHandle !== null) return
-
-      rafHandle = requestAnimationFrame(() => {
-        rafHandle = null
-        if (!_mounted) return
-        const latest = hotStore.getState()
-        const latestUi = uiStore.getState()
-        const rawT = latestUi.settings?.sector_max_targets
-        const maxTargets = typeof rawT === 'number' ? rawT : DEFAULT_SECTOR_MAX_TARGETS
-        currentMaxTargets = maxTargets
-        currentSelected = latestUi.selectedSector
-
-        // delta 모드: changed_sectors만 개별 갱신 (성능 최적화)
-        // 단, settings/selected/maxScore 변경 시는 전체 갱신 필요 (바 비율·rowStyle 영향)
-        const delta = latestUi.sectorScoresDelta
-        const sorted = [...latest.sectorScores].sort((a, b) => a.rank - b.rank)
-        const newMaxScore = sorted.length > 0 ? Math.max(...sorted.map(s => s.final_score), 1) : 1
-        const maxScoreChanged = newMaxScore !== currentMaxScore
-        const needFullRefresh = settingsChanged || sectorChanged || maxScoreChanged
-        if (delta && delta.delta && !needFullRefresh && dataTable && dataTable.updateItemByKey) {
-          currentMaxScore = newMaxScore
-          for (const sector of delta.changed_sectors) {
-            dataTable.updateItemByKey(sector)
-          }
-        } else if (dataTable) {
-          currentMaxScore = newMaxScore
-          dataTable.updateRows(sorted)
-        }
-        updateMaxTargetsStatus(latest.sectorScores, maxTargets)
-      })
+      // 동기 갱신 — rAF 미사용 (저빈도 sectorScores + 두 패널 동시 렌더 보장, P22 정합성)
+      renderNow(sectorChanged, settingsChanged, waitingChanged)
     }
 
     unsubStore = hotStore.subscribe(checkAndRender)
@@ -328,6 +358,10 @@ function mount(container: HTMLElement): void {
   const maxTargets = typeof rawTargets === 'number' ? rawTargets : DEFAULT_SECTOR_MAX_TARGETS
   currentMaxTargets = maxTargets
   currentSelected = uiState.selectedSector
+  // 수신 대기 중 상태 초기 표시 (P21 투명성)
+  if (waitingNoticeEl) {
+    waitingNoticeEl.style.display = uiState.sectorScoresWaiting ? 'flex' : 'none'
+  }
   refreshRows(state.sectorScores)
   updateMaxTargetsStatus(state.sectorScores, maxTargets)
 }
@@ -335,7 +369,6 @@ function mount(container: HTMLElement): void {
 /* ── unmount ── */
 function unmount(): void {
   _mounted = false
-  if (rafHandle !== null) { cancelAnimationFrame(rafHandle); rafHandle = null }
   if (unsubStore) { unsubStore(); unsubStore = null }
   if (unsubUiStore) { unsubUiStore(); unsubUiStore = null }
   if (rowClickHandler && dataTable) {
@@ -346,6 +379,7 @@ function unmount(): void {
     dataTable.destroy()
     dataTable = null
   }
+  waitingNoticeEl = null
 }
 
 export default { mount, unmount } satisfies PageModule

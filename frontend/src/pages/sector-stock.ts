@@ -47,7 +47,6 @@ class SectorStockTable extends HTMLElement {
   private nxtOnlyNoticeBadge: HTMLElement | null = null
   private emptyDiv: HTMLElement | null = null
   private scrollContainer: HTMLElement | null = null
-  private _rafId: number | null = null
   private _mounted = false
 
   constructor() {
@@ -339,6 +338,7 @@ class SectorStockTable extends HTMLElement {
     let prevWsSubscribeStatus = initUi.wsSubscribeStatus
     let prevSettings = initUi.settings
     let prevMarketPhase = initUi.marketPhase
+    let prevWaiting = initUi.sectorScoresWaiting
 
     const checkAndRefresh = () => {
       const state = hotStore.getState()
@@ -349,7 +349,8 @@ class SectorStockTable extends HTMLElement {
         uiState.selectedSector !== prevSelectedSector ||
         uiState.wsSubscribeStatus !== prevWsSubscribeStatus ||
         uiState.settings !== prevSettings ||
-        uiState.marketPhase !== prevMarketPhase
+        uiState.marketPhase !== prevMarketPhase ||
+        uiState.sectorScoresWaiting !== prevWaiting
 
       if (!changed) return
 
@@ -365,14 +366,15 @@ class SectorStockTable extends HTMLElement {
       prevWsSubscribeStatus = uiState.wsSubscribeStatus
       prevSettings = uiState.settings
       prevMarketPhase = uiState.marketPhase
+      prevWaiting = uiState.sectorScoresWaiting
 
-      if (this._rafId === null) {
-        this._rafId = requestAnimationFrame(() => {
-          this._rafId = null
-          if (!this._mounted) return
-          this.refreshRows()
-        })
-      }
+      // 동기 갱신 — rAF 미사용.
+      // sectorScores는 0.2초마다 갱신되는 저빈도 데이터이므로 동기 갱신해도 P7 위반 없음.
+      // 가운데 패널(sector-ranking-list.ts)도 같은 store 변경 시 동기 갱신하여
+      // 두 패널이 같은 타이밍에 갱신 (P22 정합성 — 행 순서/순위 라벨 동시 변경).
+      // real-data-tick 리스너(종목 시세 O(1) 갱신)는 별도 경로로 유지됨.
+      if (!this._mounted) return
+      this.refreshRows()
     }
 
     this.unsubStore = hotStore.subscribe(checkAndRefresh)
@@ -457,7 +459,6 @@ class SectorStockTable extends HTMLElement {
     }
     if (this.unsubStore) { this.unsubStore(); this.unsubStore = null }
     if (this.unsubUi) { this.unsubUi(); this.unsubUi = null }
-    if (this._rafId !== null) { cancelAnimationFrame(this._rafId); this._rafId = null }
     if (this.dataTable) { this.dataTable.destroy(); this.dataTable = null }
     if (this.rootEl && this.rootEl.parentNode) this.rootEl.parentNode.removeChild(this.rootEl)
     this.rootEl = null

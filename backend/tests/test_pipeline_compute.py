@@ -1495,15 +1495,21 @@ class TestNotifySectorScoresGate:
         compute_mod._sector_threshold_passed = True
 
     @pytest.mark.asyncio
-    async def test_gate_blocks_when_threshold_not_passed(self):
-        """임계값 미통과 시 notify_desktop_sector_scores() 전송 스킵."""
+    async def test_gate_waiting_when_threshold_not_passed(self):
+        """임계값 미통과 시 '대기 중' 상태 전송 (P21 투명성)."""
         from backend.app.services.engine_account_notify import notify_desktop_sector_scores, notify_cache
         compute_mod._sector_threshold_passed = False
         notify_cache.prev_scores = [{"sector": "반도체"}]
 
-        with patch("backend.app.services.sector_data_provider.get_sector_scores_snapshot") as mock_snapshot:
+        with patch("backend.app.services.sector_data_provider.get_sector_scores_snapshot") as mock_snapshot, \
+             patch("backend.app.services.engine_account_notify._safe_broadcast", new_callable=AsyncMock) as mock_broadcast:
             await notify_desktop_sector_scores(force=True)
+            # 임계값 미통과 시 snapshot 조회 없이 "대기 중" 상태 전송
             mock_snapshot.assert_not_called()
+            mock_broadcast.assert_awaited_once()
+            payload = mock_broadcast.call_args.args[1]
+            assert payload["scores"] == []
+            assert payload["status"]["waiting"] is True
 
         # delta 비교 캐시가 클리어되었는지 검증
         assert notify_cache.prev_scores == []
@@ -1519,3 +1525,27 @@ class TestNotifySectorScoresGate:
              patch("backend.app.services.engine_account_notify._safe_broadcast", new_callable=AsyncMock) as mock_broadcast:
             await notify_desktop_sector_scores(force=True)
             mock_broadcast.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_always_transmits_even_when_no_change(self):
+        """delta '변경 없음' 시에도 전체 데이터로 항상 전송 (P22 정합성).
+
+        두 패널(업종순위/종목시세)이 같은 sectorScores로 갱신되므로, 전송 생략 시
+        타이밍 불일치 발생. 변경 없어도 0.2초마다 항상 전체 전송하여 동기화 보장.
+        """
+        from backend.app.services.engine_account_notify import notify_desktop_sector_scores, notify_cache
+        compute_mod._sector_threshold_passed = True
+
+        mock_scores = [{"sector": "반도체", "rank": 1, "final_score": 90.0}]
+        # prev_scores를 동일하게 설정 → delta "변경 없음" 상태
+        notify_cache.prev_scores = list(mock_scores)
+
+        with patch("backend.app.services.sector_data_provider.get_sector_scores_snapshot", return_value=(mock_scores, 1)), \
+             patch("backend.app.services.engine_account_notify._safe_broadcast", new_callable=AsyncMock) as mock_broadcast:
+            await notify_desktop_sector_scores(force=False)
+            # 변경 없어도 전송되어야 함 (생략 금지)
+            mock_broadcast.assert_awaited_once()
+            payload = mock_broadcast.call_args.args[1]
+            # 전체 데이터로 전송 (scores 키 포함, delta 플래그 없음)
+            assert "scores" in payload
+            assert payload.get("delta") is not True

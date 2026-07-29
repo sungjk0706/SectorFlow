@@ -315,6 +315,9 @@ export interface SectorStatus {
   total_stocks: number;
   max_targets?: number;
   ranked_sectors_count?: number;
+  /** 수신율 임계값 미통과 — "데이터 수신 대기 중" 상태 (P21 투명성).
+   * true 시 scores는 빈 배열이며, 임계값 통과 후 정상 전송됨. */
+  waiting?: boolean;
 }
 
 export interface SectorScoresEvent {

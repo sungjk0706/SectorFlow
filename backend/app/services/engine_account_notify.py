@@ -235,26 +235,52 @@ async def notify_desktop_settings_toggled(changed_keys_dict: dict | None = None)
 async def notify_desktop_sector_scores(*, force: bool = False) -> None:
     """업종 순위 + 상태 전송 → WS sector-scores. delta 전송.
 
+    전송 정책 (P22 데이터 정합성, P21 사용자 투명성):
+      - 임계값 미통과 시: "대기 중" 상태 전송 (빈 scores + status.waiting=true).
+        프론트가 "데이터 수신 대기 중"임을 인지 → 장 초반 "갑자기 변동" 인지 완화.
+      - 임계값 통과 시: 항상 전송 (delta "변경 없음"이어도 전송 생략하지 않음).
+        두 패널(업종순위/종목시세)이 같은 sectorScores 기반으로 갱신되므로,
+        전송 생략 시 가운데 순위와 우측 행 순서의 타이밍 불일치가 발생 (P22 위반).
+        0.2초마다 항상 전송하여 두 패널 동기화 보장.
+
     수신율은 receive-rate 이벤트가 단일 소스(P10 SSOT) — sector-scores에서 중복 전송 제거.
     """
-    # ── 수신율 임계값 게이트 — WS 구독 구간 내 임계값 미달 시 sector-scores 전송 차단 ──
+    # ── 수신율 임계값 게이트 — 미통과 시 "대기 중" 상태 전송 (P21 투명성) ──
     # 임계값 통과 후 첫 전송이 전체 데이터가 되도록 delta 비교 캐시 클리어.
+    threshold_passed = True
     try:
         from backend.app.pipelines.pipeline_compute import is_sector_threshold_passed
-        if not is_sector_threshold_passed():
-            notify_cache.prev_scores = []
-            return
+        threshold_passed = is_sector_threshold_passed()
     except Exception as e:
         logger.warning("[시스템] 수신율 임계값 게이트 조회 실패 (전송 허용): %s", e)
+
+    if not threshold_passed:
+        # 임계값 미통과: "대기 중" 상태 전송 (빈 scores + waiting 플래그)
+        notify_cache.prev_scores = []
+        payload = {
+            "scores": [],
+            "status": {
+                **_build_sector_score_status([], 0),
+                "waiting": True,
+            },
+        }
+        await _safe_broadcast("sector-scores", payload)
+        return
 
     from backend.app.services.sector_data_provider import get_sector_scores_snapshot
     scores, ranked_count = get_sector_scores_snapshot()
 
-    # delta 계산: 변경된 업종만 전송
+    # delta 계산: 변경된 업종만 전송 (단, 변경 없어도 전체 데이터로 항상 전송 — P22 정합성)
+    # delta "변경 없음" 시 전송을 생략하면 두 패널(업종순위/종목시세)이 옛 sectorScores를
+    # 유지하게 되어 타이밍 불일치 발생. 0.2초마다 항상 전체 전송하여 동기화 보장.
     if not force and notify_cache.prev_scores:
-        payload = _build_sector_score_delta_payload(scores, ranked_count)
-        if payload is None:
-            return  # 변경 없음 → 전송 생략
+        delta_payload = _build_sector_score_delta_payload(scores, ranked_count)
+        if delta_payload is not None:
+            # 변경 감지: delta 전송
+            payload = delta_payload
+        else:
+            # 변경 없음: 전체 데이터로 전송 (생략하지 않음 — P22 정합성)
+            payload = _build_sector_score_full_payload(scores, ranked_count)
     else:
         # 최초 전송 또는 force → 전체 데이터
         payload = _build_sector_score_full_payload(scores, ranked_count)
