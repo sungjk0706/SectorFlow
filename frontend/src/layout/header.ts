@@ -289,16 +289,16 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
   modeChip.style.fontWeight = '700'
   header.appendChild(modeChip)
 
-  // 백그라운드 데이터 갱신 칩 (KRX 장 상태 칩 좌측 — 다운로드 표시/소멸 시 장 상태 칩 위치 고정)
+  // 백그라운드 데이터 갱신 칩 (NXT/KRX 장 상태 칩 좌측 — 다운로드 표시/소멸 시 장 상태 칩 위치 고정)
   const avgAmtChip = createChipEl()
   avgAmtChip.style.display = 'none'
   header.appendChild(avgAmtChip)
 
-  // KRX / NXT 장 상태 칩
-  const krxChip = createChipEl()
+  // NXT / KRX 장 상태 칩
   const nxtChip = createChipEl()
-  header.appendChild(krxChip)
+  const krxChip = createChipEl()
   header.appendChild(nxtChip)
+  header.appendChild(krxChip)
 
   // KRX 알림 칩 (서킷브레이커/사이드카)
   const krxAlertChip = createChipEl()
@@ -335,13 +335,14 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
   header.appendChild(circuitBreakerChip)
 
   // 체결 불가 시간대 주문 일시중단 칩 (클릭 시 해제)
+  // 시장 상태 그룹 우측에 배치: NXT 카운트다운 → KRX 장운영 → 본 칩
   const orderTimeBlockedChip = createChipEl()
   orderTimeBlockedChip.style.display = 'none'
   orderTimeBlockedChip.style.cursor = 'pointer'
   orderTimeBlockedChip.addEventListener('click', () => {
     try { clearOrderTimeBlocked() } catch (e) { console.error('[Header] orderTimeBlocked clear error', e) }
   })
-  header.appendChild(orderTimeBlockedChip)
+  header.insertBefore(orderTimeBlockedChip, krxAlertChip)
 
   // 리스크 매니저 차단 칩 (빨간색 — 손실 한도 도달, 클릭 시 해제)
   const riskBlockChip = createChipEl()
@@ -491,11 +492,11 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
 
     // 장 상태 — 카운트다운(백엔드 SSOT 수신값)이 있으면 우선 표시, 없으면 시계 페이즈명
     try {
-      applyMarketPhaseChip(krxChip, 'KRX', marketPhase.krx, formatCountdown(marketPhase.krx_countdown))
-    } catch (e) { console.error('[header] krx phase chip error', e) }
-    try {
       applyMarketPhaseChip(nxtChip, 'NXT', marketPhase.nxt, formatCountdown(marketPhase.nxt_countdown))
     } catch (e) { console.error('[header] nxt phase chip error', e) }
+    try {
+      applyMarketPhaseChip(krxChip, 'KRX', marketPhase.krx, formatCountdown(marketPhase.krx_countdown))
+    } catch (e) { console.error('[header] krx phase chip error', e) }
 
     // 업종지수 실시간 — 칩은 항상 표시, 데이터 없으면 placeholder
     try {
@@ -590,8 +591,8 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
   // 카운트다운 주기 갱신 — 30초 간격으로 수신값 재적용 (백엔드 push 보완, P16/P21)
   const countdownTimer = setInterval(() => {
     const { marketPhase } = uiStore.getState()
-    applyMarketPhaseChip(krxChip, 'KRX', marketPhase.krx, formatCountdown(marketPhase.krx_countdown))
     applyMarketPhaseChip(nxtChip, 'NXT', marketPhase.nxt, formatCountdown(marketPhase.nxt_countdown))
+    applyMarketPhaseChip(krxChip, 'KRX', marketPhase.krx, formatCountdown(marketPhase.krx_countdown))
   }, 30_000)
 
   function destroy(): void {
