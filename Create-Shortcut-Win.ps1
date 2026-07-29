@@ -40,7 +40,7 @@ $Shortcut.IconLocation = $IcoPath
 $Shortcut.Save()
 
 Write-Host "바로가기가 생성되었습니다: $ShortcutPath"
-Write-Host "아이콘이 파도 모양으로 적용되었습니다."
+Write-Host "아이콘이 적용되었습니다."
 Write-Host ""
 Write-Host "참고: 이 바로가기는 Git Bash 또는 WSL이 설치된 환경에서만 실행됩니다."
 Write-Host "Git Bash가 없다면 https://git-scm.com/download/win 에서 설치해 주세요."
