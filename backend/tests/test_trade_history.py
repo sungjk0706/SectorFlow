@@ -881,10 +881,47 @@ class TestGetDailySummaryExtended:
         from datetime import date as d
         mock_days = [d(2026, 7, 7), d(2026, 7, 8)]
         with patch("backend.app.services.trade_history._history_lock"):
-            with patch("backend.app.core.trading_calendar.get_recent_trading_days", return_value=mock_days):
-                result = await trade_history.get_daily_summary(days=2)
+            with patch("backend.app.core.trading_calendar.get_recent_trading_days", return_value=mock_days) as mock_recent:
+                with patch("backend.app.core.trading_calendar.get_chart_reference_trading_day", return_value=d(2026, 7, 8)):
+                    result = await trade_history.get_daily_summary(days=2)
+        # get_chart_reference_trading_day 결과가 from_date로 전달되는지 검증
+        mock_recent.assert_called_once_with(2, from_date=d(2026, 7, 8))
         assert len(result) == 2
         assert result[0]["date"] == "2026-07-07"
+
+    async def test_days_param_premarket_excludes_today(self):
+        """08:00 이전(장 미개시) 시 days=N 호출 → 오늘 미포함, 직전 거래일부터 N거래일.
+
+        사용자 원칙: 오전 6:47에는 '어제 마감 기준 완료된 5거래일'만 표시.
+        get_chart_reference_trading_day가 08:00 이전에 직전 거래일 반환 →
+        get_recent_trading_days(N, from_date=직전거래일) → 오늘 제외.
+        """
+        from backend.app.services import trade_history
+        from backend.app.core import trading_calendar
+        trade_history._loaded = True
+        trade_history._buy_history.clear()
+        trade_history._sell_history.clear()
+        # 2026년 거래일 캐시 초기화
+        trading_calendar._trading_days_cache = trading_calendar._generate_trading_days(2026)
+        trading_calendar._cache_initialized = True
+        try:
+            from datetime import datetime as dt_cls
+            from backend.app.core.constants import _KST
+            from unittest.mock import MagicMock
+            # 2026-07-30 목요일 06:47 (08:00 이전)
+            mock_now = dt_cls(2026, 7, 30, 6, 47, 0, tzinfo=_KST)
+            with patch.object(trading_calendar, "datetime", MagicMock(now=MagicMock(return_value=mock_now))):
+                with patch("backend.app.services.trade_history._history_lock"):
+                    with patch("backend.app.db.database.get_db_connection") as mock_conn:
+                        mock_conn.return_value.execute = MagicMock(return_value=MagicMock())
+                        result = await trade_history.get_daily_summary(days=5)
+            dates = [r["date"] for r in result]
+            # 오늘(2026-07-30) 미포함, 직전 거래일(07-29)부터 과거 5거래일
+            assert "2026-07-30" not in dates
+            assert dates == ["2026-07-23", "2026-07-24", "2026-07-27", "2026-07-28", "2026-07-29"]
+        finally:
+            trading_calendar._cache_initialized = False
+            trading_calendar._trading_days_cache = {}
 
 
 # ── clear_test_history ────────────────────────────────────────────────────────

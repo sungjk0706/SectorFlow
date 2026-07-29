@@ -28,6 +28,8 @@ __all__ = [
     "get_kst_today_str",
     "get_current_trading_day",
     "get_current_trading_day_str",
+    "get_chart_reference_trading_day",
+    "get_chart_reference_trading_day_str",
     "get_recent_trading_days",
     "initialize_trading_calendar_cache",
     "refresh_trading_days_for_year",
@@ -373,6 +375,45 @@ def get_current_trading_day() -> date:
 def get_current_trading_day_str() -> str:
     """현재 거래일 YYYYMMDD 문자열."""
     return get_current_trading_day().strftime("%Y%m%d")
+
+
+# ── 차트 기준 현재 거래일 (08:00 NXT 프리마켓 개시 기준) ────────────────────────
+_NXT_PREMARKET_HOUR = 8  # NXT 프리마켓 시작 시각 (KST) — calc_timebased_market_phase() NXT_PREMARKET_START와 동일
+
+
+def get_chart_reference_trading_day() -> date:
+    """
+    차트/그래프에 표시할 '가장 최근 확정 거래일' 반환 (KST).
+
+    사용자 모델 (프론트 getTradingToday()와 동일 의미 — P10 SSOT):
+      - NXT 프리마켓 개시(08:00) 이전: 직전 거래일 (오늘 장 미개시 → 오늘 데이터 점 미포함)
+      - NXT 프리마켓 개시(08:00) 이후: 오늘이 거래일이면 오늘, 비거래일이면 직전 거래일
+
+    예시 (2026년 기준):
+      목 06:47 → 수 (직전 거래일, 오늘 장 미개시)
+      목 08:30 → 목 (프리마켓 개시 → 오늘 데이터 점 시작)
+      토 10:00 → 금 (주말 → 직전 거래일)
+      월 06:47 → 금 (직전 거래일)
+      월 09:00 → 월 (오늘 거래일)
+
+    get_current_trading_day()와의 차이:
+      get_current_trading_day()는 NXT 장마감(20:00) 기준 '소속 거래일' (주문 귀속용).
+      본 함수는 08:00 기준 '차트 표시용 최근 거래일' (성과 표시용).
+    """
+    now = datetime.now(_KST)
+    today = now.date()
+    if now.hour < _NXT_PREMARKET_HOUR:
+        # 08:00 이전 — 오늘 장 미개시 → 직전 거래일
+        return get_previous_trading_day(today)
+    # 08:00 이후 — 오늘이 거래일이면 오늘, 아니면 직전 거래일
+    if is_trading_day(today):
+        return today
+    return get_previous_trading_day(today)
+
+
+def get_chart_reference_trading_day_str() -> str:
+    """차트 기준 현재 거래일 YYYYMMDD 문자열."""
+    return get_chart_reference_trading_day().strftime("%Y%m%d")
 
 
 def get_recent_trading_days(days: int, from_date: date | None = None) -> list[date]:

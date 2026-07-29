@@ -620,8 +620,10 @@ async def get_daily_summary(
                 trading_dates.append(current.isoformat())
                 current = date.fromordinal(current.toordinal() + 1)
     elif days > 0:
-        from backend.app.core.trading_calendar import get_recent_trading_days
-        trading_dates = [d.isoformat() for d in get_recent_trading_days(days)]
+        from backend.app.core.trading_calendar import get_recent_trading_days, get_chart_reference_trading_day
+        # 차트 기준 현재 거래일 사용 — 08:00 NXT 프리마켓 개시 전에는 오늘 데이터 점 미포함 (P10 SSOT).
+        # 프론트 getTradingToday()와 동일 의미: 개장 전 → 직전 거래일부터 과거 N거래일.
+        trading_dates = [d.isoformat() for d in get_recent_trading_days(days, from_date=get_chart_reference_trading_day())]
     # days == 0 and not use_date_range: trading_dates를 락 내에서 데이터 기반으로 추출
 
     async with _history_lock:

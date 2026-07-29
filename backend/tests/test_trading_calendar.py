@@ -6,15 +6,19 @@ exchange_calendars XKRX 캘린더 결과와 교차 검증 (2024-2025년 100% 일
 """
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
+from unittest.mock import patch, MagicMock
 
 import pytest
 
+from backend.app.core import trading_calendar
 from backend.app.core.trading_calendar import (
     _compute_holidays,
     _generate_trading_days,
     _lunar_to_solar,
+    get_chart_reference_trading_day,
 )
+from backend.app.core.constants import _KST
 
 
 # ── _lunar_to_solar ────────────────────────────────────────────────────────────
@@ -274,3 +278,86 @@ class TestEdgeCases:
         for year in [2024, 2025, 2026, 2027]:
             holidays = _compute_holidays(year)
             assert date(year, 5, 1) in holidays, f"{year}년 근로자의날 누락"
+
+
+# ── get_chart_reference_trading_day ───────────────────────────────────────────
+# 차트/그래프 표시용 '가장 최근 확정 거래일' — 08:00 NXT 프리마켓 개시 기준.
+# 프론트 getTradingToday()와 동일 의미 (P10 SSOT).
+
+@pytest.fixture(scope="class")
+def _init_2026_cache():
+    """2026년 거래일 캐시 초기화 — get_chart_reference_trading_day 테스트용."""
+    trading_calendar._trading_days_cache = _generate_trading_days(2026)
+    trading_calendar._cache_initialized = True
+    yield
+    trading_calendar._cache_initialized = False
+    trading_calendar._trading_days_cache = {}
+
+
+def _make_kst_dt(year: int, month: int, day: int, hour: int, minute: int = 0) -> datetime:
+    """KST timezone-aware datetime 생성."""
+    return datetime(year, month, day, hour, minute, 0, tzinfo=_KST)
+
+
+class TestChartReferenceTradingDay:
+    """get_chart_reference_trading_day — 08:00 NXT 프리마켓 개시 기준 차트 표시일.
+
+    사용자 원칙:
+      - 08:00 이전 (장 미개시): 직전 거래일 (오늘 데이터 점 미포함)
+      - 08:00 이후 (프리마켓 개시): 오늘이 거래일이면 오늘, 비거래일이면 직전 거래일
+      - 주말/공휴일: 직전 거래일
+    """
+
+    def test_premarket_thursday_returns_previous(self, _init_2026_cache):
+        """목 06:47 (08:00 이전) → 수(직전 거래일). 오늘 데이터 점 미포함."""
+        # 2026-07-30 목요일 06:47
+        mock_dt = _make_kst_dt(2026, 7, 30, 6, 47)
+        with patch.object(trading_calendar, "datetime", MagicMock(now=MagicMock(return_value=mock_dt))):
+            result = get_chart_reference_trading_day()
+        assert result == date(2026, 7, 29)  # 수요일
+
+    def test_premarket_after_0800_returns_today(self, _init_2026_cache):
+        """목 08:30 (프리마켓 개시 후) → 목(오늘, 거래일). 오늘 데이터 점 시작."""
+        mock_dt = _make_kst_dt(2026, 7, 30, 8, 30)
+        with patch.object(trading_calendar, "datetime", MagicMock(now=MagicMock(return_value=mock_dt))):
+            result = get_chart_reference_trading_day()
+        assert result == date(2026, 7, 30)  # 목요일 (오늘)
+
+    def test_saturday_returns_friday(self, _init_2026_cache):
+        """토 10:00 (주말) → 금(직전 거래일). 주말 데이터 점 없음."""
+        # 2026-08-01 토요일
+        mock_dt = _make_kst_dt(2026, 8, 1, 10, 0)
+        with patch.object(trading_calendar, "datetime", MagicMock(now=MagicMock(return_value=mock_dt))):
+            result = get_chart_reference_trading_day()
+        assert result == date(2026, 7, 31)  # 금요일
+
+    def test_monday_premarket_returns_friday(self, _init_2026_cache):
+        """월 06:47 (08:00 이전) → 금(직전 거래일). 주말 건너뜀."""
+        # 2026-08-03 월요일 06:47
+        mock_dt = _make_kst_dt(2026, 8, 3, 6, 47)
+        with patch.object(trading_calendar, "datetime", MagicMock(now=MagicMock(return_value=mock_dt))):
+            result = get_chart_reference_trading_day()
+        assert result == date(2026, 7, 31)  # 금요일
+
+    def test_monday_after_0800_returns_today(self, _init_2026_cache):
+        """월 09:00 (정규장) → 월(오늘, 거래일)."""
+        mock_dt = _make_kst_dt(2026, 8, 3, 9, 0)
+        with patch.object(trading_calendar, "datetime", MagicMock(now=MagicMock(return_value=mock_dt))):
+            result = get_chart_reference_trading_day()
+        assert result == date(2026, 8, 3)  # 월요일
+
+    def test_holiday_returns_previous_trading_day(self, _init_2026_cache):
+        """제헌절(7/17, 금요일) 10:00 → 7/16(목, 직전 거래일). 공휴일 건너뜀."""
+        # 2026-07-17 제헌절 (금요일이지만 공휴일)
+        mock_dt = _make_kst_dt(2026, 7, 17, 10, 0)
+        with patch.object(trading_calendar, "datetime", MagicMock(now=MagicMock(return_value=mock_dt))):
+            result = get_chart_reference_trading_day()
+        assert result == date(2026, 7, 16)  # 목요일
+
+    def test_sunday_returns_friday(self, _init_2026_cache):
+        """일 14:00 (주말) → 금(직전 거래일)."""
+        # 2026-08-02 일요일
+        mock_dt = _make_kst_dt(2026, 8, 2, 14, 0)
+        with patch.object(trading_calendar, "datetime", MagicMock(now=MagicMock(return_value=mock_dt))):
+            result = get_chart_reference_trading_day()
+        assert result == date(2026, 7, 31)  # 금요일
