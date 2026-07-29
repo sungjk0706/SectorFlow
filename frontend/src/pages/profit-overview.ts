@@ -55,6 +55,7 @@ export interface ProfitOverviewState {
   localDailySummary: Record<string, unknown>[]
   localDateFrom: string
   localDateTo: string
+  localQuickLabel: string | undefined
   // rAF 배칭
   rafId: number | null
   mounted: boolean
@@ -95,6 +96,7 @@ function createState(): ProfitOverviewState {
     localDailySummary: [],
     localDateFrom: '',
     localDateTo: '',
+    localQuickLabel: undefined,
     rafId: null,
     mounted: false,
     dirtyAccount: false,
@@ -145,6 +147,7 @@ function mount(container: HTMLElement): void {
   const { saved, from: initFrom, to: initTo } = initDateRange()
   state.localDateFrom = initFrom
   state.localDateTo = initTo
+  state.localQuickLabel = saved?.quickLabel
 
   // 거래일별 수익률 차트 생성 + 초기 데이터 조회
   // localDailySummary는 WS push 데이터로 초기화 (P10 SSOT — 공유 store = 최근 N거래일)

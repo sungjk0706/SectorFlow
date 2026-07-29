@@ -16,16 +16,23 @@ export interface SectorDonutRow {
   buyTotal?: number
 }
 
+export interface SectorDonutCenter {
+  pnl?: number      // 중앙 손익금 (외부 주입 — SSOT, 미지정 시 data 합산)
+  rate?: number     // 중앙 수익률 (외부 주입 — SSOT, 미지정 시 data 기반 산출)
+  title?: string    // 중앙 레이블 (예: "당월 손익", 미지정 시 "누적 손익")
+}
+
 export interface SectorDonutOptions {
   container: HTMLElement
   data: SectorDonutRow[]
   height?: number
   onSectorClick?: (sector: string) => void
+  center?: SectorDonutCenter
 }
 
 export interface SectorDonutApi {
   el: HTMLElement
-  updateData(data: SectorDonutRow[]): void
+  updateData(data: SectorDonutRow[], center?: SectorDonutCenter): void
   resize(): void
   destroy(): void
 }
@@ -67,6 +74,7 @@ export function createSectorDonut(options: SectorDonutOptions): SectorDonutApi {
   const { container } = options
 
   let data: SectorDonutRow[] = []
+  let center: SectorDonutCenter | undefined
   let hoveredIdx: number | null = null
   const onSectorClick = options.onSectorClick
 
@@ -198,15 +206,17 @@ export function createSectorDonut(options: SectorDonutOptions): SectorDonutApi {
       ctx.stroke()
     }
 
-    // 중액 텍스트 — 누적 손익 + 누적 수익률
-    const totalPnl = processed.reduce((s, r) => s + r.pnl, 0)
-    const totalBuy = processed.reduce((s, r) => s + (r.buyTotal ?? 0), 0)
-    const totalRate = computeWeightedRate(totalPnl, totalBuy)
+    // 중액 텍스트 — 손익 + 수익률 (외부 주입 우선, 미지정 시 data 기반 산출 — P10 SSOT)
+    const sumPnl = processed.reduce((s, r) => s + r.pnl, 0)
+    const sumBuy = processed.reduce((s, r) => s + (r.buyTotal ?? 0), 0)
+    const totalPnl = center?.pnl ?? sumPnl
+    const totalRate = center?.rate ?? computeWeightedRate(totalPnl, sumBuy)
+    const centerTitle = center?.title ?? '누적 손익'
     ctx.fillStyle = totalPnl >= 0 ? COLOR.up : COLOR.down
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
     ctx.font = `bold 14px ${FONT_FAMILY}`
-    ctx.fillText('누적 손익', cx, cy - 18)
+    ctx.fillText(centerTitle, cx, cy - 18)
     ctx.font = `bold 16px ${FONT_FAMILY}`
     ctx.fillText(fmtWon(totalPnl), cx, cy + 2)
     ctx.font = `bold 12px ${FONT_FAMILY}`
@@ -328,13 +338,15 @@ export function createSectorDonut(options: SectorDonutOptions): SectorDonutApi {
 
   // 초기 렌더
   data = options.data
+  center = options.center
   render()
   renderLegend()
 
   return {
     el: wrapper,
-    updateData(newData: SectorDonutRow[]) {
+    updateData(newData: SectorDonutRow[], newCenter?: SectorDonutCenter) {
       data = newData
+      center = newCenter
       render()
       renderLegend()
     },

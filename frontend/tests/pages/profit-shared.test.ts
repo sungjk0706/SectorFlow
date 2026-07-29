@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { computeHoldingsSummary, computePositionValuation } from '../../src/pages/profit-shared'
-import type { Position, SectorStock } from '../../src/types'
+import { computeHoldingsSummary, computePositionValuation, computeCumulativePnl } from '../../src/pages/profit-shared'
+import type { Position, SectorStock, AccountSnapshot } from '../../src/types'
 
 /**
  * computePositionValuation — 개별 보유종목 평가 계산 SSOT 함수 회귀 테스트.
@@ -231,5 +231,108 @@ describe('computePositionValuation ↔ computeHoldingsSummary 일관성 (P10 SSO
     expect(nullCount).toBe(1)
     expect(summary.hasNullPrice).toBe(true)
     expect(summary.evalPnl).toBe(sumPnl)  // null 종목 제외 합과 일치
+  })
+})
+
+/**
+ * computeCumulativePnl — 누적 실현 손익 + 수익률 SSOT 함수 회귀 테스트.
+ * renderAccountVals(계좌 현황)와 canvas-sector-donut(도넛 차트 중앙)가
+ * 동일 분모·동일 데이터 범위를 사용하도록 추출 (P10 SSOT, P22 데이터 정합성).
+ *
+ * 분모 규칙:
+ *   - 테스트모드: account.accumulated_investment (투자원금 대비)
+ *   - 실전모드:   buy_total_amt 합계 (매수 원가 대비)
+ * dateFrom/dateTo 적용 시 해당 범위 내 손익만 집계.
+ */
+function makeSellRow(date: string, realizedPnl: number, buyTotalAmt: number): Record<string, unknown> {
+  return { date, realized_pnl: realizedPnl, buy_total_amt: buyTotalAmt }
+}
+
+function makeAccount(accumulatedInvestment: number): AccountSnapshot {
+  return {
+    total_buy_amount: 0, total_sell_amount: 0, total_eval_amount: 0,
+    total_pnl: 0, total_pnl_rate: 0, deposit: 0,
+    accumulated_investment: accumulatedInvestment,
+    initial_deposit: accumulatedInvestment,
+    trade_mode: 'test',
+  }
+}
+
+describe('computeCumulativePnl — 테스트모드 (분모=누적투자금)', () => {
+  it('단일 매도 — 수익률 = realized_pnl / accumulated_investment × 100', () => {
+    const sells = [makeSellRow('2026-07-29', -100000, 1000000)]
+    const result = computeCumulativePnl({
+      sellHistory: sells, account: makeAccount(1000000), isTestMode: true,
+    })
+    expect(result.pnl).toBe(-100000)
+    expect(result.rate).toBe(-10)  // -100000 / 1000000 * 100 = -10
+  })
+
+  it('다중 매도 합산 — 분모는 누적투자금(매수원가 합계 아님)', () => {
+    const sells = [
+      makeSellRow('2026-07-28', -50000, 500000),
+      makeSellRow('2026-07-29', -50000, 500000),
+    ]
+    const result = computeCumulativePnl({
+      sellHistory: sells, account: makeAccount(1000000), isTestMode: true,
+    })
+    expect(result.pnl).toBe(-100000)
+    expect(result.rate).toBe(-10)  // -100000 / 1000000 * 100 (매수원가 1000000 아님)
+  })
+
+  it('account 누락 시 initial_deposit 폴백', () => {
+    const sells = [makeSellRow('2026-07-29', -100000, 1000000)]
+    const result = computeCumulativePnl({
+      sellHistory: sells, account: null, isTestMode: true,
+    })
+    expect(result.pnl).toBe(-100000)
+    expect(result.rate).toBe(0)  // 분모 0 → 0
+  })
+})
+
+describe('computeCumulativePnl — 실전모드 (분모=매수원가 합계)', () => {
+  it('단일 매도 — 수익률 = realized_pnl / buy_total_amt × 100', () => {
+    const sells = [makeSellRow('2026-07-29', -100000, 1000000)]
+    const result = computeCumulativePnl({
+      sellHistory: sells, account: null, isTestMode: false,
+    })
+    expect(result.pnl).toBe(-100000)
+    expect(result.rate).toBe(-10)  // -100000 / 1000000 * 100
+  })
+
+  it('다중 매도 합산 — 분모는 buy_total_amt 합계', () => {
+    const sells = [
+      makeSellRow('2026-07-28', -50000, 500000),
+      makeSellRow('2026-07-29', -50000, 500000),
+    ]
+    const result = computeCumulativePnl({
+      sellHistory: sells, account: null, isTestMode: false,
+    })
+    expect(result.pnl).toBe(-100000)
+    expect(result.rate).toBe(-10)  // -100000 / 1000000 * 100
+  })
+})
+
+describe('computeCumulativePnl — 날짜 필터 (P10 SSOT, 도넛 차트와 계좌현황 공통)', () => {
+  it('dateFrom/dateTo 적용 시 범위 내 손익만 집계', () => {
+    const sells = [
+      makeSellRow('2026-07-27', -30000, 300000),
+      makeSellRow('2026-07-28', -50000, 500000),
+      makeSellRow('2026-07-29', -20000, 200000),
+    ]
+    const result = computeCumulativePnl({
+      sellHistory: sells, account: makeAccount(1000000), isTestMode: true,
+      dateFrom: '2026-07-28', dateTo: '2026-07-29',
+    })
+    expect(result.pnl).toBe(-70000)  // -50000 + -20000
+    expect(result.rate).toBe(-7)     // -70000 / 1000000 * 100 (테스트모드 분모는 고정)
+  })
+
+  it('빈 sellHistory → pnl=0, rate=0', () => {
+    const result = computeCumulativePnl({
+      sellHistory: [], account: makeAccount(1000000), isTestMode: true,
+    })
+    expect(result.pnl).toBe(0)
+    expect(result.rate).toBe(0)
   })
 })

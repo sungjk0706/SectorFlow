@@ -3,7 +3,7 @@
 // profit-overview.ts에서 이관. 순수 이동, 동작 변경 없음.
 
 import { createProfitChart } from '../components/canvas-profit-chart'
-import { createSectorDonut } from '../components/canvas-sector-donut'
+import { createSectorDonut, type SectorDonutCenter } from '../components/canvas-sector-donut'
 import { globalSettingsManager } from '../settings'
 import { FONT_SIZE, FONT_WEIGHT, COLOR, RADIUS } from '../components/common/ui-styles'
 import { createActionButton } from '../components/common/button'
@@ -15,6 +15,7 @@ import {
   buildChartFromDailySummary,
   renderAccountVals as renderAccountValsShared,
   buildSectorDonutRows,
+  computeCumulativePnl,
   filterTradeRows,
   type AccountValsParams,
 } from './profit-shared'
@@ -52,9 +53,37 @@ export function renderAccountVals(state: ProfitOverviewState): void {
 
 /* ── 필터된 뷰 데이터 갱신: 도넛 차트 + 업종별 종목 수익 동시 업데이트 ── */
 
+/** 도넛 차트 중앙 레이블 결정 — 활성 quickLabel 우선, 없으면 "누적 손익" (P21 투명성).
+ *  quickLabel이 "당일"/"전일"/"5거래일"/"당월"/"누적" 중 하나일 때 해당 레이블 반환. */
+function makeCenterTitle(quickLabel: string | undefined): string {
+  if (!quickLabel) return '누적 손익'
+  if (quickLabel === '당일') return '당일 손익'
+  if (quickLabel === '전일') return '전일 손익'
+  if (quickLabel === '5거래일') return '5거래일 손익'
+  if (quickLabel === '당월') return '당월 손익'
+  return '누적 손익'
+}
+
+/** 도넛 차트 중앙 손익/수익률 계산 — 계좌 현황과 동일 SSOT 사용 (P10/P22).
+ *  데이터 소스: filteredSellHistory (날짜 필터 적용).
+ *  분모: 테스트모드=누적투자금, 실전모드=매수원가 합계. */
+function buildDonutCenter(state: ProfitOverviewState): SectorDonutCenter {
+  const hotState = hotStore.getState()
+  const settings = globalSettingsManager.getSettings()
+  const isTestMode = settings?.trade_mode === 'test'
+  const { pnl, rate } = computeCumulativePnl({
+    sellHistory: state.filteredSellHistory,
+    account: hotState.account,
+    isTestMode,
+    dateFrom: state.localDateFrom,
+    dateTo: state.localDateTo,
+  })
+  return { pnl, rate, title: makeCenterTitle(state.localQuickLabel) }
+}
+
 export function refreshFilteredViews(state: ProfitOverviewState): void {
   state.filteredSellHistory = filterTradeRows(state.sellHistory, state.localDateFrom, state.localDateTo)
-  state.donutChart?.updateData(buildSectorDonutRows(state.filteredSellHistory))
+  state.donutChart?.updateData(buildSectorDonutRows(state.filteredSellHistory), buildDonutCenter(state))
   renderSectorStockPnl(state)
 }
 
@@ -215,6 +244,7 @@ export async function applyDateRange(state: ProfitOverviewState, from: string, t
     state.localDailySummary = data
     state.localDateFrom = actualFrom
     state.localDateTo = actualTo
+    state.localQuickLabel = label
     saveProfitDateRange(actualFrom, actualTo, label)
     // days 기반 버튼(당일/5거래일/누적) 시 N값을 백엔드에 전파 → WS push 범위 연동 (결정 B)
     if (days !== undefined) {
@@ -276,6 +306,7 @@ export function buildDonutChart(state: ProfitOverviewState, donutChartContainer:
   state.donutChart = createSectorDonut({
     container: donutChartContainer,
     data: buildSectorDonutRows(state.filteredSellHistory),
+    center: buildDonutCenter(state),
     onSectorClick: (sector: string) => {
       // 좌측 도넛 범례 업종 클릭 → 우측 종목수익 해당 업종으로 스크롤 + 하이라이트
       state.activeSector = sector

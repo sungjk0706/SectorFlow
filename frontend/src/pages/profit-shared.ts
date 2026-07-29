@@ -361,6 +361,29 @@ export function aggregatePnl(
   return { pnl, buyTotal, rate: computeWeightedRate(pnl, buyTotal) }
 }
 
+export interface CumulativePnlParams {
+  sellHistory: Record<string, unknown>[]
+  account: AccountSnapshot | null
+  isTestMode: boolean
+  dateFrom?: string
+  dateTo?: string
+}
+
+/** 누적 실현 손익 + 수익률 단일 계산 소스 (P10 SSOT).
+ *  분모: 테스트모드=누적투자금(accumulated_investment, 투자원금 대비),
+ *        실전모드=매수원가 합계(buy_total_amt, 증권사 데이터 기반).
+ *  dateFrom/dateTo 적용 시 해당 범위 내 손익만 집계 (도넛 차트 중앙·계좌현황 공통).
+ *  renderAccountVals(계좌 현황)와 canvas-sector-donut(도넛 차트 중앙)가
+ *  동일 분모·동일 데이터 범위를 사용하도록 추출 (P22 데이터 정합성). */
+export function computeCumulativePnl(params: CumulativePnlParams): { pnl: number; rate: number } {
+  const { sellHistory, account, isTestMode, dateFrom, dateTo } = params
+  const { pnl, buyTotal } = aggregatePnl(sellHistory, dateFrom, dateTo)
+  const denominator = isTestMode
+    ? (account?.accumulated_investment ?? account?.initial_deposit ?? 0)
+    : buyTotal
+  return { pnl, rate: computeWeightedRate(pnl, denominator) }
+}
+
 /** 백엔드 dailySummary에서 당월 거래일별 요약 집계 — P10 SSOT (per-day rate 재계산 금지, 백엔드 값 직접 사용).
  *  buildChartFromDailySummary와 동일한 dailySummary 직접 사용 패턴 (P23 일관성). */
 export function buildMonthlyDrilldown(
@@ -542,13 +565,13 @@ export function renderAccountVals(params: AccountValsParams): void {
   // 보유 종목 평가금액/평가손익/수익률: positions + sectorStocks에서 직접 계산 (개별 종목 행과 동일 소스·공식)
   const { evalTotal, evalPnl, evalRate, hasNullPrice } = computeHoldingsSummary(params.positions, params.sectorStocks)
 
-  // 누적 실현 손익: sellHistory 전체 합산
-  const cumPnl = aggregatePnl(sellHistory)
-  // 누적 총 실현 수익률 분모: 테스트모드=누적투자금(투자원금 대비 — 사용자 상식 기준, P21),
-  // 실전모드=현행(매수총액 합계) 유지 (증권사 데이터 기반, 변경 없음)
-  const cumRate = isTestMode
-    ? computeWeightedRate(cumPnl.pnl, a?.accumulated_investment ?? a?.initial_deposit ?? 0)
-    : cumPnl.rate
+  // 누적 실현 손익 + 수익률: SSOT 함수 사용 (도넛 차트 중앙과 동일 소스 — P10/P22)
+  // 분모: 테스트모드=누적투자금(투자원금 대비 — 사용자 상식 기준, P21),
+  //       실전모드=매수총액 합계 (증권사 데이터 기반)
+  const { pnl: cumPnlAmt, rate: cumRate } = computeCumulativePnl({
+    sellHistory, account: a, isTestMode,
+  })
+  const cumPnl = { pnl: cumPnlAmt, rate: cumRate }
 
   // CSS display 토글로 모드별 컨테이너 전환
   if (params.realAccountContainer && params.testAccountContainer) {
