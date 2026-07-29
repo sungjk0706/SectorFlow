@@ -15,6 +15,7 @@ import {
   buildMonthlyDrilldown,
   filterTradeRows,
   computeCumulativePnl,
+  findBaseAssetForDate,
 } from './profit-shared'
 import { getLocalToday } from '../utils/date'
 import { saveProfitDetailView } from './profit-detail-view'
@@ -151,15 +152,21 @@ function updateStatistics(state: ProfitDetailState): void {
   const winCount = filteredSells.filter(r => Number(r.realized_pnl ?? 0) > 0).length
   const winRate = sellCount > 0 ? Math.round(winCount / sellCount * 10000) / 100 : 0
   // 수익률: computeCumulativePnl SSOT 사용 (분모 규칙 단일 소스 — P10/P22).
-  //   종목 필터 적용 시 dateFrom/dateTo 있으면 해당 기간 buy_total_amt 분모,
-  //   필터 없으면 누적 모드(테스트=누적투자금 / 실전=buy_total_amt 전체 합).
+  //   기초자산 분모 방식 — dateFrom 있을 때 findBaseAssetForDate로 전일 장마감 스냅샷 추출.
+  //   baseAsset 없으면 첫 거래일 기초자산 = 초기 투자원금 (결정 6).
+  //   종목 필터 적용 시 dateFrom/dateTo 있으면 해당 기간 기초자산 분모,
+  //   필터 없으면 누적 모드(초기 투자원금).
   const isTestMode = globalSettingsManager.getSettings()?.trade_mode === 'test'
+  const baseAsset = dateRange.from
+    ? findBaseAssetForDate(hotStore.getState().dailySummary, dateRange.from)
+    : undefined
   const { rate: avgRate } = computeCumulativePnl({
     sellHistory: filteredSells,
     account: hotStore.getState().account,
     isTestMode,
     dateFrom: dateRange.from || undefined,
     dateTo: dateRange.to || undefined,
+    baseAsset,
   })
 
   if (state.statCountEl) state.statCountEl.textContent = `매도 ${sellCount}건 / 매수 ${buyCount}건`

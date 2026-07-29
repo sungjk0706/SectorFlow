@@ -159,9 +159,12 @@ export function getRecent5TradingDays(dailySummary: Record<string, unknown>[]): 
 
 /** 당일/전일/5거래일/당월/누적 손익 계산 및 요약 카드 DOM 갱신.
  *  모든 카드를 computeCumulativePnl SSOT로 계산 (P10 SSOT — 분모 규칙 단일 소스).
- *  분모 규칙 (사용자 상식 기준): 기간 한정 카드=해당 기간 buy_total_amt 합,
- *                              누적 카드=테스트모드 누적투자금 / 실전 buy_total_amt 전체 합.
- *  dailySummary는 전일 날짜·5거래일 날짜 추출에만 사용 (날짜 결정 SSOT).
+ *  분모 규칙 (기초자산 분모 방식):
+ *    - 기간 한정 카드(당일/전일/5거래일/당월): baseAsset = findBaseAssetForDate(dailySummary, 기간시작일)
+ *      · baseAsset 없으면 첫 거래일 기초자산 = 초기 투자원금 (결정 6)
+ *      · 당일 카드: 전일 baseAsset + account.daily_deposit (당일 순입출금 보정, 결정 2)
+ *    - 누적 카드: 초기 투자원금 (사용자 결정 3 — baseAsset 전달 안 함)
+ *  dailySummary는 전일 날짜·5거래일 날짜·base_asset 추출에 사용 (날짜·기초자산 결정 SSOT).
  *  누적 카드는 sellHistory 전체 사용 (dailySummary 20일 제한 제거 — P22 데이터 정합성). */
 export function updateSummaryCards(
   dailySummary: Record<string, unknown>[],
@@ -187,16 +190,26 @@ export function updateSummaryCards(
   const fivedayFrom = recent5.length > 0 ? recent5[recent5.length - 1] : ''
   const fivedayTo = recent5.length > 0 ? recent5[0] : ''
 
+  // 기초자산 추출 (dailySummary에서 기간 시작일의 전일 장마감 스냅샷)
+  const dayBaseAssetRaw = findBaseAssetForDate(dailySummary, today)
+  // 당일 카드 분모 = 전일 baseAsset + 당일 입금액 (결정 2). 단, baseAsset 없으면 결정 6(초기 투자원금) 적용 — daily_deposit 보정 제외
+  const dayBaseAsset = dayBaseAssetRaw != null
+    ? dayBaseAssetRaw + (account?.daily_deposit ?? 0)
+    : undefined
+  const prevBaseAsset = prevDay ? findBaseAssetForDate(dailySummary, prevDay) : undefined
+  const fiveBaseAsset = (fivedayFrom && fivedayTo) ? findBaseAssetForDate(dailySummary, fivedayFrom) : undefined
+  const monthBaseAsset = findBaseAssetForDate(dailySummary, monthStart)
+
   // 5개 카드 모두 computeCumulativePnl SSOT 호출 (분모 규칙은 함수 내부에서 통일)
-  const dayS = computeCumulativePnl({ sellHistory, account, isTestMode, dateFrom: today, dateTo: today })
+  const dayS = computeCumulativePnl({ sellHistory, account, isTestMode, dateFrom: today, dateTo: today, baseAsset: dayBaseAsset })
   const prevS = prevDay
-    ? computeCumulativePnl({ sellHistory, account, isTestMode, dateFrom: prevDay, dateTo: prevDay })
+    ? computeCumulativePnl({ sellHistory, account, isTestMode, dateFrom: prevDay, dateTo: prevDay, baseAsset: prevBaseAsset })
     : { pnl: 0, rate: 0 }
   const fiveS = (fivedayFrom && fivedayTo)
-    ? computeCumulativePnl({ sellHistory, account, isTestMode, dateFrom: fivedayFrom, dateTo: fivedayTo })
+    ? computeCumulativePnl({ sellHistory, account, isTestMode, dateFrom: fivedayFrom, dateTo: fivedayTo, baseAsset: fiveBaseAsset })
     : { pnl: 0, rate: 0 }
-  const monS = computeCumulativePnl({ sellHistory, account, isTestMode, dateFrom: monthStart, dateTo: monthEnd })
-  const allS = computeCumulativePnl({ sellHistory, account, isTestMode })
+  const monS = computeCumulativePnl({ sellHistory, account, isTestMode, dateFrom: monthStart, dateTo: monthEnd, baseAsset: monthBaseAsset })
+  const allS = computeCumulativePnl({ sellHistory, account, isTestMode })  // 누적은 baseAsset 없음 (초기 투자원금)
 
   els.todayPnlEl.textContent = fmtWon(dayS.pnl)
   els.todayPnlEl.style.color = pnlColor(dayS.pnl)
@@ -358,24 +371,59 @@ export interface CumulativePnlParams {
   isTestMode: boolean
   dateFrom?: string
   dateTo?: string
+  baseAsset?: number  // 기간 시작 시점 기초자산 (전일 장마감 총자산 + 당일 순입출금)
 }
 
 /** 누적/기간 실현 손익 + 수익률 단일 계산 소스 (P10 SSOT).
- *  분모 규칙 (증권사 표준 A 방식 — 투자원금/기초자산 기준, 회전율 희석 방지):
- *    - 테스트모드: 누적투자금(accumulated_investment, 투자원금 대비) — 당일/당월/누적 모두 동일 분모.
- *      회전율이 높아 매수원가 합이 투자원금을 초과해도 수익률이 희석되지 않음 (사용자 위험 인지 보호, P21).
- *    - 실전모드: 매수원가 합계(buy_total_amt, 증권사 데이터 기반).
- *      ※ 실전 A 방식(당월 기초자산 분모)은 백엔드 월별 잔고 스냅샷 기능이 필요해 별도 작업 예정.
- *  dateFrom/dateTo 적용 시 해당 범위 내 손익만 집계 (분모는 모드별 고정).
+ *  분모 규칙 (기초자산 분모 방식 — 회전율 희석 방지, 복리 자산 변화 반영):
+ *    - 누적 카드 (dateFrom/dateTo 없음): 초기 투자원금 (사용자 결정 3 — 현행 유지)
+ *      · 테스트모드: accumulated_investment (initial_deposit 폴백)
+ *      · 실전모드:   buy_total_amt 합계 (매수 원가 대비)
+ *    - 기간 한정 카드 (dateFrom/dateTo 있음): 기초자산 (전일 장마감 총자산 + 당일 순입출금)
+ *      · baseAsset 전달 시: baseAsset 분모 (사용자 결정 1·2)
+ *      · baseAsset 미전달 시: "첫 거래일 기초자산 = 초기 투자원금" 금융 로직 정의 (사용자 결정 6 — 폴백 아닌 초기값 정의)
+ *        테스트모드: accumulated_investment / 실전모드: buy_total_amt
+ *  dateFrom/dateTo 적용 시 해당 범위 내 손익만 집계.
  *  renderAccountVals(계좌 현황)·canvas-sector-donut(도넛 중앙)·updateSummaryCards(요약 카드)·
  *  updateStatistics(하단 통계)가 동일 분모·동일 데이터 범위를 사용하도록 추출 (P22 데이터 정합성). */
 export function computeCumulativePnl(params: CumulativePnlParams): { pnl: number; rate: number } {
-  const { sellHistory, account, isTestMode, dateFrom, dateTo } = params
+  const { sellHistory, account, isTestMode, dateFrom, dateTo, baseAsset } = params
   const { pnl, buyTotal } = aggregatePnl(sellHistory, dateFrom, dateTo)
-  const denominator = isTestMode
+  const isCumulative = !dateFrom && !dateTo
+  // 초기 투자원금 — 첫 거래일 기초자산 정의 (결정 6, 폴밭 아닌 초기값 정의)
+  const initialInvestment = isTestMode
     ? (account?.accumulated_investment ?? account?.initial_deposit ?? 0)
     : buyTotal
+  let denominator: number
+  if (isCumulative) {
+    // 누적 카드: 초기 투자원금 (사용자 결정 3 — 현행 유지)
+    denominator = initialInvestment
+  } else {
+    // 기간 한정 카드: 기초자산 (전일 장마감 총자산 + 당일 순입출금).
+    // baseAsset 없으면 첫 거래일 기초자산 = 초기 투자원금 (결정 6)
+    denominator = baseAsset ?? initialInvestment
+  }
   return { pnl, rate: computeWeightedRate(pnl, denominator) }
+}
+
+/** dailySummary에서 특정 날짜의 기초자산(전일 장마감 스냅샷) 추출.
+ *  date 이전 날짜 중 가장 최근 행의 base_asset 필드 반환.
+ *  없으면 undefined (computeCumulativePnl에서 초기 투자원금으로 처리 — 결정 6). */
+export function findBaseAssetForDate(
+  dailySummary: Record<string, unknown>[],
+  date: string,
+): number | undefined {
+  let prevBaseAsset: number | undefined
+  let prevDate = ''
+  for (const r of dailySummary) {
+    const d = String(r.date ?? '')
+    const baseAsset = Number(r.base_asset ?? 0)
+    if (d < date && d > prevDate && baseAsset > 0) {
+      prevDate = d
+      prevBaseAsset = baseAsset
+    }
+  }
+  return prevBaseAsset
 }
 
 /** 백엔드 dailySummary에서 당월 거래일별 요약 집계 — P10 SSOT (per-day rate 재계산 금지, 백엔드 값 직접 사용).

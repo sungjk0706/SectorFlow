@@ -16,6 +16,7 @@ import {
   renderAccountVals as renderAccountValsShared,
   buildSectorDonutRows,
   computeCumulativePnl,
+  findBaseAssetForDate,
   filterTradeRows,
   type AccountValsParams,
 } from './profit-shared'
@@ -66,17 +67,22 @@ function makeCenterTitle(quickLabel: string | undefined): string {
 
 /** 도넛 차트 중앙 손익/수익률 계산 — 계좌 현황과 동일 SSOT 사용 (P10/P22).
  *  데이터 소스: filteredSellHistory (날짜 필터 적용).
- *  분모: 테스트모드=누적투자금, 실전모드=매수원가 합계. */
+ *  분모: 기초자산 분모 방식 — dateFrom 있을 때 findBaseAssetForDate로 전일 장마감 스냅샷 추출.
+ *        baseAsset 없으면 첫 거래일 기초자산 = 초기 투자원금 (결정 6). */
 function buildDonutCenter(state: ProfitOverviewState): SectorDonutCenter {
   const hotState = hotStore.getState()
   const settings = globalSettingsManager.getSettings()
   const isTestMode = settings?.trade_mode === 'test'
+  const baseAsset = state.localDateFrom
+    ? findBaseAssetForDate(hotState.dailySummary, state.localDateFrom)
+    : undefined
   const { pnl, rate } = computeCumulativePnl({
     sellHistory: state.filteredSellHistory,
     account: hotState.account,
     isTestMode,
     dateFrom: state.localDateFrom,
     dateTo: state.localDateTo,
+    baseAsset,
   })
   return { pnl, rate, title: makeCenterTitle(state.localQuickLabel) }
 }

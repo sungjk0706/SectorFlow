@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { computeHoldingsSummary, computePositionValuation, computeCumulativePnl } from '../../src/pages/profit-shared'
+import { computeHoldingsSummary, computePositionValuation, computeCumulativePnl, findBaseAssetForDate } from '../../src/pages/profit-shared'
 import type { Position, SectorStock, AccountSnapshot } from '../../src/types'
 
 /**
@@ -239,9 +239,10 @@ describe('computePositionValuation ↔ computeHoldingsSummary 일관성 (P10 SSO
  * renderAccountVals(계좌 현황)와 canvas-sector-donut(도넛 차트 중앙)가
  * 동일 분모·동일 데이터 범위를 사용하도록 추출 (P10 SSOT, P22 데이터 정합성).
  *
- * 분모 규칙:
- *   - 테스트모드: account.accumulated_investment (투자원금 대비)
- *   - 실전모드:   buy_total_amt 합계 (매수 원가 대비)
+ * 분모 규칙 (기초자산 분모 방식):
+ *   - 누적 모드 (dateFrom/dateTo 없음): 초기 투자원금 (테스트=accumulated_investment / 실전=buy_total_amt)
+ *   - 기간 한정 모드 + baseAsset 전달: baseAsset (전일 장마감 총자산 + 당일 순입출금)
+ *   - 기간 한정 모드 + baseAsset 미전달: 첫 거래일 기초자산 = 초기 투자원금 (결정 6, 폴밭 아닌 초기값 정의)
  * dateFrom/dateTo 적용 시 해당 범위 내 손익만 집계.
  */
 function makeSellRow(date: string, realizedPnl: number, buyTotalAmt: number): Record<string, unknown> {
@@ -314,7 +315,7 @@ describe('computeCumulativePnl — 실전모드 (분모=매수원가 합계)', (
 })
 
 describe('computeCumulativePnl — 날짜 필터 (P10 SSOT, 도넛 차트와 계좌현황 공통)', () => {
-  it('dateFrom/dateTo 적용 시 범위 내 손익만 집계 + 테스트모드 분모=누적투자금 (A 방식)', () => {
+  it('dateFrom/dateTo 적용 시 범위 내 손익만 집계 + 테스트모드 분모=누적투자금 (결정 6 baseAsset 미전달)', () => {
     const sells = [
       makeSellRow('2026-07-27', -30000, 300000),
       makeSellRow('2026-07-28', -50000, 500000),
@@ -325,7 +326,7 @@ describe('computeCumulativePnl — 날짜 필터 (P10 SSOT, 도넛 차트와 계
       dateFrom: '2026-07-28', dateTo: '2026-07-29',
     })
     expect(result.pnl).toBe(-70000)  // -50000 + -20000
-    // A 방식: 테스트모드는 기간 한정이어도 분모=누적투자금 (회전율 희석 방지)
+    // 결정 6: baseAsset 미전달 시 첫 거래일 기초자산 = 초기 투자원금 (누적투자금 분모, 회전율 희석 방지)
     expect(result.rate).toBe(-7)     // -70000 / 1000000 * 100
   })
 
@@ -338,9 +339,9 @@ describe('computeCumulativePnl — 날짜 필터 (P10 SSOT, 도넛 차트와 계
   })
 })
 
-describe('computeCumulativePnl — 분모 규칙 (증권사 표준 A 방식 — 투자원금/기초자산 기준)', () => {
-  // 테스트모드: 누적·기간 모두 분모=accumulated_investment (회전율 희석 방지, 사용자 위험 인지 보호)
-  // 실전모드: 분모=buy_total_amt (증권사 데이터 기반, 실전 A 방식은 별도 백엔드 작업 예정)
+describe('computeCumulativePnl — 분모 규칙 (기초자산 분모 방식 — 결정 6 baseAsset 미전달 시 초기 투자원금)', () => {
+  // 테스트모드: 누적·기간 모두 baseAsset 미전달 시 분모=accumulated_investment (결정 6 첫 거래일 기초자산 = 초기 투자원금)
+  // 실전모드: baseAsset 미전달 시 분모=buy_total_amt (결정 6 첫 거래일 기초자산 = 초기 투자원금)
 
   it('누적 모드 + 테스트모드 → 분모=누적투자금 (전체 투자원금 대비)', () => {
     const sells = [
@@ -353,10 +354,10 @@ describe('computeCumulativePnl — 분모 규칙 (증권사 표준 A 방식 — 
     expect(result.rate).toBe(-5)  // -100000 / 2000000 * 100 (누적투자금 분모)
   })
 
-  it('기간 한정 모드 + 테스트모드 → 분모=누적투자금 (회전율 희석 방지, A 방식)', () => {
+  it('기간 한정 모드 + 테스트모드 + baseAsset 미전달 → 분모=누적투자금 (결정 6 첫 거래일 기초자산 = 초기 투자원금)', () => {
     // 100만원 투자원금으로 68건 회전(매수원가 합 931만원) 상황 재현:
     // B 방식(buy_total_amt 분모)이면 -100000/1000000=-10%가 되지만,
-    // A 방식(누적투자금 분모)은 -100000/2000000=-5%로 실제 자산 대비 손익 정확 반영
+    // 결정 6(baseAsset 미전달 시 초기 투자원금 분모)은 -100000/2000000=-5%로 실제 자산 대비 손익 정확 반영
     const sells = [
       makeSellRow('2026-07-28', -50000, 500000),
       makeSellRow('2026-07-29', -50000, 500000),
@@ -368,7 +369,7 @@ describe('computeCumulativePnl — 분모 규칙 (증권사 표준 A 방식 — 
     expect(result.rate).toBe(-5)  // -100000 / 2000000 * 100 (누적투자금 분모, buy_total_amt 아님)
   })
 
-  it('기간 한정 모드 + 실전모드 → 분모=해당 기간 buy_total_amt (실전 임시 규칙)', () => {
+  it('기간 한정 모드 + 실전모드 + baseAsset 미전달 → 분모=해당 기간 buy_total_amt (결정 6 첫 거래일 기초자산 = 초기 투자원금)', () => {
     const sells = [
       makeSellRow('2026-07-28', -50000, 500000),
       makeSellRow('2026-07-29', -50000, 500000),
@@ -380,7 +381,7 @@ describe('computeCumulativePnl — 분모 규칙 (증권사 표준 A 방식 — 
     expect(result.rate).toBe(-10)  // -100000 / 1000000 * 100 (실전 buy_total_amt 분모)
   })
 
-  it('dateFrom만 있어도 테스트모드 분모=누적투자금 (A 방식 일관성)', () => {
+  it('dateFrom만 있어도 테스트모드 분모=누적투자금 (결정 6 일관성)', () => {
     const sells = [
       makeSellRow('2026-07-27', -30000, 300000),
       makeSellRow('2026-07-28', -50000, 500000),
@@ -391,5 +392,111 @@ describe('computeCumulativePnl — 분모 규칙 (증권사 표준 A 방식 — 
     })
     expect(result.pnl).toBe(-50000)
     expect(result.rate).toBe(-2.5)  // -50000 / 2000000 * 100 (누적투자금 분모)
+  })
+})
+
+describe('computeCumulativePnl — 기초자산 분모 (baseAsset 전달 시 — 사용자 결정 1·2)', () => {
+  // 기간 한정 카드 + baseAsset 전달 시: 테스트/실전 모두 baseAsset 분모 (회전율 희석 방지 + 복리 자산 변화 반영)
+
+  it('기간 한정 모드 + 테스트모드 + baseAsset 전달 → 분모=baseAsset (누적투자금 아님)', () => {
+    const sells = [
+      makeSellRow('2026-07-28', -50000, 500000),
+      makeSellRow('2026-07-29', -50000, 500000),
+    ]
+    const result = computeCumulativePnl({
+      sellHistory: sells, account: makeAccount(2000000), isTestMode: true,
+      dateFrom: '2026-07-28', dateTo: '2026-07-29',
+      baseAsset: 1500000,  // 전일 장마감 총자산 150만원
+    })
+    expect(result.pnl).toBe(-100000)
+    expect(result.rate).toBeCloseTo(-6.67, 2)  // -100000 / 1500000 * 100 (baseAsset 분모)
+  })
+
+  it('기간 한정 모드 + 실전모드 + baseAsset 전달 → 분모=baseAsset (buy_total_amt 아님)', () => {
+    const sells = [
+      makeSellRow('2026-07-28', -50000, 500000),
+      makeSellRow('2026-07-29', -50000, 500000),
+    ]
+    const result = computeCumulativePnl({
+      sellHistory: sells, account: null, isTestMode: false,
+      dateFrom: '2026-07-28', dateTo: '2026-07-29',
+      baseAsset: 1500000,  // 전일 장마감 총자산 150만원
+    })
+    expect(result.pnl).toBe(-100000)
+    expect(result.rate).toBeCloseTo(-6.67, 2)  // -100000 / 1500000 * 100 (baseAsset 분모, buy_total_amt 1000000 아님)
+  })
+
+  it('누적 모드 + baseAsset 전달 → 분모=초기 투자원금 (baseAsset 무시, 사용자 결정 3)', () => {
+    const sells = [makeSellRow('2026-07-29', -100000, 1000000)]
+    const result = computeCumulativePnl({
+      sellHistory: sells, account: makeAccount(2000000), isTestMode: true,
+      baseAsset: 1500000,  // 누적 모드에서는 baseAsset 무시
+    })
+    expect(result.rate).toBe(-5)  // -100000 / 2000000 * 100 (누적 모드 = 초기 투자원금 분모)
+  })
+
+  it('baseAsset=0 전달 → 분모=0 → rate=0 (?? semantics: 0은 유효값, findBaseAssetForDate는 0 반환 안 함)', () => {
+    const sells = [makeSellRow('2026-07-29', -100000, 1000000)]
+    const result = computeCumulativePnl({
+      sellHistory: sells, account: makeAccount(2000000), isTestMode: true,
+      dateFrom: '2026-07-29', dateTo: '2026-07-29',
+      baseAsset: 0,  // ?? semantics: 0은 null/undefined 아니므로 유효값. findBaseAssetForDate는 0 행 건너뛰므로 실제 발생 안 함
+    })
+    expect(result.rate).toBe(0)  // -100000 / 0 → computeWeightedRate 가드로 0
+  })
+})
+
+describe('findBaseAssetForDate — dailySummary에서 기초자산 추출 (P10 SSOT)', () => {
+  function makeDailyRow(date: string, baseAsset: number): Record<string, unknown> {
+    return { date, base_asset: baseAsset, sell_count: 0, buy_count: 0, realized_pnl: 0, pnl_rate: 0 }
+  }
+
+  it('date 이전 날짜 중 가장 최근 행의 base_asset 반환', () => {
+    const dailySummary = [
+      makeDailyRow('2026-07-25', 1000000),
+      makeDailyRow('2026-07-28', 1500000),
+      makeDailyRow('2026-07-29', 1800000),
+    ]
+    // 2026-07-30 기준: 2026-07-29가 가장 최근 이전 날짜
+    expect(findBaseAssetForDate(dailySummary, '2026-07-30')).toBe(1800000)
+  })
+
+  it('date와 동일한 날짜는 제외 (전일 스냅샷이므로 미포함)', () => {
+    const dailySummary = [
+      makeDailyRow('2026-07-28', 1500000),
+      makeDailyRow('2026-07-29', 1800000),
+    ]
+    // 2026-07-29 기준: 2026-07-29 동일 날짜 제외 → 2026-07-28 반환
+    expect(findBaseAssetForDate(dailySummary, '2026-07-29')).toBe(1500000)
+  })
+
+  it('이전 날짜 없으면 undefined 반환 (첫 거래일 — 결정 6으로 초기 투자원금 처리)', () => {
+    const dailySummary = [
+      makeDailyRow('2026-07-29', 1800000),
+      makeDailyRow('2026-07-30', 2000000),
+    ]
+    // 2026-07-28 기준: 이전 날짜 없음
+    expect(findBaseAssetForDate(dailySummary, '2026-07-28')).toBeUndefined()
+  })
+
+  it('base_asset=0인 행은 건너뜀 (유효 기초자산 아님)', () => {
+    const dailySummary = [
+      makeDailyRow('2026-07-25', 0),
+      makeDailyRow('2026-07-28', 1500000),
+    ]
+    // 2026-07-29 기준: 2026-07-28(1500000) 반환, 2026-07-25(0)은 건너뜀
+    expect(findBaseAssetForDate(dailySummary, '2026-07-29')).toBe(1500000)
+  })
+
+  it('빈 dailySummary → undefined', () => {
+    expect(findBaseAssetForDate([], '2026-07-30')).toBeUndefined()
+  })
+
+  it('base_asset 필드 누락 행은 건너뜀', () => {
+    const dailySummary = [
+      { date: '2026-07-25' },  // base_asset 필드 없음
+      makeDailyRow('2026-07-28', 1500000),
+    ]
+    expect(findBaseAssetForDate(dailySummary, '2026-07-29')).toBe(1500000)
   })
 })
