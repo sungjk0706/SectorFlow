@@ -267,7 +267,7 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
     `display:inline-flex;align-items:center;gap:8px;margin-right:4px;font-weight:${FONT_WEIGHT.bold};`
 
   const logoIcon = document.createElement('img')
-  logoIcon.src = '/logo.png?v=1'
+  logoIcon.src = '/logo.png'
   logoIcon.alt = 'SectorFlow'
   logoIcon.width = 40
   logoIcon.height = 40
