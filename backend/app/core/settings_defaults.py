@@ -70,11 +70,9 @@ DEFAULT_USER_SETTINGS: dict[str, Any] = {
     "consecutive_loss_limit_on": False,
     "consecutive_loss_limit": 3,               # 연속 손실 N회 시 중단
 
-    # 시장 지수 급락 가드 (KOSPI/KOSDAQ 각각 독립 설정)
-    # market_guard_on=False 기본 — 사용자가 명시적으로 ON 해야 활성화
+    # 시장 지수 급락 가드 (KOSPI/KOSDAQ 각각 독립 설정 — 그룹 마스터 토글 없음)
     # 매수/매도 차단 여부는 기존 risk_block_buy_on/risk_block_sell_on 재사용 (동일 차단 체계)
     # 지수 데이터 수신 불가 시 차단하지 않음 (토글 OFF처럼 동작) — P20 준수
-    "market_guard_on": False,
     "market_guard_kospi_on": False,
     "market_guard_kospi_drop_threshold_pct": -5.0,   # KOSPI 임계 (%, 음수)
     "market_guard_kosdaq_on": False,

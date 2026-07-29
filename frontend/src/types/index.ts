@@ -198,9 +198,8 @@ export interface AppSettings {
   consecutive_loss_limit_on?: boolean;          // 연속 손실 횟수 한도 활성화
   consecutive_loss_limit?: number;              // 연속 손실 횟수 한도 (회, 기본 3)
 
-  // 시장 지수 급락 가드 — KOSPI/KOSDAQ 각각 독립 설정
+  // 시장 지수 급락 가드 — KOSPI/KOSDAQ 각각 독립 설정 (그룹 마스터 토글 없음)
   // 매수/매도 차단 여부는 기존 risk_block_buy_on/risk_block_sell_on 재사용
-  market_guard_on?: boolean;                          // 시장 지수 가드 마스터 토글
   market_guard_kospi_on?: boolean;                    // KOSPI 가드 활성화
   market_guard_kospi_drop_threshold_pct?: number;     // KOSPI 임계 (%, 음수, 기본 -5.0)
   market_guard_kosdaq_on?: boolean;                   // KOSDAQ 가드 활성화

@@ -58,9 +58,8 @@ class RiskManager:
         self.risk_block_sell_on = bool(cache.get("risk_block_sell_on", False))
         self.consecutive_loss_limit_on = bool(cache.get("consecutive_loss_limit_on", False))
         self.consecutive_loss_limit = int(cache.get("consecutive_loss_limit", 3) or 3)
-        # 시장 지수 급락 가드 (P13 메모리 상주)
+        # 시장 지수 급락 가드 (P13 메모리 상주) — KOSPI/KOSDAQ 개별 토글이 독립 제어
         # 매수/매도 차단 여부는 기존 risk_block_buy_on/risk_block_sell_on 재사용
-        self.market_guard_on = bool(cache.get("market_guard_on", False))
         self.market_guard_kospi_on = bool(cache.get("market_guard_kospi_on", False))
         self.market_guard_kospi_drop_threshold_pct = float(cache.get("market_guard_kospi_drop_threshold_pct", -5.0) or -5.0)
         self.market_guard_kosdaq_on = bool(cache.get("market_guard_kosdaq_on", False))
@@ -122,6 +121,7 @@ class RiskManager:
 
         P10 SSOT: engine_state.index_data_cache[upcode]["drate"] (등락률 %) 사용.
         upcode: KOSPI="001", KOSDAQ="301" (frontend header.ts SSOT와 동일).
+        KOSPI/KOSDAQ 개별 토글이 독립 제어 — 둘 다 OFF면 항상 허용.
         지수 데이터 수신 불가(캐시 비어있음/변환 실패) 시 차단하지 않음 — P20 준수 (silent pass 금지 → 경고 로그).
         반환: (allowed, reason) — allowed=False 시 차단 사유.
         """
@@ -200,8 +200,8 @@ class RiskManager:
             if not allowed:
                 return False, reason
 
-        # 3-1. 시장 지수 급락 가드 (market_guard_on + risk_block_buy_on 시에만)
-        if self.market_guard_on and self.risk_block_buy_on:
+        # 3-1. 시장 지수 급락 가드 (risk_block_buy_on 시에만 — KOSPI/KOSDAQ 개별 토글이 독립 제어)
+        if self.risk_block_buy_on:
             allowed, reason = self._check_market_drop()
             if not allowed:
                 return False, reason
@@ -291,8 +291,8 @@ class RiskManager:
                 if consec_count >= self.consecutive_loss_limit:
                     return False, f"연속 손실 한도 초과 (매도 차단, {consec_count}회)"
 
-        # 2-1. 시장 지수 급락 가드 (market_guard_on + risk_block_sell_on 시에만)
-        if self.market_guard_on and self.risk_block_sell_on:
+        # 2-1. 시장 지수 급락 가드 (risk_block_sell_on 시에만 — KOSPI/KOSDAQ 개별 토글이 독립 제어)
+        if self.risk_block_sell_on:
             allowed, reason = self._check_market_drop()
             if not allowed:
                 return False, f"{reason} (매도 차단)"

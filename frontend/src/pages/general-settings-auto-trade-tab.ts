@@ -209,42 +209,22 @@ function buildRiskBlockSellRow(state: GeneralSettingsState): HTMLElement {
 
 function buildRiskManagerChildren(state: GeneralSettingsState): HTMLElement {
   // 매매 안전장치 OFF 시 일괄 비활성화
-  buildDailyLossRow(state)
-  buildDailyLossRateRow(state)
-  buildConsecLossRow(state)
+  // 순서: 동작 토글(매수/매도 차단) → 시장 조건(KOSPI/KOSDAQ) → 손실 조건(일일 손실/손실률/연속)
   state.riskManagerChildren!.appendChild(buildRiskBlockBuyRow(state))
   state.riskManagerChildren!.appendChild(buildRiskBlockSellRow(state))
   state.riskManagerChildren!.appendChild(createDescText('손실 상태에서 매도 차단 시 손실 확대 위험 — 신중하게 활성화하세요'))
-  // 시장 지수 급락 가드 (매매 안전장치 하위)
-  state.riskManagerChildren!.appendChild(buildMarketGuardMasterRow(state))
-  state.riskManagerChildren!.appendChild(buildMarketGuardChildren(state))
+  // 시장 지수 급락 가드 (매매 안전장치 하위 — KOSPI/KOSDAQ 개별 토글이 독립 제어)
+  buildMarketGuardChildren(state)
+  // 손실 조건
+  buildDailyLossRow(state)
+  buildDailyLossRateRow(state)
+  buildConsecLossRow(state)
   return state.riskManagerChildren!
 }
 
 // ── 시장 지수 급락 가드 ──
+// KOSPI/KOSDAQ 개별 토글이 독립 제어 (그룹 마스터 토글 없음 — 손실 조건 토글들과 동일 계층)
 // 매수/매도 차단 여부는 기존 risk_block_buy_on/risk_block_sell_on 재사용 (별도 토글 없음)
-function buildMarketGuardMasterRow(state: GeneralSettingsState): HTMLElement {
-  state.marketGuardChildren = document.createElement('div')
-  const r = createSettingToggleRow({
-    label: '시장 지수 급락 시 차단',
-    infoText: 'KOSPI/KOSDAQ 등락률이 임계 이하일 때 매수/매도 차단. 매수/매도 차단 여부는 상단 "안전장치 조건 충족 시 매수/매도 차단" 토글을 따름. 지수 데이터 수신 불가 시 차단하지 않음.',
-    toggleOn: false,
-    onToggle: async next => {
-      state.vals.market_guard_on = next
-      setDisabled(state.marketGuardChildren!, !next)
-      const res = await state.settingsMgr!.saveSection({ market_guard_on: next })
-      toastResult(res)
-      if (!res.ok) {
-        state.vals.market_guard_on = !next
-        r.toggle.setOn(!next)
-        setDisabled(state.marketGuardChildren!, next)
-      }
-    },
-  })
-  state.marketGuardToggle = r.toggle
-  return r.el
-}
-
 function buildMarketGuardKospiRow(state: GeneralSettingsState): void {
   state.marketGuardKospiInput = createNumInput({
     value: -5,
@@ -271,7 +251,7 @@ function buildMarketGuardKospiRow(state: GeneralSettingsState): void {
     },
   })
   state.marketGuardKospiToggle = r.toggle; state.marketGuardKospiControls = r.controls
-  state.marketGuardChildren!.appendChild(r.el)
+  state.riskManagerChildren!.appendChild(r.el)
 }
 
 function buildMarketGuardKosdaqRow(state: GeneralSettingsState): void {
@@ -300,25 +280,23 @@ function buildMarketGuardKosdaqRow(state: GeneralSettingsState): void {
     },
   })
   state.marketGuardKosdaqToggle = r.toggle; state.marketGuardKosdaqControls = r.controls
-  state.marketGuardChildren!.appendChild(r.el)
+  state.riskManagerChildren!.appendChild(r.el)
 }
 
-function buildMarketGuardChildren(state: GeneralSettingsState): HTMLElement {
+function buildMarketGuardChildren(state: GeneralSettingsState): void {
   buildMarketGuardKospiRow(state)
   buildMarketGuardKosdaqRow(state)
-  return state.marketGuardChildren!
 }
 
 export function renderAutoTradeTab(state: GeneralSettingsState, container: HTMLElement): void {
   container.appendChild(buildMasterToggleRow(state))
-  container.appendChild(createDescText('자동매매(매수/매도) 마스터 스위치 — OFF면 모든 매매 중단'))
   container.appendChild(buildAutoBuyBadgeRow(state))
   container.appendChild(buildAutoSellBadgeRow(state))
-  container.appendChild(createDescText('자동매수/매도 켜짐/꺼짐 상태 표시 (읽기 전용). 켜고 끄는 조작은 "시간 설정" 탭의 시간 행 우측 토글에서'))
+  container.appendChild(createDescText('켜고 끄는 조작은 "시간 설정" 탭의 시간 행 우측 토글에서'))
 
-  // 전역매매설정 (매매 안전장치) 섹션 — 목표 수익/손실 도달 시 자동 매매 중단
+  // 전역매매설정 (매매 안전장치) 섹션 — 손실 한도/시장 급락 도달 시 자동 매매 중단
   container.appendChild(sectionTitle('전역매매설정 (매매 안전장치)'))
-  container.appendChild(createDescText('목표 수익/손실 도달 시 자동 매매 중단. 매매 안전장치 OFF 시 모든 조건이 적용되지 않습니다.'))
+  container.appendChild(createDescText('손실 한도/시장 급락 도달 시 자동 매매 중단. 매매 안전장치 OFF 시 모든 조건이 적용되지 않습니다.'))
   container.appendChild(buildRiskManagerMasterRow(state))
   container.appendChild(buildRiskManagerChildren(state))
 }
@@ -357,8 +335,6 @@ function syncRiskManager(state: GeneralSettingsState, r: Record<string, unknown>
   state.riskBlockBuyToggle?.setOn(r.risk_block_buy_on !== false)
   state.riskBlockSellToggle?.setOn(!!r.risk_block_sell_on)
   // 시장 지수 급락 가드 동기화 (매수/매도 차단은 기존 riskBlockBuyToggle/riskBlockSellToggle 재사용)
-  state.marketGuardToggle?.setOn(!!r.market_guard_on)
-  if (state.marketGuardChildren) setDisabled(state.marketGuardChildren, !r.market_guard_on)
   syncToggleInputRow(state.marketGuardKospiToggle, state.marketGuardKospiInput, state.marketGuardKospiControls, !!r.market_guard_kospi_on, Number(r.market_guard_kospi_drop_threshold_pct ?? -5), act)
   syncToggleInputRow(state.marketGuardKosdaqToggle, state.marketGuardKosdaqInput, state.marketGuardKosdaqControls, !!r.market_guard_kosdaq_on, Number(r.market_guard_kosdaq_drop_threshold_pct ?? -5), act)
 }
