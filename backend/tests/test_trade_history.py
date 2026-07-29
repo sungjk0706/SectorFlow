@@ -923,6 +923,44 @@ class TestGetDailySummaryExtended:
             trading_calendar._cache_initialized = False
             trading_calendar._trading_days_cache = {}
 
+    async def test_earliest_base_asset_field_present_and_uniform(self):
+        """earliest_base_asset 필드가 모든 행에 동일 값으로 포함되는지 검증 (B-2 회귀).
+
+        P10 SSOT — dailySummary가 일별 데이터 + 누적 분모 단일 소스.
+        P24 단순성 — 1회 조회로 모든 행 동일 값 적용.
+        """
+        from backend.app.services import trade_history
+        trade_history._buy_history.append(_make_buy_rec(date="2026-07-01"))
+        with patch("backend.app.services.trade_history._history_lock"):
+            with patch("backend.app.db.database.get_db_connection") as mock_conn:
+                # get_base_asset_for_period / get_earliest_base_asset 모두 conn.execute 사용
+                mock_cursor = MagicMock()
+                mock_cursor.fetchone = AsyncMock(return_value={"total_asset": 5000000})
+                mock_conn.return_value.execute = AsyncMock(return_value=mock_cursor)
+                result = await trade_history.get_daily_summary(
+                    date_from="2026-07-01", date_to="2026-07-03"
+                )
+        assert len(result) == 3
+        # 모든 행에 earliest_base_asset 필드 존재 + 동일 값
+        for row in result:
+            assert "earliest_base_asset" in row
+            assert row["earliest_base_asset"] == 5000000
+
+    async def test_earliest_base_asset_none_when_no_snapshot(self):
+        """스냅샷 없으면 earliest_base_asset=None (P20 폴백 금지 — 프론트 rate null → '-' 표시)."""
+        from backend.app.services import trade_history
+        trade_history._buy_history.append(_make_buy_rec(date="2026-07-01"))
+        with patch("backend.app.services.trade_history._history_lock"):
+            with patch("backend.app.db.database.get_db_connection") as mock_conn:
+                mock_cursor = MagicMock()
+                mock_cursor.fetchone = AsyncMock(return_value=None)
+                mock_conn.return_value.execute = AsyncMock(return_value=mock_cursor)
+                result = await trade_history.get_daily_summary(
+                    date_from="2026-07-01", date_to="2026-07-01"
+                )
+        assert result[0]["earliest_base_asset"] is None
+        assert result[0]["base_asset"] is None
+
 
 # ── clear_test_history ────────────────────────────────────────────────────────
 

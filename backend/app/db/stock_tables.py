@@ -239,6 +239,44 @@ async def get_base_asset_for_period(conn, *, date_from: str, trade_mode: str) ->
     return int(row["total_asset"])
 
 
+async def get_earliest_base_asset(conn, *, trade_mode: str) -> int | None:
+    """해당 모드의 가장 오래된 total_asset 반환 (누적 카드 분모용).
+
+    account_daily_snapshot에서 trade_mode 필터 후 가장 오래된 date의 total_asset.
+    없으면 None (프론트에서 rate null → '-' 표시, P20 폴백 금지).
+
+    P10 SSOT — account_daily_snapshot.total_asset 단일 소스.
+    """
+    cursor = await conn.execute(
+        """SELECT total_asset FROM account_daily_snapshot
+           WHERE trade_mode = ? AND total_asset > 0
+           ORDER BY date ASC LIMIT 1""",
+        (trade_mode,),
+    )
+    row = await cursor.fetchone()
+    if not row:
+        return None
+    return int(row["total_asset"])
+
+
+async def get_deposit_history(conn, *, trade_mode: str) -> list[dict]:
+    """누적 드릴다운용 입금 이력 조회.
+
+    account_daily_snapshot에서 daily_deposit > 0인 행의 date, daily_deposit 반환.
+    date 오름차순 정렬.
+
+    P10 SSOT — account_daily_snapshot.daily_deposit 단일 소스.
+    """
+    cursor = await conn.execute(
+        """SELECT date, daily_deposit FROM account_daily_snapshot
+           WHERE trade_mode = ? AND daily_deposit > 0
+           ORDER BY date ASC""",
+        (trade_mode,),
+    )
+    rows = await cursor.fetchall()
+    return [{"date": r["date"], "daily_deposit": int(r["daily_deposit"])} for r in rows]
+
+
 # test_positions 테이블 및 관련 함수 제거 — trades 테이블이 보유 포지션 SSOT
 # eligible_stocks_cache 함수 삭제 (master_stocks_table이 단일 소스)
 

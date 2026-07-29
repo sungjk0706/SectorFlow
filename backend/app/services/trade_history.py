@@ -683,8 +683,16 @@ async def get_daily_summary(
         from backend.app.services.engine_account import get_trade_mode
         resolved_mode = get_trade_mode()
     from backend.app.db.database import get_db_connection
-    from backend.app.db.stock_tables import get_base_asset_for_period
+    from backend.app.db.stock_tables import get_base_asset_for_period, get_earliest_base_asset
     conn = await get_db_connection()
+    # earliest_base_asset = 해당 모드의 가장 오래된 total_asset (누적 카드 분모용).
+    # 1회 조회로 모든 행에 동일 값 적용 (P24 단순성 — 매 행마다 조회 금지).
+    # 없으면 None (프론트에서 rate null → '-' 표시, P20 폴백 금지).
+    try:
+        earliest_base_asset = await get_earliest_base_asset(conn, trade_mode=resolved_mode)
+    except Exception as e:
+        logger.warning("[이력] earliest_base_asset 조회 실패 (None으로 진행): %s", e, exc_info=True)
+        earliest_base_asset = None
     for d in sorted(trading_dates):
         entry = daily_map.get(d, {
             "date": d,
@@ -706,6 +714,8 @@ async def get_daily_summary(
         except Exception as e:
             logger.warning("[이력] base_asset 조회 실패 (None으로 진행): %s", e, exc_info=True)
             entry["base_asset"] = None
+        # earliest_base_asset = 모든 행 동일 값 (누적 카드 분모용)
+        entry["earliest_base_asset"] = earliest_base_asset
         result.append(entry)
     return result
 

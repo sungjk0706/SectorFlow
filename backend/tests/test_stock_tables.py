@@ -16,6 +16,8 @@ from backend.app.db.stock_tables import (
     save_trading_days_cache,
     load_trading_days_cache,
     load_master_stocks_table,
+    get_earliest_base_asset,
+    get_deposit_history,
 )
 
 
@@ -326,3 +328,67 @@ class TestLoadMasterStocksTable:
         # 예외 전파 (P20 폴백 금지) — 호출자가 빈 dict를 "데이터 없음"으로 오인 방지
         with pytest.raises(Exception, match="DB error"):
             await load_master_stocks_table()
+
+
+# ── get_earliest_base_asset ─────────────────────────────────────────
+
+class TestGetEarliestBaseAsset:
+    @pytest.mark.asyncio
+    async def test_returns_earliest_total_asset(self, _mock_db_connection):
+        """가장 오래된 total_asset 반환 (누적 카드 분모용)."""
+        mock_cursor = AsyncMock()
+        mock_cursor.fetchone = AsyncMock(return_value={"total_asset": 1000000})
+        _mock_db_connection.execute = AsyncMock(return_value=mock_cursor)
+        result = await get_earliest_base_asset(_mock_db_connection, trade_mode="test")
+        assert result == 1000000
+
+    @pytest.mark.asyncio
+    async def test_returns_none_when_no_snapshot(self, _mock_db_connection):
+        """스냅샷 없으면 None (P20 폴백 금지 — 프론트에서 rate null → '-' 표시)."""
+        mock_cursor = AsyncMock()
+        mock_cursor.fetchone = AsyncMock(return_value=None)
+        _mock_db_connection.execute = AsyncMock(return_value=mock_cursor)
+        result = await get_earliest_base_asset(_mock_db_connection, trade_mode="test")
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_exception_propagates(self, _mock_db_connection):
+        """예외 전파 (P20 폴백 금지)."""
+        _mock_db_connection.execute = AsyncMock(side_effect=Exception("DB error"))
+        with pytest.raises(Exception, match="DB error"):
+            await get_earliest_base_asset(_mock_db_connection, trade_mode="test")
+
+
+# ── get_deposit_history ─────────────────────────────────────────────
+
+class TestGetDepositHistory:
+    @pytest.mark.asyncio
+    async def test_returns_deposit_rows_ascending(self, _mock_db_connection):
+        """daily_deposit > 0 행을 date 오름차순으로 반환."""
+        mock_cursor = AsyncMock()
+        mock_cursor.fetchall = AsyncMock(return_value=[
+            {"date": "2026-01-05", "daily_deposit": 500000},
+            {"date": "2026-02-10", "daily_deposit": 300000},
+        ])
+        _mock_db_connection.execute = AsyncMock(return_value=mock_cursor)
+        result = await get_deposit_history(_mock_db_connection, trade_mode="test")
+        assert result == [
+            {"date": "2026-01-05", "daily_deposit": 500000},
+            {"date": "2026-02-10", "daily_deposit": 300000},
+        ]
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_list_when_no_deposit(self, _mock_db_connection):
+        """입금 이력 없으면 빈 리스트 (P20 — None 폴백 금지, 빈 리스트는 유효값)."""
+        mock_cursor = AsyncMock()
+        mock_cursor.fetchall = AsyncMock(return_value=[])
+        _mock_db_connection.execute = AsyncMock(return_value=mock_cursor)
+        result = await get_deposit_history(_mock_db_connection, trade_mode="test")
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_exception_propagates(self, _mock_db_connection):
+        """예외 전파 (P20 폴백 금지)."""
+        _mock_db_connection.execute = AsyncMock(side_effect=Exception("DB error"))
+        with pytest.raises(Exception, match="DB error"):
+            await get_deposit_history(_mock_db_connection, trade_mode="test")

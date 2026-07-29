@@ -630,3 +630,59 @@ class TestSettingsRouter:
     def test_router_has_three_routes(self):
         from backend.app.web.routes.settings import router
         assert len(router.routes) == 3
+
+
+# ── trade.py ──────────────────────────────────────────────────────────────────
+
+class TestDepositHistoryRoute:
+    """trade.py: GET /api/trade-history/deposit-history — 누적 드릴다운용 입금 이력."""
+
+    async def test_returns_deposit_history(self):
+        from backend.app.web.routes.trade import deposit_history
+        mock_history = [
+            {"date": "2026-01-05", "daily_deposit": 500000},
+            {"date": "2026-02-10", "daily_deposit": 300000},
+        ]
+        with patch("backend.app.db.database.get_db_connection", new_callable=AsyncMock) as mock_conn, \
+             patch("backend.app.db.stock_tables.get_deposit_history", new_callable=AsyncMock, return_value=mock_history) as mock_fn, \
+             patch("backend.app.services.engine_account.get_trade_mode", return_value="test"):
+            mock_conn.return_value = AsyncMock()
+            result = await deposit_history(trade_mode=None, _="dev")
+        assert result == {"deposit_history": mock_history}
+        mock_fn.assert_called_once()
+
+    async def test_explicit_trade_mode_overrides_current(self):
+        from backend.app.web.routes.trade import deposit_history
+        with patch("backend.app.db.database.get_db_connection", new_callable=AsyncMock) as mock_conn, \
+             patch("backend.app.db.stock_tables.get_deposit_history", new_callable=AsyncMock, return_value=[]) as mock_fn, \
+             patch("backend.app.services.engine_account.get_trade_mode", return_value="test") as mock_mode:
+            mock_conn.return_value = AsyncMock()
+            result = await deposit_history(trade_mode="real", _="dev")
+        assert result == {"deposit_history": []}
+        mock_fn.assert_called_once()
+        # 명시적 trade_mode가 전달되면 get_trade_mode() 호출하지 않음
+        mock_mode.assert_not_called()
+
+    async def test_empty_history_returns_empty_list(self):
+        """입금 이력 없으면 빈 리스트 (P20 — None 폴백 금지, 빈 리스트는 유효값)."""
+        from backend.app.web.routes.trade import deposit_history
+        with patch("backend.app.db.database.get_db_connection", new_callable=AsyncMock) as mock_conn, \
+             patch("backend.app.db.stock_tables.get_deposit_history", new_callable=AsyncMock, return_value=[]), \
+             patch("backend.app.services.engine_account.get_trade_mode", return_value="test"):
+            mock_conn.return_value = AsyncMock()
+            result = await deposit_history(trade_mode=None, _="dev")
+        assert result == {"deposit_history": []}
+
+
+class TestTradeRouter:
+    """trade.py: 라우터 설정 검증."""
+
+    def test_router_prefix_and_tags(self):
+        from backend.app.web.routes.trade import router
+        assert router.prefix == "/api/trade-history"
+        assert "trade-history" in router.tags
+
+    def test_router_has_deposit_history_route(self):
+        from backend.app.web.routes.trade import router
+        paths = [r.path for r in router.routes]
+        assert "/api/trade-history/deposit-history" in paths
