@@ -72,7 +72,7 @@ export function createSidebar(onNavigate: (path: string) => void): {
 
   const footerText = document.createElement('span')
   footerText.style.cssText =
-    `display:inline-block;font-size:${FONT_SIZE.section};font-family:'Georgia','Times New Roman',serif;color:${COLOR.muted};font-weight:${FONT_WEIGHT.semibold};background:linear-gradient(110deg, ${COLOR.muted} 40%, #c8cdd6 48%, #c8cdd6 52%, ${COLOR.muted} 60%);background-size:300% 100%;-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;animation:sidebar-shimmer 8s linear infinite;will-change:background-position;`
+    `display:inline-block;font-size:${FONT_SIZE.section};font-family:'Georgia','Times New Roman',serif;color:${COLOR.muted};font-weight:${FONT_WEIGHT.semibold};background:linear-gradient(110deg, ${COLOR.muted} 40%, #ffffff 48%, #ffffff 52%, ${COLOR.muted} 60%);background-size:300% 100%;-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;animation:sidebar-shimmer 8s linear infinite;will-change:background-position;`
   footerText.textContent = 'Built by J.K'
 
   footer.appendChild(footerText)
