@@ -259,36 +259,36 @@ describe('computeOrderBlockStatus — 우선순위 8단계 (세션 9)', () => {
   })
 
   describe('8순위 — 시간대 외 (작동 시간 범위 벗어남)', () => {
-    it('buy: nowKst < buy_time_start 시 매수 시간대 외', () => {
+    it('buy: nowKst < buy_time_start 시 자동매수 시간 외 (설정 시간 표시)', () => {
       dateSpy.mockReturnValue('08:30')  // 개시 전
       const ui = makeCleanUiState()
       const r = computeOrderBlockStatus('buy', ui, makeCleanSettings())
       expect(r.blocked).toBe(true)
-      expect(r.text).toBe('차단: 매수 시간대 외')
+      expect(r.text).toBe('차단: 자동매수 시간 외 (09:00~15:20)')
     })
 
-    it('buy: nowKst > buy_time_end 시 매수 시간대 외', () => {
+    it('buy: nowKst > buy_time_end 시 자동매수 시간 외 (설정 시간 표시)', () => {
       dateSpy.mockReturnValue('15:30')  // 마감 후
       const ui = makeCleanUiState()
       const r = computeOrderBlockStatus('buy', ui, makeCleanSettings())
       expect(r.blocked).toBe(true)
-      expect(r.text).toBe('차단: 매수 시간대 외')
+      expect(r.text).toBe('차단: 자동매수 시간 외 (09:00~15:20)')
     })
 
-    it('sell: nowKst < sell_time_start 시 매도 시간대 외', () => {
+    it('sell: nowKst < sell_time_start 시 자동매도 시간 외 (설정 시간 표시)', () => {
       dateSpy.mockReturnValue('08:30')
       const ui = makeCleanUiState()
       const r = computeOrderBlockStatus('sell', ui, makeCleanSettings())
       expect(r.blocked).toBe(true)
-      expect(r.text).toBe('차단: 매도 시간대 외')
+      expect(r.text).toBe('차단: 자동매도 시간 외 (09:00~15:20)')
     })
 
-    it('sell: nowKst > sell_time_end 시 매도 시간대 외', () => {
+    it('sell: nowKst > sell_time_end 시 자동매도 시간 외 (설정 시간 표시)', () => {
       dateSpy.mockReturnValue('15:30')
       const ui = makeCleanUiState()
       const r = computeOrderBlockStatus('sell', ui, makeCleanSettings())
       expect(r.blocked).toBe(true)
-      expect(r.text).toBe('차단: 매도 시간대 외')
+      expect(r.text).toBe('차단: 자동매도 시간 외 (09:00~15:20)')
     })
 
     it('경계값: start와 동일 시간은 통과 (>=start)', () => {
@@ -385,12 +385,12 @@ describe('computeOrderBlockStatus — 우선순위 8단계 (세션 9)', () => {
       expect(computeOrderBlockStatus('sell', ui, s).text).toBe('차단: 자동매도 OFF')
     })
 
-    it('시간대 외 텍스트: buy=매수 시간대 외, sell=매도 시간대 외', () => {
+    it('시간대 외 텍스트: buy=자동매수 시간 외 (설정 시간 표시), sell=자동매도 시간 외 (설정 시간 표시)', () => {
       dateSpy.mockReturnValue('23:00')
       const ui = makeCleanUiState()
       const s = makeCleanSettings()
-      expect(computeOrderBlockStatus('buy', ui, s).text).toBe('차단: 매수 시간대 외')
-      expect(computeOrderBlockStatus('sell', ui, s).text).toBe('차단: 매도 시간대 외')
+      expect(computeOrderBlockStatus('buy', ui, s).text).toBe('차단: 자동매수 시간 외 (09:00~15:20)')
+      expect(computeOrderBlockStatus('sell', ui, s).text).toBe('차단: 자동매도 시간 외 (09:00~15:20)')
     })
 
     it('공통 차단 텍스트는 side 무관 동일: 서킷브레이커/실시간 지연/자동매매 OFF', () => {

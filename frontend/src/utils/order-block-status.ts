@@ -25,7 +25,7 @@ export interface OrderBlockStatus {
 const SIDE_TEXT: Record<OrderSide, {
   ok: string
   autoOff: string
-  outOfTime: string
+  outOfTime: (start: string, end: string) => string
   autoFlag: keyof AppSettings
   timeStart: keyof AppSettings
   timeEnd: keyof AppSettings
@@ -33,7 +33,7 @@ const SIDE_TEXT: Record<OrderSide, {
   buy: {
     ok: '매수 가능',
     autoOff: '차단: 자동매수 OFF',
-    outOfTime: '차단: 매수 시간대 외',
+    outOfTime: (start, end) => `차단: 자동매수 시간 외 (${start}~${end})`,
     autoFlag: 'auto_buy_on',
     timeStart: 'buy_time_start',
     timeEnd: 'buy_time_end',
@@ -41,7 +41,7 @@ const SIDE_TEXT: Record<OrderSide, {
   sell: {
     ok: '매도 가능',
     autoOff: '차단: 자동매도 OFF',
-    outOfTime: '차단: 매도 시간대 외',
+    outOfTime: (start, end) => `차단: 자동매도 시간 외 (${start}~${end})`,
     autoFlag: 'auto_sell_on',
     timeStart: 'sell_time_start',
     timeEnd: 'sell_time_end',
@@ -90,7 +90,7 @@ export function computeOrderBlockStatus(
   const start = String(settings[t.timeStart] ?? '09:00').slice(0, 5)
   const end = String(settings[t.timeEnd] ?? '15:20').slice(0, 5)
   if (nowKst < start || nowKst > end) {
-    return { text: t.outOfTime, blocked: true }
+    return { text: t.outOfTime(start, end), blocked: true }
   }
 
   return { text: t.ok, blocked: false }
