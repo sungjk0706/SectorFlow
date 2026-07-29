@@ -29,6 +29,42 @@ import { hotStore } from '../stores/hotStore'
 import { globalSettingsManager } from '../settings'
 import type { ProfitDetailState } from './profit-detail'
 
+/* ── 1프레임 내 필터 결과 재사용 (P24 단순성 — filterTradeRows 중복 연산 방지) ──
+ * showTable/updateTabLabels/updateStatistics가 같은 프레임에 같은 입력으로 호출될 때
+ * filterTradeRows를 1회만 실행하고 결과를 재사용.
+ * 캐시 유효성: sellHistory/buyHistory 참조 + dateFrom/dateTo/stockQuery 동일 시 재사용.
+ * 수명 = 현재 입력이 유지되는 동안 (입력 변경 시 자동 무효화 — P22 정합성 위험 없음). */
+function getFilteredRows(state: ProfitDetailState): { sells: Record<string, unknown>[]; buys: Record<string, unknown>[] } {
+  const dateRange = state.dateRangeInput?.getValue() ?? { from: '', to: '' }
+  const stockQuery = state.stockFilterInput?.getValue() || ''
+
+  // 캐시 유효성 검증 — 참조 동등성 + 입력값 동등성
+  const cache = state.filterCache
+  if (cache
+    && cache.sellRef === state.sellHistory
+    && cache.buyRef === state.buyHistory
+    && cache.from === dateRange.from
+    && cache.to === dateRange.to
+    && cache.query === stockQuery
+  ) {
+    return { sells: cache.sells, buys: cache.buys }
+  }
+
+  // 캐시 미스 또는 무효 — 재계산
+  const sells = filterTradeRows(state.sellHistory, dateRange.from, dateRange.to, stockQuery || undefined)
+  const buys = filterTradeRows(state.buyHistory, dateRange.from, dateRange.to, stockQuery || undefined)
+  state.filterCache = {
+    sellRef: state.sellHistory,
+    buyRef: state.buyHistory,
+    from: dateRange.from,
+    to: dateRange.to,
+    query: stockQuery,
+    sells,
+    buys,
+  }
+  return { sells, buys }
+}
+
 /* ── 요약 카드 선택 스타일 ── */
 function applyCardStyle(card: HTMLDivElement, active: boolean, borderActive: string, bgActive: string): void {
   Object.assign(card.style, {
@@ -76,10 +112,7 @@ function setTabLabel(btn: HTMLButtonElement, label: string, count: number): void
 }
 
 export function updateTabLabels(state: ProfitDetailState): void {
-  const dateRange = state.dateRangeInput?.getValue() ?? { from: '', to: '' }
-  const stockQuery = state.stockFilterInput?.getValue() || ''
-  const filteredSells = filterTradeRows(state.sellHistory, dateRange.from, dateRange.to, stockQuery || undefined)
-  const filteredBuys = filterTradeRows(state.buyHistory, dateRange.from, dateRange.to, stockQuery || undefined)
+  const { sells: filteredSells, buys: filteredBuys } = getFilteredRows(state)
   if (state.sellTabBtn) setTabLabel(state.sellTabBtn, '매도 내역', filteredSells.length)
   if (state.buyTabBtn) setTabLabel(state.buyTabBtn, '매수 내역', filteredBuys.length)
 }
@@ -155,7 +188,7 @@ function buildTodayDrilldownContent(result: TodayDrilldownResult): HTMLElement {
   }
   wrap.appendChild(createDrilldownSummary(`실현 합계: ${result.realizedTotal >= 0 ? '+' : ''}${fmtWon(result.realizedTotal)}`, pnlColor(result.realizedTotal)))
 
-  wrap.appendChild(createDrilldownSectionTitle('평가 손익 (현재 보유)'))
+  wrap.appendChild(createDrilldownSectionTitle('평가 손익 (현재 보유 — 최근 체결 기준)'))
   const evalRows = result.evalRows.map(r => [
     { text: r.stk_nm, color: undefined },
     { text: `${r.pnl >= 0 ? '+' : ''}${fmtWon(r.pnl)}`, color: pnlColor(r.pnl) },
@@ -307,9 +340,7 @@ export function filterByDateRange(state: ProfitDetailState, from: string, to: st
 /* ── 통계 정보 갱신 ── */
 function updateStatistics(state: ProfitDetailState): void {
   const dateRange = state.dateRangeInput?.getValue() ?? { from: '', to: '' }
-  const stockQuery = state.stockFilterInput?.getValue() || ''
-  const filteredSells = filterTradeRows(state.sellHistory, dateRange.from, dateRange.to, stockQuery || undefined)
-  const filteredBuys = filterTradeRows(state.buyHistory, dateRange.from, dateRange.to, stockQuery || undefined)
+  const { sells: filteredSells, buys: filteredBuys } = getFilteredRows(state)
 
   const sellCount = filteredSells.length
   const buyCount = filteredBuys.length
@@ -356,11 +387,9 @@ export function showTable(state: ProfitDetailState): void {
 
   if (state.tabRow) state.tabRow.style.display = 'flex'
 
-  const dateRange = state.dateRangeInput?.getValue() ?? { from: '', to: '' }
-  const stockQuery = state.stockFilterInput?.getValue() || ''
+  const { sells, buys } = getFilteredRows(state)
   const isSell = state.activeTab === 'sell'
-  let rows = isSell ? state.sellHistory : state.buyHistory
-  rows = filterTradeRows(rows, dateRange.from, dateRange.to, stockQuery || undefined)
+  const rows = isSell ? sells : buys
 
   if (!state.sellTable) {
     state.sellTable = createDataTable<Record<string, unknown>>({

@@ -192,6 +192,7 @@ export function updateSummaryCards(
   positions: Position[],
   sectorStocks: Record<string, SectorStock>,
   earliestBaseAsset?: number,
+  openSubText?: string,  // 개장 중 서브 텍스트 (P21 투명성 — profit-detail: '최근 체결 기준', profit-overview: 생략='')
 ): void {
   const today = getTradingToday()
   const yearMonth = today.slice(0, 7)
@@ -229,7 +230,7 @@ export function updateSummaryCards(
     const { evalPnl } = computeHoldingsSummary(positions, sectorStocks)
     dayPnl = realizedToday + evalPnl
     dayRate = dayBaseAsset != null ? computeWeightedRate(dayPnl, dayBaseAsset) : null
-    els.todaySubTextEl.textContent = ''
+    els.todaySubTextEl.textContent = openSubText ?? ''
   }
 
   // 5거래일/당월/누적 카드: computeCumulativePnl SSOT 호출 (분모 규칙은 함수 내부에서 통일)

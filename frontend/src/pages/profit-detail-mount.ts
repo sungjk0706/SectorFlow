@@ -230,6 +230,7 @@ export function restoreInitialView(state: ProfitDetailState, todayStr: string, i
       globalSettingsManager.getSettings()?.trade_mode === 'test',
       initState.positions, initState.sectorStocks,
       extractEarliestBaseAsset(initState.dailySummary),
+      '최근 체결 기준',  // P21 투명성 — 수익상세는 실시간 틱 미반영, 최근 체결 기준 평가손익
     )
   }
 }
@@ -239,34 +240,31 @@ export function flushDirtyRender(state: ProfitDetailState): void {
   state.rafId = null
   if (!state.mounted) return
 
+  // dirtyHistory 선소미: history 변경 시 summary도 함께 갱신되므로 dirtySummary를 선소미하여
+  // updateSummaryCards 중복 호출 방지 (한 프레임당 1회 보장 — P24 단순성).
+  const needSummary = state.dirtyHistory || state.dirtySummary
+
   if (state.dirtyHistory) {
     state.dirtyHistory = false
+    state.dirtySummary = false  // history 변경이 summary 갱신을 내포 — 선소미
     showTable(state)
     updateTabLabels(state)
-    if (state.summaryCardEls) {
-      const hotState = hotStore.getState()
-      updateSummaryCards(
-        hotState.dailySummary, state.summaryCardEls,
-        state.sellHistory, hotState.account,
-        globalSettingsManager.getSettings()?.trade_mode === 'test',
-        hotState.positions, hotState.sectorStocks,
-        extractEarliestBaseAsset(hotState.dailySummary),
-      )
-    }
   }
 
   if (state.dirtySummary) {
     state.dirtySummary = false
-    if (state.summaryCardEls) {
-      const hotState = hotStore.getState()
-      updateSummaryCards(
-        hotState.dailySummary, state.summaryCardEls,
-        state.sellHistory, hotState.account,
-        globalSettingsManager.getSettings()?.trade_mode === 'test',
-        hotState.positions, hotState.sectorStocks,
-        extractEarliestBaseAsset(hotState.dailySummary),
-      )
-    }
+  }
+
+  if (needSummary && state.summaryCardEls) {
+    const hotState = hotStore.getState()
+    updateSummaryCards(
+      hotState.dailySummary, state.summaryCardEls,
+      state.sellHistory, hotState.account,
+      globalSettingsManager.getSettings()?.trade_mode === 'test',
+      hotState.positions, hotState.sectorStocks,
+      extractEarliestBaseAsset(hotState.dailySummary),
+      '최근 체결 기준',  // P21 투명성 — 수익상세는 실시간 틱 미반영, 최근 체결 기준 평가손익
+    )
   }
 
   if (state.dirtySectorStocks) {
