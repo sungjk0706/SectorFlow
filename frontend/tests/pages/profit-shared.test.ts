@@ -314,7 +314,7 @@ describe('computeCumulativePnl — 실전모드 (분모=매수원가 합계)', (
 })
 
 describe('computeCumulativePnl — 날짜 필터 (P10 SSOT, 도넛 차트와 계좌현황 공통)', () => {
-  it('dateFrom/dateTo 적용 시 범위 내 손익만 집계 + 기간 매수금액 분모 (사용자 상식 기준)', () => {
+  it('dateFrom/dateTo 적용 시 범위 내 손익만 집계 + 테스트모드 분모=누적투자금 (A 방식)', () => {
     const sells = [
       makeSellRow('2026-07-27', -30000, 300000),
       makeSellRow('2026-07-28', -50000, 500000),
@@ -325,9 +325,8 @@ describe('computeCumulativePnl — 날짜 필터 (P10 SSOT, 도넛 차트와 계
       dateFrom: '2026-07-28', dateTo: '2026-07-29',
     })
     expect(result.pnl).toBe(-70000)  // -50000 + -20000
-    // 기간 한정 모드: 분모 = 해당 기간 buy_total_amt 합 (500000+200000=700000)
-    // 테스트모드라도 누적투자금(1000000) 사용 안 함 — 당일은 당일 매수금액 대비 (사용자 상식)
-    expect(result.rate).toBe(-10)    // -70000 / 700000 * 100
+    // A 방식: 테스트모드는 기간 한정이어도 분모=누적투자금 (회전율 희석 방지)
+    expect(result.rate).toBe(-7)     // -70000 / 1000000 * 100
   })
 
   it('빈 sellHistory → pnl=0, rate=0', () => {
@@ -339,9 +338,9 @@ describe('computeCumulativePnl — 날짜 필터 (P10 SSOT, 도넛 차트와 계
   })
 })
 
-describe('computeCumulativePnl — 분모 규칙 (누적 vs 기간 한정, 사용자 상식 기준)', () => {
-  // 누적 모드 (dateFrom/dateTo 없음): 테스트모드=누적투자금, 실전=buy_total_amt 전체 합
-  // 기간 한정 모드 (dateFrom/dateTo 있음): 항상 해당 기간 buy_total_amt 합 (테스트/실전 공통)
+describe('computeCumulativePnl — 분모 규칙 (증권사 표준 A 방식 — 투자원금/기초자산 기준)', () => {
+  // 테스트모드: 누적·기간 모두 분모=accumulated_investment (회전율 희석 방지, 사용자 위험 인지 보호)
+  // 실전모드: 분모=buy_total_amt (증권사 데이터 기반, 실전 A 방식은 별도 백엔드 작업 예정)
 
   it('누적 모드 + 테스트모드 → 분모=누적투자금 (전체 투자원금 대비)', () => {
     const sells = [
@@ -354,7 +353,10 @@ describe('computeCumulativePnl — 분모 규칙 (누적 vs 기간 한정, 사�
     expect(result.rate).toBe(-5)  // -100000 / 2000000 * 100 (누적투자금 분모)
   })
 
-  it('기간 한정 모드 + 테스트모드 → 분모=해당 기간 buy_total_amt (누적투자금 아님)', () => {
+  it('기간 한정 모드 + 테스트모드 → 분모=누적투자금 (회전율 희석 방지, A 방식)', () => {
+    // 100만원 투자원금으로 68건 회전(매수원가 합 931만원) 상황 재현:
+    // B 방식(buy_total_amt 분모)이면 -100000/1000000=-10%가 되지만,
+    // A 방식(누적투자금 분모)은 -100000/2000000=-5%로 실제 자산 대비 손익 정확 반영
     const sells = [
       makeSellRow('2026-07-28', -50000, 500000),
       makeSellRow('2026-07-29', -50000, 500000),
@@ -363,10 +365,10 @@ describe('computeCumulativePnl — 분모 규칙 (누적 vs 기간 한정, 사�
       sellHistory: sells, account: makeAccount(2000000), isTestMode: true,
       dateFrom: '2026-07-28', dateTo: '2026-07-29',
     })
-    expect(result.rate).toBe(-10)  // -100000 / 1000000 * 100 (기간 buy_total_amt 분모)
+    expect(result.rate).toBe(-5)  // -100000 / 2000000 * 100 (누적투자금 분모, buy_total_amt 아님)
   })
 
-  it('기간 한정 모드 + 실전모드 → 분모=해당 기간 buy_total_amt (테스트와 동일 규칙)', () => {
+  it('기간 한정 모드 + 실전모드 → 분모=해당 기간 buy_total_amt (실전 임시 규칙)', () => {
     const sells = [
       makeSellRow('2026-07-28', -50000, 500000),
       makeSellRow('2026-07-29', -50000, 500000),
@@ -375,10 +377,10 @@ describe('computeCumulativePnl — 분모 규칙 (누적 vs 기간 한정, 사�
       sellHistory: sells, account: null, isTestMode: false,
       dateFrom: '2026-07-28', dateTo: '2026-07-29',
     })
-    expect(result.rate).toBe(-10)  // -100000 / 1000000 * 100
+    expect(result.rate).toBe(-10)  // -100000 / 1000000 * 100 (실전 buy_total_amt 분모)
   })
 
-  it('dateFrom만 있어도 기간 한정 모드 (분모=해당 기간 buy_total_amt)', () => {
+  it('dateFrom만 있어도 테스트모드 분모=누적투자금 (A 방식 일관성)', () => {
     const sells = [
       makeSellRow('2026-07-27', -30000, 300000),
       makeSellRow('2026-07-28', -50000, 500000),
@@ -388,6 +390,6 @@ describe('computeCumulativePnl — 분모 규칙 (누적 vs 기간 한정, 사�
       dateFrom: '2026-07-28',
     })
     expect(result.pnl).toBe(-50000)
-    expect(result.rate).toBe(-10)  // -50000 / 500000 * 100 (기간 분모)
+    expect(result.rate).toBe(-2.5)  // -50000 / 2000000 * 100 (누적투자금 분모)
   })
 })

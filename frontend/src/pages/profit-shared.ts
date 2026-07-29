@@ -361,18 +361,18 @@ export interface CumulativePnlParams {
 }
 
 /** 누적/기간 실현 손익 + 수익률 단일 계산 소스 (P10 SSOT).
- *  분모 규칙 (사용자 상식 기준 — 당일은 당일 매수금액, 누적은 전체 투자원금):
- *    - 누적 모드 (dateFrom/dateTo 없음): 테스트모드=누적투자금(accumulated_investment, 투자원금 대비),
- *                                       실전모드=매수원가 합계(buy_total_amt, 증권사 데이터 기반).
- *    - 기간 한정 모드 (dateFrom/dateTo 있음): 항상 해당 기간 buy_total_amt 합 (테스트/실전 공통).
- *  dateFrom/dateTo 적용 시 해당 범위 내 손익만 집계.
+ *  분모 규칙 (증권사 표준 A 방식 — 투자원금/기초자산 기준, 회전율 희석 방지):
+ *    - 테스트모드: 누적투자금(accumulated_investment, 투자원금 대비) — 당일/당월/누적 모두 동일 분모.
+ *      회전율이 높아 매수원가 합이 투자원금을 초과해도 수익률이 희석되지 않음 (사용자 위험 인지 보호, P21).
+ *    - 실전모드: 매수원가 합계(buy_total_amt, 증권사 데이터 기반).
+ *      ※ 실전 A 방식(당월 기초자산 분모)은 백엔드 월별 잔고 스냅샷 기능이 필요해 별도 작업 예정.
+ *  dateFrom/dateTo 적용 시 해당 범위 내 손익만 집계 (분모는 모드별 고정).
  *  renderAccountVals(계좌 현황)·canvas-sector-donut(도넛 중앙)·updateSummaryCards(요약 카드)·
  *  updateStatistics(하단 통계)가 동일 분모·동일 데이터 범위를 사용하도록 추출 (P22 데이터 정합성). */
 export function computeCumulativePnl(params: CumulativePnlParams): { pnl: number; rate: number } {
   const { sellHistory, account, isTestMode, dateFrom, dateTo } = params
   const { pnl, buyTotal } = aggregatePnl(sellHistory, dateFrom, dateTo)
-  const isCumulative = !dateFrom && !dateTo
-  const denominator = (isTestMode && isCumulative)
+  const denominator = isTestMode
     ? (account?.accumulated_investment ?? account?.initial_deposit ?? 0)
     : buyTotal
   return { pnl, rate: computeWeightedRate(pnl, denominator) }
