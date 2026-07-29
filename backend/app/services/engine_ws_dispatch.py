@@ -367,9 +367,13 @@ async def _handle_jif(data: dict) -> None:
         alert = _JSTATUS_KRX_ALERT.get(jstatus, "__no_change__")
         if alert == "__no_change__":
             return
-        if mp.get("krx_alert") == alert:
+        # 해제 코드(63/71)는 krx_alert를 즉시 None으로 클리어 — 배지 즉시 소멸 (P24 단순성).
+        # telegram 알림은 alert 원문을 그대로 사용하므로 krx_alert 클리어와 무관.
+        is_release = jstatus in _KRX_CB_RELEASE_CODES
+        new_alert = None if is_release else alert
+        if mp.get("krx_alert") == new_alert:
             return
-        mp["krx_alert"] = alert
+        mp["krx_alert"] = new_alert
         await _broadcast("market-phase", get_market_phase())
         logger.info("[연결] 서킷브레이커/사이드카 알림 갱신: 장상태=%s → %s", jstatus, alert)
 
@@ -379,7 +383,7 @@ async def _handle_jif(data: dict) -> None:
                 logger.warning("[구독] 서킷브레이커/사이드카 발동 — 자동매매 임시 중단 (장상태=%s)", jstatus)
                 _notify_krx_cb_telegram(f"🛑 [KRX] {alert} — 자동매매 임시 중단", engine_state.state.integrated_system_settings_cache)
                 await _broadcast("krx-circuit-breaker", {"active": True, "alert": alert})
-        elif jstatus in _KRX_CB_RELEASE_CODES:
+        elif is_release:
             if engine_state.state.krx_circuit_breaker_active:
                 engine_state.state.krx_circuit_breaker_active = False
                 logger.info("[구독] 서킷브레이커/사이드카 해제 — 자동매매 자동 재개 (장상태=%s)", jstatus)

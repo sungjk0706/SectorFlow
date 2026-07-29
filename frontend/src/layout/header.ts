@@ -491,11 +491,20 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
     } catch (e) { console.error('[header] degradedMode chip error', e) }
 
     // 장 상태 — 카운트다운(백엔드 SSOT 수신값)이 있으면 우선 표시, 없으면 시계 페이즈명
+    // 서킷브레이커/사이드카 발동(krx_alert 있음) 시 NXT/KRX 칩 숨김, CB 알림 칩만 표시 (P21 투명성).
     try {
-      applyMarketPhaseChip(nxtChip, 'NXT', marketPhase.nxt, formatCountdown(marketPhase.nxt_countdown))
+      if (marketPhase.krx_alert) {
+        nxtChip.style.display = 'none'
+      } else {
+        applyMarketPhaseChip(nxtChip, 'NXT', marketPhase.nxt, formatCountdown(marketPhase.nxt_countdown))
+      }
     } catch (e) { console.error('[header] nxt phase chip error', e) }
     try {
-      applyMarketPhaseChip(krxChip, 'KRX', marketPhase.krx, formatCountdown(marketPhase.krx_countdown))
+      if (marketPhase.krx_alert) {
+        krxChip.style.display = 'none'
+      } else {
+        applyMarketPhaseChip(krxChip, 'KRX', marketPhase.krx, formatCountdown(marketPhase.krx_countdown))
+      }
     } catch (e) { console.error('[header] krx phase chip error', e) }
 
     // 업종지수 실시간 — 칩은 항상 표시, 데이터 없으면 placeholder
