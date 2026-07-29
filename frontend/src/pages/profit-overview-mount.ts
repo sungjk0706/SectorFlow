@@ -51,7 +51,7 @@ export function renderAccountVals(state: ProfitOverviewState): void {
     testAccountValRefs: state.testAccountValRefs,
     holdingCountSpan: state.holdingCountSpan,
     holdingCountSpanTest: state.holdingCountSpanTest,
-    earliestBaseAsset: extractEarliestBaseAsset(hotState.dailySummary),
+    earliestBaseAsset: extractEarliestBaseAsset(state.analysisDailySummary),
   }
   renderAccountValsShared(params)
 }
@@ -77,9 +77,10 @@ function buildDonutCenter(state: ProfitOverviewState): SectorDonutCenter {
   const hotState = hotStore.getState()
   const settings = globalSettingsManager.getSettings()
   const isTestMode = settings?.trade_mode === 'test'
-  const earliestBaseAsset = extractEarliestBaseAsset(hotState.dailySummary)
+  // 분석용 dailySummary 사용 (3단계 — chartDailySummary와 명시적 분리)
+  const earliestBaseAsset = extractEarliestBaseAsset(state.analysisDailySummary)
   const baseAsset = state.localDateFrom
-    ? findBaseAssetForDate(hotState.dailySummary, state.localDateFrom)
+    ? findBaseAssetForDate(state.analysisDailySummary, state.localDateFrom)
     : undefined
   const { pnl } = computeCumulativePnl({
     sellHistory: state.filteredSellHistory,
@@ -252,8 +253,8 @@ export async function applyDateRange(state: ProfitOverviewState, from: string, t
       state.chart?.setDateRange(actualFrom, actualTo, label)
     }
     state.chart?.updateData(buildChartFromDailySummary(data))
-    // 페이지 로컬 상태에 저장 (공유 store 덮어쓰기 금지 — P10 SSOT)
-    state.localDailySummary = data
+    // 차트 데이터를 페이지 로컬 상태에 저장 (공유 store 덮어쓰기 금지 — P10 SSOT)
+    state.chartDailySummary = data
     state.localDateFrom = actualFrom
     state.localDateTo = actualTo
     state.localQuickLabel = label
@@ -293,7 +294,7 @@ export function buildProfitChart(
 
   state.chart = createProfitChart({
     container: chartContainer,
-    data: buildChartFromDailySummary(state.localDailySummary),
+    data: buildChartFromDailySummary(state.chartDailySummary),
     dateFrom: storedFrom,
     dateTo: storedTo,
     quickDateRanges: quickDateRangesConfig,
@@ -362,9 +363,11 @@ export function flushRender(state: ProfitOverviewState): void {
       const tradeModeChanged = settings?.trade_mode !== state.prevTradeMode
       // WS push dailySummary → 페이지 로컬 동기화 (P10 SSOT — 공유 store = 최근 N거래일)
       // 단, 사용자가 선택한 localDateFrom/To는 유지하여 차트 날짜 범위는 변경하지 않음
-      state.localDailySummary = latest.dailySummary
+      // chartDailySummary/analysisDailySummary 명시적 분리 (3단계)
+      state.chartDailySummary = latest.dailySummary
+      state.analysisDailySummary = latest.dailySummary
       if (tradeModeChanged) {
-        state.chart?.updateData(buildChartFromDailySummary(state.localDailySummary))
+        state.chart?.updateData(buildChartFromDailySummary(state.chartDailySummary))
       }
       refreshFilteredViews(state)
       if (tradeModeChanged) {

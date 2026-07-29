@@ -51,8 +51,13 @@ export interface ProfitOverviewState {
   buyHistory: Record<string, unknown>[]
   sellHistory: Record<string, unknown>[]
   filteredSellHistory: Record<string, unknown>[]
+  // dailySummary 명시적 분리 (3단계 — 차트 범위 이슈 방지):
+  // - chartDailySummary: 차트 데이터 전용 (사용자 선택 날짜 범위의 dailySummary)
+  // - analysisDailySummary: 분석(도넛 중앙 손익·계좌 현황 분모)용 — hotStore 동기화
+  //   기존 localDailySummary가 두 용도에 공용되어 차트 범위와 분석 범위가 혼재될 위험 제거
+  chartDailySummary: Record<string, unknown>[]
+  analysisDailySummary: Record<string, unknown>[]
   // 페이지 로컬 날짜 범위 (P10 SSOT — 공유 store 오염 방지)
-  localDailySummary: Record<string, unknown>[]
   localDateFrom: string
   localDateTo: string
   localQuickLabel: string | undefined
@@ -93,7 +98,8 @@ function createState(): ProfitOverviewState {
     buyHistory: [],
     sellHistory: [],
     filteredSellHistory: [],
-    localDailySummary: [],
+    chartDailySummary: [],
+    analysisDailySummary: [],
     localDateFrom: '',
     localDateTo: '',
     localQuickLabel: undefined,
@@ -150,9 +156,10 @@ function mount(container: HTMLElement): void {
   state.localQuickLabel = saved?.quickLabel
 
   // 거래일별 수익률 차트 생성 + 초기 데이터 조회
-  // localDailySummary는 WS push 데이터로 초기화 (P10 SSOT — 공유 store = 최근 N거래일)
+  // chartDailySummary/analysisDailySummary는 WS push 데이터로 초기화 (P10 SSOT — 공유 store = 최근 N거래일)
   const initState = hotStore.getState()
-  state.localDailySummary = initState.dailySummary
+  state.chartDailySummary = initState.dailySummary
+  state.analysisDailySummary = initState.dailySummary
   buildProfitChart(state, chartContainer, initFrom, initTo, saved)
 
   // 초기 데이터 반영 — 도넛 차트 생성 전 filteredSellHistory 선할당
