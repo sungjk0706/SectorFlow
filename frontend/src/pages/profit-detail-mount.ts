@@ -8,6 +8,7 @@ import { createTabBar, createToggleSelectBtn } from '../components/common/button
 import { createDateRangeInput, type DateRangeInputApi } from '../components/common/date-range-input'
 import { api } from '../api/client'
 import { hotStore } from '../stores/hotStore'
+import { globalSettingsManager } from '../settings'
 import {
   type SummaryCardEls,
   createSummaryCards,
@@ -276,7 +277,11 @@ export function restoreInitialView(state: ProfitDetailState, todayStr: string, i
     filterByDate(state, todayStr)
   }
   if (state.summaryCardEls) {
-    updateSummaryCards(initState.dailySummary, state.summaryCardEls)
+    updateSummaryCards(
+      initState.dailySummary, state.summaryCardEls,
+      state.sellHistory, initState.account,
+      globalSettingsManager.getSettings()?.trade_mode === 'test',
+    )
   }
 }
 
@@ -294,14 +299,22 @@ export function flushDirtyRender(state: ProfitDetailState): void {
     }
     updateTabLabels(state)
     if (state.summaryCardEls) {
-      updateSummaryCards(hotStore.getState().dailySummary, state.summaryCardEls)
+      updateSummaryCards(
+        hotStore.getState().dailySummary, state.summaryCardEls,
+        state.sellHistory, hotStore.getState().account,
+        globalSettingsManager.getSettings()?.trade_mode === 'test',
+      )
     }
   }
 
   if (state.dirtySummary) {
     state.dirtySummary = false
     if (state.summaryCardEls) {
-      updateSummaryCards(hotStore.getState().dailySummary, state.summaryCardEls)
+      updateSummaryCards(
+        hotStore.getState().dailySummary, state.summaryCardEls,
+        state.sellHistory, hotStore.getState().account,
+        globalSettingsManager.getSettings()?.trade_mode === 'test',
+      )
     }
     // 드릴다운이 dailySummary 기반이므로 summary 변경 시 드릴다운도 갱신 (P10 SSOT)
     if (state.drilldownActive) {

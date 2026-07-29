@@ -157,64 +157,55 @@ export function getRecent5TradingDays(dailySummary: Record<string, unknown>[]): 
   return dates.slice(0, 5)
 }
 
-/** 당일/전일/5거래일/당월/누적 손익 계산 및 요약 카드 DOM 갱신
- *  모든 카드를 dailySummary 기반으로 집계 (P10 SSOT — sellHistory 재집계 제거).
- *  5거래일/당월/누적 수익률 = realized_pnl 합계 ÷ buy_total_amt 합계 × 100 (computeWeightedRate). */
+/** 당일/전일/5거래일/당월/누적 손익 계산 및 요약 카드 DOM 갱신.
+ *  모든 카드를 computeCumulativePnl SSOT로 계산 (P10 SSOT — 분모 규칙 단일 소스).
+ *  분모 규칙 (사용자 상식 기준): 기간 한정 카드=해당 기간 buy_total_amt 합,
+ *                              누적 카드=테스트모드 누적투자금 / 실전 buy_total_amt 전체 합.
+ *  dailySummary는 전일 날짜·5거래일 날짜 추출에만 사용 (날짜 결정 SSOT).
+ *  누적 카드는 sellHistory 전체 사용 (dailySummary 20일 제한 제거 — P22 데이터 정합성). */
 export function updateSummaryCards(
   dailySummary: Record<string, unknown>[],
   els: SummaryCardEls,
+  sellHistory: Record<string, unknown>[],
+  account: AccountSnapshot | null,
+  isTestMode: boolean,
 ): void {
   const today = getLocalToday()
   const yearMonth = today.slice(0, 7)
+  const monthStart = yearMonth + '-01'
+  const monthEnd = yearMonth + '-31'
 
-  const todayEntry = dailySummary.find(r => String(r.date ?? '') === today)
-  const dayPnl = todayEntry ? Number(todayEntry.realized_pnl ?? 0) : 0
-  const dayRate = todayEntry ? Number(todayEntry.pnl_rate ?? 0) : 0
-
-  // 전일 거래일: dailySummary에서 오늘보다 이전 날짜 중 가장 최근
-  let prevEntry: Record<string, unknown> | undefined
+  // 전일 거래일: dailySummary에서 오늘보다 이전 날짜 중 가장 최근 (날짜 결정 SSOT)
+  let prevDay = ''
   for (const r of dailySummary) {
     const d = String(r.date ?? '')
-    if (d < today) {
-      if (!prevEntry || d > String(prevEntry.date ?? '')) prevEntry = r
-    }
+    if (d < today && d > prevDay) prevDay = d
   }
-  const prevPnl = prevEntry ? Number(prevEntry.realized_pnl ?? 0) : 0
-  const prevRate = prevEntry ? Number(prevEntry.pnl_rate ?? 0) : 0
 
-  // 5거래일/당월/누적 카드: dailySummary 기반 집계 (sellHistory 재집계 제거 — P10 SSOT)
-  const recent5 = new Set(getRecent5TradingDays(dailySummary))
-  let fivedayPnl = 0, fivedayBuyTotal = 0
-  let monthPnl = 0, monthBuyTotal = 0
-  let totalPnl = 0, totalBuyTotal = 0
-  const monthPrefix = yearMonth + '-'
-  for (const r of dailySummary) {
-    const d = String(r.date ?? '')
-    const pnl = Number(r.realized_pnl ?? 0)
-    const buyTotal = Number(r.buy_total_amt ?? 0)
-    totalPnl += pnl
-    totalBuyTotal += buyTotal
-    if (recent5.has(d)) {
-      fivedayPnl += pnl
-      fivedayBuyTotal += buyTotal
-    }
-    if (d.startsWith(monthPrefix)) {
-      monthPnl += pnl
-      monthBuyTotal += buyTotal
-    }
-  }
-  const fiveS = { pnl: fivedayPnl, rate: computeWeightedRate(fivedayPnl, fivedayBuyTotal) }
-  const monS = { pnl: monthPnl, rate: computeWeightedRate(monthPnl, monthBuyTotal) }
-  const allS = { pnl: totalPnl, rate: computeWeightedRate(totalPnl, totalBuyTotal) }
+  // 5거래일 날짜 범위 (내림차순 → [0]=최근, [4]=5번째)
+  const recent5 = getRecent5TradingDays(dailySummary)
+  const fivedayFrom = recent5.length > 0 ? recent5[recent5.length - 1] : ''
+  const fivedayTo = recent5.length > 0 ? recent5[0] : ''
 
-  els.todayPnlEl.textContent = fmtWon(dayPnl)
-  els.todayPnlEl.style.color = pnlColor(dayPnl)
-  els.todayRateEl.textContent = `${dayRate.toFixed(2)}%`
-  els.todayRateEl.style.color = pnlColor(dayPnl)
-  els.prevPnlEl.textContent = fmtWon(prevPnl)
-  els.prevPnlEl.style.color = pnlColor(prevPnl)
-  els.prevRateEl.textContent = `${prevRate.toFixed(2)}%`
-  els.prevRateEl.style.color = pnlColor(prevPnl)
+  // 5개 카드 모두 computeCumulativePnl SSOT 호출 (분모 규칙은 함수 내부에서 통일)
+  const dayS = computeCumulativePnl({ sellHistory, account, isTestMode, dateFrom: today, dateTo: today })
+  const prevS = prevDay
+    ? computeCumulativePnl({ sellHistory, account, isTestMode, dateFrom: prevDay, dateTo: prevDay })
+    : { pnl: 0, rate: 0 }
+  const fiveS = (fivedayFrom && fivedayTo)
+    ? computeCumulativePnl({ sellHistory, account, isTestMode, dateFrom: fivedayFrom, dateTo: fivedayTo })
+    : { pnl: 0, rate: 0 }
+  const monS = computeCumulativePnl({ sellHistory, account, isTestMode, dateFrom: monthStart, dateTo: monthEnd })
+  const allS = computeCumulativePnl({ sellHistory, account, isTestMode })
+
+  els.todayPnlEl.textContent = fmtWon(dayS.pnl)
+  els.todayPnlEl.style.color = pnlColor(dayS.pnl)
+  els.todayRateEl.textContent = `${dayS.rate.toFixed(2)}%`
+  els.todayRateEl.style.color = pnlColor(dayS.pnl)
+  els.prevPnlEl.textContent = fmtWon(prevS.pnl)
+  els.prevPnlEl.style.color = pnlColor(prevS.pnl)
+  els.prevRateEl.textContent = `${prevS.rate.toFixed(2)}%`
+  els.prevRateEl.style.color = pnlColor(prevS.pnl)
   els.fivedayPnlEl.textContent = fmtWon(fiveS.pnl)
   els.fivedayPnlEl.style.color = pnlColor(fiveS.pnl)
   els.fivedayRateEl.textContent = `${fiveS.rate.toFixed(2)}%`
@@ -369,16 +360,19 @@ export interface CumulativePnlParams {
   dateTo?: string
 }
 
-/** 누적 실현 손익 + 수익률 단일 계산 소스 (P10 SSOT).
- *  분모: 테스트모드=누적투자금(accumulated_investment, 투자원금 대비),
- *        실전모드=매수원가 합계(buy_total_amt, 증권사 데이터 기반).
- *  dateFrom/dateTo 적용 시 해당 범위 내 손익만 집계 (도넛 차트 중앙·계좌현황 공통).
- *  renderAccountVals(계좌 현황)와 canvas-sector-donut(도넛 차트 중앙)가
- *  동일 분모·동일 데이터 범위를 사용하도록 추출 (P22 데이터 정합성). */
+/** 누적/기간 실현 손익 + 수익률 단일 계산 소스 (P10 SSOT).
+ *  분모 규칙 (사용자 상식 기준 — 당일은 당일 매수금액, 누적은 전체 투자원금):
+ *    - 누적 모드 (dateFrom/dateTo 없음): 테스트모드=누적투자금(accumulated_investment, 투자원금 대비),
+ *                                       실전모드=매수원가 합계(buy_total_amt, 증권사 데이터 기반).
+ *    - 기간 한정 모드 (dateFrom/dateTo 있음): 항상 해당 기간 buy_total_amt 합 (테스트/실전 공통).
+ *  dateFrom/dateTo 적용 시 해당 범위 내 손익만 집계.
+ *  renderAccountVals(계좌 현황)·canvas-sector-donut(도넛 중앙)·updateSummaryCards(요약 카드)·
+ *  updateStatistics(하단 통계)가 동일 분모·동일 데이터 범위를 사용하도록 추출 (P22 데이터 정합성). */
 export function computeCumulativePnl(params: CumulativePnlParams): { pnl: number; rate: number } {
   const { sellHistory, account, isTestMode, dateFrom, dateTo } = params
   const { pnl, buyTotal } = aggregatePnl(sellHistory, dateFrom, dateTo)
-  const denominator = isTestMode
+  const isCumulative = !dateFrom && !dateTo
+  const denominator = (isTestMode && isCumulative)
     ? (account?.accumulated_investment ?? account?.initial_deposit ?? 0)
     : buyTotal
   return { pnl, rate: computeWeightedRate(pnl, denominator) }

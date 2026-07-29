@@ -3,7 +3,7 @@
 // profit-detail.ts에서 이관. 순수 이동, 동작 변경 없음.
 
 import { createDataTable, type DataTableApi } from '../components/common/data-table'
-import { FONT_WEIGHT, pnlColor, fmtWon, COLOR, computeWeightedRate } from '../components/common/ui-styles'
+import { FONT_WEIGHT, pnlColor, fmtWon, COLOR } from '../components/common/ui-styles'
 import {
   BUY_COLS,
   SELL_COLS,
@@ -14,10 +14,12 @@ import {
   type SummaryCardEls,
   buildMonthlyDrilldown,
   filterTradeRows,
+  computeCumulativePnl,
 } from './profit-shared'
 import { getLocalToday } from '../utils/date'
 import { saveProfitDetailView } from './profit-detail-view'
 import { hotStore } from '../stores/hotStore'
+import { globalSettingsManager } from '../settings'
 import type { ProfitDetailState } from './profit-detail'
 
 /* ── 요약 카드 선택 스타일 ── */
@@ -148,9 +150,17 @@ function updateStatistics(state: ProfitDetailState): void {
   const pnl = filteredSells.reduce((s, r) => s + Number(r.realized_pnl ?? 0), 0)
   const winCount = filteredSells.filter(r => Number(r.realized_pnl ?? 0) > 0).length
   const winRate = sellCount > 0 ? Math.round(winCount / sellCount * 10000) / 100 : 0
-  // 가중 평균 수익률 = 실현손익 합 / 매입금액 합 × 100 (백엔드 현금 기준 buy_total_amt 분모, P22 데이터 정합성)
-  const buyTotal = filteredSells.reduce((s, r) => s + Number(r.buy_total_amt ?? 0), 0)
-  const avgRate = computeWeightedRate(pnl, buyTotal)
+  // 수익률: computeCumulativePnl SSOT 사용 (분모 규칙 단일 소스 — P10/P22).
+  //   종목 필터 적용 시 dateFrom/dateTo 있으면 해당 기간 buy_total_amt 분모,
+  //   필터 없으면 누적 모드(테스트=누적투자금 / 실전=buy_total_amt 전체 합).
+  const isTestMode = globalSettingsManager.getSettings()?.trade_mode === 'test'
+  const { rate: avgRate } = computeCumulativePnl({
+    sellHistory: filteredSells,
+    account: hotStore.getState().account,
+    isTestMode,
+    dateFrom: dateRange.from || undefined,
+    dateTo: dateRange.to || undefined,
+  })
 
   if (state.statCountEl) state.statCountEl.textContent = `매도 ${sellCount}건 / 매수 ${buyCount}건`
   if (state.statBuyAmtEl) { state.statBuyAmtEl.textContent = fmtWon(buyAmt); state.statBuyAmtEl.style.color = COLOR.tertiary }

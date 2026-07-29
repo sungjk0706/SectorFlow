@@ -314,7 +314,7 @@ describe('computeCumulativePnl — 실전모드 (분모=매수원가 합계)', (
 })
 
 describe('computeCumulativePnl — 날짜 필터 (P10 SSOT, 도넛 차트와 계좌현황 공통)', () => {
-  it('dateFrom/dateTo 적용 시 범위 내 손익만 집계', () => {
+  it('dateFrom/dateTo 적용 시 범위 내 손익만 집계 + 기간 매수금액 분모 (사용자 상식 기준)', () => {
     const sells = [
       makeSellRow('2026-07-27', -30000, 300000),
       makeSellRow('2026-07-28', -50000, 500000),
@@ -325,7 +325,9 @@ describe('computeCumulativePnl — 날짜 필터 (P10 SSOT, 도넛 차트와 계
       dateFrom: '2026-07-28', dateTo: '2026-07-29',
     })
     expect(result.pnl).toBe(-70000)  // -50000 + -20000
-    expect(result.rate).toBe(-7)     // -70000 / 1000000 * 100 (테스트모드 분모는 고정)
+    // 기간 한정 모드: 분모 = 해당 기간 buy_total_amt 합 (500000+200000=700000)
+    // 테스트모드라도 누적투자금(1000000) 사용 안 함 — 당일은 당일 매수금액 대비 (사용자 상식)
+    expect(result.rate).toBe(-10)    // -70000 / 700000 * 100
   })
 
   it('빈 sellHistory → pnl=0, rate=0', () => {
@@ -334,5 +336,58 @@ describe('computeCumulativePnl — 날짜 필터 (P10 SSOT, 도넛 차트와 계
     })
     expect(result.pnl).toBe(0)
     expect(result.rate).toBe(0)
+  })
+})
+
+describe('computeCumulativePnl — 분모 규칙 (누적 vs 기간 한정, 사용자 상식 기준)', () => {
+  // 누적 모드 (dateFrom/dateTo 없음): 테스트모드=누적투자금, 실전=buy_total_amt 전체 합
+  // 기간 한정 모드 (dateFrom/dateTo 있음): 항상 해당 기간 buy_total_amt 합 (테스트/실전 공통)
+
+  it('누적 모드 + 테스트모드 → 분모=누적투자금 (전체 투자원금 대비)', () => {
+    const sells = [
+      makeSellRow('2026-07-28', -50000, 500000),
+      makeSellRow('2026-07-29', -50000, 500000),
+    ]
+    const result = computeCumulativePnl({
+      sellHistory: sells, account: makeAccount(2000000), isTestMode: true,
+    })
+    expect(result.rate).toBe(-5)  // -100000 / 2000000 * 100 (누적투자금 분모)
+  })
+
+  it('기간 한정 모드 + 테스트모드 → 분모=해당 기간 buy_total_amt (누적투자금 아님)', () => {
+    const sells = [
+      makeSellRow('2026-07-28', -50000, 500000),
+      makeSellRow('2026-07-29', -50000, 500000),
+    ]
+    const result = computeCumulativePnl({
+      sellHistory: sells, account: makeAccount(2000000), isTestMode: true,
+      dateFrom: '2026-07-28', dateTo: '2026-07-29',
+    })
+    expect(result.rate).toBe(-10)  // -100000 / 1000000 * 100 (기간 buy_total_amt 분모)
+  })
+
+  it('기간 한정 모드 + 실전모드 → 분모=해당 기간 buy_total_amt (테스트와 동일 규칙)', () => {
+    const sells = [
+      makeSellRow('2026-07-28', -50000, 500000),
+      makeSellRow('2026-07-29', -50000, 500000),
+    ]
+    const result = computeCumulativePnl({
+      sellHistory: sells, account: null, isTestMode: false,
+      dateFrom: '2026-07-28', dateTo: '2026-07-29',
+    })
+    expect(result.rate).toBe(-10)  // -100000 / 1000000 * 100
+  })
+
+  it('dateFrom만 있어도 기간 한정 모드 (분모=해당 기간 buy_total_amt)', () => {
+    const sells = [
+      makeSellRow('2026-07-27', -30000, 300000),
+      makeSellRow('2026-07-28', -50000, 500000),
+    ]
+    const result = computeCumulativePnl({
+      sellHistory: sells, account: makeAccount(2000000), isTestMode: true,
+      dateFrom: '2026-07-28',
+    })
+    expect(result.pnl).toBe(-50000)
+    expect(result.rate).toBe(-10)  // -50000 / 500000 * 100 (기간 분모)
   })
 })
