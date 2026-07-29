@@ -108,6 +108,11 @@ class TestBuildEngineSettingsDictDefaults:
         result = build_engine_settings_dict({})
         assert result["max_single_stock_exposure"] == 20000000
         assert result["daily_loss_limit_on"] is True  # 기본 ON — 기존 항상 실행 동작 유지
+        # 시장 지수 급락 가드 — KOSPI/KOSDAQ 개별 토글이 독립 제어 (그룹 마스터 없음)
+        assert result["market_guard_kospi_on"] is False
+        assert result["market_guard_kospi_drop_threshold_pct"] == -5.0
+        assert result["market_guard_kosdaq_on"] is False
+        assert result["market_guard_kosdaq_drop_threshold_pct"] == -5.0
 
     def test_telegram_fields_defaults(self):
         result = build_engine_settings_dict({})

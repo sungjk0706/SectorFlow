@@ -207,6 +207,11 @@ def _build_risk_settings(merged: dict) -> dict:
         "risk_block_sell_on": bool(merged["risk_block_sell_on"]),
         "consecutive_loss_limit_on": bool(merged["consecutive_loss_limit_on"]),
         "consecutive_loss_limit": int(merged["consecutive_loss_limit"]),
+        # 시장 지수 급락 가드 — KOSPI/KOSDAQ 개별 토글이 독립 제어 (그룹 마스터 없음)
+        "market_guard_kospi_on": bool(merged["market_guard_kospi_on"]),
+        "market_guard_kospi_drop_threshold_pct": float(merged["market_guard_kospi_drop_threshold_pct"]),
+        "market_guard_kosdaq_on": bool(merged["market_guard_kosdaq_on"]),
+        "market_guard_kosdaq_drop_threshold_pct": float(merged["market_guard_kosdaq_drop_threshold_pct"]),
     }
 
 
