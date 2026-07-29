@@ -8,7 +8,7 @@
 import { pnlColor, FONT_FAMILY, COLOR, RADIUS, SHADOW, BLUR, SURFACE_ALPHA, hexToRgba, fmtWon, positionTooltip } from './common/ui-styles'
 import { createToggleSelectBtn } from './common/button'
 import { createDateRangeInput } from './common/date-range-input'
-import { getLocalToday, getLocalMonthStart } from '../utils/date'
+import { getLocalToday, getTradingMonthStart } from '../utils/date'
 
 // ── 타입 ────────────────────────────────────────────────────
 
@@ -152,7 +152,7 @@ export function createProfitChart(options: ProfitChartOptions): ProfitChartApi {
   dateHeader.style.cssText = 'display:flex;align-items:center;gap:6px;padding:4px 0;margin-bottom:4px;'
 
   const todayStr = getLocalToday()
-  const monthFirstStr = getLocalMonthStart()
+  const monthFirstStr = getTradingMonthStart()
 
   const dateRangeInput = createDateRangeInput({
     from: options.dateFrom || monthFirstStr,

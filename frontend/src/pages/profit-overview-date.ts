@@ -2,7 +2,7 @@
 // 수익현황 페이지 — 날짜 범위 localStorage 영속화 (F-05 분할, P24 단순성)
 // 날짜 범위는 페이지 로컬 상태로 관리 (P10 SSOT — 공유 store 오염 방지)
 
-import { getLocalToday, getLocalMonthStart } from '../utils/date'
+import { getTradingToday, getTradingMonthStart } from '../utils/date'
 
 /* ── 날짜 범위 localStorage 영속화 ── */
 export const PROFIT_DATE_KEY = 'sf_profit_date_range'
@@ -53,7 +53,7 @@ export function saveProfitDateRange(from: string, to: string, quickLabel?: strin
 }
 
 export function defaultDateRange(): { from: string; to: string } {
-  return { from: getLocalMonthStart(), to: getLocalToday() }
+  return { from: getTradingMonthStart(), to: getTradingToday() }
 }
 
 /* ── mount 헬퍼: 날짜 범위 초기화 (localStorage 로드 → 페이지 로컬 상태용 from/to 반환) ── */

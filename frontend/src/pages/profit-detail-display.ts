@@ -17,7 +17,7 @@ import {
   computeCumulativePnl,
   findBaseAssetForDate,
 } from './profit-shared'
-import { getLocalToday } from '../utils/date'
+import { getTradingToday } from '../utils/date'
 import { saveProfitDetailView } from './profit-detail-view'
 import { hotStore } from '../stores/hotStore'
 import { globalSettingsManager } from '../settings'
@@ -108,7 +108,7 @@ export function showDrilldown(state: ProfitDetailState): void {
     state.drilldownViewContainer.appendChild(state.drilldownTable.el)
   }
 
-  const yearMonth = getLocalToday().slice(0, 7)
+  const yearMonth = getTradingToday().slice(0, 7)
   const rows = buildMonthlyDrilldown(hotStore.getState().dailySummary, yearMonth)
   state.drilldownTable.updateRows(rows)
 }

@@ -3,7 +3,7 @@
 
 import { FONT_SIZE, FONT_WEIGHT, pnlColor, fmtWon, COLOR, RADIUS, SHADOW, computeWeightedRate } from '../components/common/ui-styles'
 import { normalizeStockCode } from '../stores/hotStore'
-import { getLocalToday } from '../utils/date'
+import { getTradingToday } from '../utils/date'
 import type { AccountSnapshot, Position, SectorStock } from '../types'
 import type { SectorDonutRow } from '../components/canvas-sector-donut'
 import { assignSectorColors } from '../components/canvas-sector-donut'
@@ -173,7 +173,7 @@ export function updateSummaryCards(
   account: AccountSnapshot | null,
   isTestMode: boolean,
 ): void {
-  const today = getLocalToday()
+  const today = getTradingToday()
   const yearMonth = today.slice(0, 7)
   const monthStart = yearMonth + '-01'
   const monthEnd = yearMonth + '-31'
@@ -601,7 +601,7 @@ function renderAccountRowSet(
 export function renderAccountVals(params: AccountValsParams): void {
   const { account: a, positionCount, isTestMode, buyHistory, sellHistory } = params
 
-  const today = getLocalToday()
+  const today = getTradingToday()
   const { todayBuyAmt, todaySellAmt, todayFeeTax, cumFeeTax } = computeTodayAggregates(buyHistory, sellHistory, today)
 
   // 보유 종목 평가금액/평가손익/수익률: positions + sectorStocks에서 직접 계산 (개별 종목 행과 동일 소스·공식)

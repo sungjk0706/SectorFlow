@@ -20,7 +20,7 @@ import {
   filterTradeRows,
   type AccountValsParams,
 } from './profit-shared'
-import { getLocalToday } from '../utils/date'
+import { getTradingToday } from '../utils/date'
 import { saveProfitDateRange, type ProfitDateRange } from './profit-overview-date'
 import { renderSectorStockPnl, updateExpandToggleBtn, buildStockListSection } from './profit-overview-sector-pnl'
 import type { ProfitOverviewState } from './profit-overview'
@@ -275,7 +275,7 @@ export function buildProfitChart(
   storedTo: string,
   saved: ProfitDateRange | null,
 ): void {
-  const todayStr = getLocalToday()
+  const todayStr = getTradingToday()
   const monthStart = todayStr.slice(0, 8) + '01'
   const quickDateRangesConfig = [
     { label: '당일', from: todayStr, to: todayStr },

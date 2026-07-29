@@ -16,7 +16,7 @@ import { notifyPageActive, notifyPageInactive } from '../api/ws'
 import type { DataTableApi } from '../components/common/data-table'
 import type { DateRangeInputApi } from '../components/common/date-range-input'
 import { type DailyDrilldownRow, type SummaryCardEls } from './profit-shared'
-import { getLocalToday } from '../utils/date'
+import { getTradingToday } from '../utils/date'
 import {
   buildSummaryRow,
   buildFilterRow,
@@ -129,7 +129,7 @@ function mount(container: HTMLElement): void {
   Object.assign(root.style, { display: 'flex', flexDirection: 'column', height: '100%' })
   root.appendChild(createCardTitle('수익상세'))
 
-  const todayStr = getLocalToday()
+  const todayStr = getTradingToday()
   const monthStart = todayStr.slice(0, 8) + '01'
   const monthEnd = todayStr.slice(0, 8) + '31'
 
