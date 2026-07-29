@@ -55,6 +55,27 @@ async def _create_runtime_tables(conn) -> None:
         )
     ''')
 
+    # 일별 계좌 스냅샷 테이블 (기초자산 분모 방식 — 장마감 후 총자산 저장)
+    await conn.execute('''
+        CREATE TABLE IF NOT EXISTS account_daily_snapshot (
+            date TEXT NOT NULL,                  -- 거래일 (YYYY-MM-DD)
+            trade_mode TEXT NOT NULL,            -- "test" 또는 "real"
+            total_asset INTEGER NOT NULL,        -- 기초자산 (예수금/주문가능금액 + 총평가금액)
+            deposit INTEGER,                     -- 예수금 (참조용)
+            orderable INTEGER,                   -- 주문가능금액 (참조용)
+            total_eval_amount INTEGER,           -- 총평가금액 (참조용)
+            accumulated_investment INTEGER,      -- 누적투자금 (참조용, 테스트모드)
+            daily_deposit INTEGER DEFAULT 0,     -- 당일 입금액
+            daily_withdrawal INTEGER DEFAULT 0,  -- 당일 출금액 (현재 0, 후순위)
+            snapshot_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (date, trade_mode)
+        )
+    ''')
+    await conn.execute('''
+        CREATE INDEX IF NOT EXISTS idx_account_daily_snapshot_date
+        ON account_daily_snapshot (date)
+    ''')
+
 
 async def _create_user_tables(conn) -> None:
     """사용자 업종/설정/업종정의 테이블 생성 + 종목 파생 업종 마이그레이션 (init_cache_tables 헬퍼)."""
@@ -139,6 +160,83 @@ async def load_settlement_state() -> dict | None:
             "initial_deposit": row["initial_deposit"],
         }
     return None
+
+
+# ── 일별 계좌 스냅샷 (기초자산 분모 방식) ─────────────────────────────────────
+
+async def save_daily_account_snapshot(
+    conn,
+    *,
+    date: str,
+    trade_mode: str,
+    total_asset: int,
+    deposit: int = 0,
+    orderable: int = 0,
+    total_eval_amount: int = 0,
+    accumulated_investment: int = 0,
+    daily_deposit: int = 0,
+    daily_withdrawal: int = 0,
+) -> None:
+    """장마감 후 당일 계좌 총자산 스냅샷 저장 (INSERT OR REPLACE).
+
+    P22 데이터 정합성 — total_asset은 호출부에서 원본 account_snapshot에서 파생.
+    예외 전파 (P20) — 호출자가 실패를 인지 (P25 격리는 호출부에서 처리).
+    """
+    await conn.execute(
+        """INSERT OR REPLACE INTO account_daily_snapshot
+           (date, trade_mode, total_asset, deposit, orderable, total_eval_amount,
+            accumulated_investment, daily_deposit, daily_withdrawal, snapshot_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)""",
+        (date, trade_mode, total_asset, deposit, orderable, total_eval_amount,
+         accumulated_investment, daily_deposit, daily_withdrawal),
+    )
+    await conn.commit()
+
+
+async def get_account_snapshot_by_date(conn, *, date: str, trade_mode: str) -> dict | None:
+    """특정 날짜의 기초자산 스냅샷 조회. 없으면 None (P20 폴백 금지 — 명시적 미존재)."""
+    cursor = await conn.execute(
+        """SELECT date, trade_mode, total_asset, deposit, orderable,
+                  total_eval_amount, accumulated_investment,
+                  daily_deposit, daily_withdrawal, snapshot_at
+           FROM account_daily_snapshot
+           WHERE date = ? AND trade_mode = ?""",
+        (date, trade_mode),
+    )
+    row = await cursor.fetchone()
+    if not row:
+        return None
+    return {
+        "date": row["date"],
+        "trade_mode": row["trade_mode"],
+        "total_asset": int(row["total_asset"]),
+        "deposit": int(row["deposit"] or 0),
+        "orderable": int(row["orderable"] or 0),
+        "total_eval_amount": int(row["total_eval_amount"] or 0),
+        "accumulated_investment": int(row["accumulated_investment"] or 0),
+        "daily_deposit": int(row["daily_deposit"] or 0),
+        "daily_withdrawal": int(row["daily_withdrawal"] or 0),
+        "snapshot_at": row["snapshot_at"],
+    }
+
+
+async def get_base_asset_for_period(conn, *, date_from: str, trade_mode: str) -> int | None:
+    """기간 시작 시점 기초자산 조회.
+
+    date_from의 전일 장마감 스냅샷 total_asset 반환 (당일 분모 = 전일 종가).
+    date_from이 당일이면 전일, 5거래일이면 5일 전, 당월이면 월초.
+    없으면 None (프론트에서 초기 투자원금으로 처리 — 결정 6, 폴백 아닌 초기값 정의).
+    """
+    cursor = await conn.execute(
+        """SELECT total_asset FROM account_daily_snapshot
+           WHERE date < ? AND trade_mode = ? AND total_asset > 0
+           ORDER BY date DESC LIMIT 1""",
+        (date_from, trade_mode),
+    )
+    row = await cursor.fetchone()
+    if not row:
+        return None
+    return int(row["total_asset"])
 
 
 # test_positions 테이블 및 관련 함수 제거 — trades 테이블이 보유 포지션 SSOT

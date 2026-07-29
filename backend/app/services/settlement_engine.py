@@ -31,6 +31,7 @@ _accumulated_investment: int = 0   # 누적투자금 (초기투자금 + 충전�
 _orderable: int = 0                 # 주문가능금액 (매수 시 차감, 매도/충전 시 증가)
 _loaded: bool = False
 _initial_deposit: int = 10_000_000
+_daily_deposit_total: int = 0       # 당일 입금액 누적 (장마감 스냅샷 저장 후 reset)
 
 
 # ── 기본 getters ────────────────────────────────────────────────────────────
@@ -135,15 +136,27 @@ async def on_sell_fill(price: int, qty: int, stk_cd: str, stk_nm: str) -> int:
 
 async def charge(amount: int) -> int:
     """누적투자금 + 주문가능금액 동시 충전. 반환: 충전 후 주문가능금액."""
-    global _accumulated_investment, _orderable
+    global _accumulated_investment, _orderable, _daily_deposit_total
     if amount <= 0:
         return _orderable
     _accumulated_investment += amount
     _orderable += amount
+    _daily_deposit_total += amount
     await _persist()
     await _broadcast_delta()
     logger.info("[정산] 충전 %s원 — 누적투자금 %s원 / 주문가능 %s원", f"{amount:,}", f"{_accumulated_investment:,}", f"{_orderable:,}")
     return _orderable
+
+
+def get_daily_deposit_total() -> int:
+    """당일 입금액 누적 반환 (기초자산 분모 방식 — 당일 순입출금 추적)."""
+    return _daily_deposit_total
+
+
+def reset_daily_deposit_total() -> None:
+    """당일 입금액 누적 리셋 (장마감 스냅샷 저장 후 호출)."""
+    global _daily_deposit_total
+    _daily_deposit_total = 0
 
 
 def get_effective_buy_power(daily_limit: int = 0, daily_spent: int = 0) -> int:
@@ -180,10 +193,11 @@ def max_buy_qty_for_budget(price: int, budget: int, is_test: bool) -> int:
 
 async def reset(initial_deposit: int) -> None:
     """전체 초기화. 누적투자금/주문가능금액 모두 리셋."""
-    global _accumulated_investment, _orderable, _initial_deposit
+    global _accumulated_investment, _orderable, _initial_deposit, _daily_deposit_total
     _accumulated_investment = initial_deposit
     _orderable = initial_deposit
     _initial_deposit = initial_deposit
+    _daily_deposit_total = 0
     await _persist()
     await _broadcast_delta()
     logger.info("[정산] 리셋 — 초기투자금: %s원", f"{initial_deposit:,}")

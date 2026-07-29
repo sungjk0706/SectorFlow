@@ -674,8 +674,17 @@ async def get_daily_summary(
             }
 
     result = []
+    # base_asset 조회 (기초자산 분모 방식 — 전일 장마감 스냅샷 total_asset)
+    # trade_mode가 None이면 현재 거래 모드로 해결 (base_asset은 모드별로 저장됨)
+    resolved_mode = trade_mode
+    if resolved_mode is None:
+        from backend.app.services.engine_account import get_trade_mode
+        resolved_mode = get_trade_mode()
+    from backend.app.db.database import get_db_connection
+    from backend.app.db.stock_tables import get_base_asset_for_period
+    conn = await get_db_connection()
     for d in sorted(trading_dates):
-        result.append(daily_map.get(d, {
+        entry = daily_map.get(d, {
             "date": d,
             "buy_count": 0,
             "sell_count": 0,
@@ -685,7 +694,17 @@ async def get_daily_summary(
             "buy_fee": 0,
             "sell_fee": 0,
             "tax": 0,
-        }))
+        })
+        # base_asset = 전일 장마감 스냅샷 total_asset (당일 분모 = 전일 종가)
+        # 없으면 None (프론트에서 초기 투자원금으로 처리 — 결정 6, 폴백 아닌 초기값 정의)
+        try:
+            entry["base_asset"] = await get_base_asset_for_period(
+                conn, date_from=d, trade_mode=resolved_mode
+            )
+        except Exception as e:
+            logger.warning("[이력] base_asset 조회 실패 (None으로 진행): %s", e, exc_info=True)
+            entry["base_asset"] = None
+        result.append(entry)
     return result
 
 

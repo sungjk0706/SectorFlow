@@ -507,6 +507,52 @@ async def _apply_confirmed_to_memory(
 # 확정 후 v2 캐시 롤링 파이프라인 (daily_time_scheduler.py에서 이동)
 # ---------------------------------------------------------------------------
 
+async def _save_daily_snapshot(trade_mode: str) -> None:
+    """장마감 후 당일 계좌 총자산 스냅샷 저장 (기초자산 분모 방식).
+
+    account_snapshot에서 total_asset 산출:
+      - 테스트모드: orderable + total_eval_amount (주문가능금액 + 총평가금액)
+      - 실전모드: deposit + total_eval_amount (예수금 + 총평가금액)
+    P22 데이터 정합성 — total_asset은 원본 account_snapshot에서 파생.
+    저장 후 settlement_engine.reset_daily_deposit_total() 호출 (당일 입금액 누적 초기화).
+    """
+    from backend.app.db.database import get_db_connection
+    from backend.app.db.stock_tables import save_daily_account_snapshot
+    from backend.app.services import settlement_engine
+    from backend.app.services.engine_account import get_account_snapshot
+
+    today = get_current_trading_day_str()
+    snap = await get_account_snapshot()
+    deposit = int(snap.get("deposit", 0) or 0)
+    orderable = int(snap.get("orderable", 0) or 0)
+    total_eval = int(snap.get("total_eval_amount", 0) or snap.get("total_eval", 0) or 0)
+    accumulated = int(snap.get("accumulated_investment", 0) or 0)
+    daily_deposit = settlement_engine.get_daily_deposit_total()
+
+    if trade_mode == "test":
+        total_asset = orderable + total_eval
+    else:
+        total_asset = deposit + total_eval
+
+    conn = await get_db_connection()
+    await save_daily_account_snapshot(
+        conn,
+        date=today,
+        trade_mode=trade_mode,
+        total_asset=total_asset,
+        deposit=deposit,
+        orderable=orderable,
+        total_eval_amount=total_eval,
+        accumulated_investment=accumulated,
+        daily_deposit=daily_deposit,
+    )
+    settlement_engine.reset_daily_deposit_total()
+    logger.info(
+        "[스케줄] 일별 계좌 스냅샷 저장 — %s %s 총자산 %s원 (예수금 %s원 / 평가 %s원 / 당일입금 %s원)",
+        today, trade_mode, f"{total_asset:,}", f"{deposit:,}", f"{total_eval:,}", f"{daily_deposit:,}",
+    )
+
+
 async def _run_post_confirmed_pipeline(eligible_codes: set[str] | None = None) -> None:
     """
     전종목 일봉 차트 시세 조회(ka10081) 도입으로 5거래일 거래대금 및 최고가를 즉시 추출하므로,
@@ -515,6 +561,12 @@ async def _run_post_confirmed_pipeline(eligible_codes: set[str] | None = None) -
     """
     try:
         await _save_confirmed_cache(eligible_codes=eligible_codes)
+        # 장마감 후 당일 계좌 스냅샷 저장 (P25 격리 — 실패 시 파이프라인 중단 안 함)
+        try:
+            from backend.app.services.engine_account import get_trade_mode
+            await _save_daily_snapshot(get_trade_mode())
+        except Exception as e:
+            logger.warning("[스케줄] 일별 계좌 스냅샷 저장 실패 (기동 유지): %s", e, exc_info=True)
         logger.info("[스케줄] 확정 후 파이프라인 종료 (롤링 로직 생략)")
     except Exception as exc:
         logger.warning("[스케줄] 확정 후 파이프라인 오류: %s", exc, exc_info=True)
