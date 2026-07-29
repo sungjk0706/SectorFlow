@@ -392,6 +392,14 @@ class SectorStockTable extends HTMLElement {
     this.rowCache = new Map()
     notifyPageActive('sector-ranking')
 
+    // 호스트 엘리먼트를 block + height:100%로 설정 (Custom Element 기본 display:inline 방지).
+    // display:inline이면 Shadow DOM 내부 rootEl의 height:100%가 부모 높이를 참조하지 못해
+    // 가상스크롤 컨테이너가 패널 전체 높이 대신 min-height 기반 작은 영역만 확보 →
+    // 기동 직후 컨테이너 높이 불안정 상태로 가시 범위 계산이 부정확해 행 겹침 발생.
+    // block + height:100%로 높이 체인(tripleRight → host → rootEl → scrollContainer) 완성.
+    this.style.display = 'block'
+    this.style.height = '100%'
+
     this.rootEl = document.createElement('div')
     Object.assign(this.rootEl.style, { display: 'flex', flexDirection: 'column', height: '100%', contain: 'content' })
 
@@ -417,17 +425,19 @@ class SectorStockTable extends HTMLElement {
     this.rootEl.appendChild(scroll)
     this.shadow.appendChild(this.rootEl)
 
-    // 초기 데이터
+    // 초기 데이터 — updateItems(동기)로 즉시 렌더.
+    // updateRows(rAF 지연)를 쓰면 가상스크롤러 initialRender rAF가 먼저 발화해
+    // items=[] 상태로 no-op이 된 뒤 데이터가 늦게 반영되어 기동 직후 행 겹침 유발.
+    // updateItems는 internalUpdate를 동기 호출해 가상스크롤러 items를 즉시 설정 →
+    // initialRender rAF 발화 시 정확한 가시 범위 계산. 이후 store listener 갱신은
+    // updateRows(rAF 배칭) 사용 — 초기 렌더만 동기 처리.
     const initialRows = this.buildRows()
     const mappedRows = mapRowsToTableRows(initialRows)
-    if (this.dataTable) this.dataTable.updateRows(mappedRows)
+    if (this.dataTable && this.dataTable.updateItems) this.dataTable.updateItems(mappedRows)
     this.updateUI(initialRows)
 
     // Store 구독
     this.setupSubscriptions()
-
-    // 초기 렌더링
-    this.refreshRows()
 
     // O(1) 초저지연 DOM 갱신 이벤트 리스너
     this.setupTickListener()
