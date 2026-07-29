@@ -20,7 +20,8 @@ export const COLUMNS: ColumnDef<DataRowItem>[] = [
         nxt_enable: item.stock.nxt_enable
       })
     ),
-    maxWidth: 166,
+    minWidth: 130,
+    maxWidth: 200,
   },
   makePriceColumn<DataRowItem>(
     (item) => item.stock.cur_price != null ? Number(item.stock.cur_price) : null,
@@ -31,11 +32,11 @@ export const COLUMNS: ColumnDef<DataRowItem>[] = [
   makeStrengthColumn<DataRowItem>((item) => item.stock.strength != null ? parseFloat(String(item.stock.strength)) : null),
   {
     ...makeAmountColumn<DataRowItem>((item) => item.stock.trade_amount != null ? Number(item.stock.trade_amount) : null),
-    maxWidth: 126,
+    maxWidth: 90,
   },
   {
     ...makeAvgAmountColumn<DataRowItem>((item) => Number(item.stock.avg_amt_5d) || 0),
-    maxWidth: 108,
+    maxWidth: 90,
   },
 ]
 

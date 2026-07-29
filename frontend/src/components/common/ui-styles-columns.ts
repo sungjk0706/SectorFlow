@@ -103,11 +103,11 @@ export function makeStrengthColumn<T>(get: (t: T) => number | null | undefined):
   }
 }
 
-/** 거래대금 컬럼 (억 단위 표시) */
+/** 거래대금 컬럼 (억 단위 표시 — 단위는 헤더 라벨 대신 상단 요약바/단위 라벨로 표시) */
 export function makeAmountColumn<T>(get: (t: T) => number | null | undefined): ColumnDef<T> {
   return {
     key: 'trade_amount',
-    label: '거래대금(억)',
+    label: '거래대금',
     align: 'right',
     type: 'amount',
     ...COLUMN_WIDTH.amount,
@@ -115,11 +115,11 @@ export function makeAmountColumn<T>(get: (t: T) => number | null | undefined): C
   }
 }
 
-/** 5거래일 평균 거래대금 컬럼 (억 단위 표시) */
+/** 5거래일 평균 거래대금 컬럼 (억 단위 표시 — 단위는 상단 요약바로 표시) */
 export function makeAvgAmountColumn<T>(get: (t: T) => number): ColumnDef<T> {
   return {
     key: 'avg_amt_5d',
-    label: '5거래일 평균(억)',
+    label: '5거래일 평균',
     align: 'right',
     type: 'avg_amount',
     ...COLUMN_WIDTH.avg_amount,

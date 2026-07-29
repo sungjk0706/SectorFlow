@@ -97,7 +97,7 @@ function buildColumns(sampleBars: StockDetail5dBar[]): ColumnDef<StockDetail5dIt
   for (let i = 0; i < 5; i++) {
     const dt = sampleBars[i]?.dt ?? ''
     const dateLabel = dt ? shortDate(dt) : (i === 0 ? '당일' : `직전${i}일`)
-    cols.push(makeAmountColumn(i, makeDateHeader(dateLabel, ' 거래대금(억)')))
+    cols.push(makeAmountColumn(i, makeDateHeader(dateLabel, ' 거래대금')))
   }
   for (let i = 0; i < 5; i++) {
     const dt = sampleBars[i]?.dt ?? ''
@@ -175,6 +175,18 @@ function mount(container: HTMLElement): void {
   })
   searchWrapper.appendChild(searchInputRef.el)
   headerBar.appendChild(searchWrapper)
+
+  // 단위 라벨 — 헤더에서 (억) 제거에 따른 단위 표시 (P21 사용자 투명성, P23 일관성)
+  const unitLabel = document.createElement('span')
+  Object.assign(unitLabel.style, {
+    fontSize: FONT_SIZE.label,
+    color: COLOR.tertiary,
+    fontWeight: FONT_WEIGHT.normal,
+    flexShrink: '0',
+    whiteSpace: 'nowrap',
+  })
+  unitLabel.textContent = '거래대금: 억 / 고가: 원'
+  headerBar.appendChild(unitLabel)
 
   root.appendChild(headerBar)
 

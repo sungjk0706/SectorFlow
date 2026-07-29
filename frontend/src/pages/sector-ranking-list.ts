@@ -174,7 +174,7 @@ const COLUMNS: ColumnDef<SectorScoreRow>[] = [
   },
   {
     key: 'avg_trade_amount',
-    label: '평균거래(억)',
+    label: '평균거래',
     align: 'right',
     type: 'avg_amount',
     render: (row) => fmtMillionsToBillion(row.avg_trade_amount),
