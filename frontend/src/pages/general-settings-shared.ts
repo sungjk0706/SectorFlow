@@ -88,6 +88,18 @@ export interface GeneralSettingsState {
   riskBlockBuyToggle: ReturnType<typeof createToggleBtn> | null
   riskBlockSellToggle: ReturnType<typeof createToggleBtn> | null
 
+  // 시장 지수 급락 가드 (매매 안전장치 하위)
+  marketGuardToggle: ReturnType<typeof createToggleBtn> | null
+  marketGuardChildren: HTMLElement | null
+  marketGuardBlockBuyToggle: ReturnType<typeof createToggleBtn> | null
+  marketGuardBlockSellToggle: ReturnType<typeof createToggleBtn> | null
+  marketGuardKospiToggle: ReturnType<typeof createToggleBtn> | null
+  marketGuardKospiInput: ReturnType<typeof createNumInput> | null
+  marketGuardKospiControls: HTMLElement | null
+  marketGuardKosdaqToggle: ReturnType<typeof createToggleBtn> | null
+  marketGuardKosdaqInput: ReturnType<typeof createNumInput> | null
+  marketGuardKosdaqControls: HTMLElement | null
+
   // 확정 시세 다운로드 시간 (단일 슬롯) + 자동다운로드 토글
   confirmedDlSlot: HTMLElement | null
   confirmedDlToggle: ReturnType<typeof createToggleBtn> | null
@@ -170,6 +182,17 @@ function createState(): GeneralSettingsState {
     consecLossControls: null,
     riskBlockBuyToggle: null,
     riskBlockSellToggle: null,
+
+    marketGuardToggle: null,
+    marketGuardChildren: null,
+    marketGuardBlockBuyToggle: null,
+    marketGuardBlockSellToggle: null,
+    marketGuardKospiToggle: null,
+    marketGuardKospiInput: null,
+    marketGuardKospiControls: null,
+    marketGuardKosdaqToggle: null,
+    marketGuardKosdaqInput: null,
+    marketGuardKosdaqControls: null,
 
     confirmedDlSlot: null,
     confirmedDlToggle: null,

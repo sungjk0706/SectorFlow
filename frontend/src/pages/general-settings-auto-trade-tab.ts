@@ -215,7 +215,130 @@ function buildRiskManagerChildren(state: GeneralSettingsState): HTMLElement {
   state.riskManagerChildren!.appendChild(buildRiskBlockBuyRow(state))
   state.riskManagerChildren!.appendChild(buildRiskBlockSellRow(state))
   state.riskManagerChildren!.appendChild(createDescText('손실 상태에서 매도 차단 시 손실 확대 위험 — 신중하게 활성화하세요'))
+  // 시장 지수 급락 가드 (매매 안전장치 하위)
+  state.riskManagerChildren!.appendChild(buildMarketGuardMasterRow(state))
+  state.riskManagerChildren!.appendChild(buildMarketGuardChildren(state))
   return state.riskManagerChildren!
+}
+
+// ── 시장 지수 급락 가드 ──
+function buildMarketGuardMasterRow(state: GeneralSettingsState): HTMLElement {
+  state.marketGuardChildren = document.createElement('div')
+  const r = createSettingToggleRow({
+    label: '시장 지수 급락 시 차단',
+    infoText: 'KOSPI/KOSDAQ 등락률이 임계 이하일 때 매수/매도 차단. 지수 데이터 수신 불가 시 차단하지 않음.',
+    toggleOn: false,
+    onToggle: async next => {
+      state.vals.market_guard_on = next
+      setDisabled(state.marketGuardChildren!, !next)
+      const res = await state.settingsMgr!.saveSection({ market_guard_on: next })
+      toastResult(res)
+      if (!res.ok) {
+        state.vals.market_guard_on = !next
+        r.toggle.setOn(!next)
+        setDisabled(state.marketGuardChildren!, next)
+      }
+    },
+  })
+  state.marketGuardToggle = r.toggle
+  return r.el
+}
+
+function buildMarketGuardBlockBuyRow(state: GeneralSettingsState): HTMLElement {
+  const r = createSettingToggleRow({
+    label: '시장 급락 시 매수 차단',
+    toggleOn: true,
+    onToggle: async next => {
+      state.vals.market_guard_buy_block_on = next
+      const res = await state.settingsMgr!.saveSection({ market_guard_buy_block_on: next })
+      toastResult(res)
+      if (!res.ok) { state.vals.market_guard_buy_block_on = !next; r.toggle.setOn(!next) }
+    },
+  })
+  state.marketGuardBlockBuyToggle = r.toggle
+  return r.el
+}
+
+function buildMarketGuardBlockSellRow(state: GeneralSettingsState): HTMLElement {
+  const r = createSettingToggleRow({
+    label: '시장 급락 시 매도 차단',
+    toggleOn: false,
+    onToggle: async next => {
+      state.vals.market_guard_sell_block_on = next
+      const res = await state.settingsMgr!.saveSection({ market_guard_sell_block_on: next })
+      toastResult(res)
+      if (!res.ok) { state.vals.market_guard_sell_block_on = !next; r.toggle.setOn(!next) }
+    },
+  })
+  state.marketGuardBlockSellToggle = r.toggle
+  return r.el
+}
+
+function buildMarketGuardKospiRow(state: GeneralSettingsState): void {
+  state.marketGuardKospiInput = createNumInput({
+    value: -5,
+    onChange: async v => {
+      const orig = Number(state.vals.market_guard_kospi_drop_threshold_pct)
+      state.vals.market_guard_kospi_drop_threshold_pct = v
+      const res = await state.settingsMgr!.saveSection({ market_guard_kospi_drop_threshold_pct: v })
+      toastResult(res)
+      if (!res.ok) { state.vals.market_guard_kospi_drop_threshold_pct = orig; state.marketGuardKospiInput!.setValue(orig) }
+    },
+    step: 0.1, min: -100, max: 0, suffix: '%', name: 'market_guard_kospi_drop_threshold_pct',
+  })
+  const r = createSettingToggleRow({
+    label: 'KOSPI 급락 가드',
+    infoText: 'KOSPI 등락률이 이 값 이하이면 매매 차단. -100%~0%, 기본 -5%.',
+    toggleOn: false,
+    disableControlsOnToggle: true,
+    controls: [state.marketGuardKospiInput.el],
+    onToggle: async next => {
+      state.vals.market_guard_kospi_on = next
+      const res = await state.settingsMgr!.saveSection({ market_guard_kospi_on: next })
+      toastResult(res)
+      if (!res.ok) state.vals.market_guard_kospi_on = !next
+    },
+  })
+  state.marketGuardKospiToggle = r.toggle; state.marketGuardKospiControls = r.controls
+  state.marketGuardChildren!.appendChild(r.el)
+}
+
+function buildMarketGuardKosdaqRow(state: GeneralSettingsState): void {
+  state.marketGuardKosdaqInput = createNumInput({
+    value: -5,
+    onChange: async v => {
+      const orig = Number(state.vals.market_guard_kosdaq_drop_threshold_pct)
+      state.vals.market_guard_kosdaq_drop_threshold_pct = v
+      const res = await state.settingsMgr!.saveSection({ market_guard_kosdaq_drop_threshold_pct: v })
+      toastResult(res)
+      if (!res.ok) { state.vals.market_guard_kosdaq_drop_threshold_pct = orig; state.marketGuardKosdaqInput!.setValue(orig) }
+    },
+    step: 0.1, min: -100, max: 0, suffix: '%', name: 'market_guard_kosdaq_drop_threshold_pct',
+  })
+  const r = createSettingToggleRow({
+    label: 'KOSDAQ 급락 가드',
+    infoText: 'KOSDAQ 등락률이 이 값 이하이면 매매 차단. -100%~0%, 기본 -5%.',
+    toggleOn: false,
+    disableControlsOnToggle: true,
+    controls: [state.marketGuardKosdaqInput.el],
+    onToggle: async next => {
+      state.vals.market_guard_kosdaq_on = next
+      const res = await state.settingsMgr!.saveSection({ market_guard_kosdaq_on: next })
+      toastResult(res)
+      if (!res.ok) state.vals.market_guard_kosdaq_on = !next
+    },
+  })
+  state.marketGuardKosdaqToggle = r.toggle; state.marketGuardKosdaqControls = r.controls
+  state.marketGuardChildren!.appendChild(r.el)
+}
+
+function buildMarketGuardChildren(state: GeneralSettingsState): HTMLElement {
+  state.marketGuardChildren!.appendChild(buildMarketGuardBlockBuyRow(state))
+  state.marketGuardChildren!.appendChild(buildMarketGuardBlockSellRow(state))
+  state.marketGuardChildren!.appendChild(createDescText('손실 상태에서 매도 차단 시 손실 확대 위험 — 신중하게 활성화하세요'))
+  buildMarketGuardKospiRow(state)
+  buildMarketGuardKosdaqRow(state)
+  return state.marketGuardChildren!
 }
 
 export function renderAutoTradeTab(state: GeneralSettingsState, container: HTMLElement): void {
@@ -265,6 +388,13 @@ function syncRiskManager(state: GeneralSettingsState, r: Record<string, unknown>
   syncToggleInputRow(state.consecLossToggle, state.consecLossInput, state.consecLossControls, !!r.consecutive_loss_limit_on, Number(r.consecutive_loss_limit ?? 3), act)
   state.riskBlockBuyToggle?.setOn(r.risk_block_buy_on !== false)
   state.riskBlockSellToggle?.setOn(!!r.risk_block_sell_on)
+  // 시장 지수 급락 가드 동기화
+  state.marketGuardToggle?.setOn(!!r.market_guard_on)
+  if (state.marketGuardChildren) setDisabled(state.marketGuardChildren, !r.market_guard_on)
+  state.marketGuardBlockBuyToggle?.setOn(r.market_guard_buy_block_on !== false)
+  state.marketGuardBlockSellToggle?.setOn(!!r.market_guard_sell_block_on)
+  syncToggleInputRow(state.marketGuardKospiToggle, state.marketGuardKospiInput, state.marketGuardKospiControls, !!r.market_guard_kospi_on, Number(r.market_guard_kospi_drop_threshold_pct ?? -5), act)
+  syncToggleInputRow(state.marketGuardKosdaqToggle, state.marketGuardKosdaqInput, state.marketGuardKosdaqControls, !!r.market_guard_kosdaq_on, Number(r.market_guard_kosdaq_drop_threshold_pct ?? -5), act)
 }
 
 async function handleMasterToggle(state: GeneralSettingsState): Promise<void> {

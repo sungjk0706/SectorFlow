@@ -58,6 +58,14 @@ class RiskManager:
         self.risk_block_sell_on = bool(cache.get("risk_block_sell_on", False))
         self.consecutive_loss_limit_on = bool(cache.get("consecutive_loss_limit_on", False))
         self.consecutive_loss_limit = int(cache.get("consecutive_loss_limit", 3) or 3)
+        # 시장 지수 급락 가드 (P13 메모리 상주)
+        self.market_guard_on = bool(cache.get("market_guard_on", False))
+        self.market_guard_buy_block_on = bool(cache.get("market_guard_buy_block_on", True))
+        self.market_guard_sell_block_on = bool(cache.get("market_guard_sell_block_on", False))
+        self.market_guard_kospi_on = bool(cache.get("market_guard_kospi_on", False))
+        self.market_guard_kospi_drop_threshold_pct = float(cache.get("market_guard_kospi_drop_threshold_pct", -5.0) or -5.0)
+        self.market_guard_kosdaq_on = bool(cache.get("market_guard_kosdaq_on", False))
+        self.market_guard_kosdaq_drop_threshold_pct = float(cache.get("market_guard_kosdaq_drop_threshold_pct", -5.0) or -5.0)
 
     async def _get_consecutive_loss_count(self, trade_mode: str) -> int:
         """최근 매도 거래 기준 연속 손실 횟수 반환.
@@ -110,6 +118,55 @@ class RiskManager:
 
         return True, ""
 
+    def _check_market_drop(self) -> tuple[bool, str]:
+        """시장 지수 급락 가드 — KOSPI/KOSDAQ 각각 독립 평가.
+
+        P10 SSOT: engine_state.index_data_cache[upcode]["drate"] (등락률 %) 사용.
+        upcode: KOSPI="001", KOSDAQ="301" (frontend header.ts SSOT와 동일).
+        지수 데이터 수신 불가(캐시 비어있음/변환 실패) 시 차단하지 않음 — P20 준수 (silent pass 금지 → 경고 로그).
+        반환: (allowed, reason) — allowed=False 시 차단 사유.
+        """
+        from backend.app.services.engine_state import state as engine_state
+        cache = engine_state.index_data_cache
+
+        # KOSPI 검사
+        if self.market_guard_kospi_on:
+            kospi = cache.get("001")
+            if kospi:
+                try:
+                    drate = float(str(kospi.get("drate", "") or "").strip())
+                    if drate <= self.market_guard_kospi_drop_threshold_pct:
+                        logger.warning("[매매] 시장 지수 급락 가드 — KOSPI 등락률 %.2f%%, 임계 %.2f%%", drate, self.market_guard_kospi_drop_threshold_pct)
+                        _notify_telegram(
+                            f"🛑 [자동매매 중단] KOSPI 급락 — 등락률 {drate:.2f}%, 임계 {self.market_guard_kospi_drop_threshold_pct:.2f}%. 자동매매가 중단된 상태입니다.",
+                            engine_state.integrated_system_settings_cache,
+                        )
+                        return False, f"KOSPI 급락 ({drate:.2f}%)"
+                except (ValueError, TypeError):
+                    logger.warning("[리스크] KOSPI 등락률 변환 실패 — 가드 skip: %r", kospi.get("drate"), exc_info=True)
+            else:
+                logger.warning("[리스크] KOSPI 지수 데이터 수신 불가 — 가드 skip (차단하지 않음)")
+
+        # KOSDAQ 검사
+        if self.market_guard_kosdaq_on:
+            kosdaq = cache.get("301")
+            if kosdaq:
+                try:
+                    drate = float(str(kosdaq.get("drate", "") or "").strip())
+                    if drate <= self.market_guard_kosdaq_drop_threshold_pct:
+                        logger.warning("[매매] 시장 지수 급락 가드 — KOSDAQ 등락률 %.2f%%, 임계 %.2f%%", drate, self.market_guard_kosdaq_drop_threshold_pct)
+                        _notify_telegram(
+                            f"🛑 [자동매매 중단] KOSDAQ 급락 — 등락률 {drate:.2f}%, 임계 {self.market_guard_kosdaq_drop_threshold_pct:.2f}%. 자동매매가 중단된 상태입니다.",
+                            engine_state.integrated_system_settings_cache,
+                        )
+                        return False, f"KOSDAQ 급락 ({drate:.2f}%)"
+                except (ValueError, TypeError):
+                    logger.warning("[리스크] KOSDAQ 등락률 변환 실패 — 가드 skip: %r", kosdaq.get("drate"), exc_info=True)
+            else:
+                logger.warning("[리스크] KOSDAQ 지수 데이터 수신 불가 — 가드 skip (차단하지 않음)")
+
+        return True, ""
+
     async def check_buy_order_allowed(self, stk_cd: str, price: float, qty: int) -> tuple[bool, str]:
         """
         매수 주문 허용 여부 검사. 테스트/실전 모드 공통 호출.
@@ -141,6 +198,12 @@ class RiskManager:
         # 3. 신규 리스크 조건 (risk_manager_on + risk_block_buy_on 시에만)
         if self.risk_manager_on and self.risk_block_buy_on:
             allowed, reason = await self._check_extended_buy_risk(trade_mode, today_pnl)
+            if not allowed:
+                return False, reason
+
+        # 3-1. 시장 지수 급락 가드 (market_guard_on + market_guard_buy_block_on 시에만)
+        if self.market_guard_on and self.market_guard_buy_block_on:
+            allowed, reason = self._check_market_drop()
             if not allowed:
                 return False, reason
 
@@ -228,6 +291,12 @@ class RiskManager:
                 consec_count = await self._get_consecutive_loss_count(trade_mode)
                 if consec_count >= self.consecutive_loss_limit:
                     return False, f"연속 손실 한도 초과 (매도 차단, {consec_count}회)"
+
+        # 2-1. 시장 지수 급락 가드 (market_guard_on + market_guard_sell_block_on 시에만)
+        if self.market_guard_on and self.market_guard_sell_block_on:
+            allowed, reason = self._check_market_drop()
+            if not allowed:
+                return False, f"{reason} (매도 차단)"
 
         return True, "승인"
 
