@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { computeHoldingsSummary, computePositionValuation, computeCumulativePnl, findBaseAssetForDate } from '../../src/pages/profit-shared'
+import { computeHoldingsSummary, computePositionValuation, computeCumulativePnl, findBaseAssetForDate } from '../../src/pages/profit-math'
 import type { Position, SectorStock, AccountSnapshot } from '../../src/types'
 
 /**

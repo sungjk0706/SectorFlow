@@ -1,0 +1,368 @@
+import { describe, it, expect } from 'vitest'
+import {
+  getRecent5TradingDays,
+  extractEarliestBaseAsset,
+  buildSectorDonutRows,
+  buildSectorStockPnl,
+  filterTradeRows,
+  aggregatePnl,
+  buildMonthlyDrilldown,
+  buildFivedayDrilldown,
+  buildCumulativeDrilldown,
+  buildChartFromDailySummary,
+  buildTodayDrilldown,
+  computeTodayAggregates,
+} from '../../src/pages/profit-math'
+import type { Position, SectorStock } from '../../src/types'
+
+/* ── getRecent5TradingDays ── */
+
+describe('getRecent5TradingDays', () => {
+  it('최근 5거래일 날짜를 내림차순 반환', () => {
+    const dailySummary = [
+      { date: '2026-07-25' }, { date: '2026-07-28' }, { date: '2026-07-29' },
+      { date: '2026-07-30' }, { date: '2026-07-31' }, { date: '2026-08-01' },
+    ]
+    expect(getRecent5TradingDays(dailySummary)).toEqual([
+      '2026-08-01', '2026-07-31', '2026-07-30', '2026-07-29', '2026-07-28',
+    ])
+  })
+
+  it('5거래일 미만일 경우 전체 반환', () => {
+    const dailySummary = [{ date: '2026-07-29' }, { date: '2026-07-30' }]
+    expect(getRecent5TradingDays(dailySummary)).toEqual(['2026-07-30', '2026-07-29'])
+  })
+
+  it('빈 배열 → 빈 배열', () => {
+    expect(getRecent5TradingDays([])).toEqual([])
+  })
+
+  it('빈 날짜 필터링', () => {
+    const dailySummary = [{ date: '2026-07-29' }, { date: '' }, { date: '2026-07-30' }]
+    expect(getRecent5TradingDays(dailySummary)).toEqual(['2026-07-30', '2026-07-29'])
+  })
+})
+
+/* ── extractEarliestBaseAsset ── */
+
+describe('extractEarliestBaseAsset', () => {
+  it('첫 행의 earliest_base_asset 반환', () => {
+    expect(extractEarliestBaseAsset([{ earliest_base_asset: 1000000 }])).toBe(1000000)
+  })
+
+  it('빈 배열 → undefined', () => {
+    expect(extractEarliestBaseAsset([])).toBeUndefined()
+  })
+
+  it('null 값 → undefined', () => {
+    expect(extractEarliestBaseAsset([{ earliest_base_asset: null }])).toBeUndefined()
+  })
+
+  it('필드 누락 → undefined', () => {
+    expect(extractEarliestBaseAsset([{ date: '2026-07-29' }])).toBeUndefined()
+  })
+
+  it('비정상 숫자 → undefined', () => {
+    expect(extractEarliestBaseAsset([{ earliest_base_asset: 'abc' }])).toBeUndefined()
+  })
+})
+
+/* ── filterTradeRows ── */
+
+describe('filterTradeRows', () => {
+  const rows = [
+    { date: '2026-07-28', stk_cd: '005930', stk_nm: '삼성전자' },
+    { date: '2026-07-29', stk_cd: '000660', stk_nm: 'SK하이닉스' },
+    { date: '2026-07-30', stk_cd: '005930', stk_nm: '삼성전자' },
+  ]
+
+  it('날짜 범위 필터', () => {
+    const result = filterTradeRows(rows, '2026-07-29', '2026-07-30')
+    expect(result).toHaveLength(2)
+    expect(result[0].date).toBe('2026-07-29')
+    expect(result[1].date).toBe('2026-07-30')
+  })
+
+  it('종목명 검색 필터', () => {
+    const result = filterTradeRows(rows, '', '', '삼성')
+    expect(result).toHaveLength(2)
+    expect(result.every(r => r.stk_nm === '삼성전자')).toBe(true)
+  })
+
+  it('종목코드 검색 필터', () => {
+    const result = filterTradeRows(rows, '', '', '000660')
+    expect(result).toHaveLength(1)
+    expect(result[0].stk_cd).toBe('000660')
+  })
+
+  it('빈 날짜 + 빈 검색 → 전체 반환', () => {
+    expect(filterTradeRows(rows, '', '')).toHaveLength(3)
+  })
+
+  it('빈 배열', () => {
+    expect(filterTradeRows([], '', '')).toEqual([])
+  })
+})
+
+/* ── aggregatePnl ── */
+
+describe('aggregatePnl', () => {
+  it('전체 집계 — 날짜 필터 없음', () => {
+    const sells = [
+      { date: '2026-07-28', realized_pnl: -50000, buy_total_amt: 500000 },
+      { date: '2026-07-29', realized_pnl: 30000, buy_total_amt: 300000 },
+    ]
+    const result = aggregatePnl(sells)
+    expect(result.pnl).toBe(-20000)
+    expect(result.buyTotal).toBe(800000)
+  })
+
+  it('날짜 범위 필터', () => {
+    const sells = [
+      { date: '2026-07-27', realized_pnl: -30000, buy_total_amt: 300000 },
+      { date: '2026-07-28', realized_pnl: -50000, buy_total_amt: 500000 },
+      { date: '2026-07-29', realized_pnl: 30000, buy_total_amt: 300000 },
+    ]
+    const result = aggregatePnl(sells, '2026-07-28', '2026-07-29')
+    expect(result.pnl).toBe(-20000)
+    expect(result.buyTotal).toBe(800000)
+  })
+
+  it('빈 sellHistory', () => {
+    const result = aggregatePnl([])
+    expect(result.pnl).toBe(0)
+    expect(result.buyTotal).toBe(0)
+    expect(result.rate).toBe(0)
+  })
+})
+
+/* ── buildSectorDonutRows ── */
+
+describe('buildSectorDonutRows', () => {
+  it('업종별 손익 집계 + 절대값 내림차순 정렬', () => {
+    const sells = [
+      { sector: '반도체', realized_pnl: 100000 },
+      { sector: '금융', realized_pnl: -200000 },
+      { sector: '반도체', realized_pnl: 50000 },
+    ]
+    const rows = buildSectorDonutRows(sells)
+    expect(rows).toHaveLength(2)
+    // 절대값 내림차순: |−200000| > |150000|
+    expect(rows[0].sector).toBe('금융')
+    expect(rows[0].pnl).toBe(-200000)
+    expect(rows[1].sector).toBe('반도체')
+    expect(rows[1].pnl).toBe(150000)
+  })
+
+  it('sector 누락 → 미분류', () => {
+    const sells = [{ realized_pnl: 10000 }]
+    const rows = buildSectorDonutRows(sells)
+    expect(rows[0].sector).toBe('미분류')
+  })
+
+  it('빈 배열', () => {
+    expect(buildSectorDonutRows([])).toEqual([])
+  })
+})
+
+/* ── buildSectorStockPnl ── */
+
+describe('buildSectorStockPnl', () => {
+  it('업종별 종목 수익 그룹화', () => {
+    const sells = [
+      { sector: '반도체', stk_cd: '005930', stk_nm: '삼성전자', realized_pnl: 100000, buy_total_amt: 1000000, qty: 10 },
+      { sector: '반도체', stk_cd: '000660', stk_nm: 'SK하이닉스', realized_pnl: -50000, buy_total_amt: 500000, qty: 5 },
+      { sector: '금융', stk_cd: '005930', stk_nm: '삼성전자', realized_pnl: 20000, buy_total_amt: 200000, qty: 2 },
+    ]
+    const groups = buildSectorStockPnl(sells)
+    expect(groups).toHaveLength(2)
+    // 반도체 그룹: 2 종목
+    const semi = groups.find(g => g.sector === '반도체')
+    expect(semi).toBeDefined()
+    expect(semi!.stocks).toHaveLength(2)
+    expect(semi!.pnl).toBe(50000)  // 100000 + (-50000)
+  })
+
+  it('동일 stk_cd 여러 매도 기록 합산', () => {
+    const sells = [
+      { sector: '반도체', stk_cd: '005930', stk_nm: '삼성전자', realized_pnl: 50000, buy_total_amt: 500000, qty: 5 },
+      { sector: '반도체', stk_cd: '005930', stk_nm: '삼성전자', realized_pnl: 30000, buy_total_amt: 300000, qty: 3 },
+    ]
+    const groups = buildSectorStockPnl(sells)
+    expect(groups[0].stocks).toHaveLength(1)
+    expect(groups[0].stocks[0].realized_pnl).toBe(80000)
+    expect(groups[0].stocks[0].qty).toBe(8)
+  })
+})
+
+/* ── buildMonthlyDrilldown ── */
+
+describe('buildMonthlyDrilldown', () => {
+  it('당월 거래일별 요약 집계', () => {
+    const dailySummary = [
+      { date: '2026-07-25', sell_count: 2, buy_count: 1, realized_pnl: 50000, pnl_rate: 5 },
+      { date: '2026-07-28', sell_count: 1, buy_count: 0, realized_pnl: -20000, pnl_rate: -2 },
+      { date: '2026-08-01', sell_count: 1, buy_count: 1, realized_pnl: 10000, pnl_rate: 1 },
+    ]
+    const rows = buildMonthlyDrilldown(dailySummary, '2026-07')
+    expect(rows).toHaveLength(2)
+    expect(rows[0].date).toBe('2026-07-28')  // 내림차순
+    expect(rows[1].date).toBe('2026-07-25')
+  })
+
+  it('해당 월 데이터 없음', () => {
+    const dailySummary = [{ date: '2026-08-01', sell_count: 1, buy_count: 0, realized_pnl: 10000, pnl_rate: 1 }]
+    expect(buildMonthlyDrilldown(dailySummary, '2026-07')).toEqual([])
+  })
+})
+
+/* ── buildFivedayDrilldown ── */
+
+describe('buildFivedayDrilldown', () => {
+  it('최근 5거래일 일별 실현손익', () => {
+    const dailySummary = [
+      { date: '2026-07-25', sell_count: 1, buy_count: 0, realized_pnl: 10000, pnl_rate: 1 },
+      { date: '2026-07-28', sell_count: 2, buy_count: 1, realized_pnl: 30000, pnl_rate: 3 },
+      { date: '2026-07-29', sell_count: 1, buy_count: 0, realized_pnl: -5000, pnl_rate: -0.5 },
+    ]
+    const rows = buildFivedayDrilldown(dailySummary)
+    expect(rows).toHaveLength(3)
+    expect(rows[0].date).toBe('2026-07-29')  // 내림차순
+  })
+
+  it('빈 dailySummary', () => {
+    expect(buildFivedayDrilldown([])).toEqual([])
+  })
+})
+
+/* ── buildCumulativeDrilldown ── */
+
+describe('buildCumulativeDrilldown', () => {
+  it('월별 누적 손익 집계', () => {
+    const sells = [
+      { date: '2026-07-28', realized_pnl: 50000 },
+      { date: '2026-07-29', realized_pnl: -20000 },
+      { date: '2026-08-01', realized_pnl: 30000 },
+    ]
+    const result = buildCumulativeDrilldown(sells, [])
+    expect(result.monthlyRows).toHaveLength(2)
+    expect(result.monthlyRows[0].yearMonth).toBe('2026-08')  // 내림차순
+    expect(result.monthlyRows[0].pnl).toBe(30000)
+    expect(result.monthlyRows[1].yearMonth).toBe('2026-07')
+    expect(result.monthlyRows[1].pnl).toBe(30000)  // 50000 + (-20000)
+  })
+
+  it('빈 sellHistory', () => {
+    const result = buildCumulativeDrilldown([], [])
+    expect(result.monthlyRows).toEqual([])
+  })
+})
+
+/* ── buildChartFromDailySummary ── */
+
+describe('buildChartFromDailySummary', () => {
+  it('매도 있는 날 → pnl/rate/fee/tax 추출', () => {
+    const summary = [
+      { date: '2026-07-28', sell_count: 2, realized_pnl: 50000, pnl_rate: 5, buy_fee: 100, sell_fee: 200, tax: 50 },
+      { date: '2026-07-29', sell_count: 0, realized_pnl: 0, pnl_rate: 0, buy_fee: 0, sell_fee: 0, tax: 0 },
+    ]
+    const rows = buildChartFromDailySummary(summary)
+    expect(rows).toHaveLength(2)
+    expect(rows[0].pnl).toBe(50000)
+    expect(rows[0].rate).toBe(5)
+    expect(rows[1].pnl).toBeNull()  // sell_count=0 → null
+  })
+
+  it('빈 배열', () => {
+    expect(buildChartFromDailySummary([])).toEqual([])
+  })
+})
+
+/* ── buildTodayDrilldown ── */
+
+describe('buildTodayDrilldown', () => {
+  function makePosition(code: string, qty: number, avgPrice: number): Position {
+    return {
+      stk_cd: code, stk_nm: `종목${code}`, qty, avg_price: avgPrice,
+      cur_price: 0, buy_amt: avgPrice * qty, pnl_rate: 0, buy_date: '20260720',
+    }
+  }
+
+  function makeSectorStock(code: string, curPrice: number | null): SectorStock {
+    return {
+      code, name: `종목${code}`, cur_price: curPrice, change: 0, change_rate: 0,
+      trade_amount: 0, strength: 0, sector: '업종1',
+    }
+  }
+
+  it('실현(오늘 매도) + 평가(현재 보유) 영역 구분', () => {
+    const sellHistory = [
+      { date: '2026-07-29', stk_cd: '005930', stk_nm: '삼성전자', realized_pnl: 100000 },
+      { date: '2026-07-28', stk_cd: '000660', stk_nm: 'SK하이닉스', realized_pnl: 50000 },
+    ]
+    const positions = [makePosition('005930', 10, 70000)]
+    const sectorStocks = { '005930': makeSectorStock('005930', 80000) }
+    const result = buildTodayDrilldown(sellHistory, positions, sectorStocks, '2026-07-29')
+    // 실현: 오늘 매도 1건
+    expect(result.realizedRows).toHaveLength(1)
+    expect(result.realizedRows[0].stk_cd).toBe('005930')
+    expect(result.realizedTotal).toBe(100000)
+    // 평가: 보유 1건
+    expect(result.evalRows).toHaveLength(1)
+    expect(result.evalRows[0].pnl).toBe(100000)  // (80000-70000) * 10
+    expect(result.evalTotal).toBe(100000)
+  })
+
+  it('오늘 매도 없음 + 보유 없음', () => {
+    const result = buildTodayDrilldown([], [], {}, '2026-07-29')
+    expect(result.realizedRows).toEqual([])
+    expect(result.evalRows).toEqual([])
+    expect(result.realizedTotal).toBe(0)
+    expect(result.evalTotal).toBe(0)
+  })
+
+  it('cur_price null인 보유종목은 평가에서 제외 (P21)', () => {
+    const positions = [makePosition('005930', 10, 70000)]
+    const sectorStocks = { '005930': makeSectorStock('005930', null) }
+    const result = buildTodayDrilldown([], positions, sectorStocks, '2026-07-29')
+    expect(result.evalRows).toHaveLength(0)
+  })
+})
+
+/* ── computeTodayAggregates ── */
+
+describe('computeTodayAggregates', () => {
+  it('당일 매수/매도금액 + 수수료/세금 집계', () => {
+    const buyHistory = [
+      { date: '2026-07-29', total_amt: 500000, fee: 100 },
+      { date: '2026-07-28', total_amt: 300000, fee: 60 },
+    ]
+    const sellHistory = [
+      { date: '2026-07-29', total_amt: 600000, fee: 120, tax: 300 },
+      { date: '2026-07-28', total_amt: 400000, fee: 80, tax: 200 },
+    ]
+    const result = computeTodayAggregates(buyHistory, sellHistory, '2026-07-29')
+    expect(result.todayBuyAmt).toBe(500000)
+    expect(result.todaySellAmt).toBe(600000)
+    expect(result.todayFeeTax).toBe(520)  // 100 + 120 + 300
+    expect(result.cumFeeTax).toBe(860)  // 100+60 + 120+300+80+200
+  })
+
+  it('당일 거래 없음', () => {
+    const buyHistory = [{ date: '2026-07-28', total_amt: 300000, fee: 60 }]
+    const sellHistory = [{ date: '2026-07-28', total_amt: 400000, fee: 80, tax: 200 }]
+    const result = computeTodayAggregates(buyHistory, sellHistory, '2026-07-29')
+    expect(result.todayBuyAmt).toBe(0)
+    expect(result.todaySellAmt).toBe(0)
+    expect(result.todayFeeTax).toBe(0)
+    expect(result.cumFeeTax).toBe(340)  // 60 + 80 + 200
+  })
+
+  it('빈 이력', () => {
+    const result = computeTodayAggregates([], [], '2026-07-29')
+    expect(result.todayBuyAmt).toBe(0)
+    expect(result.todaySellAmt).toBe(0)
+    expect(result.todayFeeTax).toBe(0)
+    expect(result.cumFeeTax).toBe(0)
+  })
+})

@@ -12,8 +12,8 @@ import {
   type SummaryCardEls,
   createSummaryCards,
   updateSummaryCards,
-  getRecent5TradingDays,
 } from './profit-shared'
+import { getRecent5TradingDays, extractEarliestBaseAsset } from './profit-math'
 import { loadProfitDetailView } from './profit-detail-view'
 import {
   showTable,
@@ -27,7 +27,6 @@ import {
   openMonthDrilldown,
   openCumulativeDrilldown,
 } from './profit-detail-display'
-import { extractEarliestBaseAsset } from './profit-shared'
 import type { ProfitDetailState } from './profit-detail'
 
 /* ── mount 헬퍼: 요약 카드 행 (당일/5거래일/당월/누적 손익 — 전일 카드 제거, 다단계 1세션 결정 1) ── */

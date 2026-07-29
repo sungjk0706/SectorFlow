@@ -5,7 +5,7 @@
 import { FONT_SIZE, FONT_WEIGHT, COLOR, RADIUS, pnlColor } from '../components/common/ui-styles'
 import { createActionButton } from '../components/common/button'
 import { sectionTitle } from '../components/common/settings-common'
-import { buildSectorStockPnl, type SectorPnlGroup, type SectorStockPnl } from './profit-shared'
+import { buildSectorStockPnl, type SectorPnlGroup, type SectorStockPnl } from './profit-math'
 import type { ProfitOverviewState } from './profit-overview'
 
 /* ── 셀 헬퍼: 수익금/수익률 숫자+단위 분리 셀 (헤더/행 공통 — P23 일관성) ── */

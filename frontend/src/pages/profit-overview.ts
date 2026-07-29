@@ -16,7 +16,7 @@ import { notifyPageActive, notifyPageInactive } from '../api/ws'
 import type { ProfitChartApi } from '../components/canvas-profit-chart'
 import type { SectorDonutApi } from '../components/canvas-sector-donut'
 import type { AccountSnapshot } from '../types'
-import { filterTradeRows } from './profit-shared'
+import { filterTradeRows } from './profit-math'
 import { initDateRange } from './profit-overview-date'
 import {
   renderAccountVals,

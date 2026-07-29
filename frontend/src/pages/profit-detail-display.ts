@@ -9,8 +9,8 @@ import {
   BUY_COLS,
   SELL_COLS,
 } from './profit-columns'
+import { type SummaryCardEls } from './profit-shared'
 import {
-  type SummaryCardEls,
   type TodayDrilldownResult,
   type CumulativeDrilldownResult,
   type DailyDrilldownRow,
@@ -22,7 +22,7 @@ import {
   computeCumulativePnl,
   findBaseAssetForDate,
   extractEarliestBaseAsset,
-} from './profit-shared'
+} from './profit-math'
 import { getTradingToday } from '../utils/date'
 import { saveProfitDetailView } from './profit-detail-view'
 import { hotStore } from '../stores/hotStore'

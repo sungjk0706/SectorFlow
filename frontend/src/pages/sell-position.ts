@@ -13,7 +13,7 @@ import { rateColor, pnlColor, fmtComma, fmtRate, createCodeCell, createStockName
 import { createBadgeRow, createBadge, updateBadge, type BadgeHandle } from '../components/common/badge'
 import { computeOrderBlockStatus } from '../utils/order-block-status'
 import { getLocalToday } from '../utils/date'
-import { computeHoldingsSummary, computePositionValuation } from './profit-shared'
+import { computeHoldingsSummary, computePositionValuation } from './profit-math'
 import type { Position } from '../types'
 
 const COLUMNS: ColumnDef<Position>[] = [

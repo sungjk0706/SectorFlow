@@ -13,12 +13,14 @@ import { hotStore, getPositionIndex } from '../stores/hotStore'
 import { api } from '../api/client'
 import {
   buildChartFromDailySummary,
-  renderAccountVals as renderAccountValsShared,
   buildSectorDonutRows,
   computeCumulativePnl,
   findBaseAssetForDate,
   filterTradeRows,
   extractEarliestBaseAsset,
+} from './profit-math'
+import {
+  renderAccountVals as renderAccountValsShared,
   type AccountValsParams,
 } from './profit-shared'
 import { getTradingToday } from '../utils/date'
