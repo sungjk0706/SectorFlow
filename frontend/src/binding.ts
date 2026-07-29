@@ -263,9 +263,9 @@ export function bindWSToStore(
     showToast('info', d.title || '뉴스 호재 발생', 4000)
   })
 
-  /* ── order-time-blocked: 체결 불가 시간대 주문 차단 상태 (10초 주기) ── */
+  /* ── order-time-blocked: 체결 불가 시간대 주문 상태 (10초 주기) ── */
   pricesClient.onEvent('order-time-blocked', (data) => {
-    applyOrderTimeBlocked(data as { blocked?: boolean; reason?: string })
+    applyOrderTimeBlocked(data as { level?: string; reason?: string })
   })
 
   /* ── risk-block-status: 리스크 매니저 차단 상태 (손실 한도 도달 등) ── */

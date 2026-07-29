@@ -71,8 +71,9 @@ export interface UIState {
   /* ── OMS 서킷브레이커 발동 상태 ── */
   circuitBreakerOpen: { message: string } | null
 
-  /* ── 체결 불가 시간대 주문 차단 상태 (동시호가/장외) ── */
-  orderTimeBlocked: { reason: string } | null
+  /* ── 체결 불가 시간대 주문 상태 (동시호가/장외 — 정보성, 위험 아님) ──
+   *  level: "nxt_only" (NXT 종목만 거래 가능) | "blocked" (거래 시간 외) */
+  orderTimeBlocked: { level: 'nxt_only' | 'blocked'; reason: string } | null
 
   /* ── 리스크 매니저 차단 상태 (손실 한도 도달 등) ── */
   riskBlockStatus: { side: string; reason: string } | null
@@ -177,10 +178,13 @@ export function clearCircuitBreakerOpen(): void {
   uiStore.setState({ circuitBreakerOpen: null })
 }
 
-/* ── order-time-blocked: 체결 불가 시간대 주문 차단 상태 갱신 ── */
-export function applyOrderTimeBlocked(data: { blocked?: boolean; reason?: string }): void {
-  if (data.blocked) {
-    uiStore.setState({ orderTimeBlocked: { reason: data.reason ?? '동시호가/장외 시간대 — 주문 일시중단' } })
+/* ── order-time-blocked: 체결 불가 시간대 주문 상태 갱신 ──
+ *  백엔드 get_order_time_block_status()의 (level, reason) 튜플을 payload로 수신.
+ *  level="ok" 또는 누락 시 null (칩 숨김). "nxt_only"/"blocked" 시 정보 표시. */
+export function applyOrderTimeBlocked(data: { level?: string; reason?: string }): void {
+  if (data.level && data.level !== 'ok') {
+    const level = data.level === 'blocked' ? 'blocked' : 'nxt_only'
+    uiStore.setState({ orderTimeBlocked: { level, reason: data.reason ?? '시간대 정보 없음' } })
   } else {
     uiStore.setState({ orderTimeBlocked: null })
   }

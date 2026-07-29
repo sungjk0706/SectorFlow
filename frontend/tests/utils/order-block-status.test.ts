@@ -149,21 +149,37 @@ describe('computeOrderBlockStatus — 우선순위 8단계 (세션 9)', () => {
     })
   })
 
-  describe('4순위 — 시간대 차단 (orderTimeBlocked, 양쪽 공통)', () => {
-    it('buy: orderTimeBlocked 시 동시호가/장외 사유 표시', () => {
+  describe('4순위 — 시간대 상태 (orderTimeBlocked, 양쪽 공통 — 정보성, 위험 아님)', () => {
+    it('buy: orderTimeBlocked level=nxt_only 시 NXT만 가능 표시 (blocked=false)', () => {
       const ui = makeCleanUiState()
-      ui.orderTimeBlocked = { reason: '동시호가 시간대' }
+      ui.orderTimeBlocked = { level: 'nxt_only', reason: 'NXT만 가능' }
       const r = computeOrderBlockStatus('buy', ui, makeCleanSettings())
-      expect(r.blocked).toBe(true)
-      expect(r.text).toBe('차단: 동시호가 시간대')
+      expect(r.blocked).toBe(false)
+      expect(r.text).toBe('NXT만 가능')
     })
 
-    it('sell: 동일하게 시간대 차단 사유 표시', () => {
+    it('sell: orderTimeBlocked level=nxt_only 시 동일하게 정보 표시 (blocked=false)', () => {
       const ui = makeCleanUiState()
-      ui.orderTimeBlocked = { reason: '장외 시간대' }
+      ui.orderTimeBlocked = { level: 'nxt_only', reason: 'NXT만 가능' }
       const r = computeOrderBlockStatus('sell', ui, makeCleanSettings())
-      expect(r.blocked).toBe(true)
-      expect(r.text).toBe('차단: 장외 시간대')
+      expect(r.blocked).toBe(false)
+      expect(r.text).toBe('NXT만 가능')
+    })
+
+    it('buy: orderTimeBlocked level=blocked 시 거래 시간 외 표시 (blocked=false)', () => {
+      const ui = makeCleanUiState()
+      ui.orderTimeBlocked = { level: 'blocked', reason: '거래 시간 외' }
+      const r = computeOrderBlockStatus('buy', ui, makeCleanSettings())
+      expect(r.blocked).toBe(false)
+      expect(r.text).toBe('거래 시간 외')
+    })
+
+    it('sell: orderTimeBlocked level=blocked 시 동일하게 정보 표시 (blocked=false)', () => {
+      const ui = makeCleanUiState()
+      ui.orderTimeBlocked = { level: 'blocked', reason: '거래 시간 외' }
+      const r = computeOrderBlockStatus('sell', ui, makeCleanSettings())
+      expect(r.blocked).toBe(false)
+      expect(r.text).toBe('거래 시간 외')
     })
   })
 
@@ -316,12 +332,12 @@ describe('computeOrderBlockStatus — 우선순위 8단계 (세션 9)', () => {
       expect(r.text).toBe('차단: 서킷브레이커')
     })
 
-    it('4순위(시간대) > 5순위(일일상태오류): 시간대 차단이 일일 상태 오류보다 우선', () => {
+    it('4순위(시간대) > 5순위(일일상태오류): 시간대 정보가 일일 상태 오류보다 우선', () => {
       const ui = makeCleanUiState()
-      ui.orderTimeBlocked = { reason: '동시호가' }
+      ui.orderTimeBlocked = { level: 'nxt_only', reason: 'NXT만 가능' }
       ui.dailyBuyStateFailed = true
       const r = computeOrderBlockStatus('buy', ui, makeCleanSettings())
-      expect(r.text).toBe('차단: 동시호가')
+      expect(r.text).toBe('NXT만 가능')
     })
 
     it('5순위(일일상태오류) > 6순위(자동매매 OFF): buy 전용 5순위가 자동매매 OFF보다 우선', () => {

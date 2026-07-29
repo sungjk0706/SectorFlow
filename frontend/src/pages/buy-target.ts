@@ -130,8 +130,12 @@ function computeCombinedStatus(
   try {
     const { text: hardStatusText, blocked: hardBlocked } = computeOrderBlockStatus('buy', uiState, settings)
     if (hardBlocked) {
-      // 하드 게이트 차단 — 주문가능금액 숨기고 차단 사유 우선 표시
+      // 위험/강제 차단 (서킷브레이커/리스크/자동매매 OFF 등) — 주문가능금액 숨기고 차단 사유 표시 (빨간색)
       return { value: '차단', unit: '', statusText: ` · ${hardStatusText.replace(/^차단: /, '')}`, status: 'warn', statusColor: COLOR.up }
+    }
+    if (hardStatusText !== '매수 가능') {
+      // 정보 상태 (NXT만 가능 / 거래 시간 외) — 주문가능금액 유지 + 정보 텍스트 (파란색, P21 투명성)
+      return { ...base, statusText: ` · ${hardStatusText}` }
     }
     if (insufficient) {
       // 소프트 차단 — 잔액 0

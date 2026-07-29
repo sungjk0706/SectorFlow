@@ -384,38 +384,41 @@ def is_order_blocked_by_time(stk_cd: str) -> bool:
     return False  # KRX 활성 — 허용
 
 
-def get_order_time_block_status() -> tuple[bool, str]:
-    """체결 불가 시간대 주문 차단 상태 (페이즈 기반, 종목 구분 없음).
+def get_order_time_block_status() -> tuple[str, str]:
+    """체결 불가 시간대 주문 상태 (페이즈 기반, 종목 구분 없음).
 
     WS 브로드캐스트용 — 헤더 칩 표시에 사용 (P21 사용자 투명성).
     is_order_blocked_by_time(stk_cd)와 동일한 페이즈 판별을 사용하되
-    종목별 is_nxt_enabled 분기 없이 페이즈 수준에서 차단 여부와 사유 반환.
+    종목별 is_nxt_enabled 분기 없이 페이즈 수준에서 상태(level)와 사유 반환.
 
-    반환 (blocked, reason):
-      - (False, ""): KRX 활성 — 전부 허용
-      - (True, "KRX 단독 종목 차단 · NXT 가능"): KRX 비활성 + NXT 활성 — KRX 단독 종목 차단, NXT 종목 허용
-      - (True, "KRX·NXT 모두 주문 불가"): 양쪽 비활성 — 전부 차단
-      - (False, ""): 빈 문자열 phase — 에러 로그 (P20 폴백 금지)
-      - (False, ""): 휴장일 — 장 안 열리므로 칩 표시 불필요 (P21 사용자 투명성)
+    "차단"은 위험 상태(서킷브레이커/리스크 한도)에만 사용 — 시간대 상태는
+    "거래 시간이 아님"이라는 사실 알림이지 위험이 아님 (P21 투명성, P23 일관성).
+
+    반환 (level, reason):
+      - ("ok", ""): KRX 활성 — 전부 허용
+      - ("nxt_only", "NXT만 가능"): KRX 비활성 + NXT 활성 — 정보 상태 (NXT 종목 거래 가능)
+      - ("blocked", "거래 시간 외"): 양쪽 비활성 — 정보 상태 (전부 거래 불가, 위험 아님)
+      - ("ok", ""): 빈 문자열 phase — 에러 로그 (P20 폴백 금지)
+      - ("ok", ""): 휴장일 — 장 안 열리므로 칩 표시 불필요 (P21 사용자 투명성)
     """
     mp = engine_state.state.market_phase
     krx = mp.get("krx", "")
     nxt = mp.get("nxt", "")
     if not krx or not nxt:
         logger.error("[시스템] 장 상태 빈 문자열 감지: krx=%r, nxt=%r — 시간 기반 초기화 누락 가능", krx, nxt)
-        return (False, "")  # P20 폴백 금지 — 빈 문자열은 차단하지 않고 에러 로그
+        return ("ok", "")  # P20 폴백 금지 — 빈 문자열은 차단하지 않고 에러 로그
 
     # 휴장일 조기 반환 — 장 안 열리므로 주문 차단 칩 불필요 (P21 사용자 투명성).
     # _is_pre_subscribe_window() L255-256과 동일 패턴 (P23 일관성).
     if krx == "휴장일" or nxt == "휴장일":
-        return (False, "")
+        return ("ok", "")
 
     # 본 판별 — 페이즈 수준 (종목별 분기 없음)
     if krx in KRX_INACTIVE_PHASES:
         if nxt in NXT_ACTIVE_PHASES:
-            return (True, "KRX 단독 종목 차단 · NXT 가능")
-        return (True, "KRX·NXT 모두 주문 불가")
-    return (False, "")
+            return ("nxt_only", "NXT만 가능")
+        return ("blocked", "거래 시간 외")
+    return ("ok", "")
 
 
 def get_market_phase() -> dict:
@@ -759,11 +762,12 @@ def _apply_market_phase(phase: dict) -> None:
         engine_state.state.market_phase["nxt"] = new_nxt
         broadcast_phase = get_market_phase()
         schedule_engine_task(_broadcast("market-phase", broadcast_phase), context="market-phase 브로드캐스트")
-        # ── 체결 불가 시간대 주문 차단 상태 브로드캐스트 (P21 사용자 투명성) ──
-        # 페이즈 갱신 시마다 차단 상태 산정 — JIF + 10초 주기 양쪽에서 자동 전송 (P10 SSOT, P16 살아있는 경로).
-        # 페이즈 기반이므로 blocked=False 시 자동 해제 (P24 — 별도 해제 로직 없음).
-        blocked, reason = get_order_time_block_status()
-        schedule_engine_task(_broadcast("order-time-blocked", {"blocked": blocked, "reason": reason}), context="order-time-blocked 브로드캐스트")
+        # ── 체결 불가 시간대 주문 상태 브로드캐스트 (P21 사용자 투명성) ──
+        # 페이즈 갱신 시마다 상태 산정 — JIF + 10초 주기 양쪽에서 자동 전송 (P10 SSOT, P16 살아있는 경로).
+        # level="ok" 시 프론트엔드에서 자동 해제 (P24 — 별도 해제 로직 없음).
+        # level: "ok" | "nxt_only" (정보) | "blocked" (정보 — 시간대 상태는 위험 아님).
+        level, reason = get_order_time_block_status()
+        schedule_engine_task(_broadcast("order-time-blocked", {"level": level, "reason": reason}), context="order-time-blocked 브로드캐스트")
         # 페이즈 변경 감지 → 업종 재계산 + WS 구독 시작/종료 트리거
         if prev_krx != new_krx or prev_nxt != new_nxt:
             # ── 장 상태 변경 로그 (P21 사용자 투명성) ──

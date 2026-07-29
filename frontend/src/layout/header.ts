@@ -423,14 +423,16 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
       }
     } catch (e) { console.error('[header] circuitBreaker chip error', e) }
 
-    // 체결 불가 시간대 주문 일시중단 칩 (노란색 — 동시호가/장외)
+    // 체결 불가 시간대 주문 상태 칩 (파란색 정보 — NXT만 가능 / 거래 시간 외)
+    // 시간대 상태는 위험이 아닌 사실 알림이므로 정보색 사용 (P21 투명성, P23 일관성)
     try {
       if (orderTimeBlocked) {
         orderTimeBlockedChip.style.display = ''
-        orderTimeBlockedChip.style.background = `${COLOR.warningBg}`
-        orderTimeBlockedChip.style.color = `${COLOR.warning}`
-        orderTimeBlockedChip.style.border = `1px solid ${COLOR.warning}40`
-        orderTimeBlockedChip.textContent = `⏸ ${orderTimeBlocked.reason}`
+        orderTimeBlockedChip.style.background = `${COLOR.downBg}`
+        orderTimeBlockedChip.style.color = `${COLOR.down}`
+        orderTimeBlockedChip.style.border = `1px solid ${COLOR.down}40`
+        const icon = orderTimeBlocked.level === 'nxt_only' ? 'ℹ' : '🕐'
+        orderTimeBlockedChip.textContent = `${icon} ${orderTimeBlocked.reason}`
       } else {
         orderTimeBlockedChip.style.display = 'none'
       }

@@ -15,9 +15,9 @@ import type { AppSettings } from '../types'
 export type OrderSide = 'buy' | 'sell'
 
 export interface OrderBlockStatus {
-  /** 배지에 표시할 텍스트 ('매수 가능' | '차단: ...') */
+  /** 배지에 표시할 텍스트 ('매수 가능' | '차단: ...' | 'NXT만 가능' | '거래 시간 외') */
   text: string
-  /** 차단 여부 (true=차단, false=정상) */
+  /** 차단 여부 (true=위험/강제 차단, false=정상 또는 정보 상태) */
   blocked: boolean
 }
 
@@ -71,7 +71,9 @@ export function computeOrderBlockStatus(
     return { text: `차단: 리스크(${uiState.riskBlockStatus.reason})`, blocked: true }
   }
   if (uiState.orderTimeBlocked) {
-    return { text: `차단: ${uiState.orderTimeBlocked.reason}`, blocked: true }
+    // 시간대 상태는 "거래 시간이 아님"이라는 사실 알림 — 위험/강제 차단 아님 (P21 투명성).
+    // 우선순위는 유지하되 blocked=false (정보 표시) — 서킷브레이커/리스크가 먼저 표시되어야 함.
+    return { text: uiState.orderTimeBlocked.reason, blocked: false }
   }
   if (side === 'buy' && uiState.dailyBuyStateFailed) {
     return { text: '차단: 일일 상태 오류', blocked: true }
