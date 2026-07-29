@@ -112,10 +112,12 @@ export const COLUMNS: ColumnDef<StockScore>[] = [
       span.style.fontWeight = FONT_WEIGHT.bold
       // P21: 뉴스 제목이 있으면 툴팁에 호재 정보 노출 (news_boost_title — applyNewsHit이 보관, 세션 4).
       //      title 부재 시 가산점 점수만 표시 (P20 명시적 값).
+      // A안: 📰 표시 = boost_news_on=True 상태에서 감지된 호재 → 가산점 반영됨 (3동작 완전 일치).
+      //      boost_news_on=False 시 백엔드에서 감지 자체를 수행 안 하므로 📰 미표시.
       const title = t.news_boost_title || ''
       span.title = title
-        ? `${title}\n뉴스 가산점 ${newsScore.toFixed(1)}점 부여됨`
-        : `뉴스 가산점 ${newsScore.toFixed(1)}점 부여됨`
+        ? `${title}\n뉴스 가산점 ${newsScore.toFixed(1)}점 반영됨`
+        : `뉴스 가산점 ${newsScore.toFixed(1)}점 반영됨`
       return span
     },
   },

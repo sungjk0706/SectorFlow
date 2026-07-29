@@ -347,17 +347,19 @@ export interface RealDataEvent {
 }
 
 /**
- * news-hit 이벤트 — 뉴스 호재 매칭 시 news_boost 단일 전달 경로 (P10 SSOT).
+ * news-hit 이벤트 — 뉴스 호재 매칭 시 news_boost + boost_score 단일 전달 경로 (P10 SSOT).
  * 백엔드 `_handle_nws_news()`의 `_safe_broadcast("news-hit", payload)`와 계약 일치:
  *   - codes: 호재 매칭 종목코드 리스트 (정규화 전 원본)
  *   - names: 종목명 리스트 (부재 시 빈 문자열, P20 명시적 값)
  *   - scores: news_boost_score 리스트 (codes와 동일 순서)
+ *   - boost_scores: 재계산된 boost_score(총합) 리스트 (수정안 3 — 실시간 반영, codes와 동일 순서)
  *   - title: 뉴스 제목 (토스트 표시용)
  */
 export interface NewsHitEvent {
   codes: string[];
   names: string[];
   scores: number[];
+  boost_scores: number[];
   title: string;
 }
 

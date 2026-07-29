@@ -586,19 +586,21 @@ export function applyBuyTargetsUpdate(data: { buy_targets: StockScore[] }): void
   }
 }
 
-/* ── news-hit: 뉴스 호재 가산점 갱신 (news_boost 단일 전달 경로, P10 SSOT) ── */
-// 백엔드 _handle_nws_news()가 뉴스 호재 매칭 시 news-hit 이벤트로 news_boost + title 전달.
+/* ── news-hit: 뉴스 호재 가산점 갱신 (news_boost + boost_score 단일 전달 경로, P10 SSOT) ── */
+// 백엔드 _handle_nws_news()가 뉴스 호재 매칭 시 news-hit 이벤트로 news_boost + boost_score + title 전달.
 // buy-targets-delta에서는 news_boost 제외(세션 1)하고 본 action으로만 갱신 — 이중 갱신
 // 경로 제거 (P10). applyBuyTargetsUpdate same 비교에서도 news_boost 제외(세션 3)와 짝.
+// 수정안 3: boost_score도 백엔드에서 재계산 후 전달 → 프론트는 표시만 (P10 SSOT — 가산점 계산은 백엔드).
 // P23: normalizeStockCode + hotStore.setState updater 패턴 (applyBuyTargetsDelta와 동일).
 // P7: O(len(codes) * len(buyTargets)) — codes는 단일 뉴스 매칭 종목 수(소), buyTargets는
 //     매수후보 N(소). applyBuyTargetsDelta의 findIndex 패턴과 동일 (P23 일관성).
-// P20: codes/scores 누락 시 빈 배열로 명시적 처리 (폴백 아님). title 누락 시 빈 문자열.
+// P20: codes/scores/boost_scores 누락 시 빈 배열로 명시적 처리 (폴백 아님). title 누락 시 빈 문자열.
 // P21: title을 buyTargets[i].news_boost_title에 보관 → 📰 툴팁으로 호재 정보 노출 (세션 4).
 // P25: 미매칭 시 setState 미발화 (불필요한 리렌더 방지). 해당 종목만 in-place patch.
-export function applyNewsHit(data: { codes: string[]; scores: number[]; title?: string }): void {
+export function applyNewsHit(data: { codes: string[]; scores: number[]; boost_scores?: number[]; title?: string }): void {
   const codes = data.codes ?? []
   const scores = data.scores ?? []
+  const boostScores = data.boost_scores ?? []
   const title = data.title ?? ''
   if (codes.length === 0) return
   hotStore.setState((state) => {
@@ -609,7 +611,9 @@ export function applyNewsHit(data: { codes: string[]; scores: number[]; title?: 
       const idx = buyTargets.findIndex((t: StockScore) => normalizeStockCode(t.code) === code)
       if (idx >= 0) {
         if (!changed) { buyTargets = [...buyTargets]; changed = true }
-        buyTargets[idx] = { ...buyTargets[idx], news_boost: scores[k] ?? 0, news_boost_title: title }
+        const patch: Partial<StockScore> = { news_boost: scores[k] ?? 0, news_boost_title: title }
+        if (boostScores[k] != null) patch.boost_score = boostScores[k]
+        buyTargets[idx] = { ...buyTargets[idx], ...patch }
       }
     }
     return changed ? { buyTargets } : state

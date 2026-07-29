@@ -782,6 +782,28 @@ describe('hotStore — applyNewsHit (news-hit 단일 갱신 경로, 세션 3)', 
     expect(state.buyTargets[0].news_boost_title).toBe('업종 호재 뉴스')
     expect(state.buyTargets[1].news_boost_title).toBe('업종 호재 뉴스')
   })
+
+  // ── 수정안 3 — boost_score 즉시 갱신 (백엔드 재계산값, P10 SSOT) ──
+  it('boost_scores 전달 시 boost_score 즉시 갱신 (수정안 3, P10 SSOT)', () => {
+    applyNewsHit({ codes: ['000001'], scores: [1.5], boost_scores: [3.5] })
+    const target = hotStore.getState().buyTargets[0]
+    expect(target.news_boost).toBe(1.5)
+    expect(target.boost_score).toBe(3.5)
+  })
+
+  it('boost_scores 누락 시 boost_score 불변 (P20 명시적 처리)', () => {
+    const prev = hotStore.getState().buyTargets[0]
+    const prevBoostScore = prev.boost_score
+    applyNewsHit({ codes: ['000001'], scores: [1.5] })
+    expect(hotStore.getState().buyTargets[0].boost_score).toBe(prevBoostScore)
+  })
+
+  it('복수 종목 boost_scores 매핑 — codes 순서대로 (수정안 3)', () => {
+    applyNewsHit({ codes: ['000001', '000002'], scores: [1.5, 2.0], boost_scores: [3.5, 4.0] })
+    const state = hotStore.getState()
+    expect(state.buyTargets[0].boost_score).toBe(3.5)
+    expect(state.buyTargets[1].boost_score).toBe(4.0)
+  })
 })
 
 describe('hotStore — applyRealData 갱신 계약 + rAF 배칭 (세션 7)', () => {

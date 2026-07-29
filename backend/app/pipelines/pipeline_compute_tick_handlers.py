@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 Compute Engine 틱 핸들러 — pipeline_compute.py에서 분리 (P24 단순성).
 
@@ -8,9 +7,10 @@ Compute Engine 틱 핸들러 — pipeline_compute.py에서 분리 (P24 단순성
 지연 import로 pipeline_compute 모듈 속성을 읽는다.
 """
 from __future__ import annotations
+
 import asyncio
-import time
 import logging
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -119,13 +119,15 @@ def _apply_01_radar_and_receive_rate(
     """
     if not (is_0b_tick and any(f in vals for f in ("10", "11", "12", "14", "17", "228"))):
         return
-    from backend.app.services.engine_radar import _apply_real01_volume_amount_to_radar_rows
+    from backend.app.services.engine_radar import (
+        _apply_real01_volume_amount_to_radar_rows,
+    )
     _apply_real01_volume_amount_to_radar_rows(raw_cd, vals, is_0b_tick=is_0b_tick)
     if not nk_px:
         return
+    import backend.app.pipelines.pipeline_compute as _pc
     from backend.app.services.engine_sector_confirm import request_sector_recompute
     from backend.app.services.engine_symbol_utils import is_nxt_enabled
-    import backend.app.pipelines.pipeline_compute as _pc
     request_sector_recompute(nk_px)
     # KRX/NXT 분리 수신 세트 추가 (P10 SSOT — nxt_enable 필드 기반, P23 일관성)
     if is_nxt_enabled(nk_px):
@@ -178,9 +180,9 @@ async def _check_01_auto_sell(nk_px: str, price_hit: bool) -> None:
     if not price_hit:
         return
     import backend.app.pipelines.pipeline_compute as _pc
-    from backend.app.services.auto_trading_effective import auto_sell_effective
     from backend.app.core.trade_mode import is_test_mode
     from backend.app.services import dry_run
+    from backend.app.services.auto_trading_effective import auto_sell_effective
     from backend.app.services.engine_symbol_utils import _base_stk_cd
 
     state = _pc.state
@@ -209,14 +211,17 @@ async def _handle_real_01_tick(
     _price_hit = False
     _ts = int(time.time() * 1000)
     try:
-        from backend.app.services.engine_symbol_utils import _real_item_stk_cd, _base_stk_cd
-        from backend.app.services.engine_ws_parsing import (
-            _parse_fid10_price,
-            parse_change_rate_to_percent,
-            _ws_fid_int,
-            _ws_fid_raw,
+        from backend.app.services.engine_symbol_utils import (
+            _base_stk_cd,
+            _real_item_stk_cd,
         )
         from backend.app.services.engine_ws_dispatch import _check_realtime_latency
+        from backend.app.services.engine_ws_parsing import (
+            _parse_fid10_price,
+            _ws_fid_int,
+            _ws_fid_raw,
+            parse_change_rate_to_percent,
+        )
 
         raw_cd = _real_item_stk_cd(item, vals)
         if not raw_cd:
@@ -266,10 +271,13 @@ async def _handle_real_0d_tick(
 ) -> None:
     """0D 호가 틱 처리 (호가 잔량 테이블)."""
     try:
-        from backend.app.services.engine_symbol_utils import _real_item_stk_cd, _base_stk_cd
-        from backend.app.services.engine_ws_parsing import _ws_fid_int
-        from backend.app.services.engine_account_notify import notify_orderbook_update
         import backend.app.pipelines.pipeline_compute as _pc
+        from backend.app.services.engine_account_notify import notify_orderbook_update
+        from backend.app.services.engine_symbol_utils import (
+            _base_stk_cd,
+            _real_item_stk_cd,
+        )
+        from backend.app.services.engine_ws_parsing import _ws_fid_int
 
         raw_cd = _real_item_stk_cd(item, vals)
         if not raw_cd:
@@ -303,9 +311,12 @@ async def _handle_real_pgm_tick(
 ) -> None:
     """PGM 프로그램 순매수 틱 처리."""
     try:
-        from backend.app.services.engine_symbol_utils import _real_item_stk_cd, _base_stk_cd
-        from backend.app.services.engine_account_notify import notify_program_update
         import backend.app.pipelines.pipeline_compute as _pc
+        from backend.app.services.engine_account_notify import notify_program_update
+        from backend.app.services.engine_symbol_utils import (
+            _base_stk_cd,
+            _real_item_stk_cd,
+        )
 
         raw_cd = _real_item_stk_cd(item, vals)
         if not raw_cd:
@@ -336,20 +347,74 @@ async def _handle_real_pgm_tick(
         logger.error("[연산] 프로그램 순매수 틱(PGM) 처리 오류: %s", e, exc_info=True)
 
 
+def _recompute_boost_scores_for_hits(ss, hit_codes: list[str], settings: dict) -> list[float]:
+    """hit 종목의 boost_score 재계산 — news-hit payload용 (수정안 3, P10 SSOT).
+
+    calculate_boost_score() 전체 재호출로 4개 가산점 정확 합산.
+    news_boost_cache 갱신 후 호출되므로 뉴스 가산점 포함.
+    P7: hit_codes만 재계산 (단일 뉴스 매칭 수 = 소수), 매수후보 전체 순회 아님.
+    P23: build_buy_targets_from_settings()와 동일한 캐시 조회·설정 매핑 패턴.
+    """
+    from backend.app.domain.buy_filter import calculate_boost_score
+    from backend.app.services.engine_radar import (
+        get_high_price_5d_cache,
+        get_news_boost_cache,
+        get_orderbook_cache,
+        get_program_net_buy_cache,
+    )
+    high_5d = get_high_price_5d_cache()
+    obc = get_orderbook_cache()
+    pnb = get_program_net_buy_cache()
+    nbc = get_news_boost_cache()
+    hit_set = set(hit_codes)
+    result: list[float] = []
+    for bt in ss.buy_targets:
+        if bt.stock.code in hit_set:
+            new_bs = calculate_boost_score(
+                bt.stock,
+                high_5d_cache=high_5d,
+                orderbook_cache=obc,
+                program_net_buy_cache=pnb,
+                boost_high_on=bool(settings.get("boost_high_breakout_on", False)),
+                boost_high_score=float(settings.get("boost_high_breakout_score", 1.0)),
+                boost_order_ratio_on=bool(settings.get("boost_order_ratio_on", False))
+                    and bt.stock.guard_pass,
+                boost_order_ratio_pct=float(settings.get("boost_order_ratio_pct", 20.0)),
+                boost_order_ratio_score=float(settings.get("boost_order_ratio_score", 1.0)),
+                boost_program_net_buy_on=bool(settings.get("boost_program_net_buy_on", False))
+                    and bt.stock.guard_pass,
+                boost_program_net_buy_score=float(settings.get("boost_program_net_buy_score", 1.0)),
+                news_boost_cache=nbc,
+                boost_news_on=True,  # A안: _handle_nws_news 진입 시 이미 boost_news_on=True 확인됨
+                boost_news_score=float(settings.get("boost_news_score", 1.0)),
+            )
+            bt.stock.boost_score = new_bs
+            result.append(new_bs)
+    return result
+
+
 async def _handle_nws_news(item: dict) -> None:
     """NWS 실시간 뉴스 처리 — 호재 키워드 매칭 시 news_boost_cache 갱신 (5분 TTL) + news-hit 브로드캐스트.
 
     JIF와 동일하게 tick_queue를 우회하여 engine_ws_dispatch → 본 핸들러 직접 호출 (P23).
-    P7: 매 뉴스마다 매수후보 전체 순회 금지 — master_stocks_cache O(1) 조회.
+    P7: 매 뉴스마다 매수후보 전체 순회 금지 — buy_target_codes set O(1) 조회.
     P10: news_boost 단일 전달 경로 = news-hit 이벤트 (buy-targets-delta에서는 제외).
-    P13: 키워드 사전은 메모리 상주 (engine_state.news_keywords_cache).
+        boost_score도 본 이벤트로 즉시 갱신 (10초 재계산 루프 대기 없이 실시간 반영).
+    P13: 키워드 사전·boost_news_on 토글은 메모리 상주 (engine_state + integrated_system_settings_cache).
     P20: code 빈 뉴스는 폴백 없이 스킵 + debug 로깅. 종목명 부재 시 빈 문자열(명시적 값).
+    P21: boost_news_on=False 시 감지 자체 수행 안 함 — 📰 안 뜸, 알림 안 옴, 가산점 안 더함 (3동작 완전 일치).
     P25: NWS 처리 실패가 다른 틱 처리 블로킹 금지. _safe_broadcast 실패 시에도 캐시 갱신·로그 정상 완료.
     """
     import time
+
     from backend.app.services import engine_state
     from backend.app.services.engine_symbol_utils import _base_stk_cd
     try:
+        # A안: boost_news_on=False 시 뉴스 호재 감지 자체 수행 안 함 (P21 투명성 — 3동작 완전 일치)
+        settings = engine_state.state.integrated_system_settings_cache
+        if not bool(settings.get("boost_news_on", False)):
+            return  # 토글 OFF: 📰 안 뜸, 알림 안 옴, 가산점 안 더함
+
         title = str(item.get("title", "")).strip()
         code_raw = str(item.get("code", "")).strip()
         if not title:
@@ -373,29 +438,40 @@ async def _handle_nws_news(item: dict) -> None:
         if not matched:
             return  # 호재 키워드 미포함 시 스킵 (자연스러운 경로, silent 아님)
 
-        # 매수후보 테이블 내 종목만 가산점 부여 (1차 필터 우회 금지)
-        master_cache = engine_state.state.master_stocks_cache
+        # 매수후보 테이블 내 종목만 가산점 부여 (수정안 1 — master_stocks_cache → buy_targets 기준)
+        # P10/P21: 사용자 설계 의도("매수후보 테이블에 올라온 종목만 알림") 준수.
+        # P7: buy_target_codes set 구축 후 O(1) 조회 (매수후보 수 = 소수, 매 뉴스마다 set 구축 비용 미미).
+        ss = engine_state.state.sector_summary_cache
+        if not ss:
+            return  # 매수후보 미생성 시 가산점 부여 대상 없음
+        buy_target_codes = {bt.stock.code for bt in ss.buy_targets}
         score = engine_state.state.news_boost_score
         now = time.monotonic()
         hit_codes = []
         for code in codes:
-            if code in master_cache:  # O(1) 조회 (P7)
+            if code in buy_target_codes:  # O(1) 조회 (P7)
                 engine_state.state.news_boost_cache[code] = (score, now)
                 hit_codes.append(code)
         if hit_codes:
             logger.info("[연산] 뉴스 가산점 부여 — 종목=%s 키워드 매칭: %s", hit_codes, title[:60])
-            # news-hit WS 이벤트 브로드캐스트 — news_boost 단일 전달 경로 (P10 SSOT).
+            # 수정안 3: hit 종목의 boost_score 즉시 재계산 (10초 루프 대기 없이 실시간 반영, P10 SSOT).
+            # calculate_boost_score() 전체 재호출 — 4개 가산점 정확 합산, news_boost_cache 갱신 후이므로
+            # 뉴스 가산점 포함. hit 종목만 재계산 (P7 — hit_codes는 단일 뉴스 매칭 수, 소수).
+            boost_scores = _recompute_boost_scores_for_hits(ss, hit_codes, settings)
+            # news-hit WS 이벤트 브로드캐스트 — news_boost + boost_score 단일 전달 경로 (P10 SSOT).
             # buy-targets-delta에서는 news_boost 제외(세션 1)하고 본 이벤트로만 전달.
             # P7: 1회 O(len(hit_codes)). P25: _safe_broadcast 내부 예외 처리 — 전송 실패 시에도
             # 캐시 갱신·로그는 정상 완료(엔진 루프 블로킹 금지).
             # P20: 종목명 부재 시 빈 문자열(명시적 값, 폴백 아님).
-            names = [master_cache[c].get("name", "") for c in hit_codes]
+            master_cache = engine_state.state.master_stocks_cache
+            names = [master_cache.get(c, {}).get("name", "") for c in hit_codes]
             scores = [score for _ in hit_codes]
             from backend.app.services.engine_account_notify import _safe_broadcast
             await _safe_broadcast("news-hit", {
                 "codes": hit_codes,
                 "names": names,
                 "scores": scores,
+                "boost_scores": boost_scores,
                 "title": title,
             })
 
