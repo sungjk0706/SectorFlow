@@ -89,10 +89,9 @@ export interface GeneralSettingsState {
   riskBlockSellToggle: ReturnType<typeof createToggleBtn> | null
 
   // 시장 지수 급락 가드 (매매 안전장치 하위)
+  // 매수/매도 차단 여부는 기존 riskBlockBuyToggle/riskBlockSellToggle 재사용
   marketGuardToggle: ReturnType<typeof createToggleBtn> | null
   marketGuardChildren: HTMLElement | null
-  marketGuardBlockBuyToggle: ReturnType<typeof createToggleBtn> | null
-  marketGuardBlockSellToggle: ReturnType<typeof createToggleBtn> | null
   marketGuardKospiToggle: ReturnType<typeof createToggleBtn> | null
   marketGuardKospiInput: ReturnType<typeof createNumInput> | null
   marketGuardKospiControls: HTMLElement | null
@@ -185,8 +184,6 @@ function createState(): GeneralSettingsState {
 
     marketGuardToggle: null,
     marketGuardChildren: null,
-    marketGuardBlockBuyToggle: null,
-    marketGuardBlockSellToggle: null,
     marketGuardKospiToggle: null,
     marketGuardKospiInput: null,
     marketGuardKospiControls: null,

@@ -50,9 +50,8 @@ def risk_manager(mock_circuit_breaker):
     rm.consecutive_loss_limit_on = False
     rm.consecutive_loss_limit = 3
     # 시장 지수 급락 가드 (기본값: market_guard_on=False)
+    # 매수/매도 차단 여부는 기존 risk_block_buy_on/risk_block_sell_on 재사용
     rm.market_guard_on = False
-    rm.market_guard_buy_block_on = True
-    rm.market_guard_sell_block_on = False
     rm.market_guard_kospi_on = False
     rm.market_guard_kospi_drop_threshold_pct = -5.0
     rm.market_guard_kosdaq_on = False
@@ -631,9 +630,9 @@ class TestMarketGuard:
 
     @pytest.mark.asyncio
     async def test_buy_block_market_guard(self, risk_manager, settings_cache):
-        """market_guard_on + buy_block_on 시 매수 차단."""
+        """market_guard_on + risk_block_buy_on 시 매수 차단."""
         risk_manager.market_guard_on = True
-        risk_manager.market_guard_buy_block_on = True
+        risk_manager.risk_block_buy_on = True
         risk_manager.market_guard_kospi_on = True
         risk_manager.market_guard_kospi_drop_threshold_pct = -5.0
         with patch("backend.app.services.engine_state.state") as mock_state, \
@@ -652,7 +651,25 @@ class TestMarketGuard:
     async def test_buy_block_market_guard_off(self, risk_manager, settings_cache):
         """market_guard_on=False 시 매수 가드 스킵 — 매수 허용."""
         risk_manager.market_guard_on = False
-        risk_manager.market_guard_buy_block_on = True
+        risk_manager.risk_block_buy_on = True
+        risk_manager.market_guard_kospi_on = True
+        risk_manager.market_guard_kospi_drop_threshold_pct = -5.0
+        with patch("backend.app.services.engine_state.state") as mock_state, \
+             patch("backend.app.services.risk_manager.is_test_mode", return_value=False), \
+             patch("backend.app.services.risk_manager.get_total_realized_pnl", new_callable=AsyncMock, return_value=0), \
+             patch.object(risk_manager, "_sync_thresholds", lambda: None):
+            mock_state.integrated_system_settings_cache = settings_cache
+            mock_state.index_data_cache = {"001": {"drate": "-10.0"}}
+            mock_state.account_snapshot = {"orderable": 100_000_000}
+            mock_state.positions = []
+            allowed, reason = await risk_manager.check_buy_order_allowed("005930", 70_000, 10)
+        assert allowed is True
+
+    @pytest.mark.asyncio
+    async def test_buy_block_risk_block_buy_off(self, risk_manager, settings_cache):
+        """risk_block_buy_on=False 시 매수 가드 스킵 — 매수 허용 (차단 토글 재사용 검증)."""
+        risk_manager.market_guard_on = True
+        risk_manager.risk_block_buy_on = False
         risk_manager.market_guard_kospi_on = True
         risk_manager.market_guard_kospi_drop_threshold_pct = -5.0
         with patch("backend.app.services.engine_state.state") as mock_state, \
@@ -668,9 +685,9 @@ class TestMarketGuard:
 
     @pytest.mark.asyncio
     async def test_sell_block_market_guard(self, risk_manager, settings_cache):
-        """market_guard_on + sell_block_on 시 매도 차단."""
+        """market_guard_on + risk_block_sell_on 시 매도 차단."""
         risk_manager.market_guard_on = True
-        risk_manager.market_guard_sell_block_on = True
+        risk_manager.risk_block_sell_on = True
         risk_manager.market_guard_kosdaq_on = True
         risk_manager.market_guard_kosdaq_drop_threshold_pct = -5.0
         with patch("backend.app.services.engine_state.state") as mock_state, \
@@ -684,9 +701,24 @@ class TestMarketGuard:
 
     @pytest.mark.asyncio
     async def test_sell_block_market_guard_off(self, risk_manager, settings_cache):
-        """market_guard_sell_block_on=False 시 매도 가드 스킵 — 매도 허용."""
+        """market_guard_on=False 시 매도 가드 스킵 — 매도 허용."""
+        risk_manager.market_guard_on = False
+        risk_manager.risk_block_sell_on = True
+        risk_manager.market_guard_kosdaq_on = True
+        risk_manager.market_guard_kosdaq_drop_threshold_pct = -5.0
+        with patch("backend.app.services.engine_state.state") as mock_state, \
+             patch.object(risk_manager, "_sync_thresholds", lambda: None):
+            mock_state.integrated_system_settings_cache = settings_cache
+            mock_state.index_data_cache = {"301": {"drate": "-10.0"}}
+            allowed, reason = await risk_manager.check_sell_order_allowed("005930", 80_000, 10)
+        assert allowed is True
+        assert reason == "승인"
+
+    @pytest.mark.asyncio
+    async def test_sell_block_risk_block_sell_off(self, risk_manager, settings_cache):
+        """risk_block_sell_on=False 시 매도 가드 스킵 — 매도 허용 (차단 토글 재사용 검증)."""
         risk_manager.market_guard_on = True
-        risk_manager.market_guard_sell_block_on = False
+        risk_manager.risk_block_sell_on = False
         risk_manager.market_guard_kosdaq_on = True
         risk_manager.market_guard_kosdaq_drop_threshold_pct = -5.0
         with patch("backend.app.services.engine_state.state") as mock_state, \

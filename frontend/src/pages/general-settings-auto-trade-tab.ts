@@ -222,11 +222,12 @@ function buildRiskManagerChildren(state: GeneralSettingsState): HTMLElement {
 }
 
 // ── 시장 지수 급락 가드 ──
+// 매수/매도 차단 여부는 기존 risk_block_buy_on/risk_block_sell_on 재사용 (별도 토글 없음)
 function buildMarketGuardMasterRow(state: GeneralSettingsState): HTMLElement {
   state.marketGuardChildren = document.createElement('div')
   const r = createSettingToggleRow({
     label: '시장 지수 급락 시 차단',
-    infoText: 'KOSPI/KOSDAQ 등락률이 임계 이하일 때 매수/매도 차단. 지수 데이터 수신 불가 시 차단하지 않음.',
+    infoText: 'KOSPI/KOSDAQ 등락률이 임계 이하일 때 매수/매도 차단. 매수/매도 차단 여부는 상단 "안전장치 조건 충족 시 매수/매도 차단" 토글을 따름. 지수 데이터 수신 불가 시 차단하지 않음.',
     toggleOn: false,
     onToggle: async next => {
       state.vals.market_guard_on = next
@@ -241,36 +242,6 @@ function buildMarketGuardMasterRow(state: GeneralSettingsState): HTMLElement {
     },
   })
   state.marketGuardToggle = r.toggle
-  return r.el
-}
-
-function buildMarketGuardBlockBuyRow(state: GeneralSettingsState): HTMLElement {
-  const r = createSettingToggleRow({
-    label: '시장 급락 시 매수 차단',
-    toggleOn: true,
-    onToggle: async next => {
-      state.vals.market_guard_buy_block_on = next
-      const res = await state.settingsMgr!.saveSection({ market_guard_buy_block_on: next })
-      toastResult(res)
-      if (!res.ok) { state.vals.market_guard_buy_block_on = !next; r.toggle.setOn(!next) }
-    },
-  })
-  state.marketGuardBlockBuyToggle = r.toggle
-  return r.el
-}
-
-function buildMarketGuardBlockSellRow(state: GeneralSettingsState): HTMLElement {
-  const r = createSettingToggleRow({
-    label: '시장 급락 시 매도 차단',
-    toggleOn: false,
-    onToggle: async next => {
-      state.vals.market_guard_sell_block_on = next
-      const res = await state.settingsMgr!.saveSection({ market_guard_sell_block_on: next })
-      toastResult(res)
-      if (!res.ok) { state.vals.market_guard_sell_block_on = !next; r.toggle.setOn(!next) }
-    },
-  })
-  state.marketGuardBlockSellToggle = r.toggle
   return r.el
 }
 
@@ -333,9 +304,6 @@ function buildMarketGuardKosdaqRow(state: GeneralSettingsState): void {
 }
 
 function buildMarketGuardChildren(state: GeneralSettingsState): HTMLElement {
-  state.marketGuardChildren!.appendChild(buildMarketGuardBlockBuyRow(state))
-  state.marketGuardChildren!.appendChild(buildMarketGuardBlockSellRow(state))
-  state.marketGuardChildren!.appendChild(createDescText('손실 상태에서 매도 차단 시 손실 확대 위험 — 신중하게 활성화하세요'))
   buildMarketGuardKospiRow(state)
   buildMarketGuardKosdaqRow(state)
   return state.marketGuardChildren!
@@ -388,11 +356,9 @@ function syncRiskManager(state: GeneralSettingsState, r: Record<string, unknown>
   syncToggleInputRow(state.consecLossToggle, state.consecLossInput, state.consecLossControls, !!r.consecutive_loss_limit_on, Number(r.consecutive_loss_limit ?? 3), act)
   state.riskBlockBuyToggle?.setOn(r.risk_block_buy_on !== false)
   state.riskBlockSellToggle?.setOn(!!r.risk_block_sell_on)
-  // 시장 지수 급락 가드 동기화
+  // 시장 지수 급락 가드 동기화 (매수/매도 차단은 기존 riskBlockBuyToggle/riskBlockSellToggle 재사용)
   state.marketGuardToggle?.setOn(!!r.market_guard_on)
   if (state.marketGuardChildren) setDisabled(state.marketGuardChildren, !r.market_guard_on)
-  state.marketGuardBlockBuyToggle?.setOn(r.market_guard_buy_block_on !== false)
-  state.marketGuardBlockSellToggle?.setOn(!!r.market_guard_sell_block_on)
   syncToggleInputRow(state.marketGuardKospiToggle, state.marketGuardKospiInput, state.marketGuardKospiControls, !!r.market_guard_kospi_on, Number(r.market_guard_kospi_drop_threshold_pct ?? -5), act)
   syncToggleInputRow(state.marketGuardKosdaqToggle, state.marketGuardKosdaqInput, state.marketGuardKosdaqControls, !!r.market_guard_kosdaq_on, Number(r.market_guard_kosdaq_drop_threshold_pct ?? -5), act)
 }

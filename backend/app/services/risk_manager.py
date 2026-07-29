@@ -59,9 +59,8 @@ class RiskManager:
         self.consecutive_loss_limit_on = bool(cache.get("consecutive_loss_limit_on", False))
         self.consecutive_loss_limit = int(cache.get("consecutive_loss_limit", 3) or 3)
         # 시장 지수 급락 가드 (P13 메모리 상주)
+        # 매수/매도 차단 여부는 기존 risk_block_buy_on/risk_block_sell_on 재사용
         self.market_guard_on = bool(cache.get("market_guard_on", False))
-        self.market_guard_buy_block_on = bool(cache.get("market_guard_buy_block_on", True))
-        self.market_guard_sell_block_on = bool(cache.get("market_guard_sell_block_on", False))
         self.market_guard_kospi_on = bool(cache.get("market_guard_kospi_on", False))
         self.market_guard_kospi_drop_threshold_pct = float(cache.get("market_guard_kospi_drop_threshold_pct", -5.0) or -5.0)
         self.market_guard_kosdaq_on = bool(cache.get("market_guard_kosdaq_on", False))
@@ -201,8 +200,8 @@ class RiskManager:
             if not allowed:
                 return False, reason
 
-        # 3-1. 시장 지수 급락 가드 (market_guard_on + market_guard_buy_block_on 시에만)
-        if self.market_guard_on and self.market_guard_buy_block_on:
+        # 3-1. 시장 지수 급락 가드 (market_guard_on + risk_block_buy_on 시에만)
+        if self.market_guard_on and self.risk_block_buy_on:
             allowed, reason = self._check_market_drop()
             if not allowed:
                 return False, reason
@@ -292,8 +291,8 @@ class RiskManager:
                 if consec_count >= self.consecutive_loss_limit:
                     return False, f"연속 손실 한도 초과 (매도 차단, {consec_count}회)"
 
-        # 2-1. 시장 지수 급락 가드 (market_guard_on + market_guard_sell_block_on 시에만)
-        if self.market_guard_on and self.market_guard_sell_block_on:
+        # 2-1. 시장 지수 급락 가드 (market_guard_on + risk_block_sell_on 시에만)
+        if self.market_guard_on and self.risk_block_sell_on:
             allowed, reason = self._check_market_drop()
             if not allowed:
                 return False, f"{reason} (매도 차단)"
