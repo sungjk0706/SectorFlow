@@ -999,16 +999,21 @@ class TestCmdStatusFull:
         }
         snap = {
             "deposit": 5_000_000,
+            "orderable": 4_000_000,
             "total_eval": 800_000,
             "total_pnl": 100_000,
             "total_rate": 14.29,
             "position_count": 3,
             "snapshot_at": "2026-07-11T10:30:00",
         }
+        mock_state = MagicMock()
+        mock_state.integrated_system_settings_cache = {"trade_mode": "real"}
         with patch("backend.app.services.engine_lifecycle.get_engine_status", return_value={"running": True}), \
              patch("backend.app.core.settings_file.load_integrated_system_settings", new_callable=AsyncMock, return_value=flat), \
              patch("backend.app.services.engine_account.get_account_snapshot", new_callable=AsyncMock, return_value=snap), \
              patch("backend.app.services.telegram_bot.auto_trading_effective", return_value=True), \
+             patch("backend.app.services.engine_state.state", mock_state), \
+             patch("backend.app.services.trade_history.get_realized_pnl_summary", new_callable=AsyncMock, return_value=(200_000, 5_000_000)), \
              patch.object(bot, "_send", new_callable=AsyncMock) as mock_send:
             await bot._cmd_status_full("tok", "123")
         mock_send.assert_called_once()
@@ -1017,6 +1022,12 @@ class TestCmdStatusFull:
         assert "ON" in text
         assert "예수금" in text
         assert "5,000,000" in text
+        assert "주문가능" in text
+        assert "4,000,000" in text
+        # 라벨 명확화 + 누적 실현 손익 (P21/P23)
+        assert "보유 종목 평가 금액" in text
+        assert "누적 총 실현 손익금" in text
+        assert "200,000" in text
 
     @pytest.mark.asyncio
     async def test_status_without_snapshot(self):
@@ -1244,25 +1255,89 @@ class TestBuildRiskStatusLines:
 
 class TestCmdAccount:
     @pytest.mark.asyncio
-    async def test_account_with_snapshot(self):
+    async def test_account_real_mode_shows_deposit(self):
+        """실전모드 — 예수금(deposit) + 주문가능(orderable) + 평가/실현 손익 표시 (P10/P21/P23)."""
         bot = TelegramBot()
         snap = {
             "deposit": 1_000_000,
+            "orderable": 800_000,
             "total_eval": 2_000_000,
             "total_pnl": -50_000,
             "total_rate": -2.5,
             "position_count": 5,
             "snapshot_at": "2026-07-11T14:00:00",
         }
+        mock_state = MagicMock()
+        mock_state.integrated_system_settings_cache = {"trade_mode": "real"}
         with patch("backend.app.services.engine_account.get_account_snapshot", new_callable=AsyncMock, return_value=snap), \
+             patch("backend.app.services.engine_state.state", mock_state), \
+             patch("backend.app.services.trade_history.get_realized_pnl_summary", new_callable=AsyncMock, return_value=(276_000, 10_000_000)), \
              patch.object(bot, "_send", new_callable=AsyncMock) as mock_send:
             await bot._cmd_account("tok", "123")
         mock_send.assert_called_once()
         text = mock_send.call_args[0][2]
         assert "계좌 현황" in text
+        assert "예수금" in text
         assert "1,000,000" in text
+        assert "주문가능" in text
+        assert "800,000" in text
+        # 라벨 명확화 — "총평가/총손익" 모호성 제거 (P23)
+        assert "보유 종목 평가 금액" in text
+        assert "보유 종목 평가 손익금" in text
+        assert "보유 종목 평가 수익률" in text
         assert "-50,000" in text
+        # 누적 실현 손익 (P21 — 프론트엔드와 동일 정보)
+        assert "누적 총 실현 손익금" in text
+        assert "276,000" in text
+        assert "누적 총 실현 수익률" in text
         assert "5" in text
+
+    @pytest.mark.asyncio
+    async def test_account_test_mode_shows_initial_deposit(self):
+        """테스트모드 — 누적 투자금(initial_deposit) + 주문가능(orderable) + 평가/실현 손익 표시 (P10/P21/P23).
+
+        테스트모드에서는 deposit이 SSOT가 아니므로 "예수금" 라벨 사용 금지.
+        프론트엔드 profit-shared.ts renderAccountVals와 동일 기준.
+        실현 수익률 분모 = 누적투자금(accumulated_investment ?? initial_deposit).
+        """
+        bot = TelegramBot()
+        snap = {
+            "deposit": 0,  # 테스트모드에서는 의미 없는 값
+            "initial_deposit": 10_000_000,
+            "accumulated_investment": 10_000_000,
+            "orderable": 9_500_000,
+            "total_eval": 500_000,
+            "total_pnl": 30_000,
+            "total_rate": 6.38,
+            "position_count": 2,
+            "snapshot_at": "2026-07-11T14:00:00",
+        }
+        mock_state = MagicMock()
+        mock_state.integrated_system_settings_cache = {"trade_mode": "test"}
+        with patch("backend.app.services.engine_account.get_account_snapshot", new_callable=AsyncMock, return_value=snap), \
+             patch("backend.app.services.engine_state.state", mock_state), \
+             patch("backend.app.services.trade_history.get_realized_pnl_summary", new_callable=AsyncMock, return_value=(150_000, 8_000_000)), \
+             patch.object(bot, "_send", new_callable=AsyncMock) as mock_send:
+            await bot._cmd_account("tok", "123")
+        mock_send.assert_called_once()
+        text = mock_send.call_args[0][2]
+        assert "계좌 현황" in text
+        assert "누적 투자금" in text
+        assert "10,000,000" in text
+        assert "주문가능" in text
+        assert "9,500,000" in text
+        # 라벨 명확화 (P23)
+        assert "보유 종목 평가 금액" in text
+        assert "보유 종목 평가 손익금" in text
+        assert "보유 종목 평가 수익률" in text
+        # 누적 실현 손익 — 테스트모드 분모 = accumulated_investment(10,000,000)
+        assert "누적 총 실현 손익금" in text
+        assert "150,000" in text
+        assert "누적 총 실현 수익률" in text
+        # 150,000 / 10,000,000 * 100 = 1.50%
+        assert "1.50" in text
+        # 테스트모드에서는 "예수금" 라벨이 나오면 안 됨 (P23 일관성)
+        assert "예수금" not in text
 
     @pytest.mark.asyncio
     async def test_account_empty_snapshot(self):

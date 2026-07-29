@@ -780,6 +780,49 @@ class TestGetTotalRealizedPnl:
         assert total == expected
 
 
+# ── get_realized_pnl_summary ──────────────────────────────────────────────────
+
+class TestGetRealizedPnlSummary:
+    """get_realized_pnl_summary: (pnl, buy_total) 반환 — 프론트엔드 aggregatePnl과 동일 공식."""
+
+    async def test_summary_all(self):
+        from backend.app.services import trade_history
+        trade_history._loaded = True
+        trade_history._sell_history.clear()
+        rec1 = _make_sell_rec(price=71000, avg_buy_price=70000)
+        rec2 = _make_sell_rec(price=69000, avg_buy_price=70000)
+        trade_history._sell_history.extend([rec1, rec2])
+        expected_pnl = (rec1["total_amt"] - rec1["buy_total_amt"]) + (rec2["total_amt"] - rec2["buy_total_amt"])
+        expected_buy = rec1["buy_total_amt"] + rec2["buy_total_amt"]
+        with patch("backend.app.services.trade_history._history_lock"):
+            pnl, buy_total = await trade_history.get_realized_pnl_summary()
+        assert pnl == expected_pnl
+        assert buy_total == expected_buy
+
+    async def test_summary_trade_mode_filter(self):
+        from backend.app.services import trade_history
+        trade_history._loaded = True
+        trade_history._sell_history.clear()
+        rec_test = _make_sell_rec(trade_mode="test")
+        rec_real = _make_sell_rec(trade_mode="real")
+        trade_history._sell_history.extend([rec_test, rec_real])
+        expected_pnl = rec_test["total_amt"] - rec_test["buy_total_amt"]
+        expected_buy = rec_test["buy_total_amt"]
+        with patch("backend.app.services.trade_history._history_lock"):
+            pnl, buy_total = await trade_history.get_realized_pnl_summary(trade_mode="test")
+        assert pnl == expected_pnl
+        assert buy_total == expected_buy
+
+    async def test_summary_empty(self):
+        from backend.app.services import trade_history
+        trade_history._loaded = True
+        trade_history._sell_history.clear()
+        with patch("backend.app.services.trade_history._history_lock"):
+            pnl, buy_total = await trade_history.get_realized_pnl_summary()
+        assert pnl == 0
+        assert buy_total == 0
+
+
 # ── get_daily_summary 확장 ────────────────────────────────────────────────────
 
 class TestGetDailySummaryExtended:

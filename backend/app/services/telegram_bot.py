@@ -107,6 +107,58 @@ def _build_risk_status_lines() -> str:
         return ""
 
 
+async def _build_account_brief_lines(snap: dict, is_test: bool) -> str:
+    """계좌 요약 라인 생성 — 모드별 라벨/데이터 소스 분리 (P10 SSOT, P21 투명성, P23 일관성).
+
+    프론트엔드 수익현황 페이지(profit-shared.ts renderAccountVals)와 동일 기준:
+      - 테스트모드: 행 0 = "누적 투자금" (initial_deposit, settlement_engine SSOT)
+      - 실전모드:   행 0 = "예수금"     (deposit, 증권사 REST kt00001 SSOT)
+    주문가능 금액(orderable)은 양 모드 공통 표시 (프론트엔드와 동일).
+    라벨은 프론트엔드 account-labels.ts와 동일 — "총평가/총손익" 모호성 제거 (P23).
+    누적 실현 손익금/수익률 추가 — 프론트엔드 aggregatePnl과 동일 공식 (P21).
+    """
+    from backend.app.services.trade_history import get_realized_pnl_summary
+
+    if is_test:
+        row0_label = "누적 투자금"
+        row0_val = int(snap.get("initial_deposit", 0) or 0)
+    else:
+        row0_label = "예수금"
+        row0_val = int(snap.get("deposit", 0) or 0)
+    orderable  = int(snap.get("orderable", 0) or 0)
+    total_eval = int(snap.get("total_eval", 0) or 0)
+    total_pnl  = int(snap.get("total_pnl", 0) or 0)
+    total_rate = float(snap.get("total_rate", 0.0) or 0.0)
+    pos_cnt    = int(snap.get("position_count", 0) or 0)
+    snap_at    = (snap.get("snapshot_at") or "")[:19].replace("T", " ")
+
+    # 누적 실현 손익 — trade_history SSOT에서 집계 (프론트엔드 aggregatePnl과 동일)
+    trade_mode = "test" if is_test else "real"
+    realized_pnl, realized_buy_total = await get_realized_pnl_summary(trade_mode=trade_mode)
+    # 수익률 분모: 테스트모드=누적투자금(투자원금 대비), 실전모드=매수총액 합계 (프론트엔드와 동일)
+    if is_test:
+        cum_denominator = int(snap.get("accumulated_investment", 0) or snap.get("initial_deposit", 0) or 0)
+    else:
+        cum_denominator = realized_buy_total
+    cum_rate = round(realized_pnl / cum_denominator * 100, 2) if cum_denominator > 0 else 0.0
+
+    pnl_sign   = "+" if total_pnl >= 0 else ""
+    rate_sign  = "+" if total_rate >= 0 else ""
+    cum_sign   = "+" if realized_pnl >= 0 else ""
+    crate_sign = "+" if cum_rate >= 0 else ""
+    return (
+        f"💰 {row0_label}: {row0_val:,.0f}원\n"
+        f"💳 주문가능: {orderable:,.0f}원\n"
+        f"📈 보유 종목 평가 금액: {total_eval:,.0f}원\n"
+        f"� 보유 종목 평가 손익금: {pnl_sign}{total_pnl:,.0f}원\n"
+        f"📊 보유 종목 평가 수익률: {rate_sign}{total_rate:.2f}%\n"
+        f"💵 누적 총 실현 손익금: {cum_sign}{realized_pnl:,.0f}원\n"
+        f"📈 누적 총 실현 수익률: {crate_sign}{cum_rate:.2f}%\n"
+        f"🏷️ 보유종목: {pos_cnt}개\n"
+        f"🕐 기준시각: {snap_at}"
+    )
+
+
 def _fmt_money(v) -> str:
     """금액 포맷 — 만원/억원 단위로 간결 표시 (P24 단순성)."""
     try:
@@ -503,6 +555,8 @@ class TelegramBot:
             from backend.app.services.engine_lifecycle import get_engine_status
             from backend.app.services.engine_account import get_account_snapshot
             from backend.app.core.settings_file import load_integrated_system_settings
+            from backend.app.core.trade_mode import is_test_mode
+            from backend.app.services.engine_state import state
 
             eng = get_engine_status()
             eng_running = eng.get("running", False)
@@ -514,23 +568,9 @@ class TelegramBot:
             now_str = datetime.now(_KST).strftime("%H:%M:%S")
 
             snap = await get_account_snapshot()
-            acct_lines = ""
             if snap:
-                deposit    = snap.get("deposit", 0) or 0
-                total_eval = snap.get("total_eval", 0) or 0
-                total_pnl  = snap.get("total_pnl", 0) or 0
-                total_rate = snap.get("total_rate", 0) or 0
-                pos_cnt    = snap.get("position_count", 0) or 0
-                snap_at    = (snap.get("snapshot_at") or "")[:19].replace("T", " ")
-                pnl_sign  = "+" if total_pnl >= 0 else ""
-                rate_sign = "+" if total_rate >= 0 else ""
-                acct_lines = (
-                    f"\n💰 예수금: {deposit:,.0f}원\n"
-                    f"📈 총평가: {total_eval:,.0f}원\n"
-                    f"📊 총손익: {pnl_sign}{total_pnl:,.0f}원 ({rate_sign}{total_rate:.2f}%)\n"
-                    f"🏷️ 보유종목: {pos_cnt}개\n"
-                    f"🕐 계좌기준: {snap_at}"
-                )
+                _is_test = is_test_mode(state.integrated_system_settings_cache)
+                acct_lines = "\n" + await _build_account_brief_lines(snap, _is_test)
             else:
                 acct_lines = "\n 계좌 스냅샷 없음 (엔진 가동 여부 확인)"
 
@@ -557,30 +597,17 @@ class TelegramBot:
     async def _cmd_account(self, token: str, chat_id: str):
         try:
             from backend.app.services.engine_account import get_account_snapshot
+            from backend.app.core.trade_mode import is_test_mode
+            from backend.app.services.engine_state import state
 
             snap = await get_account_snapshot()
             if not snap:
                 await self._send(token, chat_id, " 계좌 데이터가 없습니다.\n엔진이 실행 중인지 확인하세요.")
                 return
 
-            deposit    = snap.get("deposit", 0) or 0
-            total_eval = snap.get("total_eval", 0) or 0
-            total_pnl  = snap.get("total_pnl", 0) or 0
-            total_rate = snap.get("total_rate", 0) or 0
-            pos_cnt    = snap.get("position_count", 0) or 0
-            snap_at    = (snap.get("snapshot_at") or "")[:19].replace("T", " ")
-
-            pnl_sign  = "+" if total_pnl >= 0 else ""
-            rate_sign = "+" if total_rate >= 0 else ""
-
-            text = (
-                "💼 <b>계좌 현황</b>\n\n"
-                f"💰 예수금: {deposit:,.0f}원\n"
-                f"📈 총평가: {total_eval:,.0f}원\n"
-                f"📊 총손익: {pnl_sign}{total_pnl:,.0f}원 ({rate_sign}{total_rate:.2f}%)\n"
-                f"🏷️ 보유종목: {pos_cnt}개\n"
-                f"🕐 기준시각: {snap_at}"
-            )
+            _is_test = is_test_mode(state.integrated_system_settings_cache)
+            acct_lines = await _build_account_brief_lines(snap, _is_test)
+            text = f"💼 <b>계좌 현황</b>\n\n{acct_lines}"
             await self._send(token, chat_id, text)
         except Exception as exc:
             await self._send(token, chat_id, f" 계좌 조회 오류: {str(exc)[:120]}")

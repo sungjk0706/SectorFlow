@@ -554,11 +554,23 @@ async def get_sell_history(*, today_only: bool = False, date_from: str = "", dat
 
 # ── 집계 API ─────────────────────────────────────────────────────────────────
 
-async def get_total_realized_pnl(*, today_only: bool = False, date_from: str = "", date_to: str = "", trade_mode: Optional[str] = None) -> int:
-    """실제 실현손익 합계 (현금 기준: 매도 실수령 - 매수 실지출)."""
+async def get_realized_pnl_summary(
+    *,
+    today_only: bool = False,
+    date_from: str = "",
+    date_to: str = "",
+    trade_mode: Optional[str] = None,
+) -> tuple[int, int]:
+    """실현손익 요약 — (pnl, buy_total) 반환 (P10 SSOT, P24 중복 제거).
+
+    pnl: 매도 실수령(total_amt) - 매수 실지출(buy_total_amt) 합계 (현금 기준).
+    buy_total: 매수 실지출(buy_total_amt) 합계 — 실현 수익률 분모.
+    프론트엔드 aggregatePnl(profit-shared.ts)과 동일 공식.
+    """
     await _ensure_loaded()
     async with _history_lock:
-        total = 0
+        pnl = 0
+        buy_total = 0
         for rec in _sell_history:
             if trade_mode is not None and rec["trade_mode"] != trade_mode:
                 continue
@@ -571,8 +583,17 @@ async def get_total_realized_pnl(*, today_only: bool = False, date_from: str = "
                     continue
                 if date_to and rec["date"] > date_to:
                     continue
-            total += (rec["total_amt"] or 0) - (rec["buy_total_amt"] or 0)
-        return total
+            pnl += (rec["total_amt"] or 0) - (rec["buy_total_amt"] or 0)
+            buy_total += (rec["buy_total_amt"] or 0)
+        return pnl, buy_total
+
+
+async def get_total_realized_pnl(*, today_only: bool = False, date_from: str = "", date_to: str = "", trade_mode: Optional[str] = None) -> int:
+    """실제 실현손익 합계 (현금 기준: 매도 실수령 - 매수 실지출). get_realized_pnl_summary 위 thin wrapper."""
+    pnl, _ = await get_realized_pnl_summary(
+        today_only=today_only, date_from=date_from, date_to=date_to, trade_mode=trade_mode,
+    )
+    return pnl
 
 
 async def get_daily_summary(
