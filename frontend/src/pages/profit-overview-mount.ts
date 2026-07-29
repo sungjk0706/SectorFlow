@@ -18,6 +18,7 @@ import {
   computeCumulativePnl,
   findBaseAssetForDate,
   filterTradeRows,
+  extractEarliestBaseAsset,
   type AccountValsParams,
 } from './profit-shared'
 import { getTradingToday } from '../utils/date'
@@ -48,6 +49,7 @@ export function renderAccountVals(state: ProfitOverviewState): void {
     testAccountValRefs: state.testAccountValRefs,
     holdingCountSpan: state.holdingCountSpan,
     holdingCountSpanTest: state.holdingCountSpanTest,
+    earliestBaseAsset: extractEarliestBaseAsset(hotState.dailySummary),
   }
   renderAccountValsShared(params)
 }
@@ -55,36 +57,38 @@ export function renderAccountVals(state: ProfitOverviewState): void {
 /* ── 필터된 뷰 데이터 갱신: 도넛 차트 + 업종별 종목 수익 동시 업데이트 ── */
 
 /** 도넛 차트 중앙 레이블 결정 — 활성 quickLabel 우선, 없으면 "누적 손익" (P21 투명성).
- *  quickLabel이 "당일"/"전일"/"5거래일"/"당월"/"누적" 중 하나일 때 해당 레이블 반환. */
+ *  quickLabel이 "당일"/"5거래일"/"당월"/"누적" 중 하나일 때 해당 레이블 반환 (전일 제거 — 다단계 1세션 결정 1). */
 function makeCenterTitle(quickLabel: string | undefined): string {
   if (!quickLabel) return '누적 손익'
   if (quickLabel === '당일') return '당일 손익'
-  if (quickLabel === '전일') return '전일 손익'
   if (quickLabel === '5거래일') return '5거래일 손익'
   if (quickLabel === '당월') return '당월 손익'
   return '누적 손익'
 }
 
-/** 도넛 차트 중앙 손익/수익률 계산 — 계좌 현황과 동일 SSOT 사용 (P10/P22).
+/** 도넛 차트 중앙 손익 계산 — 계좌 현황과 동일 SSOT 사용 (P10/P22).
  *  데이터 소스: filteredSellHistory (날짜 필터 적용).
  *  분모: 기초자산 분모 방식 — dateFrom 있을 때 findBaseAssetForDate로 전일 장마감 스냅샷 추출.
- *        baseAsset 없으면 첫 거래일 기초자산 = 초기 투자원금 (결정 6). */
+ *        baseAsset 없으면 earliestBaseAsset (둘 다 없으면 rate null — 도넛은 금액만 표시하므로 rate 미사용).
+ *  도넛 rate 제거 (다단계 2세션 결정 9) — 중앙에 손익 금액만 표시. */
 function buildDonutCenter(state: ProfitOverviewState): SectorDonutCenter {
   const hotState = hotStore.getState()
   const settings = globalSettingsManager.getSettings()
   const isTestMode = settings?.trade_mode === 'test'
+  const earliestBaseAsset = extractEarliestBaseAsset(hotState.dailySummary)
   const baseAsset = state.localDateFrom
     ? findBaseAssetForDate(hotState.dailySummary, state.localDateFrom)
     : undefined
-  const { pnl, rate } = computeCumulativePnl({
+  const { pnl } = computeCumulativePnl({
     sellHistory: state.filteredSellHistory,
     account: hotState.account,
     isTestMode,
     dateFrom: state.localDateFrom,
     dateTo: state.localDateTo,
     baseAsset,
+    earliestBaseAsset,
   })
-  return { pnl, rate, title: makeCenterTitle(state.localQuickLabel) }
+  return { pnl, title: makeCenterTitle(state.localQuickLabel) }
 }
 
 export function refreshFilteredViews(state: ProfitOverviewState): void {
@@ -227,7 +231,7 @@ export async function applyDateRange(state: ProfitOverviewState, from: string, t
     let actualFrom = from
     let actualTo = to
     const needsRangeFill = !from || !to
-    // 전일(days 없음) — 백엔드에서 단일 거래일 조회
+    // from/to 빈 문자열 + days 없음 — 백엔드에서 단일 거래일 조회 (빈 입력 폴백)
     if (needsRangeFill && days === undefined) {
       const prev = await api.getPrevTradingDay()
       if (seq !== state.applyDateRangeSeq) return
@@ -277,9 +281,9 @@ export function buildProfitChart(
 ): void {
   const todayStr = getTradingToday()
   const monthStart = todayStr.slice(0, 8) + '01'
+  // quickRange 4종 (전일 제거 — 다단계 1세션 결정 1, profit-detail 4카드와 일관성 — P23)
   const quickDateRangesConfig = [
     { label: '당일', from: todayStr, to: todayStr },
-    { label: '전일' }, // from/to는 백엔드 조회 후 채움 (주말/공휴일 건너뜀)
     { label: '5거래일', days: 5 },
     { label: '당월', from: monthStart, to: todayStr },
     { label: '누적', days: 0 },

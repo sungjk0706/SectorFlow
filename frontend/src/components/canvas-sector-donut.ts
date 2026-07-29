@@ -5,20 +5,17 @@
  * - 인터랙티브: 호버 시 업종명 + 손익 금액 툴팁
  */
 
-import { FONT_FAMILY, COLOR, RADIUS, SHADOW, BLUR, SURFACE_ALPHA, fmtWon, positionTooltip, computeWeightedRate } from './common/ui-styles'
+import { FONT_FAMILY, COLOR, RADIUS, SHADOW, BLUR, SURFACE_ALPHA, fmtWon, positionTooltip } from './common/ui-styles'
 
 // ── 타입 ────────────────────────────────────────────────────
 
 export interface SectorDonutRow {
   sector: string
   pnl: number
-  rate?: number
-  buyTotal?: number
 }
 
 export interface SectorDonutCenter {
   pnl?: number      // 중앙 손익금 (외부 주입 — SSOT, 미지정 시 data 합산)
-  rate?: number     // 중앙 수익률 (외부 주입 — SSOT, 미지정 시 data 기반 산출)
   title?: string    // 중앙 레이블 (예: "당월 손익", 미지정 시 "누적 손익")
 }
 
@@ -120,14 +117,12 @@ export function createSectorDonut(options: SectorDonutOptions): SectorDonutApi {
   function processData(rows: SectorDonutRow[]): SectorDonutRow[] {
     // 업종별 집계 (이미 집계된 데이터라고 가정, 중복 병합)
     const pnlMap = new Map<string, number>()
-    const buyTotalMap = new Map<string, number>()
     for (const r of rows) {
       pnlMap.set(r.sector, (pnlMap.get(r.sector) ?? 0) + r.pnl)
-      buyTotalMap.set(r.sector, (buyTotalMap.get(r.sector) ?? 0) + (r.buyTotal ?? 0))
     }
     // 절대값 기준 내림차순 정렬
     return Array.from(pnlMap.entries())
-      .map(([sector, pnl]) => ({ sector, pnl, buyTotal: buyTotalMap.get(sector) ?? 0 }))
+      .map(([sector, pnl]) => ({ sector, pnl }))
       .sort((a, b) => Math.abs(b.pnl) - Math.abs(a.pnl))
   }
 
@@ -206,22 +201,17 @@ export function createSectorDonut(options: SectorDonutOptions): SectorDonutApi {
       ctx.stroke()
     }
 
-    // 중액 텍스트 — 손익 + 수익률 (외부 주입 우선, 미지정 시 data 기반 산출 — P10 SSOT)
+    // 중앙 텍스트 — 손익 금액만 표시 (도넛 rate 제거 — 다단계 2세션 결정 9, buyTotal 분모 폐지)
     const sumPnl = processed.reduce((s, r) => s + r.pnl, 0)
-    const sumBuy = processed.reduce((s, r) => s + (r.buyTotal ?? 0), 0)
     const totalPnl = center?.pnl ?? sumPnl
-    const totalRate = center?.rate ?? computeWeightedRate(totalPnl, sumBuy)
     const centerTitle = center?.title ?? '누적 손익'
     ctx.fillStyle = totalPnl >= 0 ? COLOR.up : COLOR.down
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
     ctx.font = `bold 14px ${FONT_FAMILY}`
-    ctx.fillText(centerTitle, cx, cy - 18)
+    ctx.fillText(centerTitle, cx, cy - 10)
     ctx.font = `bold 16px ${FONT_FAMILY}`
-    ctx.fillText(fmtWon(totalPnl), cx, cy + 2)
-    ctx.font = `bold 12px ${FONT_FAMILY}`
-    const rateSign = totalRate >= 0 ? '+' : ''
-    ctx.fillText(`${rateSign}${totalRate.toFixed(2)}%`, cx, cy + 22)
+    ctx.fillText(fmtWon(totalPnl), cx, cy + 12)
 
   }
 
@@ -245,13 +235,6 @@ export function createSectorDonut(options: SectorDonutOptions): SectorDonutApi {
       item.appendChild(dot)
       item.appendChild(label)
       item.appendChild(val)
-      if (seg.row.rate !== undefined) {
-        const rateEl = document.createElement('span')
-        rateEl.style.cssText = `flex:none;font-size:10px;color:${isProfit ? COLOR.up : COLOR.down};opacity:0.8;`
-        const rateSign = seg.row.rate >= 0 ? '+' : ''
-        rateEl.textContent = `${rateSign}${seg.row.rate.toFixed(2)}%`
-        item.appendChild(rateEl)
-      }
       item.addEventListener('mouseenter', () => {
         hoveredIdx = i
         render()
@@ -321,7 +304,6 @@ export function createSectorDonut(options: SectorDonutOptions): SectorDonutApi {
             <span style="color:${COLOR.tertiary}">실현손익</span>
             <span style="color:${isProfit ? COLOR.up : COLOR.down};font-weight:600">${seg.row.pnl >= 0 ? '+' : ''}${fmtWon(seg.row.pnl)}</span>
           </div>
-          ${seg.row.rate !== undefined ? `<div style="display:flex;justify-content:space-between;gap:12px;"><span style="color:${COLOR.tertiary}">수익률</span><span style="color:${isProfit ? COLOR.up : COLOR.down};font-weight:600">${seg.row.rate >= 0 ? '+' : ''}${seg.row.rate.toFixed(2)}%</span></div>` : ''}
         `
         positionTooltip(tooltip, mx, my, cw, ch)
       } else {

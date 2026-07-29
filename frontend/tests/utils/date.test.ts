@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { getTradingToday, getTradingMonthStart, getLocalToday } from '../../src/utils/date'
+import { getTradingToday, getTradingMonthStart, getLocalToday, isPreOpenPhase } from '../../src/utils/date'
 import { uiStore } from '../../src/stores/uiStore'
 
 /**
@@ -106,5 +106,31 @@ describe('getLocalToday — 캘린더 날짜 (시간 무관, 유지)', () => {
     vi.setSystemTime(new Date('2026-07-30T07:00:00+09:00')) // 목요일 07:00
     setMarketPhase('장개시전', '장개시전')
     expect(getLocalToday()).toBe('2026-07-30') // 거래일 기준 아님 — 캘린더 날짜
+  })
+})
+
+describe('isPreOpenPhase — 당일 카드 개장 전 판정', () => {
+  it('개장 전(장개시전, 07:00) → true', () => {
+    vi.setSystemTime(new Date('2026-07-30T07:00:00+09:00')) // 목요일 07:00
+    setMarketPhase('장개시전', '장개시전')
+    expect(isPreOpenPhase()).toBe(true)
+  })
+
+  it('휴장일(토요일) → true', () => {
+    vi.setSystemTime(new Date('2026-08-01T14:00:00+09:00')) // 토요일 14:00
+    setMarketPhase('휴장일', '휴장일')
+    expect(isPreOpenPhase()).toBe(true)
+  })
+
+  it('장중(정규장, 10:00) → false', () => {
+    vi.setSystemTime(new Date('2026-07-30T10:00:00+09:00')) // 목요일 10:00
+    setMarketPhase('정규장', '메인마켓')
+    expect(isPreOpenPhase()).toBe(false)
+  })
+
+  it('장마감 후(장마감, 21:00) → false', () => {
+    vi.setSystemTime(new Date('2026-07-30T21:00:00+09:00')) // 목요일 21:00
+    setMarketPhase('장마감', '장마감')
+    expect(isPreOpenPhase()).toBe(false)
   })
 })

@@ -1,10 +1,10 @@
 // frontend/src/pages/profit-columns.ts
-// 수익 페이지 테이블 컬럼 정의 — profit-detail.ts가 사용하는 매수/매도/드릴다운 컬럼
+// 수익 페이지 테이블 컬럼 정의 — profit-detail.ts가 사용하는 매수/매도 컬럼
+// 드릴다운 컬럼 제거 (다단계 4세션 F-4 — 인라인 드릴다운 테이블 폐지, 공통 dialog.ts 모달로 전환)
 
 import type { ColumnDef } from '../components/common/data-table'
-import { pnlColor, fmtWon, fmtComma, createStockNameColumn, createCodeCell, createNumberCell, COLOR } from '../components/common/ui-styles'
+import { pnlColor, fmtWon, fmtComma, createStockNameColumn, createCodeCell, createNumberCell } from '../components/common/ui-styles'
 import { hotStore, normalizeStockCode } from '../stores/hotStore'
-import type { DailyDrilldownRow } from './profit-shared'
 
 /* ── 매수 컬럼 (9개) — 업종/매수순위 제거 (P24 단순성, 매수 후보 화면에서 이미 확인 가능) ── */
 export const BUY_COLS: ColumnDef<Record<string, unknown>>[] = [
@@ -82,32 +82,3 @@ export const SELL_COLS: ColumnDef<Record<string, unknown>>[] = [
   { key: 'fee', label: '수수료', align: 'right', type: 'fee', render: r => fmtWon(Number(r.fee ?? 0)) },
   { key: 'tax', label: '세금', align: 'right', type: 'tax', render: r => fmtWon(Number(r.tax ?? 0)) },
 ]
-
-/* ── 드릴다운 컬럼 (팩토리 — onDateClick 콜백 주입) ── */
-export function createDrilldownCols(onDateClick: (date: string) => void): ColumnDef<DailyDrilldownRow>[] {
-  return [
-    { key: 'date', label: '날짜', align: 'center', type: 'date_short', render: r => {
-      const span = document.createElement('span')
-      span.style.cursor = 'pointer'
-      span.style.color = COLOR.down
-      span.style.textDecoration = 'underline'
-      span.textContent = r.date.slice(5) // MM-DD
-      span.addEventListener('click', () => onDateClick(r.date))
-      return span
-    }},
-    { key: 'sellCount', label: '매도건수', align: 'right', type: 'sell_count', render: r => String(r.sellCount) },
-    { key: 'buyCount', label: '매수건수', align: 'right', type: 'buy_count', render: r => String(r.buyCount) },
-    { key: 'pnl', label: '당일손익', align: 'right', type: 'pnl_won', render: r => {
-      const span = document.createElement('span')
-      span.style.color = pnlColor(r.pnl)
-      span.textContent = fmtWon(r.pnl)
-      return span
-    }},
-    { key: 'rate', label: '당일수익률', align: 'right', type: 'pnl_rate', render: r => {
-      const span = document.createElement('span')
-      span.style.color = pnlColor(r.rate)
-      span.textContent = `${r.rate > 0 ? '+' : ''}${r.rate.toFixed(2)}%`
-      return span
-    }},
-  ]
-}

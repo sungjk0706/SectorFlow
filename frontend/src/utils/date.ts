@@ -27,15 +27,22 @@ function _prevWeekday(yyyyMmDd: string): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
+/** 당일 카드 개장 전(08:00 이전 또는 휴일) 여부 — 당일 카드 0원 강제 판정.
+ *  PRE_OPEN_PHASES (기존 상수) 재사용 — getTradingToday 판정과 동일 집합 (P23 일관성).
+ *  P10 SSOT — phase 판정은 uiStore.marketPhase 단일 소스. */
+export function isPreOpenPhase(): boolean {
+  const phase = uiStore.getState().marketPhase
+  return PRE_OPEN_PHASES.has(phase.krx) && PRE_OPEN_PHASES.has(phase.nxt)
+}
+
 /** 거래일 기준 오늘 날짜 (YYYY-MM-DD).
  *  - 개장 전(장개시전/휴장일, 08:00 이전 또는 휴일): 직전 평일 반환
  *    (사용자 모델: 20:00~익일 08:00 = 당일 유지 → 개장 전에는 전일 성과 표시)
  *  - 장중·장마감 후(08:00~24:00): 오늘 반환 (장마감 후에도 당일 성과 유지)
  *  P10 SSOT — uiStore.marketPhase 기반 판정, 프론트 독립 시간 계산 금지. */
 export function getTradingToday(): string {
-  const phase = uiStore.getState().marketPhase
   const calendarToday = getLocalToday()
-  if (PRE_OPEN_PHASES.has(phase.krx) && PRE_OPEN_PHASES.has(phase.nxt)) {
+  if (isPreOpenPhase()) {
     return _prevWeekday(calendarToday)
   }
   return calendarToday

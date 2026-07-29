@@ -281,41 +281,52 @@ describe('computeCumulativePnl — 테스트모드 (분모=누적투자금)', ()
     expect(result.rate).toBe(-10)  // -100000 / 1000000 * 100 (매수원가 1000000 아님)
   })
 
-  it('account 누락 시 initial_deposit 폴백', () => {
+  it('account 누락 시 rate=null (P20 폴백 금지 — initial_deposit 폴백 제거, 다단계 1세션 결정 5)', () => {
     const sells = [makeSellRow('2026-07-29', -100000, 1000000)]
     const result = computeCumulativePnl({
       sellHistory: sells, account: null, isTestMode: true,
     })
     expect(result.pnl).toBe(-100000)
-    expect(result.rate).toBe(0)  // 분모 0 → 0
+    expect(result.rate).toBeNull()  // 분모 undefined → null (P20)
   })
 })
 
-describe('computeCumulativePnl — 실전모드 (분모=매수원가 합계)', () => {
-  it('단일 매도 — 수익률 = realized_pnl / buy_total_amt × 100', () => {
+describe('computeCumulativePnl — 실전모드 (분모=earliestBaseAsset — buyTotal 폐지, 다단계 1세션 결정 5)', () => {
+  it('단일 매도 + earliestBaseAsset 전달 — 수익률 = realized_pnl / earliestBaseAsset × 100', () => {
     const sells = [makeSellRow('2026-07-29', -100000, 1000000)]
     const result = computeCumulativePnl({
       sellHistory: sells, account: null, isTestMode: false,
+      earliestBaseAsset: 1000000,
     })
     expect(result.pnl).toBe(-100000)
     expect(result.rate).toBe(-10)  // -100000 / 1000000 * 100
   })
 
-  it('다중 매도 합산 — 분모는 buy_total_amt 합계', () => {
+  it('다중 매도 합산 + earliestBaseAsset — 분모=earliestBaseAsset (buy_total_amt 폐지)', () => {
     const sells = [
       makeSellRow('2026-07-28', -50000, 500000),
       makeSellRow('2026-07-29', -50000, 500000),
     ]
     const result = computeCumulativePnl({
       sellHistory: sells, account: null, isTestMode: false,
+      earliestBaseAsset: 1000000,
     })
     expect(result.pnl).toBe(-100000)
     expect(result.rate).toBe(-10)  // -100000 / 1000000 * 100
   })
+
+  it('earliestBaseAsset 미전달 → rate=null (P20 폴백 금지 — buyTotal로 덮지 않음)', () => {
+    const sells = [makeSellRow('2026-07-29', -100000, 1000000)]
+    const result = computeCumulativePnl({
+      sellHistory: sells, account: null, isTestMode: false,
+    })
+    expect(result.pnl).toBe(-100000)
+    expect(result.rate).toBeNull()  // earliestBaseAsset 없으면 null (P20)
+  })
 })
 
 describe('computeCumulativePnl — 날짜 필터 (P10 SSOT, 도넛 차트와 계좌현황 공통)', () => {
-  it('dateFrom/dateTo 적용 시 범위 내 손익만 집계 + 테스트모드 분모=누적투자금 (결정 6 baseAsset 미전달)', () => {
+  it('dateFrom/dateTo 적용 시 범위 내 손익만 집계 + 테스트모드 분모=누적투자금 (earliestBaseAsset 미전달 시 rate=null)', () => {
     const sells = [
       makeSellRow('2026-07-27', -30000, 300000),
       makeSellRow('2026-07-28', -50000, 500000),
@@ -326,11 +337,26 @@ describe('computeCumulativePnl — 날짜 필터 (P10 SSOT, 도넛 차트와 계
       dateFrom: '2026-07-28', dateTo: '2026-07-29',
     })
     expect(result.pnl).toBe(-70000)  // -50000 + -20000
-    // 결정 6: baseAsset 미전달 시 첫 거래일 기초자산 = 초기 투자원금 (누적투자금 분모, 회전율 희석 방지)
+    // baseAsset/earliestBaseAsset 미전달 시 rate=null (P20 폴백 금지 — initialInvestment로 덮지 않음)
+    expect(result.rate).toBeNull()
+  })
+
+  it('dateFrom/dateTo + earliestBaseAsset 전달 → 분모=earliestBaseAsset', () => {
+    const sells = [
+      makeSellRow('2026-07-27', -30000, 300000),
+      makeSellRow('2026-07-28', -50000, 500000),
+      makeSellRow('2026-07-29', -20000, 200000),
+    ]
+    const result = computeCumulativePnl({
+      sellHistory: sells, account: makeAccount(1000000), isTestMode: true,
+      dateFrom: '2026-07-28', dateTo: '2026-07-29',
+      earliestBaseAsset: 1000000,
+    })
+    expect(result.pnl).toBe(-70000)
     expect(result.rate).toBe(-7)     // -70000 / 1000000 * 100
   })
 
-  it('빈 sellHistory → pnl=0, rate=0', () => {
+  it('빈 sellHistory → pnl=0, rate=0 (누적투자금 분모 정상)', () => {
     const result = computeCumulativePnl({
       sellHistory: [], account: makeAccount(1000000), isTestMode: true,
     })
@@ -339,9 +365,10 @@ describe('computeCumulativePnl — 날짜 필터 (P10 SSOT, 도넛 차트와 계
   })
 })
 
-describe('computeCumulativePnl — 분모 규칙 (기초자산 분모 방식 — 결정 6 baseAsset 미전달 시 초기 투자원금)', () => {
-  // 테스트모드: 누적·기간 모두 baseAsset 미전달 시 분모=accumulated_investment (결정 6 첫 거래일 기초자산 = 초기 투자원금)
-  // 실전모드: baseAsset 미전달 시 분모=buy_total_amt (결정 6 첫 거래일 기초자산 = 초기 투자원금)
+describe('computeCumulativePnl — 분모 규칙 (earliestBaseAsset 폴백 — 다단계 1세션 결정 5, P20 폴백 금지)', () => {
+  // 테스트모드 누적: 분모=accumulated_investment (initial_deposit 폴백 제거 — null 시 rate null)
+  // 실전모드 누적: 분모=earliestBaseAsset (buyTotal 폐지)
+  // 기간 한정: baseAsset ?? earliestBaseAsset (둘 다 없으면 rate null)
 
   it('누적 모드 + 테스트모드 → 분모=누적투자금 (전체 투자원금 대비)', () => {
     const sells = [
@@ -354,10 +381,7 @@ describe('computeCumulativePnl — 분모 규칙 (기초자산 분모 방식 —
     expect(result.rate).toBe(-5)  // -100000 / 2000000 * 100 (누적투자금 분모)
   })
 
-  it('기간 한정 모드 + 테스트모드 + baseAsset 미전달 → 분모=누적투자금 (결정 6 첫 거래일 기초자산 = 초기 투자원금)', () => {
-    // 100만원 투자원금으로 68건 회전(매수원가 합 931만원) 상황 재현:
-    // B 방식(buy_total_amt 분모)이면 -100000/1000000=-10%가 되지만,
-    // 결정 6(baseAsset 미전달 시 초기 투자원금 분모)은 -100000/2000000=-5%로 실제 자산 대비 손익 정확 반영
+  it('기간 한정 모드 + 테스트모드 + baseAsset/earliestBaseAsset 미전달 → rate=null (P20)', () => {
     const sells = [
       makeSellRow('2026-07-28', -50000, 500000),
       makeSellRow('2026-07-29', -50000, 500000),
@@ -366,10 +390,23 @@ describe('computeCumulativePnl — 분모 규칙 (기초자산 분모 방식 —
       sellHistory: sells, account: makeAccount(2000000), isTestMode: true,
       dateFrom: '2026-07-28', dateTo: '2026-07-29',
     })
-    expect(result.rate).toBe(-5)  // -100000 / 2000000 * 100 (누적투자금 분모, buy_total_amt 아님)
+    expect(result.rate).toBeNull()  // initialInvestment 폴백 제거 — null (P20)
   })
 
-  it('기간 한정 모드 + 실전모드 + baseAsset 미전달 → 분모=해당 기간 buy_total_amt (결정 6 첫 거래일 기초자산 = 초기 투자원금)', () => {
+  it('기간 한정 모드 + 테스트모드 + earliestBaseAsset 전달 → 분모=earliestBaseAsset', () => {
+    const sells = [
+      makeSellRow('2026-07-28', -50000, 500000),
+      makeSellRow('2026-07-29', -50000, 500000),
+    ]
+    const result = computeCumulativePnl({
+      sellHistory: sells, account: makeAccount(2000000), isTestMode: true,
+      dateFrom: '2026-07-28', dateTo: '2026-07-29',
+      earliestBaseAsset: 2000000,
+    })
+    expect(result.rate).toBe(-5)  // -100000 / 2000000 * 100 (earliestBaseAsset 분모)
+  })
+
+  it('기간 한정 모드 + 실전모드 + baseAsset/earliestBaseAsset 미전달 → rate=null (P20, buyTotal 폐지)', () => {
     const sells = [
       makeSellRow('2026-07-28', -50000, 500000),
       makeSellRow('2026-07-29', -50000, 500000),
@@ -378,10 +415,23 @@ describe('computeCumulativePnl — 분모 규칙 (기초자산 분모 방식 —
       sellHistory: sells, account: null, isTestMode: false,
       dateFrom: '2026-07-28', dateTo: '2026-07-29',
     })
-    expect(result.rate).toBe(-10)  // -100000 / 1000000 * 100 (실전 buy_total_amt 분모)
+    expect(result.rate).toBeNull()  // buyTotal 폐지 — null (P20)
   })
 
-  it('dateFrom만 있어도 테스트모드 분모=누적투자금 (결정 6 일관성)', () => {
+  it('기간 한정 모드 + 실전모드 + earliestBaseAsset 전달 → 분모=earliestBaseAsset', () => {
+    const sells = [
+      makeSellRow('2026-07-28', -50000, 500000),
+      makeSellRow('2026-07-29', -50000, 500000),
+    ]
+    const result = computeCumulativePnl({
+      sellHistory: sells, account: null, isTestMode: false,
+      dateFrom: '2026-07-28', dateTo: '2026-07-29',
+      earliestBaseAsset: 1000000,
+    })
+    expect(result.rate).toBe(-10)  // -100000 / 1000000 * 100 (earliestBaseAsset 분모)
+  })
+
+  it('dateFrom만 있어도 테스트모드 + earliestBaseAsset → 분모=earliestBaseAsset', () => {
     const sells = [
       makeSellRow('2026-07-27', -30000, 300000),
       makeSellRow('2026-07-28', -50000, 500000),
@@ -389,9 +439,10 @@ describe('computeCumulativePnl — 분모 규칙 (기초자산 분모 방식 —
     const result = computeCumulativePnl({
       sellHistory: sells, account: makeAccount(2000000), isTestMode: true,
       dateFrom: '2026-07-28',
+      earliestBaseAsset: 2000000,
     })
     expect(result.pnl).toBe(-50000)
-    expect(result.rate).toBe(-2.5)  // -50000 / 2000000 * 100 (누적투자금 분모)
+    expect(result.rate).toBe(-2.5)  // -50000 / 2000000 * 100 (earliestBaseAsset 분모)
   })
 })
 
@@ -435,14 +486,14 @@ describe('computeCumulativePnl — 기초자산 분모 (baseAsset 전달 시 —
     expect(result.rate).toBe(-5)  // -100000 / 2000000 * 100 (누적 모드 = 초기 투자원금 분모)
   })
 
-  it('baseAsset=0 전달 → 분모=0 → rate=0 (?? semantics: 0은 유효값, findBaseAssetForDate는 0 반환 안 함)', () => {
+  it('baseAsset=0 전달 → 분모=0 → rate=null (0은 falsy → null 반환, P20 0 분모 금지)', () => {
     const sells = [makeSellRow('2026-07-29', -100000, 1000000)]
     const result = computeCumulativePnl({
       sellHistory: sells, account: makeAccount(2000000), isTestMode: true,
       dateFrom: '2026-07-29', dateTo: '2026-07-29',
-      baseAsset: 0,  // ?? semantics: 0은 null/undefined 아니므로 유효값. findBaseAssetForDate는 0 행 건너뛰므로 실제 발생 안 함
+      baseAsset: 0,  // 0은 falsy → null 반환 (0 분모 division 금지)
     })
-    expect(result.rate).toBe(0)  // -100000 / 0 → computeWeightedRate 가드로 0
+    expect(result.rate).toBeNull()  // 0 분모 → null (P20)
   })
 })
 

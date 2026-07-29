@@ -1,12 +1,11 @@
 // frontend/src/pages/profit-detail-mount.ts
-// 수익 상세 페이지 — mount 헬퍼 함수들 + 초기화 + rAF/구독 (F-05 분할, P24 단순성)
-// profit-detail.ts에서 이관. 순수 이동, 동작 변경 없음.
+// 수익 상세 페이지 — mount 헬퍼 함수들 + 초기화 + rAF/구독 (F-05 분할 + 다단계 4세션 F-4 모달 드릴다운).
+// 인라인 드릴다운 토글 제거 → 카드 클릭 시 공통 dialog.ts 모달 오픈 (다단계 1세션 결정 2).
 
 import { FONT_SIZE, COLOR, RADIUS, SHADOW } from '../components/common/ui-styles'
 import { createSearchInput } from '../components/common/search-input'
-import { createTabBar, createToggleSelectBtn } from '../components/common/button'
+import { createTabBar } from '../components/common/button'
 import { createDateRangeInput, type DateRangeInputApi } from '../components/common/date-range-input'
-import { api } from '../api/client'
 import { hotStore } from '../stores/hotStore'
 import { globalSettingsManager } from '../settings'
 import {
@@ -18,17 +17,20 @@ import {
 import { loadProfitDetailView } from './profit-detail-view'
 import {
   showTable,
-  showDrilldown,
   filterByDate,
   filterByDateRange,
   updateCardSelection,
-  updateDrilldownBtnStyle,
   updateTabLabels,
   persistViewState,
+  openTodayDrilldown,
+  openFivedayDrilldown,
+  openMonthDrilldown,
+  openCumulativeDrilldown,
 } from './profit-detail-display'
+import { extractEarliestBaseAsset } from './profit-shared'
 import type { ProfitDetailState } from './profit-detail'
 
-/* ── mount 헬퍼: 요약 카드 행 (당일/전일/5거래일/당월/누적 손익) ── */
+/* ── mount 헬퍼: 요약 카드 행 (당일/5거래일/당월/누적 손익 — 전일 카드 제거, 다단계 1세션 결정 1) ── */
 export function buildSummaryRow(state: ProfitDetailState, todayStr: string, monthStart: string, monthEnd: string): HTMLDivElement {
   const summaryRow = document.createElement('div')
   Object.assign(summaryRow.style, { display: 'flex', gap: '8px', padding: '8px 4px', flex: 'none', borderBottom: '1px solid ' + COLOR.borderDark })
@@ -37,29 +39,14 @@ export function buildSummaryRow(state: ProfitDetailState, todayStr: string, mont
     onTodayClick: () => {
       state.selectedView = 'today'
       updateCardSelection(state)
-      updateDrilldownBtnStyle(state, false)
       filterByDate(state, todayStr)
       persistViewState(state)
-    },
-    onPrevClick: async () => {
-      state.selectedView = 'prev'
-      updateCardSelection(state)
-      updateDrilldownBtnStyle(state, false)
-      try {
-        const prev = await api.getPrevTradingDay()
-        // await 중 다른 카드/필터 클릭 시 덮어쓰기 방지
-        if (state.selectedView !== 'prev') return
-        filterByDate(state, prev.date)
-        persistViewState(state)
-      } catch (err) {
-        console.error('[profit-detail] prev-trading-day fetch failed:', err)
-      }
+      openTodayDrilldown(state)
     },
     onFivedayClick: () => {
       state.selectedView = 'fiveday'
       updateCardSelection(state)
-      updateDrilldownBtnStyle(state, false)
-      // 최근 5거래일 날짜 범위로 드릴다운 필터링 (P10 SSOT — getRecent5TradingDays 공유)
+      // 최근 5거래일 날짜 범위로 테이블 필터링 (P10 SSOT — getRecent5TradingDays 공유)
       const recent5 = getRecent5TradingDays(hotStore.getState().dailySummary)
       if (recent5.length > 0) {
         const from = recent5[recent5.length - 1]
@@ -70,49 +57,30 @@ export function buildSummaryRow(state: ProfitDetailState, todayStr: string, mont
         filterByDateRange(state, '', '')
       }
       persistViewState(state)
+      openFivedayDrilldown()
     },
     onMonthClick: () => {
       state.selectedView = 'month'
       updateCardSelection(state)
-      updateDrilldownBtnStyle(state, false)
       filterByDateRange(state, monthStart, monthEnd)
       persistViewState(state)
+      openMonthDrilldown()
     },
     onTotalClick: () => {
       state.selectedView = 'total'
       updateCardSelection(state)
-      updateDrilldownBtnStyle(state, false)
       if (state.dateRangeInput) state.dateRangeInput.setValue('', '')
-      state.drilldownActive = false
       showTable(state)
       updateTabLabels(state)
       persistViewState(state)
+      void openCumulativeDrilldown(state)
     },
   })
 
   return summaryRow
 }
 
-/* ── mount 헬퍼: 드릴다운 토글 버튼 클릭 콜백 ── */
-function onDrilldownToggle(state: ProfitDetailState): void {
-  state.drilldownActive = !state.drilldownActive
-  if (state.drilldownActive) {
-    state.selectedView = 'drilldown'
-    updateCardSelection(state)
-    updateDrilldownBtnStyle(state, true)
-    showDrilldown(state)
-    persistViewState(state)
-  } else {
-    state.selectedView = null
-    updateCardSelection(state)
-    updateDrilldownBtnStyle(state, false)
-    showTable(state)
-    updateTabLabels(state)
-    persistViewState(state)
-  }
-}
-
-/* ── mount 헬퍼: 필터 행 (날짜 범위 + 드릴다운 토글 + 종목 검색) ── */
+/* ── mount 헬퍼: 필터 행 (날짜 범위 + 종목 검색 — 드릴다운 토글 제거, 다단계 1세션 결정 2) ── */
 export function buildFilterRow(state: ProfitDetailState, monthStart: string, todayStr: string): HTMLDivElement {
   const filterRow = document.createElement('div')
   Object.assign(filterRow.style, { display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 4px', borderBottom: '1px solid ' + COLOR.borderLight, flexWrap: 'wrap' })
@@ -124,20 +92,12 @@ export function buildFilterRow(state: ProfitDetailState, monthStart: string, tod
     onChange: () => {
       state.selectedView = null
       updateCardSelection(state)
-      updateDrilldownBtnStyle(state, false)
       showTable(state)
       updateTabLabels(state)
       persistViewState(state)
     },
   })
   filterRow.appendChild(state.dateRangeInput.el)
-
-  state.drilldownBtnHandle = createToggleSelectBtn({
-    label: '당월 거래일별 요약',
-    active: false,
-    onClick: () => onDrilldownToggle(state),
-  })
-  filterRow.appendChild(state.drilldownBtnHandle.el)
 
   const stockSep = document.createElement('span')
   stockSep.textContent = '|'
@@ -169,7 +129,6 @@ export function buildTabRow(state: ProfitDetailState): HTMLDivElement {
     activeId: state.activeTab,
     onChange: (id) => {
       state.activeTab = id as 'buy' | 'sell'
-      state.drilldownActive = false
       showTable(state)
       updateTabLabels(state)
     },
@@ -184,21 +143,17 @@ export function buildTabRow(state: ProfitDetailState): HTMLDivElement {
   return state.tabRow
 }
 
-/* ── mount 헬퍼: 테이블 컨테이너 (테이블 뷰 + 드릴다운 뷰) ── */
+/* ── mount 헬퍼: 테이블 컨테이너 (테이블 뷰만 — 인라인 드릴다운 뷰 제거) ── */
 export function buildTableContainer(state: ProfitDetailState): HTMLDivElement {
   state.tableContainer = document.createElement('div')
   Object.assign(state.tableContainer.style, { flex: '1', padding: '0 4px', overflow: 'auto' })
 
   state.tableViewContainer = document.createElement('div')
-  state.drilldownViewContainer = document.createElement('div')
-  state.drilldownViewContainer.style.display = 'none'
-
   state.tableContainer.appendChild(state.tableViewContainer)
-  state.tableContainer.appendChild(state.drilldownViewContainer)
   return state.tableContainer
 }
 
-/* ── mount 헬퍼: 통계 정보 행 (총 건수/매수금액/매도금액/실현손익/승률/수익률) ── */
+/* ── mount 헬퍼: 통계 정보 행 (총 건수/매수금액/매도금액/실현손익/수익률/승률) ── */
 export function buildStatRow(state: ProfitDetailState): HTMLDivElement {
   const statRow = document.createElement('div')
   Object.assign(statRow.style, { display: 'flex', gap: '8px', padding: '6px 4px', borderTop: '1px solid ' + COLOR.borderLight, flex: 'none' })
@@ -211,7 +166,7 @@ export function buildStatRow(state: ProfitDetailState): HTMLDivElement {
   for (let i = 0; i < 6; i++) {
     // P25: 카드 단위 격리 — 한 카드 생성 throw 시 다음 카드 계속 렌더링.
     // statEls/statCardEls push는 인덱스 기반(state.statCountEl = statEls[0] 등)이므로
-    // 실패 시 더미 push로 인덱스 정합성 유지 (P22).
+    // 더미 push로 인덱스 정합성 유지 (P22). buildSummaryCard 패턴과 일치 (P23).
     try {
       const stat = document.createElement('div')
       stat.style.cssText = STAT_STYLE
@@ -260,17 +215,10 @@ export function restoreInitialView(state: ProfitDetailState, todayStr: string, i
   const savedView = loadProfitDetailView()
   if (savedView) {
     state.selectedView = savedView.selectedView
-    state.drilldownActive = savedView.drilldownActive
     if (state.dateRangeInput) state.dateRangeInput.setValue(savedView.from, savedView.to)
     updateCardSelection(state)
-    if (savedView.drilldownActive) {
-      updateDrilldownBtnStyle(state, true)
-      showDrilldown(state)
-    } else {
-      updateDrilldownBtnStyle(state, false)
-      showTable(state)
-      updateTabLabels(state)
-    }
+    showTable(state)
+    updateTabLabels(state)
   } else {
     state.selectedView = 'today'
     updateCardSelection(state)
@@ -281,6 +229,8 @@ export function restoreInitialView(state: ProfitDetailState, todayStr: string, i
       initState.dailySummary, state.summaryCardEls,
       state.sellHistory, initState.account,
       globalSettingsManager.getSettings()?.trade_mode === 'test',
+      initState.positions, initState.sectorStocks,
+      extractEarliestBaseAsset(initState.dailySummary),
     )
   }
 }
@@ -292,17 +242,16 @@ export function flushDirtyRender(state: ProfitDetailState): void {
 
   if (state.dirtyHistory) {
     state.dirtyHistory = false
-    if (state.drilldownActive) {
-      showDrilldown(state)
-    } else {
-      showTable(state)
-    }
+    showTable(state)
     updateTabLabels(state)
     if (state.summaryCardEls) {
+      const hotState = hotStore.getState()
       updateSummaryCards(
-        hotStore.getState().dailySummary, state.summaryCardEls,
-        state.sellHistory, hotStore.getState().account,
+        hotState.dailySummary, state.summaryCardEls,
+        state.sellHistory, hotState.account,
         globalSettingsManager.getSettings()?.trade_mode === 'test',
+        hotState.positions, hotState.sectorStocks,
+        extractEarliestBaseAsset(hotState.dailySummary),
       )
     }
   }
@@ -310,25 +259,20 @@ export function flushDirtyRender(state: ProfitDetailState): void {
   if (state.dirtySummary) {
     state.dirtySummary = false
     if (state.summaryCardEls) {
+      const hotState = hotStore.getState()
       updateSummaryCards(
-        hotStore.getState().dailySummary, state.summaryCardEls,
-        state.sellHistory, hotStore.getState().account,
+        hotState.dailySummary, state.summaryCardEls,
+        state.sellHistory, hotState.account,
         globalSettingsManager.getSettings()?.trade_mode === 'test',
+        hotState.positions, hotState.sectorStocks,
+        extractEarliestBaseAsset(hotState.dailySummary),
       )
-    }
-    // 드릴다운이 dailySummary 기반이므로 summary 변경 시 드릴다운도 갱신 (P10 SSOT)
-    if (state.drilldownActive) {
-      showDrilldown(state)
     }
   }
 
   if (state.dirtySectorStocks) {
     state.dirtySectorStocks = false
-    if (state.drilldownActive) {
-      showDrilldown(state)
-    } else {
-      showTable(state)
-    }
+    showTable(state)
   }
 }
 

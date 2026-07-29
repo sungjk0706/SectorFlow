@@ -3,7 +3,7 @@
 
 import { FONT_SIZE, FONT_WEIGHT, pnlColor, fmtWon, COLOR, RADIUS, SHADOW, computeWeightedRate } from '../components/common/ui-styles'
 import { normalizeStockCode } from '../stores/hotStore'
-import { getTradingToday } from '../utils/date'
+import { getTradingToday, isPreOpenPhase } from '../utils/date'
 import type { AccountSnapshot, Position, SectorStock } from '../types'
 import type { SectorDonutRow } from '../components/canvas-sector-donut'
 import { assignSectorColors } from '../components/canvas-sector-donut'
@@ -40,13 +40,52 @@ export interface DailyDrilldownRow {
   rate: number
 }
 
+/* ── 당일 드릴다운 행 (실현/평가 영역 구분 — P22 정합성: 실현+평가=당일 카드 총액) ── */
+
+export interface TodayDrilldownRealizedRow {
+  stk_cd: string
+  stk_nm: string
+  realized_pnl: number
+}
+
+export interface TodayDrilldownEvalRow {
+  stk_cd: string
+  stk_nm: string
+  pnl: number
+  rate: number
+  evalAmt: number
+}
+
+export interface TodayDrilldownResult {
+  realizedRows: TodayDrilldownRealizedRow[]
+  evalRows: TodayDrilldownEvalRow[]
+  realizedTotal: number
+  evalTotal: number
+}
+
+/* ── 누적 드릴다운 (월별 누적 손익 + 입금 이력 — P10 SSOT) ── */
+
+export interface CumulativeMonthlyRow {
+  yearMonth: string
+  pnl: number
+}
+
+export interface DepositHistoryRow {
+  date: string
+  daily_deposit: number
+}
+
+export interface CumulativeDrilldownResult {
+  monthlyRows: CumulativeMonthlyRow[]
+  depositHistory: DepositHistoryRow[]
+}
+
 /* ── 요약 카드 공통 함수 ── */
 
 export interface SummaryCardEls {
   todayPnlEl: HTMLSpanElement
   todayRateEl: HTMLSpanElement
-  prevPnlEl: HTMLSpanElement
-  prevRateEl: HTMLSpanElement
+  todaySubTextEl: HTMLSpanElement
   fivedayPnlEl: HTMLSpanElement
   fivedayRateEl: HTMLSpanElement
   monthPnlEl: HTMLSpanElement
@@ -54,7 +93,6 @@ export interface SummaryCardEls {
   totalPnlEl: HTMLSpanElement
   totalRateEl: HTMLSpanElement
   todayCard: HTMLDivElement
-  prevCard: HTMLDivElement
   fivedayCard: HTMLDivElement
   monthCard: HTMLDivElement
   totalCard: HTMLDivElement
@@ -62,21 +100,22 @@ export interface SummaryCardEls {
 
 export interface SummaryCardCallbacks {
   onTodayClick?: () => void
-  onPrevClick?: () => void
   onFivedayClick?: () => void
   onMonthClick?: () => void
   onTotalClick?: () => void
 }
 
-const SUMMARY_CARD_STYLE = `flex:1;background:${COLOR.surfaceLight};border:1px solid ${COLOR.borderLight};border-radius:${RADIUS.sm};box-shadow:${SHADOW.card};padding:6px 12px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;`
-const SUMMARY_CARD_TITLES = ['당일 손익', '전일 손익', '5거래일 손익', '당월 손익', '누적 손익']
+const SUMMARY_CARD_STYLE = `flex:1;background:${COLOR.surfaceLight};border:1px solid ${COLOR.borderLight};border-radius:${RADIUS.sm};box-shadow:${SHADOW.card};padding:6px 12px;display:flex;flex-direction:column;justify-content:center;cursor:pointer;`
+const SUMMARY_CARD_TITLES = ['당일 손익', '5거래일 손익', '당월 손익', '누적 손익']
 
-/** 요약 카드 1개 DOM 생성. 실패 시 null 반환 (P25 격리 + P22 인덱스 정합성 — 호출부에서 더미 push). */
+/** 요약 카드 1개 DOM 생성. 실패 시 null 반환 (P25 격리 + P22 인덱스 정합성 — 호출부에서 더미 push).
+ *  당일 카드(isToday=true)에만 서브 텍스트 요소(개장 전 표시용) 추가 — F-3-c. */
 function buildSummaryCard(
   container: HTMLElement,
   title: string,
   handler: (() => void) | undefined,
-): { pnlEl: HTMLSpanElement; rateEl: HTMLSpanElement; cardEl: HTMLDivElement } | null {
+  isToday: boolean,
+): { pnlEl: HTMLSpanElement; rateEl: HTMLSpanElement; cardEl: HTMLDivElement; subTextEl?: HTMLSpanElement } | null {
   try {
     const card = document.createElement('div')
     card.style.cssText = SUMMARY_CARD_STYLE
@@ -101,30 +140,42 @@ function buildSummaryCard(
     valRow.appendChild(rateEl)
     card.appendChild(titleEl)
     card.appendChild(valRow)
+
+    let subTextEl: HTMLSpanElement | undefined
+    if (isToday) {
+      subTextEl = document.createElement('span')
+      Object.assign(subTextEl.style, { fontSize: FONT_SIZE.label, color: COLOR.tertiary, marginTop: '2px', minHeight: '1em' })
+      subTextEl.textContent = ''
+      card.appendChild(subTextEl)
+    }
+
     container.appendChild(card)
-    return { pnlEl, rateEl, cardEl: card }
+    return { pnlEl, rateEl, cardEl: card, subTextEl }
   } catch (e) {
     console.error('[profit-shared] summary card build error', e)
     return null
   }
 }
 
-/** 요약 카드 5개(당일/전일/5거래일/당월/누적 손익) DOM 생성, 클릭 콜백 주입, 요소 참조 반환 */
+/** 요약 카드 4개(당일/5거래일/당월/누적 손익) DOM 생성, 클릭 콜백 주입, 요소 참조 반환.
+ *  전일 카드 제거 (다단계 1세션 결정 1). 당일 카드에 서브 텍스트 요소 포함 (F-3-c). */
 export function createSummaryCards(container: HTMLElement, callbacks: SummaryCardCallbacks = {}): SummaryCardEls {
-  const clickHandlers = [callbacks.onTodayClick, callbacks.onPrevClick, callbacks.onFivedayClick, callbacks.onMonthClick, callbacks.onTotalClick]
+  const clickHandlers = [callbacks.onTodayClick, callbacks.onFivedayClick, callbacks.onMonthClick, callbacks.onTotalClick]
 
   const pnlEls: HTMLSpanElement[] = []
   const rateEls: HTMLSpanElement[] = []
   const cardEls: HTMLDivElement[] = []
+  let todaySubTextEl: HTMLSpanElement | undefined
 
-  for (let i = 0; i < 5; i++) {
+  for (let i = 0; i < 4; i++) {
     // P25: 카드 단위 격리 — 한 카드 생성 throw 시 다음 카드 계속 렌더링.
     // 실패 시 더미 push로 인덱스 정합성 유지 (P22). buildStatRow 패턴과 일치 (P23).
-    const built = buildSummaryCard(container, SUMMARY_CARD_TITLES[i], clickHandlers[i])
+    const built = buildSummaryCard(container, SUMMARY_CARD_TITLES[i], clickHandlers[i], i === 0)
     if (built) {
       pnlEls.push(built.pnlEl)
       rateEls.push(built.rateEl)
       cardEls.push(built.cardEl)
+      if (i === 0 && built.subTextEl) todaySubTextEl = built.subTextEl
     } else {
       const dummyPnl = document.createElement('span')
       dummyPnl.textContent = '-'
@@ -139,11 +190,11 @@ export function createSummaryCards(container: HTMLElement, callbacks: SummaryCar
 
   return {
     todayPnlEl: pnlEls[0], todayRateEl: rateEls[0],
-    prevPnlEl: pnlEls[1], prevRateEl: rateEls[1],
-    fivedayPnlEl: pnlEls[2], fivedayRateEl: rateEls[2],
-    monthPnlEl: pnlEls[3], monthRateEl: rateEls[3],
-    totalPnlEl: pnlEls[4], totalRateEl: rateEls[4],
-    todayCard: cardEls[0], prevCard: cardEls[1], fivedayCard: cardEls[2], monthCard: cardEls[3], totalCard: cardEls[4],
+    todaySubTextEl: todaySubTextEl ?? document.createElement('span'),
+    fivedayPnlEl: pnlEls[1], fivedayRateEl: rateEls[1],
+    monthPnlEl: pnlEls[2], monthRateEl: rateEls[2],
+    totalPnlEl: pnlEls[3], totalRateEl: rateEls[3],
+    todayCard: cardEls[0], fivedayCard: cardEls[1], monthCard: cardEls[2], totalCard: cardEls[3],
   }
 }
 
@@ -157,33 +208,41 @@ export function getRecent5TradingDays(dailySummary: Record<string, unknown>[]): 
   return dates.slice(0, 5)
 }
 
-/** 당일/전일/5거래일/당월/누적 손익 계산 및 요약 카드 DOM 갱신.
+/** dailySummary에서 earliest_base_asset 추출 (모든 행 동일 값 — B-2).
+ *  computeCumulativePnl·renderAccountVals·buildDonutCenter 공통 분모 소스 — P10 SSOT.
+ *  undefined 반환 시 호출처에서 rate null → '-' 표시 (P20 폴백 금지). */
+export function extractEarliestBaseAsset(dailySummary: Record<string, unknown>[]): number | undefined {
+  if (dailySummary.length === 0) return undefined
+  const v = dailySummary[0].earliest_base_asset
+  if (v == null) return undefined
+  const n = Number(v)
+  return Number.isFinite(n) ? n : undefined
+}
+
+/** 당일/5거래일/당월/누적 손익 계산 및 요약 카드 DOM 갱신 (전일 카드 제거 — 다단계 1세션 결정 1).
  *  모든 카드를 computeCumulativePnl SSOT로 계산 (P10 SSOT — 분모 규칙 단일 소스).
- *  분모 규칙 (기초자산 분모 방식):
- *    - 기간 한정 카드(당일/전일/5거래일/당월): baseAsset = findBaseAssetForDate(dailySummary, 기간시작일)
- *      · baseAsset 없으면 첫 거래일 기초자산 = 초기 투자원금 (결정 6)
+ *  분모 규칙 (기초자산 분모 방식 + earliestBaseAsset):
+ *    - 기간 한정 카드(당일/5거래일/당월): baseAsset = findBaseAssetForDate(dailySummary, 기간시작일)
+ *      · baseAsset 없으면 earliestBaseAsset (둘 다 없으면 rate null → '-' 표시, P20 폴백 금지)
  *      · 당일 카드: 전일 baseAsset + account.daily_deposit (당일 순입출금 보정, 결정 2)
- *    - 누적 카드: 초기 투자원금 (사용자 결정 3 — baseAsset 전달 안 함)
- *  dailySummary는 전일 날짜·5거래일 날짜·base_asset 추출에 사용 (날짜·기초자산 결정 SSOT).
- *  누적 카드는 sellHistory 전체 사용 (dailySummary 20일 제한 제거 — P22 데이터 정합성). */
+ *    - 누적 카드: 테스트=accumulated_investment, 실전=earliestBaseAsset (buyTotal 폐지 — 다단계 1세션 결정 5)
+ *  당일 카드 (F-3-c): PRE_OPEN(개장 전) → 0원 + "개장 전" 서브 텍스트.
+ *    08:00+ → 오늘 실현(sellHistory 오늘 매도 realized_pnl 합) + 보유 평가(computeHoldingsSummary.evalPnl).
+ *  dailySummary는 5거래일 날짜·base_asset·earliest_base_asset 추출에 사용 (날짜·기초자산 결정 SSOT). */
 export function updateSummaryCards(
   dailySummary: Record<string, unknown>[],
   els: SummaryCardEls,
   sellHistory: Record<string, unknown>[],
   account: AccountSnapshot | null,
   isTestMode: boolean,
+  positions: Position[],
+  sectorStocks: Record<string, SectorStock>,
+  earliestBaseAsset?: number,
 ): void {
   const today = getTradingToday()
   const yearMonth = today.slice(0, 7)
   const monthStart = yearMonth + '-01'
   const monthEnd = yearMonth + '-31'
-
-  // 전일 거래일: dailySummary에서 오늘보다 이전 날짜 중 가장 최근 (날짜 결정 SSOT)
-  let prevDay = ''
-  for (const r of dailySummary) {
-    const d = String(r.date ?? '')
-    if (d < today && d > prevDay) prevDay = d
-  }
 
   // 5거래일 날짜 범위 (내림차순 → [0]=최근, [4]=5번째)
   const recent5 = getRecent5TradingDays(dailySummary)
@@ -192,44 +251,55 @@ export function updateSummaryCards(
 
   // 기초자산 추출 (dailySummary에서 기간 시작일의 전일 장마감 스냅샷)
   const dayBaseAssetRaw = findBaseAssetForDate(dailySummary, today)
-  // 당일 카드 분모 = 전일 baseAsset + 당일 입금액 (결정 2). 단, baseAsset 없으면 결정 6(초기 투자원금) 적용 — daily_deposit 보정 제외
+  // 당일 카드 분모 = 전일 baseAsset + 당일 입금액 (결정 2). 단, baseAsset 없으면 earliestBaseAsset 적용 — daily_deposit 보정 제외
   const dayBaseAsset = dayBaseAssetRaw != null
     ? dayBaseAssetRaw + (account?.daily_deposit ?? 0)
-    : undefined
-  const prevBaseAsset = prevDay ? findBaseAssetForDate(dailySummary, prevDay) : undefined
+    : earliestBaseAsset
   const fiveBaseAsset = (fivedayFrom && fivedayTo) ? findBaseAssetForDate(dailySummary, fivedayFrom) : undefined
   const monthBaseAsset = findBaseAssetForDate(dailySummary, monthStart)
 
-  // 5개 카드 모두 computeCumulativePnl SSOT 호출 (분모 규칙은 함수 내부에서 통일)
-  const dayS = computeCumulativePnl({ sellHistory, account, isTestMode, dateFrom: today, dateTo: today, baseAsset: dayBaseAsset })
-  const prevS = prevDay
-    ? computeCumulativePnl({ sellHistory, account, isTestMode, dateFrom: prevDay, dateTo: prevDay, baseAsset: prevBaseAsset })
-    : { pnl: 0, rate: 0 }
-  const fiveS = (fivedayFrom && fivedayTo)
-    ? computeCumulativePnl({ sellHistory, account, isTestMode, dateFrom: fivedayFrom, dateTo: fivedayTo, baseAsset: fiveBaseAsset })
-    : { pnl: 0, rate: 0 }
-  const monS = computeCumulativePnl({ sellHistory, account, isTestMode, dateFrom: monthStart, dateTo: monthEnd, baseAsset: monthBaseAsset })
-  const allS = computeCumulativePnl({ sellHistory, account, isTestMode })  // 누적은 baseAsset 없음 (초기 투자원금)
+  // 당일 카드: 개장 전 여부 분기 (F-3-c)
+  const preOpen = isPreOpenPhase()
+  let dayPnl: number
+  let dayRate: number | null
+  if (preOpen) {
+    // 개장 전: 0원 + 0.00% (강제 — 당일 성과 미확정)
+    dayPnl = 0
+    dayRate = 0
+    els.todaySubTextEl.textContent = '개장 전'
+  } else {
+    // 08:00+: 오늘 실현(sellHistory 오늘 매도 realized_pnl 합) + 보유 평가(computeHoldingsSummary.evalPnl)
+    const realizedToday = sellHistory
+      .filter(r => String(r.date ?? '') === today)
+      .reduce((s, r) => s + Number(r.realized_pnl ?? 0), 0)
+    const { evalPnl } = computeHoldingsSummary(positions, sectorStocks)
+    dayPnl = realizedToday + evalPnl
+    dayRate = dayBaseAsset != null ? computeWeightedRate(dayPnl, dayBaseAsset) : null
+    els.todaySubTextEl.textContent = ''
+  }
 
-  els.todayPnlEl.textContent = fmtWon(dayS.pnl)
-  els.todayPnlEl.style.color = pnlColor(dayS.pnl)
-  els.todayRateEl.textContent = `${dayS.rate.toFixed(2)}%`
-  els.todayRateEl.style.color = pnlColor(dayS.pnl)
-  els.prevPnlEl.textContent = fmtWon(prevS.pnl)
-  els.prevPnlEl.style.color = pnlColor(prevS.pnl)
-  els.prevRateEl.textContent = `${prevS.rate.toFixed(2)}%`
-  els.prevRateEl.style.color = pnlColor(prevS.pnl)
+  // 5거래일/당월/누적 카드: computeCumulativePnl SSOT 호출 (분모 규칙은 함수 내부에서 통일)
+  const fiveS = (fivedayFrom && fivedayTo)
+    ? computeCumulativePnl({ sellHistory, account, isTestMode, dateFrom: fivedayFrom, dateTo: fivedayTo, baseAsset: fiveBaseAsset, earliestBaseAsset })
+    : { pnl: 0, rate: 0 as number | null }
+  const monS = computeCumulativePnl({ sellHistory, account, isTestMode, dateFrom: monthStart, dateTo: monthEnd, baseAsset: monthBaseAsset, earliestBaseAsset })
+  const allS = computeCumulativePnl({ sellHistory, account, isTestMode, earliestBaseAsset })  // 누적: earliestBaseAsset 분모 (buyTotal 폐지)
+
+  els.todayPnlEl.textContent = fmtWon(dayPnl)
+  els.todayPnlEl.style.color = pnlColor(dayPnl)
+  els.todayRateEl.textContent = dayRate == null ? '-' : `${dayRate.toFixed(2)}%`
+  els.todayRateEl.style.color = pnlColor(dayPnl)
   els.fivedayPnlEl.textContent = fmtWon(fiveS.pnl)
   els.fivedayPnlEl.style.color = pnlColor(fiveS.pnl)
-  els.fivedayRateEl.textContent = `${fiveS.rate.toFixed(2)}%`
+  els.fivedayRateEl.textContent = fiveS.rate == null ? '-' : `${fiveS.rate.toFixed(2)}%`
   els.fivedayRateEl.style.color = pnlColor(fiveS.pnl)
   els.monthPnlEl.textContent = fmtWon(monS.pnl)
   els.monthPnlEl.style.color = pnlColor(monS.pnl)
-  els.monthRateEl.textContent = `${monS.rate.toFixed(2)}%`
+  els.monthRateEl.textContent = monS.rate == null ? '-' : `${monS.rate.toFixed(2)}%`
   els.monthRateEl.style.color = pnlColor(monS.pnl)
   els.totalPnlEl.textContent = fmtWon(allS.pnl)
   els.totalPnlEl.style.color = pnlColor(allS.pnl)
-  els.totalRateEl.textContent = `${allS.rate.toFixed(2)}%`
+  els.totalRateEl.textContent = allS.rate == null ? '-' : `${allS.rate.toFixed(2)}%`
   els.totalRateEl.style.color = pnlColor(allS.pnl)
 }
 
@@ -239,23 +309,17 @@ export function updateSummaryCards(
  *  3. 도넛 차트와 동일한 절대값 내림차순 정렬 + 색상 할당
  */
 /** sellHistory → 업종별 손익 집계 + 도넛 차트 행 (절대값 내림차순 정렬).
- *  buildSectorStockPnl과 canvas-sector-donut의 공통 집계 소스 — P10 SSOT. */
+ *  buildSectorStockPnl과 canvas-sector-donut의 공통 집계 소스 — P10 SSOT.
+ *  도넛 rate 제거 (다단계 2세션 결정 9) — 금액(손익 원금)만 표시, buyTotal 분모 제거. */
 export function buildSectorDonutRows(sells: Record<string, unknown>[]): SectorDonutRow[] {
   const pnlMap = new Map<string, number>()
-  const buyTotalMap = new Map<string, number>()
   for (const r of sells) {
     const sector = String(r.sector ?? '미분류')
     const pnl = Number(r.realized_pnl ?? 0)
-    const buyTotal = Number(r.buy_total_amt ?? 0)
     pnlMap.set(sector, (pnlMap.get(sector) ?? 0) + pnl)
-    buyTotalMap.set(sector, (buyTotalMap.get(sector) ?? 0) + buyTotal)
   }
   return Array.from(pnlMap.entries())
-    .map(([sector, pnl]) => ({
-      sector, pnl,
-      rate: computeWeightedRate(pnl, buyTotalMap.get(sector) ?? 0),
-      buyTotal: buyTotalMap.get(sector) ?? 0,
-    }))
+    .map(([sector, pnl]) => ({ sector, pnl }))
     .sort((a, b) => Math.abs(b.pnl) - Math.abs(a.pnl))
 }
 
@@ -267,6 +331,13 @@ export function buildSectorStockPnl(
 
   // 2. 색상 할당 (공유 함수 사용 — SSOT)
   const colorMap = assignSectorColors(donutRows)
+
+  // 3. 업종별 매수금액 집계 (도넛 rate 제거로 donutRows에서 제거됨 — SectorPnlGroup.rate용 별도 집계)
+  const sectorBuyTotalMap = new Map<string, number>()
+  for (const r of sells) {
+    const sector = String(r.sector ?? '미분류')
+    sectorBuyTotalMap.set(sector, (sectorBuyTotalMap.get(sector) ?? 0) + Number(r.buy_total_amt ?? 0))
+  }
 
   // 4. 종목별 집계: 동일 stk_cd의 매도 기록 합산
   const stockMap = new Map<string, { stk_nm: string; realized_pnl: number; pnl_rate: number; qty: number; buy_total: number }>()
@@ -299,7 +370,7 @@ export function buildSectorStockPnl(
   }
 
   // 6. 업종별 그룹 조립
-  return donutRows.map(({ sector, pnl, buyTotal: sectorBuyTotal }) => {
+  return donutRows.map(({ sector, pnl }) => {
     const stocks: SectorStockPnl[] = []
     for (const [key, v] of stockMap) {
       const [sec] = key.split('\0')
@@ -314,7 +385,7 @@ export function buildSectorStockPnl(
       }
     }
     stocks.sort((a, b) => Math.abs(b.realized_pnl) - Math.abs(a.realized_pnl))
-    const sectorRate = computeWeightedRate(pnl, sectorBuyTotal ?? 0)
+    const sectorRate = computeWeightedRate(pnl, sectorBuyTotalMap.get(sector) ?? 0)
     return {
       sector,
       color: colorMap.get(sector) ?? COLOR.disabled,
@@ -372,38 +443,36 @@ export interface CumulativePnlParams {
   dateFrom?: string
   dateTo?: string
   baseAsset?: number  // 기간 시작 시점 기초자산 (전일 장마감 총자산 + 당일 순입출금)
+  earliestBaseAsset?: number  // 가장 오래된 total_asset 스냅샷 (누적 카드 실전 분모 — buyTotal 폐지, 다단계 1세션 결정 5)
 }
 
 /** 누적/기간 실현 손익 + 수익률 단일 계산 소스 (P10 SSOT).
- *  분모 규칙 (기초자산 분모 방식 — 회전율 희석 방지, 복리 자산 변화 반영):
- *    - 누적 카드 (dateFrom/dateTo 없음): 초기 투자원금 (사용자 결정 3 — 현행 유지)
+ *  분모 규칙 (기초자산 분모 방식 + earliestBaseAsset — buyTotal 폐지, 다단계 1세션 결정 5):
+ *    - 누적 카드 (dateFrom/dateTo 없음):
  *      · 테스트모드: accumulated_investment (initial_deposit 폴백)
- *      · 실전모드:   buy_total_amt 합계 (매수 원가 대비)
+ *      · 실전모드:   earliestBaseAsset (가장 오래된 total_asset 스냅샷 — buyTotal 폐지)
  *    - 기간 한정 카드 (dateFrom/dateTo 있음): 기초자산 (전일 장마감 총자산 + 당일 순입출금)
  *      · baseAsset 전달 시: baseAsset 분모 (사용자 결정 1·2)
- *      · baseAsset 미전달 시: "첫 거래일 기초자산 = 초기 투자원금" 금융 로직 정의 (사용자 결정 6 — 폴백 아닌 초기값 정의)
- *        테스트모드: accumulated_investment / 실전모드: buy_total_amt
+ *      · baseAsset 미전달 시: earliestBaseAsset (둘 다 없으면 rate null → '-' 표시, P20 폴백 금지)
+ *  rate null 반환: 분모 0/undefined 시 (P20 — buyTotal/0으로 덮지 않음).
  *  dateFrom/dateTo 적용 시 해당 범위 내 손익만 집계.
  *  renderAccountVals(계좌 현황)·canvas-sector-donut(도넛 중앙)·updateSummaryCards(요약 카드)·
  *  updateStatistics(하단 통계)가 동일 분모·동일 데이터 범위를 사용하도록 추출 (P22 데이터 정합성). */
-export function computeCumulativePnl(params: CumulativePnlParams): { pnl: number; rate: number } {
-  const { sellHistory, account, isTestMode, dateFrom, dateTo, baseAsset } = params
-  const { pnl, buyTotal } = aggregatePnl(sellHistory, dateFrom, dateTo)
+export function computeCumulativePnl(params: CumulativePnlParams): { pnl: number; rate: number | null } {
+  const { sellHistory, account, isTestMode, dateFrom, dateTo, baseAsset, earliestBaseAsset } = params
+  const { pnl } = aggregatePnl(sellHistory, dateFrom, dateTo)
   const isCumulative = !dateFrom && !dateTo
-  // 초기 투자원금 — 첫 거래일 기초자산 정의 (결정 6, 폴밭 아닌 초기값 정의)
-  const initialInvestment = isTestMode
-    ? (account?.accumulated_investment ?? account?.initial_deposit ?? 0)
-    : buyTotal
-  let denominator: number
+  let denominator: number | null
   if (isCumulative) {
-    // 누적 카드: 초기 투자원금 (사용자 결정 3 — 현행 유지)
-    denominator = initialInvestment
+    // 누적 카드: 테스트=accumulated_investment, 실전=earliestBaseAsset (buyTotal 폐지)
+    denominator = isTestMode
+      ? (account?.accumulated_investment ?? account?.initial_deposit ?? null)
+      : (earliestBaseAsset ?? null)
   } else {
-    // 기간 한정 카드: 기초자산 (전일 장마감 총자산 + 당일 순입출금).
-    // baseAsset 없으면 첫 거래일 기초자산 = 초기 투자원금 (결정 6)
-    denominator = baseAsset ?? initialInvestment
+    // 기간 한정 카드: baseAsset ?? earliestBaseAsset (둘 다 없으면 null → rate null, P20)
+    denominator = baseAsset ?? earliestBaseAsset ?? null
   }
-  return { pnl, rate: computeWeightedRate(pnl, denominator) }
+  return { pnl, rate: denominator ? computeWeightedRate(pnl, denominator) : null }
 }
 
 /** dailySummary에서 특정 날짜의 기초자산(전일 장마감 스냅샷) 추출.
@@ -444,6 +513,87 @@ export function buildMonthlyDrilldown(
     }))
   rows.sort((a, b) => b.date.localeCompare(a.date))
   return rows
+}
+
+/** 당일 드릴다운 빌더 — 실현(오늘 매도) + 평가(현재 보유) 영역 구분 (F-3-d, 결정 3·11).
+ *  realizedRows: 오늘 매도 종목별 realized_pnl 리스트 (sellHistory에서 오늘 날짜 필터).
+ *  evalRows: 현재 보유 종목별 평가손익 (computePositionValuation 재사용 — P23 일관성).
+ *  P22 정합성: realizedTotal + evalTotal = 당일 카드 총액 (updateSummaryCards 당일 계산식과 동일 소스). */
+export function buildTodayDrilldown(
+  sellHistory: Record<string, unknown>[],
+  positions: Position[],
+  sectorStocks: Record<string, SectorStock>,
+  today: string,
+): TodayDrilldownResult {
+  const realizedRows: TodayDrilldownRealizedRow[] = []
+  let realizedTotal = 0
+  for (const r of sellHistory) {
+    if (String(r.date ?? '') !== today) continue
+    const pnl = Number(r.realized_pnl ?? 0)
+    realizedRows.push({
+      stk_cd: String(r.stk_cd ?? ''),
+      stk_nm: String(r.stk_nm ?? ''),
+      realized_pnl: pnl,
+    })
+    realizedTotal += pnl
+  }
+  realizedRows.sort((a, b) => Math.abs(b.realized_pnl) - Math.abs(a.realized_pnl))
+
+  const evalRows: TodayDrilldownEvalRow[] = []
+  let evalTotal = 0
+  for (const p of positions) {
+    const v = computePositionValuation(p, sectorStocks)
+    if (v.isNull) continue  // cur_price null인 종목은 제외 (P21 — 호출처에서 '-' 표시와 별개)
+    evalRows.push({
+      stk_cd: p.stk_cd,
+      stk_nm: p.stk_nm,
+      pnl: v.pnl,
+      rate: v.rate,
+      evalAmt: v.evalAmt,
+    })
+    evalTotal += v.pnl
+  }
+  evalRows.sort((a, b) => Math.abs(b.pnl) - Math.abs(a.pnl))
+
+  return { realizedRows, evalRows, realizedTotal, evalTotal }
+}
+
+/** 5거래일 드릴다운 빌더 — 최근 5거래일 일별 실현손익 (F-3-d).
+ *  getRecent5TradingDays(공통 소스) + dailySummary 일별 realized_pnl (백엔드 값 직접 사용 — P10 SSOT). */
+export function buildFivedayDrilldown(dailySummary: Record<string, unknown>[]): DailyDrilldownRow[] {
+  const recent5 = getRecent5TradingDays(dailySummary)
+  const recentSet = new Set(recent5)
+  const rows = dailySummary
+    .filter(r => recentSet.has(String(r.date ?? '')))
+    .map(r => ({
+      date: String(r.date ?? ''),
+      sellCount: Number(r.sell_count ?? 0),
+      buyCount: Number(r.buy_count ?? 0),
+      pnl: Number(r.realized_pnl ?? 0),
+      rate: Number(r.pnl_rate ?? 0),
+    }))
+  rows.sort((a, b) => b.date.localeCompare(a.date))
+  return rows
+}
+
+/** 누적 드릴다운 빌더 — 월별 누적 손익 + 입금 이력 (F-3-d, 결정 4).
+ *  monthlyRows: sellHistory 전체를 월별 그룹화한 realized_pnl 합 (내림차순).
+ *  depositHistory: 백엔드 /api/trade-history/deposit-history 결과 (date, daily_deposit 리스트). */
+export function buildCumulativeDrilldown(
+  sellHistory: Record<string, unknown>[],
+  depositHistory: DepositHistoryRow[],
+): CumulativeDrilldownResult {
+  const monthMap = new Map<string, number>()
+  for (const r of sellHistory) {
+    const d = String(r.date ?? '')
+    if (d.length < 7) continue
+    const ym = d.slice(0, 7)
+    monthMap.set(ym, (monthMap.get(ym) ?? 0) + Number(r.realized_pnl ?? 0))
+  }
+  const monthlyRows = Array.from(monthMap.entries())
+    .map(([yearMonth, pnl]) => ({ yearMonth, pnl }))
+    .sort((a, b) => b.yearMonth.localeCompare(a.yearMonth))
+  return { monthlyRows, depositHistory }
 }
 
 /** 거래일별 요약 → 차트 데이터 변환. 매도 없는 날(sell_count=0)은 pnl=null로 표시 → 막대 안 그림 */
@@ -560,6 +710,7 @@ export interface AccountValsParams {
   testAccountValRefs: HTMLSpanElement[]
   holdingCountSpan: HTMLSpanElement | null
   holdingCountSpanTest: HTMLSpanElement | null
+  earliestBaseAsset?: number  // 가장 오래된 total_asset 스냅샷 (누적 실전 분모 — buyTotal 폐지)
 }
 
 /** 당일 매수/매도금액 + 당일/누적 수수료·세금 집계 (buyHistory + sellHistory 기반). */
@@ -609,9 +760,9 @@ export function renderAccountVals(params: AccountValsParams): void {
 
   // 누적 실현 손익 + 수익률: SSOT 함수 사용 (도넛 차트 중앙과 동일 소스 — P10/P22)
   // 분모: 테스트모드=누적투자금(투자원금 대비 — 사용자 상식 기준, P21),
-  //       실전모드=매수총액 합계 (증권사 데이터 기반)
+  //       실전모드=earliestBaseAsset (가장 오래된 total_asset 스냅샷 — buyTotal 폐지, 다단계 1세션 결정 5)
   const { pnl: cumPnlAmt, rate: cumRate } = computeCumulativePnl({
-    sellHistory, account: a, isTestMode,
+    sellHistory, account: a, isTestMode, earliestBaseAsset: params.earliestBaseAsset,
   })
   const cumPnl = { pnl: cumPnlAmt, rate: cumRate }
 
@@ -643,7 +794,7 @@ export function renderAccountVals(params: AccountValsParams): void {
     `${todayFeeTax.toLocaleString()}원`,
     `${cumFeeTax.toLocaleString()}원`,
     `${cumSign}${cumPnl.pnl.toLocaleString()}원`,
-    `${cumSign}${cumRate.toFixed(2)}%`,
+    cumRate == null ? '-' : `${cumSign}${cumRate.toFixed(2)}%`,
   ]
   const colorMap = new Map<number, string>([[5, evalColor], [6, evalColor], [9, cumColor], [10, cumColor]])
 

@@ -9,13 +9,13 @@
 // - profit-detail-mount.ts: mount 헬퍼 함수들 + 초기화 + rAF/구독
 
 import { createCardTitle } from '../components/common/card-title'
-import { createTabBar, createToggleSelectBtn } from '../components/common/button'
+import { createTabBar } from '../components/common/button'
 import { createSearchInput } from '../components/common/search-input'
 import { hotStore } from '../stores/hotStore'
 import { notifyPageActive, notifyPageInactive } from '../api/ws'
 import type { DataTableApi } from '../components/common/data-table'
 import type { DateRangeInputApi } from '../components/common/date-range-input'
-import { type DailyDrilldownRow, type SummaryCardEls } from './profit-shared'
+import { type SummaryCardEls } from './profit-shared'
 import { getTradingToday } from '../utils/date'
 import {
   buildSummaryRow,
@@ -29,7 +29,7 @@ import {
 
 /* ── 모듈 변수 ── */
 export type LowerTab = 'buy' | 'sell'
-export type SelectedView = 'today' | 'prev' | 'fiveday' | 'month' | 'total' | 'drilldown' | null
+export type SelectedView = 'today' | 'fiveday' | 'month' | 'total' | null
 
 /* ── 상태 객체 (P10 SSOT — 모든 가변 상태를 단일 소스로 관리) ── */
 
@@ -47,16 +47,11 @@ export interface ProfitDetailState {
   tabBarHandle: ReturnType<typeof createTabBar> | null
   tableContainer: HTMLDivElement | null
   tableViewContainer: HTMLDivElement | null
-  drilldownViewContainer: HTMLDivElement | null
   // 필터 refs
   dateRangeInput: DateRangeInputApi | null
   stockFilterInput: ReturnType<typeof createSearchInput> | null
   unsubStore: (() => void) | null
-  // 드릴다운 상태
-  drilldownActive: boolean
-  drilldownTable: DataTableApi<DailyDrilldownRow> | null
   tabRow: HTMLDivElement | null
-  drilldownBtnHandle: ReturnType<typeof createToggleSelectBtn> | null
   // 뷰 선택
   selectedView: SelectedView
   // 요약 카드 refs
@@ -90,14 +85,10 @@ function createState(): ProfitDetailState {
     tabBarHandle: null,
     tableContainer: null,
     tableViewContainer: null,
-    drilldownViewContainer: null,
     dateRangeInput: null,
     stockFilterInput: null,
     unsubStore: null,
-    drilldownActive: true,
-    drilldownTable: null,
     tabRow: null,
-    drilldownBtnHandle: null,
     selectedView: null,
     summaryCardEls: null,
     statCountEl: null,
@@ -123,7 +114,6 @@ function mount(container: HTMLElement): void {
   state.buyHistory = []
   state.sellHistory = []
   state.activeTab = 'sell'
-  state.drilldownActive = true
 
   const root = document.createElement('div')
   Object.assign(root.style, { display: 'flex', flexDirection: 'column', height: '100%' })
@@ -160,7 +150,6 @@ function unmount(): void {
   if (state.unsubStore) { state.unsubStore(); state.unsubStore = null }
   if (state.sellTable) { state.sellTable.destroy(); state.sellTable = null }
   if (state.buyTable) { state.buyTable.destroy(); state.buyTable = null }
-  if (state.drilldownTable) { state.drilldownTable.destroy(); state.drilldownTable = null }
   Object.assign(state, createState())
 }
 

@@ -11,6 +11,7 @@ export interface AccountSnapshot {
   initial_deposit?: number;
   accumulated_investment?: number;  // 테스트모드: 누적투자금 (초기투자금 + 충전금액)
   daily_deposit?: number;           // 당일 입금액 (실시간, 당일 카드 분모 보정용)
+  total_asset?: number;             // 실전 증권사 API 총자산 (평가금 + 예수금) — P10 SSOT, 재계산 금지
   trade_mode: string;
   position_count?: number;
 }
