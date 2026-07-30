@@ -266,7 +266,7 @@ export function openFivedayDrilldown(): void {
   const rows = buildFivedayDrilldown(hotStore.getState().dailySummary)
   showCustomDialog({
     title: '5거래일 손익 상세',
-    content: buildDailyDrilldownContent(rows, '5거래일 거래 내역이 없습니다.'),
+    content: buildDailyDrilldownContent(rows, '거래 내역이 없습니다.'),
     actions: [{ label: '닫기', onClick: () => {}, variant: 'default' }],
   })
 }
@@ -276,7 +276,7 @@ export function openMonthDrilldown(): void {
   const rows = buildMonthlyDrilldown(hotStore.getState().dailySummary, yearMonth)
   showCustomDialog({
     title: '당월 손익 상세',
-    content: buildDailyDrilldownContent(rows, '당월 거래 내역이 없습니다.'),
+    content: buildDailyDrilldownContent(rows, '거래 내역이 없습니다.'),
     actions: [{ label: '닫기', onClick: () => {}, variant: 'default' }],
   })
 }

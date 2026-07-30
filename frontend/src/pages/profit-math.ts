@@ -370,19 +370,21 @@ export function buildCumulativeDrilldown(
   return { monthlyRows, depositHistory }
 }
 
-/** 거래일별 요약 → 차트 데이터 변환. 매도 없는 날(sell_count=0)은 pnl=null로 표시 → 막대 안 그림 */
+/** 거래일별 요약 → 차트 데이터 변환. 비거래일(sell_count=0 && buy_count=0)은 배열에서 제외. 매도 없는 날(sell_count=0, buy_count>0)은 pnl=null로 표시 → 막대 안 그림 */
 export function buildChartFromDailySummary(summary: Record<string, unknown>[]): { date: string; pnl: number | null; rate: number; buyFee: number; sellFee: number; tax: number }[] {
-  const rows = summary.map(r => {
-    const raw = String(r.date ?? '')
-    const sellCount = Number(r.sell_count ?? 0)
-    if (sellCount === 0) return { date: raw, pnl: null, rate: 0, buyFee: 0, sellFee: 0, tax: 0 }
-    const pnl = Number(r.realized_pnl ?? 0)
-    const rate = Number(r.pnl_rate ?? 0)
-    const buyFee = Number(r.buy_fee ?? 0)
-    const sellFee = Number(r.sell_fee ?? 0)
-    const tax = Number(r.tax ?? 0)
-    return { date: raw, pnl, rate, buyFee, sellFee, tax }
-  })
+  const rows = summary
+    .filter(r => Number(r.sell_count ?? 0) > 0 || Number(r.buy_count ?? 0) > 0)
+    .map(r => {
+      const raw = String(r.date ?? '')
+      const sellCount = Number(r.sell_count ?? 0)
+      if (sellCount === 0) return { date: raw, pnl: null, rate: 0, buyFee: 0, sellFee: 0, tax: 0 }
+      const pnl = Number(r.realized_pnl ?? 0)
+      const rate = Number(r.pnl_rate ?? 0)
+      const buyFee = Number(r.buy_fee ?? 0)
+      const sellFee = Number(r.sell_fee ?? 0)
+      const tax = Number(r.tax ?? 0)
+      return { date: raw, pnl, rate, buyFee, sellFee, tax }
+    })
   // X축: 왼쪽=과거, 오른쪽=최신
   return rows
 }

@@ -263,17 +263,34 @@ describe('buildChartFromDailySummary', () => {
   it('매도 있는 날 → pnl/rate/fee/tax 추출', () => {
     const summary = [
       { date: '2026-07-28', sell_count: 2, realized_pnl: 50000, pnl_rate: 5, buy_fee: 100, sell_fee: 200, tax: 50 },
-      { date: '2026-07-29', sell_count: 0, realized_pnl: 0, pnl_rate: 0, buy_fee: 0, sell_fee: 0, tax: 0 },
     ]
     const rows = buildChartFromDailySummary(summary)
-    expect(rows).toHaveLength(2)
+    expect(rows).toHaveLength(1)
     expect(rows[0].pnl).toBe(50000)
     expect(rows[0].rate).toBe(5)
-    expect(rows[1].pnl).toBeNull()  // sell_count=0 → null
   })
 
   it('빈 배열', () => {
     expect(buildChartFromDailySummary([])).toEqual([])
+  })
+
+  it('비거래일(sell_count=0 && buy_count=0) 제외', () => {
+    const summary = [
+      { date: '2026-07-28', sell_count: 2, buy_count: 0, realized_pnl: 50000, pnl_rate: 5, buy_fee: 100, sell_fee: 200, tax: 50 },
+      { date: '2026-07-29', sell_count: 0, buy_count: 0, realized_pnl: 0, pnl_rate: 0, buy_fee: 0, sell_fee: 0, tax: 0 },
+    ]
+    const rows = buildChartFromDailySummary(summary)
+    expect(rows).toHaveLength(1)
+    expect(rows[0].date).toBe('2026-07-28')
+  })
+
+  it('매수만 있는 날(sell_count=0, buy_count>0) 유지 → pnl=null', () => {
+    const summary = [
+      { date: '2026-07-28', sell_count: 0, buy_count: 3, realized_pnl: 0, pnl_rate: 0, buy_fee: 100, sell_fee: 0, tax: 0 },
+    ]
+    const rows = buildChartFromDailySummary(summary)
+    expect(rows).toHaveLength(1)
+    expect(rows[0].pnl).toBeNull()
   })
 })
 
