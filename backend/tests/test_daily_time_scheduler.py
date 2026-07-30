@@ -499,15 +499,26 @@ class TestIsOrderBlockedByTime:
             assert is_order_blocked_by_time("005930_AL") is False  # NXT 종목
 
     def test_opening_auction_both_blocked(self):
-        """08:50~09:00 시가 동시호가 + NXT 정규장 준비 — 양쪽 차단 (NXT도 비활성 아님 but KRX 비활성+NXT 활성 → 종목 분기).
-        실제로는 NXT '정규장 준비'가 NXT_ACTIVE_PHASES에 포함 → is_nxt_enabled 분기.
-        KRX 단독 종목은 차단, NXT 종목은 허용."""
+        """08:50~09:00 시가 동시호가 + NXT 정규장 준비 — 양쪽 차단 (NXT도 체결 없음).
+        NXT '정규장 준비'는 NXT_ACTIVE_PHASES(구독용)에 포함되나 NXT_TRADEABLE_PHASES(체결 가능)에는
+        없음 → KRX 단독·NXT 종목 모두 차단 (docs/krx_nxt_market_hours.md: 🚫 주문 중단)."""
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "시가 동시호가", "nxt": "정규장 준비"}
         with patch("backend.app.services.engine_state.state", mock_state), \
-             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(8, 55)), \
-             patch("backend.app.services.engine_symbol_utils.is_nxt_enabled", return_value=False):
-            assert is_order_blocked_by_time("005930") is True  # KRX 단독 — 차단
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(8, 55)):
+            assert is_order_blocked_by_time("005930") is True     # KRX 단독 — 차단
+            assert is_order_blocked_by_time("005930_AL") is True  # NXT 종목 — 체결 없음 → 차단
+
+    def test_single_price_auction_both_blocked(self):
+        """15:30~15:40 체결 정산 + NXT 단일가 매매 — 양쪽 차단 (NXT 호가접수만, 체결 없음).
+        NXT '단일가 매매'는 NXT_ACTIVE_PHASES(구독용)에 포함되나 NXT_TRADEABLE_PHASES(체결 가능)에는
+        없음 → KRX 단독·NXT 종목 모두 차단 (docs/krx_nxt_market_hours.md: 🚫 주문 중단)."""
+        mock_state = MagicMock()
+        mock_state.market_phase = {"krx": "체결 정산", "nxt": "단일가 매매"}
+        with patch("backend.app.services.engine_state.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(15, 35)):
+            assert is_order_blocked_by_time("005930") is True     # KRX 단독 — 차단
+            assert is_order_blocked_by_time("005930_AL") is True  # NXT 종목 — 체결 없음 → 차단
 
     def test_closing_auction_both_blocked(self):
         """15:20~15:30 종가 동시호가 + NXT 조기 마감 — 양쪽 비활성 → 전부 차단.
@@ -581,13 +592,13 @@ class TestIsOrderBlockedByTime:
             assert is_order_blocked_by_time("005930") is False
 
     def test_boundary_at_085955_opening_auction_blocked(self):
-        """08:59:55 — 페이즈 "시가 동시호가" → KRX 단독 종목 차단 (버퍼 없이 페이즈 기반)."""
+        """08:59:55 — 페이즈 "시가 동시호가"+"정규장 준비" → 양쪽 차단 (NXT도 체결 없음, 버퍼 없이 페이즈 기반)."""
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "시가 동시호가", "nxt": "정규장 준비"}
         with patch("backend.app.services.engine_state.state", mock_state), \
-             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(8, 59, 55)), \
-             patch("backend.app.services.engine_symbol_utils.is_nxt_enabled", return_value=False):
-            assert is_order_blocked_by_time("005930") is True
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(8, 59, 55)):
+            assert is_order_blocked_by_time("005930") is True     # KRX 단독 — 차단
+            assert is_order_blocked_by_time("005930_AL") is True  # NXT 종목 — 체결 없음 → 차단
 
     def test_boundary_at_152000_closing_auction_blocked(self):
         """15:20:00 — 페이즈 "종가 동시호가" → 양쪽 비활성 → 전부 차단."""
@@ -693,6 +704,28 @@ class TestGetOrderTimeBlockStatus:
             level, reason = get_order_time_block_status()
             assert level == "nxt_only"
             assert reason == "NXT만 가능"
+
+    def test_nxt_prep_returns_blocked_reason(self):
+        """08:50~09:00 KRX 시가 동시호가 + NXT 정규장 준비 — ("blocked", "거래 시간 외").
+        NXT '정규장 준비'는 구독 활성이나 체결 없음 → 주문 게이트는 NXT_TRADEABLE_PHASES 기준 (docs 기준)."""
+        mock_state = MagicMock()
+        mock_state.market_phase = {"krx": "시가 동시호가", "nxt": "정규장 준비"}
+        with patch("backend.app.services.engine_state.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(8, 55)):
+            level, reason = get_order_time_block_status()
+            assert level == "blocked"
+            assert reason == "거래 시간 외"
+
+    def test_nxt_single_price_returns_blocked_reason(self):
+        """15:30~15:40 KRX 체결 정산 + NXT 단일가 매매 — ("blocked", "거래 시간 외").
+        NXT '단일가 매매'는 호가접수만 가능, 체결 없음 → 주문 게이트는 NXT_TRADEABLE_PHASES 기준 (docs 기준)."""
+        mock_state = MagicMock()
+        mock_state.market_phase = {"krx": "체결 정산", "nxt": "단일가 매매"}
+        with patch("backend.app.services.engine_state.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(15, 39)):
+            level, reason = get_order_time_block_status()
+            assert level == "blocked"
+            assert reason == "거래 시간 외"
 
     # ── 빈 문자열 phase (P20) ──
 

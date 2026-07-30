@@ -290,6 +290,14 @@ NXT_ACTIVE_PHASES = frozenset({
     "단일가 매매", "애프터마켓",
 })
 
+# 실시간 체결 가능 NXT 페이즈 — 주문 게이트(체결 불가 시간대 차단) 전용 (P10 SSOT).
+# NXT_ACTIVE_PHASES(구독/데이터 수신용)의 부분 집합.
+# "정규장 준비"(08:50~09:00)·"단일가 매매"(15:30~15:40)는 호가 접수만 가능하고
+# 실시간 체결이 없으므로 주문 불가 — docs/krx_nxt_market_hours.md 기준 (🚫 주문 중단).
+NXT_TRADEABLE_PHASES = frozenset({
+    "프리마켓", "메인마켓", "애프터마켓",
+})
+
 
 def _is_pre_subscribe_window() -> bool:
     """07:59~08:00 사전 구독 구간 여부 (시간 기반 — 재시작 대응, P16 살아있는 경로).
@@ -357,9 +365,12 @@ def get_nxt_trde_tp(base_trde_tp: str = "3") -> str:
 def is_order_blocked_by_time(stk_cd: str) -> bool:
     """체결 불가 시간대 주문 차단 판별 (매수·매도 공통).
 
-    SSOT: engine_state.state.market_phase 기반. 기존 is_nxt_only_window() 패턴과 동일 구조.
-    KRX 비활성 + NXT 활성 시 is_nxt_enabled(stk_cd)로 종목별 분기
+    SSOT: engine_state.state.market_phase 기반. 주문 게이트는 NXT_TRADEABLE_PHASES
+    (실시간 체결 가능 구간) 기준 — NXT_ACTIVE_PHASES(구독용)와 분리 (P10 SSOT).
+    KRX 비활성 + NXT 체결 가능 시 is_nxt_enabled(stk_cd)로 종목별 분기
       — NXT 종목은 허용, KRX 단독 종목만 차단.
+    "정규장 준비"(08:50~09:00)·"단일가 매매"(15:30~15:40)는 체결 없음 → 전부 차단
+      (docs/krx_nxt_market_hours.md 기준 — 🚫 주문 중단 구간).
     빈 문자열 phase 시 False 반환 + 에러 로그 (P20 폴백 금지).
     휴장일 시 False 반환 — 장 안 열리므로 주문 자체 발생 안 함 (P23 일관성,
     get_order_time_block_status()와 동일 패턴).
@@ -375,12 +386,13 @@ def is_order_blocked_by_time(stk_cd: str) -> bool:
     if krx == "휴장일" or nxt == "휴장일":
         return False
 
-    # 본 판별 — 기존 is_nxt_only_window()와 동일 구조
+    # 본 판별 — 주문 게이트는 NXT_TRADEABLE_PHASES(실시간 체결 가능) 기준.
+    # "정규장 준비"·"단일가 매매"는 구독 활성(NXT_ACTIVE_PHASES)이나 체결 없음 → 전부 차단.
     if krx in KRX_INACTIVE_PHASES:
-        if nxt in NXT_ACTIVE_PHASES:
+        if nxt in NXT_TRADEABLE_PHASES:
             from backend.app.services.engine_symbol_utils import is_nxt_enabled
             return not is_nxt_enabled(stk_cd)  # NXT 종목 허용, KRX 단독 종목 차단
-        return True  # 양쪽 비활성 — 전부 차단
+        return True  # 양쪽 비활성(또는 NXT 비체결 구간) — 전부 차단
     return False  # KRX 활성 — 허용
 
 
@@ -396,8 +408,9 @@ def get_order_time_block_status() -> tuple[str, str]:
 
     반환 (level, reason):
       - ("ok", ""): KRX 활성 — 전부 허용
-      - ("nxt_only", "NXT만 가능"): KRX 비활성 + NXT 활성 — 정보 상태 (NXT 종목 거래 가능)
-      - ("blocked", "거래 시간 외"): 양쪽 비활성 — 정보 상태 (전부 거래 불가, 위험 아님)
+      - ("nxt_only", "NXT만 가능"): KRX 비활성 + NXT 체결 가능 — 정보 상태 (NXT 종목 거래 가능)
+      - ("blocked", "거래 시간 외"): 양쪽 비활성 또는 NXT 비체결 구간(정규장 준비/단일가 매매)
+        — 정보 상태 (전부 거래 불가, 위험 아님)
       - ("ok", ""): 빈 문자열 phase — 에러 로그 (P20 폴백 금지)
       - ("ok", ""): 휴장일 — 장 안 열리므로 칩 표시 불필요 (P21 사용자 투명성)
     """
@@ -413,9 +426,11 @@ def get_order_time_block_status() -> tuple[str, str]:
     if krx == "휴장일" or nxt == "휴장일":
         return ("ok", "")
 
-    # 본 판별 — 페이즈 수준 (종목별 분기 없음)
+    # 본 판별 — 페이즈 수준 (종목별 분기 없음).
+    # 주문 게이트는 NXT_TRADEABLE_PHASES(실시간 체결 가능) 기준 —
+    # "정규장 준비"·"단일가 매매"는 체결 없음 → "거래 시간 외" (docs/krx_nxt_market_hours.md).
     if krx in KRX_INACTIVE_PHASES:
-        if nxt in NXT_ACTIVE_PHASES:
+        if nxt in NXT_TRADEABLE_PHASES:
             return ("nxt_only", "NXT만 가능")
         return ("blocked", "거래 시간 외")
     return ("ok", "")
