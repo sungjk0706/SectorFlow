@@ -14,8 +14,8 @@
   5일               -- 최근 5거래일 실현 손익
   당월              -- 당월 실현 손익
   누적              -- 누적 실현 손익
-  업종 / sector     -- 업종 분석 상위/하위 요약
-  후보 / candidate  -- 매수 후보 1~10순위
+  업종 / sector     -- 업종 상위 5 (가산점 + 종목 5개)
+  후보 / candidate  -- 매수 후보 (가드 통과) 10위 + 대비/등락률/가산점
   설정 / settings   -- 주요 설정값 조회 (변경 불가, 조회 전용)
   도움말 / help     -- 명령어 목록 (/start 도 동일)
 """
@@ -528,8 +528,8 @@ class TelegramBot:
             "5일   -- 최근 5거래일 실현 손익\n"
             "당월  -- 당월 실현 손익\n"
             "누적  -- 누적 실현 손익\n"
-            "업종  -- 업종 분석 상위/하위 요약\n"
-            "후보  -- 매수 후보 1~10순위\n"
+            "업종  -- 업종 상위 5 (가산점 + 종목 5개)\n"
+            "후보  -- 매수 후보 (가드 통과) 10위 + 대비/등락률/가산점\n"
             "설정  -- 주요 설정값 조회 (변경 불가, 조회 전용)\n"
             "도움말 -- 이 메시지"
         )
@@ -739,14 +739,15 @@ class TelegramBot:
             await self._send(token, chat_id, f" 계좌 조회 오류: {str(exc)[:120]}")
 
     async def _cmd_sector(self, token: str, chat_id: str) -> None:
-        """업종 강도 상위/하위 요약.
+        """업종 강도 상위 5개 요약 — 업종명, 가산점(획득/만점), 종목 최대 5개.
 
         sector_summary_cache를 직접 사용 (P10 SSOT — 프론트엔드 업종순위와 동일 데이터).
-        이전에는 compute_full_sector_summary를 기본값 파라미터로 재계산하여
-        엔진 설정(min_rise_ratio, 슬라이더 등)과 불일치하는 문제가 있었음.
+        만점은 compute_sector_total_max SSOT 헬퍼로 계산 (sector_score.py 공식 단일 소스).
+        종목은 boost_score 내림차순 최대 5개 이름만 표시.
         """
         try:
             from backend.app.services.engine_state import state
+            from backend.app.domain.sector_score import compute_sector_total_max
 
             ss = state.sector_summary_cache
             if not ss or not ss.sectors:
@@ -755,55 +756,88 @@ class TelegramBot:
 
             sectors = ss.sectors
             now_str = datetime.now(_KST).strftime("%H:%M")
-            lines = [f"📊 <b>업종 분석 요약</b> ({now_str})\n"]
 
-            # 상위 5개
-            lines.append("🔺 <b>상위 업종</b>")
+            # 만점 계산 — 설정 캐시의 슬라이더 값 사용 (P10 SSOT, P13 메모리 캐시)
+            cache = state.integrated_system_settings_cache
+            n_sectors = len(sectors)
+            total_max = compute_sector_total_max(
+                n_sectors,
+                rise_ratio_slider=int(cache.get("sector_bonus_rise_ratio_slider", 0)),
+                relative_strength_slider=int(cache.get("sector_bonus_relative_strength_slider", 0)),
+                trade_amount_slider=int(cache.get("sector_bonus_trade_amount_slider", 0)),
+            )
+
+            lines = [f"📊 <b>업종 상위 5</b> ({now_str})  만점 {total_max:.1f}\n"]
+
             for s in sectors[:5]:
-                amt_b = s.avg_trade_amount / 1e8
+                # 업종 내 종목 — boost_score 내림차순, 동점 시 등락률 내림차순, 최대 5개
+                top_stocks = sorted(
+                    s.stocks,
+                    key=lambda st: (-st.boost_score, -st.change_rate, st.name),
+                )[:5]
+                stock_names = "  ".join(st.name for st in top_stocks)
                 lines.append(
-                    f"  {s.rank}. {s.sector}  "
-                    f"평균 {s.avg_change_rate:+.2f}%  "
-                    f"상승 {s.rise_count}/{s.total}  "
-                    f"거래대금 {amt_b:,.1f}억"
+                    f"<b>{s.rank}. {s.sector}</b>  "
+                    f"가산점 {s.final_score:.1f}/{total_max:.1f}"
                 )
-
-            # 하위 3개 (역순)
-            if len(sectors) > 5:
-                lines.append("\n🔻 <b>하위 업종</b>")
-                for s in sectors[-3:]:
-                    amt_b = s.avg_trade_amount / 1e8
-                    lines.append(
-                        f"  {s.rank}. {s.sector}  "
-                        f"평균 {s.avg_change_rate:+.2f}%  "
-                        f"상승 {s.rise_count}/{s.total}  "
-                        f"거래대금 {amt_b:,.1f}억"
-                    )
+                if stock_names:
+                    lines.append(f"  종목: {stock_names}")
 
             await self._send(token, chat_id, "\n".join(lines))
         except Exception as exc:
-            await self._send(token, chat_id, f" 업종 조회 오류: {str(exc)[:120]}")
+            await self._send(token, chat_id, f"⚠ 업종 조회 오류: {str(exc)[:120]}")
 
     async def _cmd_buy_candidates(self, token: str, chat_id: str) -> None:
-        """매수 후보 1~10순위 전송.
+        """매수 후보 (가드 통과 종목) 최대 10위 전송.
 
-        실시간 필드(cur_price, change_rate, strength, trade_amount)는 틱 미수신 시
-        None 또는 문자열(strength)일 수 있으므로 타입별 처리 (P20 폴백 금지 —
-        None은 "미수신"으로 명시 표시, 0으로 덮지 않음).
+        buy_targets만 표시 (blocked_targets 제외) — sector_summary_cache SSOT.
+        각 종목: 순위, 종목명, 대비, 등락률, 가산점(획득/만점), 업종.
+        만점은 compute_stock_boost_max SSOT 헬퍼로 계산 (buy_filter.py 공식 단일 소스).
+        실시간 필드(change, change_rate)는 틱 미수신 시 None일 수 있으므로
+        "미수신"으로 명시 표시 (P20 폴백 금지).
         """
         try:
             from backend.app.services.sector_data_provider import get_buy_targets_sector_stocks
+            from backend.app.services.engine_state import state
+            from backend.app.domain.buy_filter import compute_stock_boost_max
 
-            targets = await get_buy_targets_sector_stocks()
+            targets_all = await get_buy_targets_sector_stocks()
+            # 가드 통과 종목만 (buy_targets) — blocked_targets 제외
+            targets = [t for t in targets_all if t.get("guard_pass") is True][:10]
             now_str = datetime.now(_KST).strftime("%H:%M")
 
             if not targets:
                 await self._send(token, chat_id, f"🎯 매수 후보 ({now_str})\n후보 없음")
                 return
 
-            lines = [f"🎯 <b>매수 후보 TOP {len(targets)}</b> ({now_str})\n"]
+            # 종목 가산점 만점 — 설정 캐시 기반 (P10 SSOT, P13 메모리 캐시)
+            cache = state.integrated_system_settings_cache
+            boost_max = compute_stock_boost_max(
+                boost_high_on=bool(cache.get("boost_high_breakout_on", False)),
+                boost_high_score=float(cache.get("boost_high_breakout_score", 1.0)),
+                boost_order_ratio_on=bool(cache.get("boost_order_ratio_on", False)),
+                boost_order_ratio_score=float(cache.get("boost_order_ratio_score", 1.0)),
+                boost_program_net_buy_on=bool(cache.get("boost_program_net_buy_on", False)),
+                boost_program_net_buy_score=float(cache.get("boost_program_net_buy_score", 1.0)),
+                boost_news_on=bool(cache.get("boost_news_on", False)),
+                boost_news_score=float(cache.get("boost_news_score", 1.0)),
+            )
+
+            lines = [f"🎯 <b>매수 후보 TOP {len(targets)}</b> ({now_str})  가산점 만점 {boost_max:.1f}\n"]
             for t in targets:
-                # 등락률 — None(틱 미수신) 시 "미수신" 표시 (P20 폴백 금지)
+                # 대비(원) — None 시 "미수신" (P20 폴백 금지)
+                change_raw = t.get("change")
+                if change_raw is not None:
+                    try:
+                        ch = int(change_raw)
+                        ch_sign = "+" if ch > 0 else ("-" if ch < 0 else "")
+                        change_txt = f"{ch_sign}{abs(ch):,}원"
+                    except (ValueError, TypeError):
+                        change_txt = "미수신"
+                else:
+                    change_txt = "미수신"
+
+                # 등락률 — None 시 "미수신"
                 rate_raw = t.get("change_rate")
                 if rate_raw is not None:
                     try:
@@ -815,45 +849,15 @@ class TelegramBot:
                 else:
                     rate_txt = "미수신"
 
-                # 현재가 — None 시 "미수신"
-                cur_price_raw = t.get("cur_price")
-                if cur_price_raw is not None:
-                    try:
-                        price_txt = f"{int(cur_price_raw):,}원"
-                    except (ValueError, TypeError):
-                        price_txt = "미수신"
-                else:
-                    price_txt = "미수신"
-
-                # 체결강도 — engine_radar에서 문자열로 저장하므로 float 변환
-                strength_raw = t.get("strength")
-                if strength_raw is not None:
-                    try:
-                        strength = float(str(strength_raw).replace("%", "").replace(",", "").strip())
-                    except (ValueError, TypeError):
-                        strength = -1.0
-                    str_txt = f"  체결강도 {strength:.0f}" if strength >= 0 else ""
-                else:
-                    str_txt = ""
-
-                # 거래대금 — None 시 미표시
-                ta_raw = t.get("trade_amount")
-                if ta_raw is not None:
-                    try:
-                        ta = int(ta_raw)
-                    except (ValueError, TypeError):
-                        ta = 0
-                    amt_억 = ta / 1_0000_0000 if ta > 0 else 0
-                    amt_txt = f"  {amt_억:,.1f}억" if amt_억 > 0 else ""
-                else:
-                    amt_txt = ""
-
+                # 가산점 — boost_score (0.0 = 미부여, 명시적 값)
+                boost = float(t.get("boost_score") or 0.0)
                 sector = t.get("sector") or ""
                 sec_txt = f"  [{sector}]" if sector else ""
                 lines.append(
                     f"  {t['rank']}. {t['name']}  "
-                    f"{price_txt}  {rate_txt}"
-                    f"{str_txt}{amt_txt}{sec_txt}"
+                    f"대비 {change_txt}  {rate_txt}  "
+                    f"가산점 {boost:.1f}/{boost_max:.1f}"
+                    f"{sec_txt}"
                 )
 
             await self._send(token, chat_id, "\n".join(lines))

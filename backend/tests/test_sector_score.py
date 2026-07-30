@@ -9,6 +9,8 @@ from backend.app.domain.models import SectorScore, StockScore
 from backend.app.domain.sector_score import (
     rank_to_tiered_score,
     calculate_bonus_scores,
+    compute_adjusted_max,
+    compute_sector_total_max,
 )
 
 
@@ -411,3 +413,51 @@ class TestCalculateBonusScores:
         for sc in scores:
             assert sc.is_cutoff_passed is True
             assert sc.bonus_relative_strength == 0.0
+
+
+# ── compute_adjusted_max / compute_sector_total_max (만점 SSOT 헬퍼) ──────────────
+
+class TestComputeMaxScores:
+    def test_adjusted_max_default_slider_zero(self):
+        """슬라이더 0 → 만점 = 업종 수."""
+        assert compute_adjusted_max(10, 0) == 10.0
+
+    def test_adjusted_max_positive_slider(self):
+        """슬라이더 +50 → 만점 = 업종 수 × 1.5."""
+        assert compute_adjusted_max(10, 50) == 15.0
+
+    def test_adjusted_max_negative_slider(self):
+        """슬라이더 -50 → 만점 = 업종 수 × 0.5."""
+        assert compute_adjusted_max(10, -50) == 5.0
+
+    def test_adjusted_max_slider_minus_100_disables(self):
+        """슬라이더 -100 → 만점 0 (해당 가산점 무효화)."""
+        assert compute_adjusted_max(10, -100) == 0.0
+
+    def test_adjusted_max_below_minus_100_clamped_to_zero(self):
+        """슬라이더 -150 → 0 clamp (음수 만점 방지)."""
+        assert compute_adjusted_max(10, -150) == 0.0
+
+    def test_adjusted_max_zero_sectors(self):
+        """업종 수 0 → 만점 0."""
+        assert compute_adjusted_max(0, 0) == 0.0
+
+    def test_sector_total_max_all_default(self):
+        """슬라이더 모두 0 → 종합 만점 = 업종 수 × 3."""
+        assert compute_sector_total_max(10) == 30.0
+
+    def test_sector_total_max_one_disabled(self):
+        """한 단계 무효화(-100) → 종합 만점 = 업종 수 × 2."""
+        assert compute_sector_total_max(10, rise_ratio_slider=-100) == 20.0
+
+    def test_sector_total_max_all_disabled(self):
+        """모든 단계 무효화 → 종합 만점 0."""
+        assert compute_sector_total_max(
+            10, rise_ratio_slider=-100, relative_strength_slider=-100, trade_amount_slider=-100
+        ) == 0.0
+
+    def test_sector_total_max_mixed_sliders(self):
+        """슬라이더 혼합 — +50, 0, -50 → 15 + 10 + 5 = 30."""
+        assert compute_sector_total_max(
+            10, rise_ratio_slider=50, relative_strength_slider=0, trade_amount_slider=-50
+        ) == 30.0

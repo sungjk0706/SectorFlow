@@ -5,6 +5,37 @@
 from __future__ import annotations
 from typing import Literal
 from backend.app.domain.models import SectorSummary
+
+
+def compute_stock_boost_max(
+    *,
+    boost_high_on: bool = False,
+    boost_high_score: float = 1.0,
+    boost_order_ratio_on: bool = False,
+    boost_order_ratio_score: float = 1.0,
+    boost_program_net_buy_on: bool = False,
+    boost_program_net_buy_score: float = 1.0,
+    boost_news_on: bool = False,
+    boost_news_score: float = 1.0,
+) -> float:
+    """종목 가산점 만점 — 활성화된 가산점 점수 합 (P10 SSOT).
+
+    calculate_boost_score가 부여할 수 있는 최대 점수. 텔레그램 등 외부 표시가
+    동일 만점 기준을 사용. 각 가산점은 on일 때만 점수 부여 가능하므로
+    만점 = 활성화된 가산점 점수 합.
+    """
+    total = 0.0
+    if boost_high_on:
+        total += max(0.0, float(boost_high_score))
+    if boost_order_ratio_on:
+        total += max(0.0, float(boost_order_ratio_score))
+    if boost_program_net_buy_on:
+        total += max(0.0, float(boost_program_net_buy_score))
+    if boost_news_on:
+        total += max(0.0, float(boost_news_score))
+    return total
+
+
 def calculate_boost_score(
     stock,  # StockScore 타입 (순환 import 방지를 위해 타입 힌트 생략)
     *,

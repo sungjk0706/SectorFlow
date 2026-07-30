@@ -20,6 +20,7 @@ from backend.app.domain.buy_filter import (
     apply_buy_block_guards,
     rank_buy_targets,
     build_buy_targets_from_settings,
+    compute_stock_boost_max,
 )
 from backend.app.domain.sector_calculator import select_top_sector_stocks
 
@@ -968,3 +969,68 @@ class TestRankBuyTargets:
         result = rank_buy_targets(pairs, sort_keys=["change_rate", "trade_amount"])
         codes = [t.stock.code for t in result.buy_targets]
         assert codes == ["A002", "A001", "A003"]
+
+
+# ── compute_stock_boost_max (종목 가산점 만점 SSOT 헬퍼) ──────────────────────────
+
+class TestComputeStockBoostMax:
+    def test_all_disabled_max_zero(self):
+        """모든 가산점 off → 만점 0."""
+        assert compute_stock_boost_max() == 0.0
+
+    def test_single_enabled(self):
+        """단일 가산점 on → 해당 점수 = 만점."""
+        assert compute_stock_boost_max(boost_high_on=True, boost_high_score=2.0) == 2.0
+
+    def test_all_enabled_default_scores(self):
+        """모든 가산점 on, 기본 점수 1.0 → 만점 4.0."""
+        assert compute_stock_boost_max(
+            boost_high_on=True, boost_order_ratio_on=True,
+            boost_program_net_buy_on=True, boost_news_on=True,
+        ) == 4.0
+
+    def test_all_enabled_custom_scores(self):
+        """모든 가산점 on, 커스텀 점수 → 만점 = 점수 합."""
+        assert compute_stock_boost_max(
+            boost_high_on=True, boost_high_score=1.5,
+            boost_order_ratio_on=True, boost_order_ratio_score=2.0,
+            boost_program_net_buy_on=True, boost_program_net_buy_score=0.5,
+            boost_news_on=True, boost_news_score=3.0,
+        ) == 7.0
+
+    def test_negative_score_clamped_to_zero(self):
+        """음수 점수는 0으로 clamp."""
+        assert compute_stock_boost_max(boost_high_on=True, boost_high_score=-1.0) == 0.0
+
+    def test_partial_enabled(self):
+        """일부 가산점만 on → on된 점수 합."""
+        assert compute_stock_boost_max(
+            boost_high_on=False, boost_high_score=5.0,
+            boost_news_on=True, boost_news_score=2.0,
+        ) == 2.0
+
+    def test_matches_calculate_boost_score_max(self):
+        """compute_stock_boost_max이 calculate_boost_score가 부여할 수 있는 최대와 일치."""
+        stock = _stock(code="T", change_rate=5.0)
+        # 모든 트리거 조건 충족: cur_price > high_5d, 잔량비 충족, 순매수 > 0, 뉴스 호재
+        high_5d = {stock.code: 1000}
+        orderbook = {stock.code: (200, 100)}  # bid 200, ask 100 → ratio 2.0
+        program = {stock.code: 1000}
+        news = {stock.code: 1.0}
+        stock.cur_price = 2000  # high_5d 돌파
+        max_score = compute_stock_boost_max(
+            boost_high_on=True, boost_high_score=1.0,
+            boost_order_ratio_on=True, boost_order_ratio_score=1.5,
+            boost_program_net_buy_on=True, boost_program_net_buy_score=2.0,
+            boost_news_on=True, boost_news_score=2.5,
+        )
+        actual = calculate_boost_score(
+            stock,
+            high_5d_cache=high_5d, orderbook_cache=orderbook, program_net_buy_cache=program,
+            news_boost_cache=news,
+            boost_high_on=True, boost_high_score=1.0,
+            boost_order_ratio_on=True, boost_order_ratio_pct=20.0, boost_order_ratio_score=1.5,
+            boost_program_net_buy_on=True, boost_program_net_buy_score=2.0,
+            boost_news_on=True, boost_news_score=2.5,
+        )
+        assert actual == max_score

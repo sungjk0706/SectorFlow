@@ -55,6 +55,33 @@ def rank_to_tiered_score(
     return scores
 
 
+def compute_adjusted_max(n_sectors: int, slider: int) -> float:
+    """단계별 조정 만점 — 업종 수 × (1 + slider/100).
+
+    만점 공식의 단일 진실 소스 (P10 SSOT) — calculate_bonus_scores 내부 계산과
+    외부 표시(텔레그램 등)가 동일 공식을 사용.
+    slider=-100 → 0 (해당 가산점 무효화), slider< -100 → 0 clamp.
+    """
+    if n_sectors <= 0:
+        return 0.0
+    return max(0.0, n_sectors * (1.0 + slider / 100.0))
+
+
+def compute_sector_total_max(
+    n_sectors: int,
+    *,
+    rise_ratio_slider: int = 0,
+    relative_strength_slider: int = 0,
+    trade_amount_slider: int = 0,
+) -> float:
+    """업종 종합 가산점 만점 = 1차 + 2차 + 3차 조정 만점 합 (P10 SSOT)."""
+    return (
+        compute_adjusted_max(n_sectors, rise_ratio_slider)
+        + compute_adjusted_max(n_sectors, relative_strength_slider)
+        + compute_adjusted_max(n_sectors, trade_amount_slider)
+    )
+
+
 def calculate_bonus_scores(
     sector_scores: list,  # list[SectorScore]
     *,
@@ -96,10 +123,10 @@ def calculate_bonus_scores(
 
     n_sectors = len(sector_scores)
 
-    # ── 조정 만점 계산: 업종 수 × (1 + 슬라이더/100) ──
-    adjusted_rise_max = n_sectors * (1.0 + rise_ratio_slider / 100.0)
-    adjusted_relative_max = n_sectors * (1.0 + relative_strength_slider / 100.0)
-    adjusted_trade_max = n_sectors * (1.0 + trade_amount_slider / 100.0)
+    # ── 조정 만점 계산: 업종 수 × (1 + 슬라이더/100) — compute_adjusted_max SSOT 사용 ──
+    adjusted_rise_max = compute_adjusted_max(n_sectors, rise_ratio_slider)
+    adjusted_relative_max = compute_adjusted_max(n_sectors, relative_strength_slider)
+    adjusted_trade_max = compute_adjusted_max(n_sectors, trade_amount_slider)
 
     # ── 1패스: 1차 + 3차 가산점 (순위별 차등 점수) ──
     # 1차 가산점: 업종 간 상승비율 순위
