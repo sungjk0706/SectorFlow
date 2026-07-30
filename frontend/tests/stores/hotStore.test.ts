@@ -698,6 +698,53 @@ describe('hotStore — applyBuyTargetsDelta (COUPLING-S8 후속)', () => {
     expect(getBuyTargetIndex('000001')).toBeUndefined()
     expect(getBuyTargetIndex('000002')).toBe(0)
   })
+
+  // ── news_boost/news_boost_title 보존 (P10 SSOT — news-hit 단일 전달 경로 보호) ──
+  // 재현 시퀀스: applyNewsHit이 news_boost 세팅 후, 백엔드 boost_score 변경 감지로
+  // changed delta 전송 시 news_boost는 _BUY_TARGET_REALTIME_KEYS에 의해 payload에서 pop 제거됨.
+  // applyBuyTargetsDelta changed가 객체를 통째로 교체하면 news_boost/news_boost_title이
+  // undefined로 소거되어 📰 컬럼 표시가 사라지는 버그 (P21 투명성 위반).
+  // 보존 패턴은 applyBuyTargetsUpdate prevTitleByCode와 대칭 (P23 일관성).
+  it('changed: news_boost/news_boost_title 보존 — news-hit 단일 소스 보호 (P10/P21)', () => {
+    // 1. news-hit으로 news_boost + title 세팅 (📰 표시 상태)
+    applyNewsHit({ codes: ['000001'], scores: [1.5], boost_scores: [3.5], title: 'A기업 대규모 수주' })
+    const afterHit = hotStore.getState().buyTargets[0]
+    expect(afterHit.news_boost).toBe(1.5)
+    expect(afterHit.news_boost_title).toBe('A기업 대규모 수주')
+
+    // 2. 백엔드 changed delta — news_boost는 _BUY_TARGET_REALTIME_KEYS에 의해 pop 제거됨
+    //    (boost_score만 포함, news_boost/news_boost_title 키 없음)
+    const changed: StockScore[] = [
+      {
+        code: '000001', name: '종목A', cur_price: 9000, change: -100, change_rate: -1.0,
+        trade_amount: 1000, strength: 50, sector: '업종1', rank: 5, guard_pass: true,
+        reject_reason: '', boost_score: 3.5,
+      },
+    ]
+    applyBuyTargetsDelta({ changed })
+
+    // 3. news_boost/news_boost_title 보존 검증 (📰 표시 유지)
+    const afterDelta = hotStore.getState().buyTargets[0]
+    expect(afterDelta.news_boost).toBe(1.5)
+    expect(afterDelta.news_boost_title).toBe('A기업 대규모 수주')
+    // boost_score는 delta 값으로 갱신
+    expect(afterDelta.boost_score).toBe(3.5)
+  })
+
+  it('changed: news_boost 미설정 종목은 보존 시 undefined 유지 (불필요한 세팅 금지)', () => {
+    // news-hit 미발생 상태 — news_boost 미설정
+    const changed: StockScore[] = [
+      {
+        code: '000001', name: '종목A-리네임', cur_price: 9000, change: -100, change_rate: -1.0,
+        trade_amount: 1000, strength: 50, sector: '업종1', rank: 5, guard_pass: true, reject_reason: '',
+      },
+    ]
+    applyBuyTargetsDelta({ changed })
+    const after = hotStore.getState().buyTargets[0]
+    // news_boost 미설정 상태 유지 (강제 0 세팅 아님 — P20 명시적 값)
+    expect(after.news_boost).toBeUndefined()
+    expect(after.news_boost_title).toBeUndefined()
+  })
 })
 
 // ── 세션 3 — news-hit 단일 갱신 경로 (P10 SSOT, P25 격리된 실패) ──────────────

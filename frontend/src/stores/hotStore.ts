@@ -644,6 +644,11 @@ export function applyBuyTargetsDelta(data: {
           // P10(SSOT) + P22(데이터 정합성): sectorStocks가 실시간 데이터 단일 소스.
           // sectorStocks 누락 시 incoming 실시간 필드 유지 — applyBuyTargetsUpdate 결합 패턴과 동일 (P23 일관성).
           const sectorStock = state.sectorStocks[normalizeStockCode(item.code)]
+          // P10: news_boost/news_boost_title은 news-hit 이벤트가 단일 전달 경로.
+          //   백엔드 changed delta는 _BUY_TARGET_REALTIME_KEYS에 의해 news_boost를 pop 제거하므로
+          //   item에 해당 키가 없음. 객체 통째 교체 시 undefined로 소거되면 📰 표시가 사라짐 (P21 위반).
+          //   applyBuyTargetsUpdate prevTitleByCode 보존 패턴과 대칭 — 기존 값 보존 (P23 일관성).
+          const prev = buyTargets[idx]
           if (sectorStock) {
             buyTargets[idx] = {
               ...item,
@@ -652,9 +657,15 @@ export function applyBuyTargetsDelta(data: {
               change_rate: sectorStock.change_rate,
               strength: sectorStock.strength,
               trade_amount: sectorStock.trade_amount,
+              news_boost: prev.news_boost,
+              news_boost_title: prev.news_boost_title,
             }
           } else {
-            buyTargets[idx] = { ...item }
+            buyTargets[idx] = {
+              ...item,
+              news_boost: prev.news_boost,
+              news_boost_title: prev.news_boost_title,
+            }
           }
         }
       }
