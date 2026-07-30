@@ -188,8 +188,7 @@ function rowStyle(row: SectorScoreRow, _index: number): Partial<CSSStyleDeclarat
   const isSel = currentSelected === row.sector
   const isEliminated = !row.is_cutoff_passed || row.rank > currentMaxTargets
   return {
-    opacity: isEliminated ? '0.85' : '1',
-    background: isSel ? COLOR.downBg : (isEliminated ? COLOR.hoverBg : 'transparent'),
+    background: isSel ? COLOR.downBg : (isEliminated ? COLOR.eliminatedBg : 'transparent'),
     outline: isSel ? `2px solid ${COLOR.down}` : 'none',
     cursor: 'pointer',
     borderBottom: 'none',

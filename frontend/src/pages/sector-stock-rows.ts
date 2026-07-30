@@ -164,8 +164,8 @@ export function computeRows(
     const sectorScore = sortedSectorScores.find(s => s.sector === sector)
     const sectorRank = sectorScore?.rank ?? 0
     const isEliminated = !sectorScore?.is_cutoff_passed || sectorRank > maxTargets
-    const opacity = isEliminated ? '0.85' : '1'
-    const bgColor = isEliminated ? COLOR.hoverBg : 'transparent'
+    const opacity = '1'
+    const bgColor = isEliminated ? COLOR.eliminatedBg : 'transparent'
     const score = scoreMap.get(sector)
 
     // NXT 전용 시간대: 이 업종의 활성 종목(NXT 지원)이 0개면 그룹 행도 숨김
@@ -198,7 +198,7 @@ export function computeRows(
       // KRX 비활성 구간: KRX 단독 종목 (nxt_enable !== true)은 행 자체를 추가하지 않음 (숨김)
       if (krxInactive && !stock.nxt_enable) continue
       stockSeq++
-      const rowOpacity = isEliminated ? '0.85' : opacity
+      const rowOpacity = opacity
 
       // 행 객체 캐시: stock 참조가 같으면 이전 행 재사용
       const cached = rowCache.get(code)

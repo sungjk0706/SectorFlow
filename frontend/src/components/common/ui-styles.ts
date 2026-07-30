@@ -127,6 +127,7 @@ export const COLOR = {
   hoverBg:      '#ececef',  // 호버/활성 배경 — macOS 호버 하이라이트
   surface:      '#f5f5f7',  // 서피스 (사이드바/버튼) — macOS 그룹 배경 백그라운드
   inactiveBg:   '#e5e5ea',  // 비활성 배경 — macOS 비활성 토글 배경
+  eliminatedBg: 'rgba(0,0,0,0.06)', // 탈락 업종 행 — 어두운 틴트 유리 (글자는 선명, 배경만 살짝 어둡게)
   toggleOff:    '#8e8e93',  // 토글 OFF — macOS 토글 OFF
   // ── 기간 구분 카드 전용 (수읉상세 상단 4카드 + 하단 통계 연동) ──
   // 당일은 down/downBg 재사용. 5거래일/당월/누적은 기존 의미 색(success/warning/up/kosdaq)과 충돌 회피한 신규 색.
