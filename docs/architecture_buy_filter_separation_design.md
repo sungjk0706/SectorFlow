@@ -20,7 +20,7 @@
 
 ### 2차 혼재 (중복 구현)
 
-`trading.py:execute_buy()` 428-449행이 동일한 매수 차단 판정을 **독립적으로 재구현**. 432행 주석 *"buy_filter.py와 동일 조건, P10 SSOT"*가 명시하듯 의도는 동일 조건이나, 코드가 두 곳에 존재해 한쪽 수정 시 다른쪽과 불일치 발생 가능 (W3/W12 위반 소지).
+`trading.py:execute_buy()` 428-453행이 동일한 매수 차단 판정을 **독립적으로 재구현** (442-449행 판정 + 450-453행 로깅/리턴). 432행 주석 *"buy_filter.py와 동일 조건, P10 SSOT"*가 명시하듯 의도는 동일 조건이나, 코드가 두 곳에 존재해 한쪽 수정 시 다른쪽과 불일치 발생 가능 (W3/W12 위반 소지).
 
 ### 3차 혼재 (결합 전파)
 
@@ -45,7 +45,7 @@ create_buy_targets(sector_scores, max_sectors, block_rise_*, block_fall_*, rebuy
 ├─ [종목 단위] calculate_boost_score 가산점 계산                     ← (d)
 └─ [종목 단위] proximity 정렬 + BuyTarget/blocked 분류              ← (e)
 
-trading.py:execute_buy() 428-449행: (b) 동일 로직 독립 재구현 ← 중복
+trading.py:execute_buy() 428-453행: (b) 동일 로직 독립 재구현 ← 중복
 engine_service._SECTOR_UI_KEYS: buy_block_* → recompute_sector_summary_now() ← 결합
 ```
 
@@ -89,7 +89,7 @@ engine_service._SECTOR_UI_KEYS: buy_block_* → recompute_sector_summary_now() �
 |------|------|----------|
 | `backend/app/domain/sector_calculator.py` | 업종 단위 연산 | **추가**: `select_top_sector_stocks()` — cutoff 통과 top-N 업종의 종목 풀 산출 (업종 단위 책임 종결점) |
 | `backend/app/domain/buy_filter.py` | 종목 단위 매수 차단·순위 | **분해**: `create_buy_targets()` → `apply_buy_block_guards()` + `rank_buy_targets()`. **추가**: `is_change_rate_blocked()` 순수 판정 함수. `build_buy_targets_from_settings()`는 3단계 순차 호출로 재배선 |
-| `backend/app/services/trading.py` | 주문 실행 | 428-449행 인라인 차단 로직 → `is_change_rate_blocked()` 호출로 통합 (중복 제거, W3) |
+| `backend/app/services/trading.py` | 주문 실행 | 428-453행 인라인 차단 로직(442-449 판정 + 450-453 로깅/리턴) → `is_change_rate_blocked()` 호출로 통합 (중복 제거, W3) |
 | `backend/app/services/engine_service.py` | 설정 변경 디스패치 | `_SECTOR_UI_KEYS`에서 `buy_block_*` 분리 → 신규 `_BUY_BLOCK_UI_KEYS`. 매수 차단 변경 시 경량 재순위 경로(업종 재계산 생략) 트리거 |
 | `backend/app/services/sector_data_provider.py` | 업종 재계산 | `recompute_sector_summary_now()` 유지. 신규 `recompute_buy_targets_only()` 추가 — 업종 스코어 캐시 재사용, 매수 타겟만 재생성 |
 | `backend/app/services/engine_sector_confirm.py` | 증분 재계산 | `build_buy_targets_from_settings()` 호출부를 분리된 3단계 순차 호출로 교체 (시그니처 유지 시 영향 최소) |
@@ -217,9 +217,11 @@ def build_buy_targets_from_settings(sector_scores, settings, *, held_codes, boug
 
 **책임**: 설정 → 3단계 순차 호출 배선. 시그니처 유지 (호출부 3곳 영향 없음). `create_buy_targets()`는 제거 또는 `build_buy_targets_from_settings`와 동일 경로로 수렴.
 
+**정리 항목 (min_rise_ratio 잔여 제거)**: 기존 `build_buy_targets_from_settings()`는 `min_rise_ratio`를 `create_buy_targets()`에 전달하나, `create_buy_targets()` 내부(173-190줄)는 `is_cutoff_passed`만 사용하고 `min_rise_ratio`를 직접 사용하지 않음 (cutoff는 이미 `calculate_bonus_scores()`에서 `is_cutoff_passed`로 설정됨). 분리 후 `select_top_sector_stocks()`는 `min_rise_ratio`를 받지 않으므로, `build_buy_targets_from_settings()`에서 `min_rise_ratio` 전달을 제거한다 (사전조사 2026-07-31 확인).
+
 ### 5-7. `trading.py` 중복 구현 처리
 
-428-449행 인라인 차단 로직을 `is_change_rate_blocked()` 호출로 대체:
+428-453행 인라인 차단 로직(442-449 판정 + 450-453 로깅/리턴)을 `is_change_rate_blocked()` 호출로 대체:
 
 ```python
 # 기존: _rise_on/_fall_on/_rise_limit/_fall_limit 직접 읽기 + 인라인 판정 (442-449행)
@@ -337,9 +339,9 @@ _BUY_BLOCK_UI_KEYS = {
 | | sort_keys 다단계 | 1순위→2순위 적용 |
 | `build_buy_targets_from_settings` | 설정 → 3단계 호출 | 기존 `create_buy_targets` 동일 결과 (회귀) |
 
-### 8-2. 회귀 테스트 (기존 48건 시그니처 갱신)
+### 8-2. 회귀 테스트 (기존 30건 시그니처 갱신)
 
-`test_buy_filter.py` 48건 `create_buy_targets` 직접 호출 → `build_buy_targets_from_settings` 또는 분리된 함수로 갱신. 동일 입력에 대해 동일 출력 보장 (회귀 검증).
+`test_buy_filter.py` `TestCreateBuyTargets` 클래스 30개 테스트 메서드의 `create_buy_targets` 직접 호출 → `build_buy_targets_from_settings` 또는 분리된 함수로 갱신. 동일 입력에 대해 동일 출력 보장 (회귀 검증). (사전조사: 설계 초안 48건은 과대 집계 — 실제 30개 메서드, `test_version_increments` 2회 호출 포함 31 호출 지점.)
 
 ### 8-3. 통합 테스트
 
@@ -374,7 +376,7 @@ _BUY_BLOCK_UI_KEYS = {
 ### 9-3. `create_buy_targets()` 제거 여부
 
 **결정**: 제거. `build_buy_targets_from_settings()`가 동일 경로(3단계 순차 호출)로 수렴. `create_buy_targets()` 직접 호출부는 `build_buy_targets_from_settings` 또는 분리 함수로 이전.
-**근거**: W12(불필요 추상화 금지). 두 진입점 유지 시 SSOT 위반 소지. 테스트 48건 갱신 필요.
+**근거**: W12(불필요 추상화 금지). 두 진입점 유지 시 SSOT 위반 소지. 테스트 30건 갱신 필요.
 
 ### 9-4. 이중 게이트(후보 생성 + 주문 직전) 유지
 
@@ -390,10 +392,10 @@ _BUY_BLOCK_UI_KEYS = {
 | 항목 | 변화 |
 |------|------|
 | `create_buy_targets()` | 3 함수로 분해 → 제거 (9-3) |
-| `trading.py:execute_buy()` 428-449행 | 인라인 판정 → `is_change_rate_blocked()` 호출 |
+| `trading.py:execute_buy()` 428-453행 | 인라인 판정 → `is_change_rate_blocked()` 호출 |
 | `engine_service._SECTOR_UI_KEYS` | `buy_block_*` 분리 → `_BUY_BLOCK_UI_KEYS` |
 | 매수 차단 설정 변경 시 | 업종 전체 재계산 → 매수 타겟 재순위만 (경량화) |
-| `test_buy_filter.py` 48건 | 분리된 함수 시그니처로 갱신 |
+| `test_buy_filter.py` 30건 | 분리된 함수 시그니처로 갱신 |
 
 ### 변하지 않는 것
 
@@ -440,8 +442,8 @@ _BUY_BLOCK_UI_KEYS = {
 2. `select_top_sector_stocks()` 추가 (sector_calculator.py)
 3. `apply_buy_block_guards()` + `rank_buy_targets()` 분리 (buy_filter.py)
 4. `build_buy_targets_from_settings()` 3단계 재배선
-5. `trading.py` 428-449행 `is_change_rate_blocked()` 통합
+5. `trading.py` 428-453행 `is_change_rate_blocked()` 통합
 6. `engine_service._BUY_BLOCK_UI_KEYS` 분리 + `recompute_buy_targets_only()` 추가
 7. `engine_sector_confirm.py` 호출부 조정
-8. `test_buy_filter.py` 48건 갱신 + 회귀 테스트
+8. `test_buy_filter.py` 30건 갱신 + 회귀 테스트
 9. 검증 게이트: pytest / RuntimeWarning / 기동
