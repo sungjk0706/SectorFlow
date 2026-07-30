@@ -311,14 +311,17 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
   header.appendChild(brokerChipsContainer)
 
   // 증권사 칩 미리 생성 (BROKER_LABELS 기반, 상태만 업데이트 — 재생성 금지)
+  // 초기 display='none' — 첫 상태 갱신 시 활성 broker만 표시 (P21 비활성 증권사 칩 숨김)
   const brokerChipRefs: Record<string, { token: HTMLSpanElement; ws: HTMLSpanElement }> = {}
   for (const brokerId of Object.keys(BROKER_LABELS)) {
     const label = BROKER_LABELS[brokerId]
     const tokenChip = createChipEl()
+    tokenChip.style.display = 'none'
     applyStatusChip(tokenChip, `${label}증권`, false)
     brokerChipsContainer.appendChild(tokenChip)
 
     const wsChip = createChipEl()
+    wsChip.style.display = 'none'
     applyStatusChip(wsChip, `${label}실시간`, false)
     brokerChipsContainer.appendChild(wsChip)
 
@@ -553,12 +556,19 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
     } catch (e) { console.error('[header] mode chip error', e) }
 
     // 증권사 칩 상태 업데이트 (미리 생성된 칩 재사용 — 재생성 금지)
+    // P21: 비활성 증권사(broker_statuses에 없음) 칩은 숨김 — 회색 칩이 "연결 실패"로 오해되는 것 방지.
+    // P10: 백엔드 broker_statuses(활성 broker만 포함)를 그대로 반영.
     // P25: 증권사 단위 격리 — 한 증권사 칩 렌더링 throw 시 해당 증권사만 스킵 + 로깅, 다른 증권사 계속
     const brokerStatuses = status?.broker_statuses ?? {}
     for (const brokerId of Object.keys(brokerChipRefs)) {
       try {
         const refs = brokerChipRefs[brokerId]
         const bs = brokerStatuses[brokerId]
+        // 활성 broker만 표시, 비활성 증권사 칩 숨김
+        const show = bs !== undefined
+        refs.token.style.display = show ? '' : 'none'
+        refs.ws.style.display = show ? '' : 'none'
+        if (!show) continue
         const label = BROKER_LABELS[brokerId]
         applyStatusChip(refs.token, `${label}증권`, bs?.token_valid ?? false)
         applyStatusChip(refs.ws, `${label}실시간`, bs?.ws_connected ?? false)
