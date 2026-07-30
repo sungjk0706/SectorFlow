@@ -10,7 +10,7 @@ from pathlib import Path
 from PIL import Image
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-SOURCE = PROJECT_ROOT / "frontend/public/logo.png"
+SOURCE = PROJECT_ROOT / "frontend/public/logo-source.png"
 PUBLIC = PROJECT_ROOT / "frontend/public"
 ICONS = PROJECT_ROOT / "assets/icons"
 APP = PROJECT_ROOT / "build/SectorFlow.app"
