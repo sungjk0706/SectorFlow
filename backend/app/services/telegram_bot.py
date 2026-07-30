@@ -200,7 +200,7 @@ def _build_settings_lines(flat: dict) -> str:
         f"🎯 투자모드: {mode_txt}",
     ]
 
-    # 매수 조건
+    # 매수 조건 (매수 차단 — 개별 종목 단위, P23 책임 분리)
     buy_lines = []
     if flat.get("max_stock_cnt_on"):
         buy_lines.append(f"최대 종목: {flat.get('max_stock_cnt', 0)}개")
@@ -210,6 +210,10 @@ def _build_settings_lines(flat: dict) -> str:
         buy_lines.append(f"일일 총매수 한도: {_fmt_money(flat.get('max_daily_total_buy_amt'))}")
     if flat.get("rebuy_block_on"):
         buy_lines.append(f"재매수 차단: {flat.get('rebuy_block_period', '?')}")
+    if flat.get("buy_block_rise_on"):
+        buy_lines.append(f"상승 차단: {_fmt_pct(flat.get('buy_block_rise_pct'))}")
+    if flat.get("buy_block_fall_on"):
+        buy_lines.append(f"하락 차단: {_fmt_pct(flat.get('buy_block_fall_pct'))}")
     buy_block = " · ".join(buy_lines) if buy_lines else "제한 없음"
 
     # 매도 조건
@@ -237,17 +241,13 @@ def _build_settings_lines(flat: dict) -> str:
     risk_lines.append(f"종목 최대 노출: {_fmt_money(flat.get('max_single_stock_exposure'))}")
     risk_block = " · ".join(risk_lines)
 
-    # 업종 필터
+    # 업종 필터 (업종 단위 — 개별 종목 단위 매수 차단은 매수 조건 섹션, P23 책임 분리)
     sector_lines = [
         f"최소 상승 비율: {_fmt_pct(flat.get('sector_min_rise_ratio_pct'))}",
         f"최소 거래대금: {_fmt_money(flat.get('sector_min_trade_amt'))}",
         f"최대 업종 수: {flat.get('sector_max_targets', 0)}개",
         f"수신률 임계값: {_fmt_pct(flat.get('sector_start_threshold_pct'))}",
     ]
-    if flat.get("buy_block_rise_on"):
-        sector_lines.append(f"상승 차단: {_fmt_pct(flat.get('buy_block_rise_pct'))}")
-    if flat.get("buy_block_fall_on"):
-        sector_lines.append(f"하락 차단: {_fmt_pct(flat.get('buy_block_fall_pct'))}")
     sector_block = " · ".join(sector_lines)
 
     return (

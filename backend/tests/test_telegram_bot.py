@@ -1622,15 +1622,29 @@ class TestBuildSettingsLines:
         assert "최대 종목: 5개" in text
         assert "종목당 금액" in text
         assert "재매수 차단: today" in text
+        # 매수 차단(개별 종목 단위) — 매수 조건 섹션에 표시 (P23 책임 분리)
+        assert "상승 차단: +7.0%" in text
+        assert "하락 차단: -7.0%" in text
         # 일일 총매수 한도 OFF → 미포함
         assert "일일 총매수 한도" not in text
 
     def test_buy_section_no_conditions_shows_placeholder(self):
         flat = self._full_flat()
-        for k in ("max_stock_cnt_on", "buy_amt_on", "max_daily_total_buy_on", "rebuy_block_on"):
+        for k in (
+            "max_stock_cnt_on", "buy_amt_on", "max_daily_total_buy_on", "rebuy_block_on",
+            "buy_block_rise_on", "buy_block_fall_on",
+        ):
             flat[k] = False
         text = _build_settings_lines(flat)
         assert "제한 없음" in text
+
+    def test_buy_section_omits_blocks_when_off(self):
+        flat = self._full_flat()
+        flat["buy_block_rise_on"] = False
+        flat["buy_block_fall_on"] = False
+        text = _build_settings_lines(flat)
+        assert "상승 차단" not in text
+        assert "하락 차단" not in text
 
     def test_sell_section_includes_tp_only(self):
         text = _build_settings_lines(self._full_flat())
@@ -1679,16 +1693,10 @@ class TestBuildSettingsLines:
         assert "최소 상승 비율: +60.0%" in text
         assert "최대 업종 수: 3개" in text
         assert "수신률 임계값: +70.0%" in text
-        assert "상승 차단: +7.0%" in text
-        assert "하락 차단: -7.0%" in text
-
-    def test_sector_section_omits_blocks_when_off(self):
-        flat = self._full_flat()
-        flat["buy_block_rise_on"] = False
-        flat["buy_block_fall_on"] = False
-        text = _build_settings_lines(flat)
-        assert "상승 차단" not in text
-        assert "하락 차단" not in text
+        # 매수 차단(개별 종목 단위)은 업종 필터 섹션에서 분리 — 업종 섹션 본문에 미포함 (P23 책임 분리)
+        sector_part = text.split("업종 필터", 1)[1]
+        assert "상승 차단" not in sector_part
+        assert "하락 차단" not in sector_part
 
     def test_missing_keys_do_not_crash(self):
         """빈 dict에도 예외 없이 기본값 처리 (P25 격리된 실패)."""

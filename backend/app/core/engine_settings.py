@@ -216,12 +216,18 @@ def _build_risk_settings(merged: dict) -> dict:
 
 
 def _build_buy_settings(merged: dict, flat: dict) -> dict:
-    """매수 설정 + AutoTradeManager 호환 키 — _on 키 마이그레이션 포함.
+    """매수 설정 + 매수 차단(개별 종목 단위) + AutoTradeManager 호환 키 — _on 키 마이그레이션 포함.
 
     flat 참조는 _on 키 마이그레이션 로직 전용 (키 존재 여부로 추론 분기).
-    나머지 값은 merged[key] 직접 접근 (P10 SSOT)."""
+    나머지 값은 merged[key] 직접 접근 (P10 SSOT).
+
+    매수 차단(buy_block_rise/fall)은 개별 종목 단위 필터로 매수 설정 영역에 속함.
+    업종 단위 필터(sector_*)는 _build_sector_and_order_settings 참조 (P23 책임 분리)."""
     _buy_amt_raw = int(merged["buy_amt"])
     _max_stock_cnt_raw = int(merged["max_stock_cnt"])
+    # 매수 차단 토글 — flat에 _on 키가 명시적으로 설정되었는지로 추론 분기 (마이그레이션)
+    _rise_pct = float(merged["buy_block_rise_pct"])
+    _fall_pct = float(merged["buy_block_fall_pct"])
     return {
         "buy_amount": _buy_amt_raw,
         "buy_amount_on": bool(flat.get("buy_amt_on")) if "buy_amt_on" in flat else (_buy_amt_raw > 0),
@@ -233,6 +239,10 @@ def _build_buy_settings(merged: dict, flat: dict) -> dict:
         "buy_amt": _buy_amt_raw,
         "max_stock_cnt_on": bool(flat.get("max_stock_cnt_on")) if "max_stock_cnt_on" in flat else (_max_stock_cnt_raw > 0),
         "max_stock_cnt": _max_stock_cnt_raw,
+        "buy_block_rise_on": bool(flat.get("buy_block_rise_on")) if "buy_block_rise_on" in flat else (_rise_pct > 0),
+        "buy_block_rise_pct": _rise_pct,
+        "buy_block_fall_on": bool(flat.get("buy_block_fall_on")) if "buy_block_fall_on" in flat else (_fall_pct < 0),
+        "buy_block_fall_pct": _fall_pct,
         "tp_val": float(merged["tp_val"]),
         "tp_apply": bool(merged["tp_apply"]),
         "loss_apply": bool(merged["loss_apply"]),
@@ -257,16 +267,12 @@ def _build_order_intervals(merged: dict) -> dict:
     }
 
 
-def _build_sector_and_order_settings(merged: dict, flat: dict) -> dict:
-    """업종 매수가드, 구독 한도, 슬라이더, 재매수 차단, 매수 차단 토글.
+def _build_sector_and_order_settings(merged: dict) -> dict:
+    """업종순위(업종 단위) 설정, 구독 한도, 슬라이더, 재매수 차단, 주문 간격.
 
-    flat 참조는 _on 키 마이그레이션 + 주문 간격 레거시 변환 전용.
-    나머지 값은 merged[key] 직접 접근 (P10 SSOT)."""
+    나머지 값은 merged[key] 직접 접근 (P10 SSOT).
+    매수 차단(buy_block_*)은 개별 종목 단위 필터로 _build_buy_settings에서 빌드 (P23 책임 분리)."""
     sector_sort_keys = [k for k in merged["sector_sort_keys"] if k not in ("foreign_net", "institution_net")]
-
-    # 매수 차단 토글 — flat에 _on 키가 명시적으로 설정되었는지로 추론 분기 (마이그레이션)
-    _rise_pct = float(merged["buy_block_rise_pct"])
-    _fall_pct = float(merged["buy_block_fall_pct"])
 
     return {
         "sector_sort_keys": sector_sort_keys,
@@ -275,10 +281,6 @@ def _build_sector_and_order_settings(merged: dict, flat: dict) -> dict:
         "sector_min_trade_amt": float(merged["sector_min_trade_amt"]),
         "sector_start_threshold_pct": float(merged["sector_start_threshold_pct"]),
         "subscribe.max_0b_count": int(merged["subscribe.max_0b_count"]),
-        "buy_block_rise_on": bool(flat.get("buy_block_rise_on")) if "buy_block_rise_on" in flat else (_rise_pct > 0),
-        "buy_block_rise_pct": _rise_pct,
-        "buy_block_fall_on": bool(flat.get("buy_block_fall_on")) if "buy_block_fall_on" in flat else (_fall_pct < 0),
-        "buy_block_fall_pct": _fall_pct,
         "sector_bonus_rise_ratio_slider": int(merged["sector_bonus_rise_ratio_slider"]),
         "sector_bonus_relative_strength_slider": int(merged["sector_bonus_relative_strength_slider"]),
         "sector_bonus_trade_amount_slider": int(merged["sector_bonus_trade_amount_slider"]),
@@ -356,7 +358,7 @@ def build_engine_settings_dict(flat: dict) -> dict:
         **_build_sell_settings(merged),
         **_build_risk_settings(merged),
         **_build_buy_settings(merged, flat),
-        **_build_sector_and_order_settings(merged, flat),
+        **_build_sector_and_order_settings(merged),
         **_build_boost_settings(merged),
         **_build_misc_settings(merged),
         **_pick_broker_credentials(merged),
