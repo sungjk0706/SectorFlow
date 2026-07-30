@@ -1,10 +1,14 @@
-"""buy_filter.py 단위 테스트 — 매수 후보 필터링 및 타겟 생성 로직 검증.
+"""buy_filter.py · sector_calculator.py 단위 테스트 — 매수 후보 필터링 및 타겟 생성 로직 검증.
 
 check_stock_guards, calculate_boost_score의 가드 필터링, 가산점 계산 로직 검증.
-TestCreateBuyTargets (30건)는 8세션에서 build_buy_targets_from_settings /
-분리 함수(apply_buy_block_guards, rank_buy_targets) 호출로 갱신 예정.
+TestBuildBuyTargetsFromSettings (30건)는 build_buy_targets_from_settings 어댑터 회귀 검증
+(기존 create_buy_targets 30건 시그니처 갱신 — 설계서 섹션 8-2).
+TestSelectTopSectorStocks · TestIsChangeRateBlocked · TestApplyBuyBlockGuards · TestRankBuyTargets는
+분리 함수 단위 검증 (설계서 섹션 8-1).
 """
 from __future__ import annotations
+
+from unittest.mock import patch
 
 import pytest
 
@@ -12,7 +16,12 @@ from backend.app.domain.models import StockScore, SectorScore, SectorSummary
 from backend.app.domain.buy_filter import (
     calculate_boost_score,
     check_stock_guards,
+    is_change_rate_blocked,
+    apply_buy_block_guards,
+    rank_buy_targets,
+    build_buy_targets_from_settings,
 )
+from backend.app.domain.sector_calculator import select_top_sector_stocks
 
 
 # ── 헬퍼 ──────────────────────────────────────────────────────────────────────
@@ -437,12 +446,61 @@ class TestCalculateBoostScore:
         assert score >= 0.0
 
 
-# ── create_buy_targets (8세션에서 build_buy_targets_from_settings / 분리 함수로 갱신 예정) ──
+# ── build_buy_targets_from_settings 회귀 어댑터 (기존 create_buy_targets 28건 갱신) ──
 
-@pytest.mark.skip(reason="create_buy_targets() 제거(5세션) — 8세션에서 분리 함수 호출로 갱신 예정")
-class TestCreateBuyTargets:
+_DEFAULT_SETTINGS = {
+    "sector_max_targets": 3,
+    "buy_block_rise_on": True,
+    "buy_block_rise_pct": 7.0,
+    "buy_block_fall_on": True,
+    "buy_block_fall_pct": -7.0,
+    "rebuy_block_on": True,
+    "sector_sort_keys": None,
+    "boost_high_breakout_on": False,
+    "boost_high_breakout_score": 1.0,
+    "boost_order_ratio_on": False,
+    "boost_order_ratio_pct": 20.0,
+    "boost_order_ratio_score": 1.0,
+    "boost_program_net_buy_on": False,
+    "boost_program_net_buy_score": 1.0,
+    "boost_news_on": False,
+    "boost_news_score": 1.0,
+}
+
+
+def _settings(**overrides) -> dict:
+    s = dict(_DEFAULT_SETTINGS)
+    s.update(overrides)
+    return s
+
+
+def _build(
+    sector_scores,
+    *,
+    settings=None,
+    held_codes=None,
+    bought_today_codes=None,
+    high_5d_cache=None,
+    orderbook_cache=None,
+    program_net_buy_cache=None,
+    news_boost_cache=None,
+) -> SectorSummary:
+    """build_buy_targets_from_settings 어댑터 회귀 테스트용 헬퍼.
+    engine_radar 캐시 getter를 patch하여 순수 단위 테스트 보장."""
+    _s = settings if settings is not None else _settings()
+    with patch("backend.app.services.engine_radar.get_high_price_5d_cache", return_value=high_5d_cache or {}), \
+         patch("backend.app.services.engine_radar.get_orderbook_cache", return_value=orderbook_cache or {}), \
+         patch("backend.app.services.engine_radar.get_program_net_buy_cache", return_value=program_net_buy_cache or {}), \
+         patch("backend.app.services.engine_radar.get_news_boost_cache", return_value=news_boost_cache or {}):
+        return build_buy_targets_from_settings(
+            sector_scores, _s,
+            held_codes=held_codes, bought_today_codes=bought_today_codes,
+        )
+
+
+class TestBuildBuyTargetsFromSettings:
     def test_empty_sector_scores_returns_empty(self):
-        result = create_buy_targets([])
+        result = _build([])
         assert result.buy_targets == []
         assert result.blocked_targets == []
         assert result.sectors == []
@@ -451,7 +509,7 @@ class TestCreateBuyTargets:
         """is_cutoff_passed=False 업종은 매수 대상에서 제외 (rank가 아닌 is_cutoff_passed로 판단)."""
         s1 = _stock(code="A001", change_rate=1.0)
         sc = _sector(rank=2, is_cutoff_passed=False, stocks=[s1])
-        result = create_buy_targets([sc])
+        result = _build([sc])
         assert result.buy_targets == []
         assert result.blocked_targets == []
 
@@ -464,7 +522,7 @@ class TestCreateBuyTargets:
             _sector(sector="B", rank=2, stocks=stocks_b),
             _sector(sector="C", rank=3, stocks=stocks_c),
         ]
-        result = create_buy_targets(sectors, max_sectors=2)
+        result = _build(sectors, settings=_settings(sector_max_targets=2))
         codes = {t.stock.code for t in result.buy_targets}
         assert "A001" in codes
         assert "A002" in codes
@@ -473,7 +531,7 @@ class TestCreateBuyTargets:
     def test_guard_pass_goes_to_buy_targets(self):
         s1 = _stock(code="A001", change_rate=1.0)
         sc = _sector(rank=1, stocks=[s1])
-        result = create_buy_targets([sc])
+        result = _build([sc])
         assert len(result.buy_targets) == 1
         assert result.buy_targets[0].stock.code == "A001"
         assert result.buy_targets[0].reject_reason == ""
@@ -482,7 +540,7 @@ class TestCreateBuyTargets:
     def test_guard_blocked_goes_to_blocked_targets(self):
         s1 = _stock(code="A001", change_rate=10.0)
         sc = _sector(rank=1, stocks=[s1])
-        result = create_buy_targets([sc], block_rise_pct=7.0)
+        result = _build([sc], settings=_settings(buy_block_rise_pct=7.0))
         assert result.buy_targets == []
         assert len(result.blocked_targets) == 1
         assert result.blocked_targets[0].stock.code == "A001"
@@ -492,7 +550,7 @@ class TestCreateBuyTargets:
         s_pass = _stock(code="A001", change_rate=1.0)
         s_block = _stock(code="A002", change_rate=10.0)
         sc = _sector(rank=1, stocks=[s_pass, s_block])
-        result = create_buy_targets([sc], block_rise_pct=7.0)
+        result = _build([sc], settings=_settings(buy_block_rise_pct=7.0))
         assert len(result.buy_targets) == 1
         assert len(result.blocked_targets) == 1
         assert result.buy_targets[0].stock.code == "A001"
@@ -502,7 +560,7 @@ class TestCreateBuyTargets:
         s1 = _stock(code="A001", change_rate=1.0)
         s2 = _stock(code="A002", change_rate=2.0)
         sc = _sector(rank=1, stocks=[s1, s2])
-        result = create_buy_targets([sc])
+        result = _build([sc])
         assert result.buy_targets[0].rank == 1
         assert result.buy_targets[1].rank == 2
 
@@ -510,7 +568,13 @@ class TestCreateBuyTargets:
         s1 = _stock(code="A001", change_rate=10.0)
         s2 = _stock(code="A002", change_rate=-10.0)
         sc = _sector(rank=1, stocks=[s1, s2])
-        result = create_buy_targets([sc], block_rise_pct=7.0, block_fall_pct=-7.0)
+        result = _build(
+            [sc],
+            settings=_settings(
+                buy_block_rise_pct=7.0,
+                buy_block_fall_pct=-7.0,
+            ),
+        )
         assert result.blocked_targets[0].rank == 1
         assert result.blocked_targets[1].rank == 2
 
@@ -519,7 +583,7 @@ class TestCreateBuyTargets:
         s2 = _stock(code="A002", change_rate=5.0)
         s3 = _stock(code="A003", change_rate=3.0)
         sc = _sector(rank=1, stocks=[s1, s2, s3])
-        result = create_buy_targets([sc], sort_keys=["change_rate"])
+        result = _build([sc], settings=_settings(sector_sort_keys=["change_rate"]))
         codes = [t.stock.code for t in result.buy_targets]
         assert codes == ["A002", "A003", "A001"]
 
@@ -528,7 +592,7 @@ class TestCreateBuyTargets:
         s2 = _stock(code="A002", trade_amount=5_000_000)
         s3 = _stock(code="A003", trade_amount=3_000_000)
         sc = _sector(rank=1, stocks=[s1, s2, s3])
-        result = create_buy_targets([sc], sort_keys=["trade_amount"])
+        result = _build([sc], settings=_settings(sector_sort_keys=["trade_amount"]))
         codes = [t.stock.code for t in result.buy_targets]
         assert codes == ["A002", "A003", "A001"]
 
@@ -537,7 +601,7 @@ class TestCreateBuyTargets:
         s2 = _stock(code="A002", strength=200.0)
         s3 = _stock(code="A003", strength=100.0)
         sc = _sector(rank=1, stocks=[s1, s2, s3])
-        result = create_buy_targets([sc], sort_keys=["strength"])
+        result = _build([sc], settings=_settings(sector_sort_keys=["strength"]))
         codes = [t.stock.code for t in result.buy_targets]
         assert codes == ["A002", "A003", "A001"]
 
@@ -546,7 +610,10 @@ class TestCreateBuyTargets:
         s2 = _stock(code="A002", change_rate=5.0, trade_amount=5_000_000)
         s3 = _stock(code="A003", change_rate=3.0, trade_amount=9_000_000)
         sc = _sector(rank=1, stocks=[s1, s2, s3])
-        result = create_buy_targets([sc], sort_keys=["change_rate", "trade_amount"])
+        result = _build(
+            [sc],
+            settings=_settings(sector_sort_keys=["change_rate", "trade_amount"]),
+        )
         codes = [t.stock.code for t in result.buy_targets]
         assert codes == ["A002", "A001", "A003"]
 
@@ -554,12 +621,14 @@ class TestCreateBuyTargets:
         s1 = _stock(code="A001", change_rate=3.0, cur_price=75000)
         s2 = _stock(code="A002", change_rate=5.0, cur_price=65000)
         sc = _sector(rank=1, stocks=[s1, s2])
-        result = create_buy_targets(
+        result = _build(
             [sc],
-            sort_keys=["change_rate"],
+            settings=_settings(
+                sector_sort_keys=["change_rate"],
+                boost_high_breakout_on=True,
+                boost_high_breakout_score=10.0,
+            ),
             high_5d_cache={"A001": 70000},
-            boost_high_on=True,
-            boost_high_score=10.0,
         )
         codes = [t.stock.code for t in result.buy_targets]
         assert codes[0] == "A001"
@@ -567,21 +636,21 @@ class TestCreateBuyTargets:
     def test_sector_rank_in_target(self):
         s1 = _stock(code="A001")
         sc = _sector(rank=2, stocks=[s1])
-        result = create_buy_targets([sc])
+        result = _build([sc])
         assert result.buy_targets[0].sector_rank == 2
 
     def test_version_increments(self):
         s1 = _stock(code="A001")
         sc = _sector(rank=1, stocks=[s1])
-        r1 = create_buy_targets([sc])
-        r2 = create_buy_targets([sc])
+        r1 = _build([sc])
+        r2 = _build([sc])
         assert r2.version == r1.version + 1
 
     def test_pass_targets_before_blocked_in_proximity(self):
         s_pass = _stock(code="A001", change_rate=1.0)
         s_block = _stock(code="A002", change_rate=10.0)
         sc = _sector(rank=1, stocks=[s_pass, s_block])
-        result = create_buy_targets([sc], block_rise_pct=7.0)
+        result = _build([sc], settings=_settings(buy_block_rise_pct=7.0))
         assert len(result.buy_targets) == 1
         assert len(result.blocked_targets) == 1
 
@@ -589,12 +658,14 @@ class TestCreateBuyTargets:
         # 차단 종목이지만 5거래일 고가 돌파(75000 > 70000) → 가산점 부여
         s1 = _stock(code="A001", change_rate=10.0, cur_price=75000)
         sc = _sector(rank=1, stocks=[s1])
-        result = create_buy_targets(
+        result = _build(
             [sc],
-            block_rise_pct=7.0,
+            settings=_settings(
+                buy_block_rise_pct=7.0,
+                boost_high_breakout_on=True,
+                boost_high_breakout_score=5.0,
+            ),
             high_5d_cache={"A001": 70000},
-            boost_high_on=True,
-            boost_high_score=5.0,
         )
         # 차단 종목이지만 5거래일 고가 돌파(75000 > 70000) → 가산점 부여
         assert result.blocked_targets[0].stock.boost_score == 5.0
@@ -602,7 +673,7 @@ class TestCreateBuyTargets:
     def test_returns_sector_summary(self):
         s1 = _stock(code="A001")
         sc = _sector(rank=1, stocks=[s1])
-        result = create_buy_targets([sc])
+        result = _build([sc])
         assert isinstance(result, SectorSummary)
         assert result.sectors == [sc]
 
@@ -610,7 +681,11 @@ class TestCreateBuyTargets:
         s_normal = _stock(code="A001", change_rate=1.0)
         s_held = _stock(code="A002", change_rate=5.0)
         sc = _sector(rank=1, stocks=[s_held, s_normal])
-        result = create_buy_targets([sc], held_codes={"A002"}, sort_keys=["change_rate"])
+        result = _build(
+            [sc],
+            held_codes={"A002"},
+            settings=_settings(sector_sort_keys=["change_rate"]),
+        )
         assert [t.stock.code for t in result.buy_targets] == ["A001"]
         assert result.buy_targets[0].reject_reason == ""
         assert [t.stock.code for t in result.blocked_targets] == ["A002"]
@@ -621,7 +696,11 @@ class TestCreateBuyTargets:
         s_normal = _stock(code="A001", change_rate=1.0)
         s_bought = _stock(code="A002", change_rate=5.0)
         sc = _sector(rank=1, stocks=[s_bought, s_normal])
-        result = create_buy_targets([sc], bought_today_codes={"A002"}, sort_keys=["change_rate"])
+        result = _build(
+            [sc],
+            bought_today_codes={"A002"},
+            settings=_settings(sector_sort_keys=["change_rate"]),
+        )
         assert [t.stock.code for t in result.buy_targets] == ["A001"]
         assert result.buy_targets[0].reject_reason == ""
         assert [t.stock.code for t in result.blocked_targets] == ["A002"]
@@ -633,8 +712,13 @@ class TestCreateBuyTargets:
         s_held = _stock(code="A002", change_rate=5.0)
         s_blocked = _stock(code="A003", change_rate=10.0)
         sc = _sector(rank=1, stocks=[s_blocked, s_held, s_normal])
-        result = create_buy_targets(
-            [sc], held_codes={"A002"}, block_rise_pct=7.0, sort_keys=["change_rate"],
+        result = _build(
+            [sc],
+            held_codes={"A002"},
+            settings=_settings(
+                buy_block_rise_pct=7.0,
+                sector_sort_keys=["change_rate"],
+            ),
         )
         assert [t.stock.code for t in result.buy_targets] == ["A001"]
         blocked_codes = [t.stock.code for t in result.blocked_targets]
@@ -645,7 +729,14 @@ class TestCreateBuyTargets:
         s_normal = _stock(code="A001", change_rate=1.0)
         s_held = _stock(code="A002", change_rate=9.0)
         sc = _sector(rank=1, stocks=[s_held, s_normal])
-        result = create_buy_targets([sc], held_codes={"A002"}, block_rise_pct=10.0, sort_keys=["change_rate"])
+        result = _build(
+            [sc],
+            held_codes={"A002"},
+            settings=_settings(
+                buy_block_rise_pct=10.0,
+                sector_sort_keys=["change_rate"],
+            ),
+        )
         assert result.buy_targets[0].stock.code == "A001"
         assert result.buy_targets[0].rank == 1
         assert [t.stock.code for t in result.blocked_targets] == ["A002"]
@@ -655,25 +746,36 @@ class TestCreateBuyTargets:
         """전역 조건(보유중)이 개별 가드(상승률)보다 우선 — SSOT: trading.py 실행 게이트와 동일 순서."""
         s_held = _stock(code="A002", change_rate=10.0)
         sc = _sector(rank=1, stocks=[s_held])
-        result = create_buy_targets([sc], held_codes={"A002"}, block_rise_pct=7.0)
+        result = _build(
+            [sc],
+            held_codes={"A002"},
+            settings=_settings(buy_block_rise_pct=7.0),
+        )
         assert result.blocked_targets[0].reject_reason == "보유중"
 
     def test_bought_today_takes_priority_over_fall_guard(self):
         """전역 조건(금일매수)이 개별 가드(하락률)보다 우선."""
         s_bought = _stock(code="A003", change_rate=-10.0)
         sc = _sector(rank=1, stocks=[s_bought])
-        result = create_buy_targets([sc], bought_today_codes={"A003"}, block_fall_pct=-7.0)
+        result = _build(
+            [sc],
+            bought_today_codes={"A003"},
+            settings=_settings(buy_block_fall_pct=-7.0),
+        )
         assert result.blocked_targets[0].reject_reason == "금일매수"
-
-    # ── rebuy_block_on=False: 보유/금일매수 종목 매수 허용 ──
 
     def test_rebuy_block_off_held_stock_in_buy_targets(self):
         """rebuy_block_on=False → 보유 종목도 매수 후보에 포함."""
         s_normal = _stock(code="A001", change_rate=1.0)
         s_held = _stock(code="A002", change_rate=5.0)
         sc = _sector(rank=1, stocks=[s_held, s_normal])
-        result = create_buy_targets(
-            [sc], held_codes={"A002"}, rebuy_block_on=False, sort_keys=["change_rate"],
+        result = _build(
+            [sc],
+            held_codes={"A002"},
+            settings=_settings(
+                rebuy_block_on=False,
+                sector_sort_keys=["change_rate"],
+            ),
         )
         codes = {t.stock.code for t in result.buy_targets}
         assert "A002" in codes
@@ -688,8 +790,13 @@ class TestCreateBuyTargets:
         s_normal = _stock(code="A001", change_rate=1.0)
         s_bought = _stock(code="A002", change_rate=5.0)
         sc = _sector(rank=1, stocks=[s_bought, s_normal])
-        result = create_buy_targets(
-            [sc], bought_today_codes={"A002"}, rebuy_block_on=False, sort_keys=["change_rate"],
+        result = _build(
+            [sc],
+            bought_today_codes={"A002"},
+            settings=_settings(
+                rebuy_block_on=False,
+                sector_sort_keys=["change_rate"],
+            ),
         )
         codes = {t.stock.code for t in result.buy_targets}
         assert "A002" in codes
@@ -702,8 +809,10 @@ class TestCreateBuyTargets:
         """rebuy_block_on=False → 보유 종목이 blocked_targets에 들어가지 않음."""
         s_held = _stock(code="A002", change_rate=5.0)
         sc = _sector(rank=1, stocks=[s_held])
-        result = create_buy_targets(
-            [sc], held_codes={"A002"}, rebuy_block_on=False,
+        result = _build(
+            [sc],
+            held_codes={"A002"},
+            settings=_settings(rebuy_block_on=False),
         )
         assert [t.stock.code for t in result.blocked_targets] == []
         assert [t.stock.code for t in result.buy_targets] == ["A002"]
@@ -712,6 +821,150 @@ class TestCreateBuyTargets:
         """rebuy_block_on 미전달(기본값 True) → 보유 종목 차단 (기존 동작 유지)."""
         s_held = _stock(code="A002", change_rate=5.0)
         sc = _sector(rank=1, stocks=[s_held])
-        result = create_buy_targets([sc], held_codes={"A002"})
+        result = _build([sc], held_codes={"A002"})
         assert [t.stock.code for t in result.blocked_targets] == ["A002"]
         assert result.blocked_targets[0].reject_reason == "보유중"
+
+
+# ── select_top_sector_stocks (단위) ─────────────────────────────────────────────
+
+class TestSelectTopSectorStocks:
+    def test_cutoff_failed_sectors_excluded(self):
+        s1 = _stock(code="A001", change_rate=1.0)
+        sc_pass = _sector(sector="반도체", rank=1, stocks=[s1])
+        sc_fail = _sector(sector="전기", rank=2, is_cutoff_passed=False, stocks=[_stock(code="A002")])
+        pairs = select_top_sector_stocks([sc_pass, sc_fail], max_sectors=2)
+        assert len(pairs) == 1
+        assert pairs[0][0].code == "A001"
+
+    def test_max_sectors_limit(self):
+        s_a = [_stock(code="A001", change_rate=1.0)]
+        s_b = [_stock(code="A002", change_rate=2.0)]
+        s_c = [_stock(code="A003", change_rate=3.0)]
+        sectors = [
+            _sector(sector="A", rank=1, stocks=s_a),
+            _sector(sector="B", rank=2, stocks=s_b),
+            _sector(sector="C", rank=3, stocks=s_c),
+        ]
+        pairs = select_top_sector_stocks(sectors, max_sectors=2)
+        codes = {p[0].code for p in pairs}
+        assert "A001" in codes
+        assert "A002" in codes
+        assert "A003" not in codes
+
+    def test_empty_sector_scores_returns_empty(self):
+        assert select_top_sector_stocks([]) == []
+
+
+# ── is_change_rate_blocked (단위) ───────────────────────────────────────────────
+
+class TestIsChangeRateBlocked:
+    def test_rise_above_limit_blocks(self):
+        blocked, reason = is_change_rate_blocked(
+            8.0, block_rise_on=True, block_rise_pct=7.0,
+        )
+        assert blocked is True
+        assert reason == "상승률"
+
+    def test_fall_below_limit_blocks(self):
+        blocked, reason = is_change_rate_blocked(
+            -8.0, block_fall_on=True, block_fall_pct=-7.0,
+        )
+        assert blocked is True
+        assert reason == "하락률"
+
+    def test_within_range_passes(self):
+        blocked, reason = is_change_rate_blocked(
+            2.0,
+            block_rise_on=True,
+            block_rise_pct=7.0,
+            block_fall_on=True,
+            block_fall_pct=-7.0,
+        )
+        assert blocked is False
+        assert reason == ""
+
+    def test_block_rise_off_passes(self):
+        blocked, reason = is_change_rate_blocked(
+            10.0, block_rise_on=False, block_rise_pct=7.0,
+        )
+        assert blocked is False
+        assert reason == ""
+
+    def test_block_rise_pct_zero_disabled(self):
+        blocked, reason = is_change_rate_blocked(
+            10.0, block_rise_on=True, block_rise_pct=0.0,
+        )
+        assert blocked is False
+        assert reason == ""
+
+
+# ── apply_buy_block_guards (단위) ───────────────────────────────────────────────
+
+class TestApplyBuyBlockGuards:
+    def test_held_with_rebuy_block_on_blocked(self):
+        s = _stock(code="A001", change_rate=1.0)
+        sc = _sector(rank=1, stocks=[s])
+        pairs = select_top_sector_stocks([sc])
+        apply_buy_block_guards(pairs, rebuy_block_on=True, held_codes={"A001"})
+        assert s.guard_pass is False
+        assert s.guard_reason == "보유중"
+
+    def test_bought_today_with_rebuy_block_on_blocked(self):
+        s = _stock(code="A001", change_rate=1.0)
+        sc = _sector(rank=1, stocks=[s])
+        pairs = select_top_sector_stocks([sc])
+        apply_buy_block_guards(pairs, rebuy_block_on=True, bought_today_codes={"A001"})
+        assert s.guard_pass is False
+        assert s.guard_reason == "금일매수"
+
+    def test_rebuy_block_off_held_passes(self):
+        s = _stock(code="A001", change_rate=1.0)
+        sc = _sector(rank=1, stocks=[s])
+        pairs = select_top_sector_stocks([sc])
+        apply_buy_block_guards(pairs, rebuy_block_on=False, held_codes={"A001"})
+        assert s.guard_pass is True
+        assert s.guard_reason == ""
+
+
+# ── rank_buy_targets (단위) ─────────────────────────────────────────────────────
+
+class TestRankBuyTargets:
+    def test_pass_targets_before_blocked(self):
+        s_pass = _stock(code="A001", change_rate=1.0)
+        s_block = _stock(code="A002", change_rate=10.0)
+        s_pass.guard_pass = True
+        s_pass.guard_reason = ""
+        s_block.guard_pass = False
+        s_block.guard_reason = "상승률"
+        sc = _sector(rank=1, stocks=[s_pass, s_block])
+        result = rank_buy_targets([(s_pass, sc), (s_block, sc)])
+        assert [t.stock.code for t in result.buy_targets] == ["A001"]
+        assert [t.stock.code for t in result.blocked_targets] == ["A002"]
+
+    def test_boost_score_descending_order(self):
+        s_low = _stock(code="A001", change_rate=1.0)
+        s_high = _stock(code="A002", change_rate=2.0)
+        s_low.boost_score = 1.0
+        s_low.guard_pass = True
+        s_low.guard_reason = ""
+        s_high.boost_score = 5.0
+        s_high.guard_pass = True
+        s_high.guard_reason = ""
+        sc = _sector(rank=1, stocks=[s_low, s_high])
+        result = rank_buy_targets([(s_low, sc), (s_high, sc)])
+        codes = [t.stock.code for t in result.buy_targets]
+        assert codes == ["A002", "A001"]
+
+    def test_multi_sort_keys(self):
+        s1 = _stock(code="A001", change_rate=5.0, trade_amount=1_000_000)
+        s2 = _stock(code="A002", change_rate=5.0, trade_amount=5_000_000)
+        s3 = _stock(code="A003", change_rate=3.0, trade_amount=9_000_000)
+        for s in (s1, s2, s3):
+            s.guard_pass = True
+            s.guard_reason = ""
+        sc = _sector(rank=1, stocks=[s1, s2, s3])
+        pairs = [(s1, sc), (s2, sc), (s3, sc)]
+        result = rank_buy_targets(pairs, sort_keys=["change_rate", "trade_amount"])
+        codes = [t.stock.code for t in result.buy_targets]
+        assert codes == ["A002", "A001", "A003"]
