@@ -42,48 +42,10 @@ export interface PnlSummary {
   rate: number       // pnl / buyTotal * 100 (buyTotal=0이면 0)
 }
 
-export interface DailyDrilldownRow {
-  date: string
-  sellCount: number
-  buyCount: number
-  pnl: number
-  rate: number
-}
-
-/* ── 당일 드릴다운 행 (실현 영역만 — 핵심 원칙: 실현손익만) ── */
-
-export interface TodayDrilldownRealizedRow {
-  stk_cd: string
-  stk_nm: string
-  realized_pnl: number
-}
-
-export interface TodayDrilldownResult {
-  realizedRows: TodayDrilldownRealizedRow[]
-  realizedTotal: number
-}
-
-/* ── 누적 드릴다운 (월별 누적 손익 + 입금 이력 — P10 SSOT) ── */
-
-export interface CumulativeMonthlyRow {
-  yearMonth: string
-  pnl: number
-}
-
-export interface DepositHistoryRow {
-  date: string
-  daily_deposit: number
-}
-
-export interface CumulativeDrilldownResult {
-  monthlyRows: CumulativeMonthlyRow[]
-  depositHistory: DepositHistoryRow[]
-}
-
 /* ── 순수 함수 ── */
 
 /** dailySummary에서 최근 5거래일 날짜를 내림차순 추출.
- *  5거래일 카드 집계와 5거래일 카드 클릭 시 드릴다운 날짜 범위의 공통 소스 — P10 SSOT. */
+ *  5거래일 카드 집계의 공통 소스 — P10 SSOT. */
 export function getRecent5TradingDays(dailySummary: Record<string, unknown>[]): string[] {
   const dates = dailySummary
     .map(r => String(r.date ?? ''))
@@ -242,88 +204,6 @@ export function computeCumulativePnl(params: CumulativePnlParams): { pnl: number
     return { pnl, rate: null }
   }
   return { pnl, rate }
-}
-
-/** 백엔드 dailySummary에서 당월 거래일별 요약 집계 — P10 SSOT (per-day rate 재계산 금지, 백엔드 값 직접 사용).
- *  buildChartFromDailySummary와 동일한 dailySummary 직접 사용 패턴 (P23 일관성). */
-export function buildMonthlyDrilldown(
-  dailySummary: Record<string, unknown>[],
-  yearMonth: string,
-): DailyDrilldownRow[] {
-  const prefix = yearMonth + '-'
-  const rows = dailySummary
-    .filter(r => String(r.date ?? '').startsWith(prefix))
-    .map(r => ({
-      date: String(r.date ?? ''),
-      sellCount: Number(r.sell_count ?? 0),
-      buyCount: Number(r.buy_count ?? 0),
-      pnl: Number(r.realized_pnl ?? 0),
-      rate: Number(r.pnl_rate ?? 0),
-    }))
-  rows.sort((a, b) => b.date.localeCompare(a.date))
-  return rows
-}
-
-/** 당일 드릴다운 빌더 — 실현(오늘 매도) 영역만 (핵심 원칙: 실현손익만).
- *  realizedRows: 오늘 매도 종목별 realized_pnl 리스트 (sellHistory에서 오늘 날짜 필터).
- *  P22 정합성: realizedTotal = 당일 카드 총액 (3-1에서 평가 합산 제거와 일치). */
-export function buildTodayDrilldown(
-  sellHistory: Record<string, unknown>[],
-  today: string,
-): TodayDrilldownResult {
-  const realizedRows: TodayDrilldownRealizedRow[] = []
-  let realizedTotal = 0
-  for (const r of sellHistory) {
-    if (String(r.date ?? '') !== today) continue
-    const pnl = Number(r.realized_pnl ?? 0)
-    realizedRows.push({
-      stk_cd: String(r.stk_cd ?? ''),
-      stk_nm: String(r.stk_nm ?? ''),
-      realized_pnl: pnl,
-    })
-    realizedTotal += pnl
-  }
-  realizedRows.sort((a, b) => Math.abs(b.realized_pnl) - Math.abs(a.realized_pnl))
-
-  return { realizedRows, realizedTotal }
-}
-
-/** 5거래일 드릴다운 빌더 — 최근 5거래일 일별 실현손익 (F-3-d).
- *  getRecent5TradingDays(공통 소스) + dailySummary 일별 realized_pnl (백엔드 값 직접 사용 — P10 SSOT). */
-export function buildFivedayDrilldown(dailySummary: Record<string, unknown>[]): DailyDrilldownRow[] {
-  const recent5 = getRecent5TradingDays(dailySummary)
-  const recentSet = new Set(recent5)
-  const rows = dailySummary
-    .filter(r => recentSet.has(String(r.date ?? '')))
-    .map(r => ({
-      date: String(r.date ?? ''),
-      sellCount: Number(r.sell_count ?? 0),
-      buyCount: Number(r.buy_count ?? 0),
-      pnl: Number(r.realized_pnl ?? 0),
-      rate: Number(r.pnl_rate ?? 0),
-    }))
-  rows.sort((a, b) => b.date.localeCompare(a.date))
-  return rows
-}
-
-/** 누적 드릴다운 빌더 — 월별 누적 손익 + 입금 이력 (F-3-d, 결정 4).
- *  monthlyRows: sellHistory 전체를 월별 그룹화한 realized_pnl 합 (내림차순).
- *  depositHistory: 백엔드 /api/trade-history/deposit-history 결과 (date, daily_deposit 리스트). */
-export function buildCumulativeDrilldown(
-  sellHistory: Record<string, unknown>[],
-  depositHistory: DepositHistoryRow[],
-): CumulativeDrilldownResult {
-  const monthMap = new Map<string, number>()
-  for (const r of sellHistory) {
-    const d = String(r.date ?? '')
-    if (d.length < 7) continue
-    const ym = d.slice(0, 7)
-    monthMap.set(ym, (monthMap.get(ym) ?? 0) + Number(r.realized_pnl ?? 0))
-  }
-  const monthlyRows = Array.from(monthMap.entries())
-    .map(([yearMonth, pnl]) => ({ yearMonth, pnl }))
-    .sort((a, b) => b.yearMonth.localeCompare(a.yearMonth))
-  return { monthlyRows, depositHistory }
 }
 
 /** 거래일별 요약 → 차트 데이터 변환. 비거래일(sell_count=0 && buy_count=0)은 배열에서 제외. 매도 없는 날(sell_count=0, buy_count>0)은 pnl=null로 표시 → 막대 안 그림 */

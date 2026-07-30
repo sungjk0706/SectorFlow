@@ -1,14 +1,12 @@
 // frontend/src/pages/profit-detail-view.ts
 // 수익 상세 페이지 — 뷰 상태 localStorage 영속화 (F-05 분할, P24 단순성)
 // profit-detail.ts에서 이관. 순수 이동, 동작 변경 없음.
-
-import type { SelectedView } from './profit-detail'
+// 카드 클릭 팝업 제거 — selectedView 영속화 제거, 날짜 범위(from/to)만 영속화.
 
 /* ── 뷰 상태 localStorage 영속화 ── */
 export const PROFIT_DETAIL_VIEW_KEY = 'sf_profit_detail_view'
 
 export interface ProfitDetailViewState {
-  selectedView: SelectedView
   from: string
   to: string
 }
@@ -17,24 +15,13 @@ export function loadProfitDetailView(): ProfitDetailViewState | null {
   try {
     const raw = localStorage.getItem(PROFIT_DETAIL_VIEW_KEY)
     if (!raw) return null
-    const parsed = JSON.parse(raw) as { selectedView?: string; from?: string; to?: string }
-    const validViews: string[] = ['today', 'fiveday', 'month', 'total']
-    const sv = parsed.selectedView ?? null
-    if (sv !== null && !validViews.includes(sv)) return null
-    // total은 from/to가 빈 문자열일 수 있음
+    const parsed = JSON.parse(raw) as { from?: string; to?: string }
     const from = parsed.from ?? ''
     const to = parsed.to ?? ''
-    // 수동 날짜 범위(sv === null) 또는 today/fiveday/month인 경우 from/to 유효성 검증
-    if (sv === null || sv === 'today' || sv === 'fiveday' || sv === 'month') {
-      if (from && !/^\d{4}-\d{2}-\d{2}$/.test(from)) return null
-      if (to && !/^\d{4}-\d{2}-\d{2}$/.test(to)) return null
-      if (from && to && from > to) return null
-    }
-    return {
-      selectedView: sv as SelectedView,
-      from,
-      to,
-    }
+    if (from && !/^\d{4}-\d{2}-\d{2}$/.test(from)) return null
+    if (to && !/^\d{4}-\d{2}-\d{2}$/.test(to)) return null
+    if (from && to && from > to) return null
+    return { from, to }
   } catch (e) {
     console.warn('[profit-detail] 저장된 뷰 상태 로드 실패 (손상된 데이터):', e)
     return null

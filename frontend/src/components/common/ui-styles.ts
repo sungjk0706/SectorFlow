@@ -128,16 +128,6 @@ export const COLOR = {
   surface:      '#f5f5f7',  // 서피스 (사이드바/버튼) — macOS 그룹 배경 백그라운드
   inactiveBg:   '#e5e5ea',  // 비활성 배경 — macOS 비활성 토글 배경
   toggleOff:    '#8e8e93',  // 토글 OFF — macOS 토글 OFF
-  // ── 기간 구분 카드 전용 (수익상세 상단 5카드 + 하단 통계 연동) ──
-  // 당일은 down/downBg 재사용. 전일/5거래일/당월/누적은 기존 의미 색(success/warning/up/kosdaq)과 충돌 회피한 신규 색.
-  periodPrev:     '#0097a7', // 청록 (전일 거래일)
-  periodPrevBg:   '#e0f7fa',
-  period5day:     '#c2185b', // 마젠타 (최근 5거래일)
-  period5dayBg:   '#fce4ec',
-  periodMonth:    '#7b1fa2', // 보라 (당월)
-  periodMonthBg:  '#f3e5f5',
-  periodTotal:    '#455a64', // 슬레이트 (누적)
-  periodTotalBg:  '#eceff1',
 } as const
 
 /* ── 공통 색상 함수 ── */

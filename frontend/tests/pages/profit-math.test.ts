@@ -5,11 +5,7 @@ import {
   buildSectorStockPnl,
   filterTradeRows,
   aggregatePnl,
-  buildMonthlyDrilldown,
-  buildFivedayDrilldown,
-  buildCumulativeDrilldown,
   buildChartFromDailySummary,
-  buildTodayDrilldown,
   computeTodayAggregates,
 } from '../../src/pages/profit-math'
 
@@ -192,69 +188,6 @@ describe('buildSectorStockPnl', () => {
   })
 })
 
-/* ── buildMonthlyDrilldown ── */
-
-describe('buildMonthlyDrilldown', () => {
-  it('당월 거래일별 요약 집계', () => {
-    const dailySummary = [
-      { date: '2026-07-25', sell_count: 2, buy_count: 1, realized_pnl: 50000, pnl_rate: 5 },
-      { date: '2026-07-28', sell_count: 1, buy_count: 0, realized_pnl: -20000, pnl_rate: -2 },
-      { date: '2026-08-01', sell_count: 1, buy_count: 1, realized_pnl: 10000, pnl_rate: 1 },
-    ]
-    const rows = buildMonthlyDrilldown(dailySummary, '2026-07')
-    expect(rows).toHaveLength(2)
-    expect(rows[0].date).toBe('2026-07-28')  // 내림차순
-    expect(rows[1].date).toBe('2026-07-25')
-  })
-
-  it('해당 월 데이터 없음', () => {
-    const dailySummary = [{ date: '2026-08-01', sell_count: 1, buy_count: 0, realized_pnl: 10000, pnl_rate: 1 }]
-    expect(buildMonthlyDrilldown(dailySummary, '2026-07')).toEqual([])
-  })
-})
-
-/* ── buildFivedayDrilldown ── */
-
-describe('buildFivedayDrilldown', () => {
-  it('최근 5거래일 일별 실현손익', () => {
-    const dailySummary = [
-      { date: '2026-07-25', sell_count: 1, buy_count: 0, realized_pnl: 10000, pnl_rate: 1 },
-      { date: '2026-07-28', sell_count: 2, buy_count: 1, realized_pnl: 30000, pnl_rate: 3 },
-      { date: '2026-07-29', sell_count: 1, buy_count: 0, realized_pnl: -5000, pnl_rate: -0.5 },
-    ]
-    const rows = buildFivedayDrilldown(dailySummary)
-    expect(rows).toHaveLength(3)
-    expect(rows[0].date).toBe('2026-07-29')  // 내림차순
-  })
-
-  it('빈 dailySummary', () => {
-    expect(buildFivedayDrilldown([])).toEqual([])
-  })
-})
-
-/* ── buildCumulativeDrilldown ── */
-
-describe('buildCumulativeDrilldown', () => {
-  it('월별 누적 손익 집계', () => {
-    const sells = [
-      { date: '2026-07-28', realized_pnl: 50000 },
-      { date: '2026-07-29', realized_pnl: -20000 },
-      { date: '2026-08-01', realized_pnl: 30000 },
-    ]
-    const result = buildCumulativeDrilldown(sells, [])
-    expect(result.monthlyRows).toHaveLength(2)
-    expect(result.monthlyRows[0].yearMonth).toBe('2026-08')  // 내림차순
-    expect(result.monthlyRows[0].pnl).toBe(30000)
-    expect(result.monthlyRows[1].yearMonth).toBe('2026-07')
-    expect(result.monthlyRows[1].pnl).toBe(30000)  // 50000 + (-20000)
-  })
-
-  it('빈 sellHistory', () => {
-    const result = buildCumulativeDrilldown([], [])
-    expect(result.monthlyRows).toEqual([])
-  })
-})
-
 /* ── buildChartFromDailySummary ── */
 
 describe('buildChartFromDailySummary', () => {
@@ -289,28 +222,6 @@ describe('buildChartFromDailySummary', () => {
     const rows = buildChartFromDailySummary(summary)
     expect(rows).toHaveLength(1)
     expect(rows[0].pnl).toBeNull()
-  })
-})
-
-/* ── buildTodayDrilldown ── */
-
-describe('buildTodayDrilldown', () => {
-  it('실현(오늘 매도) 영역만', () => {
-    const sellHistory = [
-      { date: '2026-07-29', stk_cd: '005930', stk_nm: '삼성전자', realized_pnl: 100000 },
-      { date: '2026-07-28', stk_cd: '000660', stk_nm: 'SK하이닉스', realized_pnl: 50000 },
-    ]
-    const result = buildTodayDrilldown(sellHistory, '2026-07-29')
-    // 실현: 오늘 매도 1건
-    expect(result.realizedRows).toHaveLength(1)
-    expect(result.realizedRows[0].stk_cd).toBe('005930')
-    expect(result.realizedTotal).toBe(100000)
-  })
-
-  it('오늘 매도 없음', () => {
-    const result = buildTodayDrilldown([], '2026-07-29')
-    expect(result.realizedRows).toEqual([])
-    expect(result.realizedTotal).toBe(0)
   })
 })
 

@@ -1,6 +1,6 @@
 // frontend/src/pages/profit-detail-mount.ts
-// 수익 상세 페이지 — mount 헬퍼 함수들 + 초기화 + rAF/구독 (F-05 분할 + 다단계 4세션 F-4 모달 드릴다운).
-// 인라인 드릴다운 토글 제거 → 카드 클릭 시 공통 dialog.ts 모달 오픈 (다단계 1세션 결정 2).
+// 수익 상세 페이지 — mount 헬퍼 함수들 + 초기화 + rAF/구독 (F-05 분할).
+// 카드 클릭 팝업(드릴다운 모달) 제거 — 카드는 표시 전용 (P24 단순성, P21 사용자 투명성).
 
 import { FONT_SIZE, COLOR, RADIUS, SHADOW } from '../components/common/ui-styles'
 import { createSearchInput } from '../components/common/search-input'
@@ -14,68 +14,21 @@ import {
   createSummaryCards,
   updateSummaryCards,
 } from './profit-shared'
-import { getRecent5TradingDays } from './profit-math'
 import { loadProfitDetailView } from './profit-detail-view'
 import {
   showTable,
   filterByDate,
-  filterByDateRange,
-  updateCardSelection,
   updateTabLabels,
   persistViewState,
-  openTodayDrilldown,
-  openFivedayDrilldown,
-  openMonthDrilldown,
-  openCumulativeDrilldown,
 } from './profit-detail-display'
 import type { ProfitDetailState } from './profit-detail'
 
-/* ── mount 헬퍼: 요약 카드 행 (당일/5거래일/당월/누적 손익 — 전일 카드 제거, 다단계 1세션 결정 1) ── */
-export function buildSummaryRow(state: ProfitDetailState, todayStr: string, monthStart: string, monthEnd: string): HTMLDivElement {
+/* ── mount 헬퍼: 요약 카드 행 (당일/5거래일/당월/누적 손익 — 표시 전용, 클릭 없음) ── */
+export function buildSummaryRow(state: ProfitDetailState): HTMLDivElement {
   const summaryRow = document.createElement('div')
   Object.assign(summaryRow.style, { display: 'flex', gap: '8px', padding: '8px 4px', flex: 'none', borderBottom: '1px solid ' + COLOR.borderDark })
 
-  state.summaryCardEls = createSummaryCards(summaryRow, {
-    onTodayClick: () => {
-      state.selectedView = 'today'
-      updateCardSelection(state)
-      filterByDate(state, todayStr)
-      persistViewState(state)
-      openTodayDrilldown(state)
-    },
-    onFivedayClick: () => {
-      state.selectedView = 'fiveday'
-      updateCardSelection(state)
-      // 최근 5거래일 날짜 범위로 테이블 필터링 (P10 SSOT — getRecent5TradingDays 공유)
-      const recent5 = getRecent5TradingDays(hotStore.getState().dailySummary)
-      if (recent5.length > 0) {
-        const from = recent5[recent5.length - 1]
-        const to = recent5[0]
-        filterByDateRange(state, from, to)
-      } else {
-        // 5거래일 데이터가 없으면 빈 범위로 테이블 표시
-        filterByDateRange(state, '', '')
-      }
-      persistViewState(state)
-      openFivedayDrilldown()
-    },
-    onMonthClick: () => {
-      state.selectedView = 'month'
-      updateCardSelection(state)
-      filterByDateRange(state, monthStart, monthEnd)
-      persistViewState(state)
-      openMonthDrilldown()
-    },
-    onTotalClick: () => {
-      state.selectedView = 'total'
-      updateCardSelection(state)
-      if (state.dateRangeInput) state.dateRangeInput.setValue('', '')
-      showTable(state)
-      updateTabLabels(state)
-      persistViewState(state)
-      void openCumulativeDrilldown(state)
-    },
-  })
+  state.summaryCardEls = createSummaryCards(summaryRow)
 
   return summaryRow
 }
@@ -90,8 +43,6 @@ export function buildFilterRow(state: ProfitDetailState, monthStart: string, tod
     to: todayStr,
     label: '기간:',
     onChange: () => {
-      state.selectedView = null
-      updateCardSelection(state)
       showTable(state)
       updateTabLabels(state)
       persistViewState(state)
@@ -161,11 +112,10 @@ export function buildStatRow(state: ProfitDetailState): HTMLDivElement {
   const STAT_STYLE = `flex:1;background:${COLOR.surfaceLight};border:1px solid ${COLOR.borderLight};border-radius:${RADIUS.xs};box-shadow:${SHADOW.card};padding:4px 8px;display:flex;flex-direction:column;align-items:center;gap:2px;`
   const STAT_LABELS = ['총 건수', '당일 매수 지출(수수료 포함)', '당일 매도 수령(실수령)', '실현손익', '실현 수익률', '승률']
   const statEls: HTMLSpanElement[] = []
-  state.statCardEls = []
 
   for (let i = 0; i < 6; i++) {
     // P25: 카드 단위 격리 — 한 카드 생성 throw 시 다음 카드 계속 렌더링.
-    // statEls/statCardEls push는 인덱스 기반(state.statCountEl = statEls[0] 등)이므로
+    // statEls push는 인덱스 기반(state.statCountEl = statEls[0] 등)이므로
     // 더미 push로 인덱스 정합성 유지 (P22). buildSummaryCard 패턴과 일치 (P23).
     try {
       const stat = document.createElement('div')
@@ -184,14 +134,11 @@ export function buildStatRow(state: ProfitDetailState): HTMLDivElement {
       statRow.appendChild(stat)
 
       statEls.push(valEl)
-      state.statCardEls.push(stat)
     } catch (e) {
       console.error('[profit-detail] stat card build error', e)
       const dummyVal = document.createElement('span')
       dummyVal.textContent = '-'
       statEls.push(dummyVal)
-      const dummyCard = document.createElement('div')
-      state.statCardEls.push(dummyCard)
     }
   }
 
@@ -211,17 +158,13 @@ export function restoreInitialView(state: ProfitDetailState, todayStr: string, i
   state.buyHistory = initState.buyHistory
   updateTabLabels(state)
 
-  // 저장된 뷰 상태 복원 — 없으면 기본값 'today'
+  // 저장된 날짜 범위 복원 — 없으면 기본값 당일
   const savedView = loadProfitDetailView()
   if (savedView) {
-    state.selectedView = savedView.selectedView
     if (state.dateRangeInput) state.dateRangeInput.setValue(savedView.from, savedView.to)
-    updateCardSelection(state)
     showTable(state)
     updateTabLabels(state)
   } else {
-    state.selectedView = 'today'
-    updateCardSelection(state)
     filterByDate(state, todayStr)
   }
   if (state.summaryCardEls) {
