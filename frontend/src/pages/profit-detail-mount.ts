@@ -13,7 +13,7 @@ import {
   createSummaryCards,
   updateSummaryCards,
 } from './profit-shared'
-import { getRecent5TradingDays, extractEarliestBaseAsset } from './profit-math'
+import { getRecent5TradingDays } from './profit-math'
 import { loadProfitDetailView } from './profit-detail-view'
 import {
   showTable,
@@ -158,7 +158,7 @@ export function buildStatRow(state: ProfitDetailState): HTMLDivElement {
   Object.assign(statRow.style, { display: 'flex', gap: '8px', padding: '6px 4px', borderTop: '1px solid ' + COLOR.borderLight, flex: 'none' })
 
   const STAT_STYLE = `flex:1;background:${COLOR.surfaceLight};border:1px solid ${COLOR.borderLight};border-radius:${RADIUS.xs};box-shadow:${SHADOW.card};padding:4px 8px;display:flex;flex-direction:column;align-items:center;gap:2px;`
-  const STAT_LABELS = ['총 건수', '당일 매수 지출(수수료 포함)', '당일 매도 수령(실수령)', '실현손익', '수익률', '승률']
+  const STAT_LABELS = ['총 건수', '당일 매수 지출(수수료 포함)', '당일 매도 수령(실수령)', '실현손익', '실현 수익률', '승률']
   const statEls: HTMLSpanElement[] = []
   state.statCardEls = []
 
@@ -226,9 +226,8 @@ export function restoreInitialView(state: ProfitDetailState, todayStr: string, i
   if (state.summaryCardEls) {
     updateSummaryCards(
       initState.dailySummary, state.summaryCardEls,
-      state.sellHistory, initState.account,
+      state.sellHistory,
       globalSettingsManager.getSettings()?.trade_mode === 'test',
-      extractEarliestBaseAsset(initState.dailySummary),
       '',  // P21 투명성 — 당일 카드는 실현손익만 (평가손익 제거)
     )
   }
@@ -258,9 +257,8 @@ export function flushDirtyRender(state: ProfitDetailState): void {
     const hotState = hotStore.getState()
     updateSummaryCards(
       hotState.dailySummary, state.summaryCardEls,
-      state.sellHistory, hotState.account,
+      state.sellHistory,
       globalSettingsManager.getSettings()?.trade_mode === 'test',
-      extractEarliestBaseAsset(hotState.dailySummary),
       '',  // P21 투명성 — 당일 카드는 실현손익만 (평가손익 제거)
     )
   }

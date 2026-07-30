@@ -72,7 +72,7 @@ export const SELL_COLS: ColumnDef<Record<string, unknown>>[] = [
     span.textContent = `${v > 0 ? '+' : ''}${v.toLocaleString()}원`
     return span
   }},
-  { key: 'pnl_rate', label: '수익률', align: 'right', type: 'pnl_rate', render: r => {
+  { key: 'pnl_rate', label: '실현 수익률', align: 'right', type: 'pnl_rate', render: r => {
     const v = Number(r.pnl_rate ?? 0)
     const span = document.createElement('span')
     span.style.color = pnlColor(v)

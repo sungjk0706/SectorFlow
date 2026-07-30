@@ -24,14 +24,11 @@ export {
   type PositionValuation,
   // 함수
   getRecent5TradingDays,
-  extractEarliestBaseAsset,
   buildSectorDonutRows,
   buildSectorStockPnl,
   filterTradeRows,
   aggregatePnl,
   computeCumulativePnl,
-  cumulativeRealizedPnlBeforeDate,
-  findBaseAssetForDate,
   buildMonthlyDrilldown,
   buildTodayDrilldown,
   buildFivedayDrilldown,
@@ -45,14 +42,12 @@ export {
 // profit-math.ts에서 계산 함수 import (DOM 렌더용 — 내부 사용)
 import {
   computeCumulativePnl,
-  cumulativeRealizedPnlBeforeDate,
   computeHoldingsSummary,
   computeTodayAggregates,
-  findBaseAssetForDate,
   getRecent5TradingDays,
 } from './profit-math'
 
-import { FONT_SIZE, FONT_WEIGHT, pnlColor, fmtWon, COLOR, RADIUS, SHADOW, computeWeightedRate } from '../components/common/ui-styles'
+import { FONT_SIZE, FONT_WEIGHT, pnlColor, fmtWon, COLOR, RADIUS, SHADOW } from '../components/common/ui-styles'
 import { getTradingToday, isPreOpenPhase } from '../utils/date'
 import type { AccountSnapshot, Position, SectorStock } from '../types'
 
@@ -176,21 +171,18 @@ export function createSummaryCards(container: HTMLElement, callbacks: SummaryCar
 
 /** 당일/5거래일/당월/누적 손익 계산 및 요약 카드 DOM 갱신 (전일 카드 제거 — 다단계 1세션 결정 1).
  *  모든 카드를 computeCumulativePnl SSOT로 계산 (P10 SSOT — 분모 규칙 단일 소스).
- *  분모 규칙 (기초자산 분모 방식 + earliestBaseAsset):
- *    - 기간 한정 카드(당일/5거래일/당월): baseAsset = findBaseAssetForDate(dailySummary, 기간시작일)
- *      · baseAsset 없으면 earliestBaseAsset (둘 다 없으면 rate null → '-' 표시, P20 폴백 금지)
- *      · 당일 카드: 전일 baseAsset + account.daily_deposit (당일 순입출금 보정, 결정 2)
- *    - 누적 카드: 테스트=accumulated_investment, 실전=earliestBaseAsset (buyTotal 폐지 — 다단계 1세션 결정 5)
+ *  분모 규칙 (매수원금 기반 — 설계서 0절 최상위 원칙):
+ *    - 실현 수익률 = 해당 기간 매도 완료된 종목들의 실현손익 합 ÷ 총 매수원금 합 × 100
+ *    - 4카드(당일/5거래일/당월/누적) 동일 공식 (설계 원칙 5) — computeCumulativePnl이 aggregatePnl 기반으로 계산.
+ *    - 실전모드: 증권사 서버가 SSOT — rate null → '-' 표시 (AGENTS.md 실전vs테스트 테이블).
  *  당일 카드 (F-3-c): PRE OPEN(개장 전) → 0원 + "개장 전" 서브 텍스트.
  *    08:00+ → 오늘 실현(sellHistory 오늘 매도 realized_pnl 합)만.
- *  dailySummary는 5거래일 날짜·base_asset·earliest_base_asset 추출에 사용 (날짜·기초자산 결정 SSOT). */
+ *  dailySummary는 5거래일 날짜 추출에만 사용 (날짜 결정 SSOT). */
 export function updateSummaryCards(
   dailySummary: Record<string, unknown>[],
   els: SummaryCardEls,
   sellHistory: Record<string, unknown>[],
-  account: AccountSnapshot | null,
   isTestMode: boolean,
-  earliestBaseAsset?: number,
   openSubText?: string,  // 개장 중 서브 텍스트 (P21 투명성 — 당일 카드 실현손익 전용화 후 평가손익 라벨 제거, profit-detail/profit-overview 모두 '')
 ): void {
   const today = getTradingToday()
@@ -203,18 +195,6 @@ export function updateSummaryCards(
   const fivedayFrom = recent5.length > 0 ? recent5[recent5.length - 1] : ''
   const fivedayTo = recent5.length > 0 ? recent5[0] : ''
 
-  // 기초자산 추출 (dailySummary에서 기간 시작일의 전일 장마감 스냅샷)
-  const dayBaseAssetRaw = findBaseAssetForDate(dailySummary, today)
-  // 당일 카드 분모 = 전일 baseAsset + 당일 입금액 (결정 2). 단, baseAsset 없으면 earliestBaseAsset 적용 — daily_deposit 보정 제외
-  // 실전모드: 증권사 서버가 SSOT — 앱에서 수익률 재계산 금지 (AGENTS.md 실전vs테스트 테이블)
-  let dayBaseAsset: number | null = !isTestMode
-    ? null
-    : (dayBaseAssetRaw != null
-      ? dayBaseAssetRaw + (account?.daily_deposit ?? 0)
-      : (earliestBaseAsset ?? null))
-  const fiveBaseAsset = (fivedayFrom && fivedayTo) ? findBaseAssetForDate(dailySummary, fivedayFrom) : undefined
-  const monthBaseAsset = findBaseAssetForDate(dailySummary, monthStart)
-
   // 당일 카드: 개장 전 여부 분기 (F-3-c)
   const preOpen = isPreOpenPhase()
   let dayPnl: number
@@ -226,28 +206,19 @@ export function updateSummaryCards(
     els.todaySubTextEl.textContent = '개장 전'
   } else {
     // 08:00+: 오늘 실현(sellHistory 오늘 매도 realized_pnl 합)만 (평가손익 제거 — 핵심 원칙)
-    const realizedToday = sellHistory
-      .filter(r => String(r.date ?? '') === today)
-      .reduce((s, r) => s + Number(r.realized_pnl ?? 0), 0)
-    dayPnl = realizedToday
-    // 스냅샷 미존재 시(테스트모드): accumulated_investment + 기간 전 누적 실현손익으로 분모 추정 (사용자 결정 A안)
-    // 입출금 없는 테스트모드: 기간 시작 시점 총자산 = 투자원금 + 기간 전 누적 실현손익
-    if (dayBaseAsset == null && isTestMode) {
-      const principal = account?.accumulated_investment ?? account?.initial_deposit ?? null
-      if (principal != null) {
-        dayBaseAsset = principal + cumulativeRealizedPnlBeforeDate(sellHistory, today)
-      }
-    }
-    dayRate = dayBaseAsset != null ? computeWeightedRate(dayPnl, dayBaseAsset) : null
+    // 매수원금 기반 실현 수익률 — computeCumulativePnl(aggregatePnl) 사용
+    const dayS = computeCumulativePnl({ sellHistory, isTestMode, dateFrom: today, dateTo: today })
+    dayPnl = dayS.pnl
+    dayRate = dayS.rate
     els.todaySubTextEl.textContent = openSubText ?? ''
   }
 
   // 5거래일/당월/누적 카드: computeCumulativePnl SSOT 호출 (분모 규칙은 함수 내부에서 통일)
   const fiveS = (fivedayFrom && fivedayTo)
-    ? computeCumulativePnl({ sellHistory, account, isTestMode, dateFrom: fivedayFrom, dateTo: fivedayTo, baseAsset: fiveBaseAsset, earliestBaseAsset })
+    ? computeCumulativePnl({ sellHistory, isTestMode, dateFrom: fivedayFrom, dateTo: fivedayTo })
     : { pnl: 0, rate: 0 as number | null }
-  const monS = computeCumulativePnl({ sellHistory, account, isTestMode, dateFrom: monthStart, dateTo: monthEnd, baseAsset: monthBaseAsset, earliestBaseAsset })
-  const allS = computeCumulativePnl({ sellHistory, account, isTestMode, earliestBaseAsset })  // 누적: earliestBaseAsset 분모 (buyTotal 폐지)
+  const monS = computeCumulativePnl({ sellHistory, isTestMode, dateFrom: monthStart, dateTo: monthEnd })
+  const allS = computeCumulativePnl({ sellHistory, isTestMode })  // 누적: 전체 매도 범위
 
   els.todayPnlEl.textContent = fmtWon(dayPnl)
   els.todayPnlEl.style.color = pnlColor(dayPnl)
@@ -283,7 +254,6 @@ export interface AccountValsParams {
   testAccountValRefs: HTMLSpanElement[]
   holdingCountSpan: HTMLSpanElement | null
   holdingCountSpanTest: HTMLSpanElement | null
-  earliestBaseAsset?: number  // 가장 오래된 total_asset 스냅샷 (누적 실전 분모 — buyTotal 폐지)
 }
 
 /** 계좌 현황 11행 렌더링 (test/real 공통 — P24 중복 제거).
@@ -311,10 +281,10 @@ export function renderAccountVals(params: AccountValsParams): void {
   const { evalTotal, evalPnl, evalRate, hasNullPrice } = computeHoldingsSummary(params.positions, params.sectorStocks)
 
   // 누적 실현 손익 + 수익률: SSOT 함수 사용 (도넛 차트 중앙과 동일 소스 — P10/P22)
-  // 분모: 테스트모드=누적투자금(투자원금 대비 — 사용자 상식 기준, P21),
-  //       실전모드=earliestBaseAsset (가장 오래된 total_asset 스냅샷 — buyTotal 폐지, 다단계 1세션 결정 5)
+  // 분모: 매수원금 기반 (aggregatePnl — 설계서 0절 최상위 원칙).
+  //       실전모드: 증권사 서버가 SSOT — rate null (AGENTS.md 실전vs테스트 테이블).
   const { pnl: cumPnlAmt, rate: cumRate } = computeCumulativePnl({
-    sellHistory, account: a, isTestMode, earliestBaseAsset: params.earliestBaseAsset,
+    sellHistory, isTestMode,
   })
   const cumPnl = { pnl: cumPnlAmt, rate: cumRate }
 

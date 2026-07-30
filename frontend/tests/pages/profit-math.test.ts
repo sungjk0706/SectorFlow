@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
   getRecent5TradingDays,
-  extractEarliestBaseAsset,
   buildSectorDonutRows,
   buildSectorStockPnl,
   filterTradeRows,
@@ -39,30 +38,6 @@ describe('getRecent5TradingDays', () => {
   it('빈 날짜 필터링', () => {
     const dailySummary = [{ date: '2026-07-29' }, { date: '' }, { date: '2026-07-30' }]
     expect(getRecent5TradingDays(dailySummary)).toEqual(['2026-07-30', '2026-07-29'])
-  })
-})
-
-/* ── extractEarliestBaseAsset ── */
-
-describe('extractEarliestBaseAsset', () => {
-  it('첫 행의 earliest_base_asset 반환', () => {
-    expect(extractEarliestBaseAsset([{ earliest_base_asset: 1000000 }])).toBe(1000000)
-  })
-
-  it('빈 배열 → undefined', () => {
-    expect(extractEarliestBaseAsset([])).toBeUndefined()
-  })
-
-  it('null 값 → undefined', () => {
-    expect(extractEarliestBaseAsset([{ earliest_base_asset: null }])).toBeUndefined()
-  })
-
-  it('필드 누락 → undefined', () => {
-    expect(extractEarliestBaseAsset([{ date: '2026-07-29' }])).toBeUndefined()
-  })
-
-  it('비정상 숫자 → undefined', () => {
-    expect(extractEarliestBaseAsset([{ earliest_base_asset: 'abc' }])).toBeUndefined()
   })
 })
 

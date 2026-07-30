@@ -20,8 +20,6 @@ import {
   buildCumulativeDrilldown,
   filterTradeRows,
   computeCumulativePnl,
-  findBaseAssetForDate,
-  extractEarliestBaseAsset,
 } from './profit-math'
 import { getTradingToday } from '../utils/date'
 import { saveProfitDetailView } from './profit-detail-view'
@@ -205,7 +203,7 @@ function buildDailyDrilldownContent(rows: DailyDrilldownRow[], emptyText: string
     { text: `${r.pnl >= 0 ? '+' : ''}${fmtWon(r.pnl)}`, color: pnlColor(r.pnl) },
     { text: `${r.rate >= 0 ? '+' : ''}${r.rate.toFixed(2)}%`, color: pnlColor(r.pnl) },
   ])
-  const table = createDrilldownTable(['날짜', '매도', '매수', '실현손익', '수익률'], tableRows)
+  const table = createDrilldownTable(['날짜', '매도', '매수', '실현손익', '실현 수익률'], tableRows)
   table.querySelectorAll('td').forEach((td, i) => {
     if (i % 5 === 0) td.style.cssText = DRILLDOWN_TD_LEFT_STYLE
   })
@@ -329,22 +327,14 @@ function updateStatistics(state: ProfitDetailState): void {
   const winCount = filteredSells.filter(r => Number(r.realized_pnl ?? 0) > 0).length
   const winRate = sellCount > 0 ? Math.round(winCount / sellCount * 10000) / 100 : 0
   // 수익률: computeCumulativePnl SSOT 사용 (분모 규칙 단일 소스 — P10/P22).
-  //   기초자산 분모 방식 — dateFrom 있을 때 findBaseAssetForDate로 전일 장마감 스냅샷 추출.
-  //   baseAsset 없으면 earliestBaseAsset (둘 다 없으면 rate null → '-' 표시, P20).
+  //   매수원금 기반 (aggregatePnl — 설계서 0절 최상위 원칙).
+  //   실전모드: 증권사 서버가 SSOT — rate null → '-' 표시 (AGENTS.md 실전vs테스트 테이블).
   const isTestMode = globalSettingsManager.getSettings()?.trade_mode === 'test'
-  const hotState = hotStore.getState()
-  const earliestBaseAsset = extractEarliestBaseAsset(hotState.dailySummary)
-  const baseAsset = dateRange.from
-    ? findBaseAssetForDate(hotState.dailySummary, dateRange.from)
-    : undefined
   const { rate: avgRate } = computeCumulativePnl({
     sellHistory: filteredSells,
-    account: hotState.account,
     isTestMode,
     dateFrom: dateRange.from || undefined,
     dateTo: dateRange.to || undefined,
-    baseAsset,
-    earliestBaseAsset,
   })
 
   if (state.statCountEl) state.statCountEl.textContent = `매도 ${sellCount}건 / 매수 ${buyCount}건`

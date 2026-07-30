@@ -9,12 +9,12 @@
 // - computeWeightedRate (ui-styles) — 순수 수학 헬퍼
 // - normalizeStockCode (hotStore) — 순수 문자열 정규화
 // - getTradingToday, isPreOpenPhase (date) — 순수 날짜 유틸
-// - AccountSnapshot, Position, SectorStock (types) — 타입만
+// - Position, SectorStock (types) — 타입만
 // - SectorDonutRow, assignSectorColors (canvas-sector-donut) — 순수 함수/타입
 
 import { computeWeightedRate, COLOR } from '../components/common/ui-styles'
 import { normalizeStockCode } from '../stores/hotStore'
-import type { AccountSnapshot, Position, SectorStock } from '../types'
+import type { Position, SectorStock } from '../types'
 import type { SectorDonutRow } from '../components/canvas-sector-donut'
 import { assignSectorColors } from '../components/canvas-sector-donut'
 
@@ -90,17 +90,6 @@ export function getRecent5TradingDays(dailySummary: Record<string, unknown>[]): 
     .filter(d => d)
     .sort((a, b) => (a < b ? 1 : a > b ? -1 : 0))
   return dates.slice(0, 5)
-}
-
-/** dailySummary에서 earliest_base_asset 추출 (모든 행 동일 값 — B-2).
- *  computeCumulativePnl·renderAccountVals·buildDonutCenter 공통 분모 소스 — P10 SSOT.
- *  undefined 반환 시 호출처에서 rate null → '-' 표시 (P20 폴백 금지). */
-export function extractEarliestBaseAsset(dailySummary: Record<string, unknown>[]): number | undefined {
-  if (dailySummary.length === 0) return undefined
-  const v = dailySummary[0].earliest_base_asset
-  if (v == null) return undefined
-  const n = Number(v)
-  return Number.isFinite(n) ? n : undefined
 }
 
 /** sellHistory → 업종별 손익 집계 + 도넛 차트 행 (절대값 내림차순 정렬).
@@ -229,91 +218,30 @@ export function aggregatePnl(
   return { pnl, buyTotal, rate: computeWeightedRate(pnl, buyTotal) }
 }
 
-/** sellHistory에서 지정 날짜 이전의 누적 실현손익 합계 (기간 시작 전 총자산 추정용).
- *  입출금 없는 테스트모드에서: 기간 시작 시점 총자산 = accumulated_investment + 기간 전 누적 실현손익.
- *  스냅샷 미존재 시 분모 추정에 사용 (사용자 결정 — A안). */
-export function cumulativeRealizedPnlBeforeDate(sellHistory: Record<string, unknown>[], date: string): number {
-  let sum = 0
-  for (const r of sellHistory) {
-    if (String(r.date ?? '') < date) {
-      sum += Number(r.realized_pnl ?? 0)
-    }
-  }
-  return sum
-}
-
 export interface CumulativePnlParams {
   sellHistory: Record<string, unknown>[]
-  account: AccountSnapshot | null
   isTestMode: boolean
   dateFrom?: string
   dateTo?: string
-  baseAsset?: number  // 기간 시작 시점 기초자산 (전일 장마감 총자산 + 당일 순입출금)
-  earliestBaseAsset?: number  // 가장 오래된 total_asset 스냅샷 (누적 카드 실전 분모 — buyTotal 폐지, 다단계 1세션 결정 5)
 }
 
 /** 누적/기간 실현 손익 + 수익률 단일 계산 소스 (P10 SSOT).
- *  분모 규칙 (테스트모드: 투자원금 기반 추정 / 실전모드: 증권사 SSOT — 앱 재계산 금지):
- *    - 실전모드: 기간별 수익률은 증권사 서버가 SSOT (AGENTS.md 실전vs테스트 테이블).
- *      · 증권사 REST API에 기간별 수익률 조회 기능이 없으므로 rate null → '-' 표시.
- *      · 손익금(pnl)은 sellHistory 집계로 표시 (수익률만 미표시).
- *    - 테스트모드 누적 카드 (dateFrom/dateTo 없음):
- *      · accumulated_investment (initial_deposit 폴백)
- *    - 테스트모드 기간 한정 카드 (dateFrom/dateTo 있음):
- *      · baseAsset 전달 시: baseAsset 분모 (스냅샷 — 전일 장마감 총자산)
- *      · baseAsset 미전달 시: earliestBaseAsset (가장 오래된 스냅샷)
- *      · 스냅샷 모두 미존재 시: accumulated_investment + 기간 전 누적 실현손익
- *        (입출금 없는 테스트모드에서 기간 시작 시점 총자산 추정 — 사용자 결정 A안)
- *      · 위 모두 없으면 rate null → '-' 표시 (P20)
- *  rate null 반환: 분모 0/undefined 시 또는 실전모드 시 (P20).
+ *  분모 규칙 (매수원금 기반 — 설계서 0절 최상위 원칙):
+ *    - 실현 수익률 = 해당 기간 매도 완료된 종목들의 실현손익 합 ÷ 총 매수원금 합 × 100
+ *    - aggregatePnl이 이 계산을 수행 (pnl / buyTotal * 100) — 본 함수는 aggregatePnl 결과를 그대로 사용.
+ *    - 실전모드: 증권사 서버가 SSOT (AGENTS.md 실전vs테스트 테이블) — rate null → '-' 표시.
+ *  rate null 반환: 실전모드 시 (P20 — 분모 0 시 computeWeightedRate가 0 반환하므로 null 아님).
  *  dateFrom/dateTo 적용 시 해당 범위 내 손익만 집계.
  *  renderAccountVals(계좌 현황)·canvas-sector-donut(도넛 중앙)·updateSummaryCards(요약 카드)·
  *  updateStatistics(하단 통계)가 동일 분모·동일 데이터 범위를 사용하도록 추출 (P22 데이터 정합성). */
 export function computeCumulativePnl(params: CumulativePnlParams): { pnl: number; rate: number | null } {
-  const { sellHistory, account, isTestMode, dateFrom, dateTo, baseAsset, earliestBaseAsset } = params
-  const { pnl } = aggregatePnl(sellHistory, dateFrom, dateTo)
+  const { sellHistory, isTestMode, dateFrom, dateTo } = params
+  const { pnl, rate } = aggregatePnl(sellHistory, dateFrom, dateTo)
   // 실전모드: 증권사 서버가 SSOT — 앱에서 수익률 재계산 금지 (AGENTS.md 실전vs테스트 테이블)
   if (!isTestMode) {
     return { pnl, rate: null }
   }
-  const isCumulative = !dateFrom && !dateTo
-  let denominator: number | null
-  if (isCumulative) {
-    // 누적 카드: accumulated_investment (initial_deposit 폴백)
-    denominator = account?.accumulated_investment ?? account?.initial_deposit ?? null
-  } else {
-    // 기간 한정 카드: baseAsset ?? earliestBaseAsset (스냅샷 우선)
-    denominator = baseAsset ?? earliestBaseAsset ?? null
-    // 스냅샷 미존재 시: accumulated_investment + 기간 전 누적 실현손익으로 분모 추정 (사용자 결정 A안)
-    // 입출금 없는 테스트모드: 기간 시작 시점 총자산 = 투자원금 + 기간 전 누적 실현손익
-    if (denominator == null && dateFrom) {
-      const principal = account?.accumulated_investment ?? account?.initial_deposit ?? null
-      if (principal != null) {
-        denominator = principal + cumulativeRealizedPnlBeforeDate(sellHistory, dateFrom)
-      }
-    }
-  }
-  return { pnl, rate: denominator ? computeWeightedRate(pnl, denominator) : null }
-}
-
-/** dailySummary에서 특정 날짜의 기초자산(전일 장마감 스냅샷) 추출.
- *  date 이전 날짜 중 가장 최근 행의 base_asset 필드 반환.
- *  없으면 undefined (computeCumulativePnl에서 초기 투자원금으로 처리 — 결정 6). */
-export function findBaseAssetForDate(
-  dailySummary: Record<string, unknown>[],
-  date: string,
-): number | undefined {
-  let prevBaseAsset: number | undefined
-  let prevDate = ''
-  for (const r of dailySummary) {
-    const d = String(r.date ?? '')
-    const baseAsset = Number(r.base_asset ?? 0)
-    if (d < date && d > prevDate && baseAsset > 0) {
-      prevDate = d
-      prevBaseAsset = baseAsset
-    }
-  }
-  return prevBaseAsset
+  return { pnl, rate }
 }
 
 /** 백엔드 dailySummary에서 당월 거래일별 요약 집계 — P10 SSOT (per-day rate 재계산 금지, 백엔드 값 직접 사용).
