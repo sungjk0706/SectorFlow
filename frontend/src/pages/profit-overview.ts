@@ -47,6 +47,10 @@ export interface ProfitOverviewState {
   expandToggleBtn: HTMLButtonElement | null
   allExpanded: boolean
   activeSector: string | null
+  // 업종별 종목 수익 섹션 타이틀 중앙 요약 refs (기간 라벨 + 총손익 + 수익률 — 도넛 중앙과 동일 SSOT, P10/P21)
+  sectorSummaryLabelRef: HTMLSpanElement | null
+  sectorSummaryPnlRef: HTMLSpanElement | null
+  sectorSummaryRateRef: HTMLSpanElement | null
   // 이력
   buyHistory: Record<string, unknown>[]
   sellHistory: Record<string, unknown>[]
@@ -93,8 +97,11 @@ function createState(): ProfitOverviewState {
     testAccountContainer: null,
     sectorStockListContainer: null,
     expandToggleBtn: null,
-    allExpanded: true,
+    allExpanded: false,
     activeSector: null,
+    sectorSummaryLabelRef: null,
+    sectorSummaryPnlRef: null,
+    sectorSummaryRateRef: null,
     buyHistory: [],
     sellHistory: [],
     filteredSellHistory: [],

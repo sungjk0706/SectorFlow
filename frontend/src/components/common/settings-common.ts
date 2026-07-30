@@ -17,8 +17,8 @@ export function parseHM(v: string): [string, string] {
 }
 
 /* ── sectionTitle ── */
-// 색상 COLOR.down 통일 + rightSlot 옵션(우측 요소 배치용 flex 래퍼) — P23/P24 일관성·중복 제거.
-export function sectionTitle(text: string, rightSlot?: HTMLElement): HTMLElement {
+// 색상 COLOR.down 통일 + rightSlot 옵션(우측 요소 배치용 flex 래퍼) + centerSlot 옵션(중앙 요소) — P23/P24 일관성·중복 제거.
+export function sectionTitle(text: string, rightSlot?: HTMLElement, centerSlot?: HTMLElement): HTMLElement {
   const div = document.createElement('div')
   Object.assign(div.style, {
     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -32,6 +32,13 @@ export function sectionTitle(text: string, rightSlot?: HTMLElement): HTMLElement
   const textSpan = document.createElement('span')
   textSpan.textContent = text
   div.appendChild(textSpan)
+  if (centerSlot) {
+    // 중앙 요소를 정확히 가운데 정렬하기 위한 flex:1 래퍼 (좌·우 슬롯과 독립).
+    const centerWrap = document.createElement('span')
+    Object.assign(centerWrap.style, { flex: '1', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px' })
+    centerWrap.appendChild(centerSlot)
+    div.appendChild(centerWrap)
+  }
   if (rightSlot) div.appendChild(rightSlot)
   return div
 }

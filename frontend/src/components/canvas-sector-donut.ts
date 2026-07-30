@@ -15,8 +15,9 @@ export interface SectorDonutRow {
 }
 
 export interface SectorDonutCenter {
-  pnl?: number      // 중앙 손익금 (외부 주입 — SSOT, 미지정 시 data 합산)
-  title?: string    // 중앙 레이블 (예: "당월 손익", 미지정 시 "누적 손익")
+  pnl?: number            // 중앙 손익금 (외부 주입 — SSOT, 미지정 시 data 합산)
+  rate?: number | null    // 중앙 수익률 (외부 주입 — SSOT, null/미지정 시 미표시)
+  title?: string          // 중앙 레이블 (예: "당월 손익", 미지정 시 "누적 손익")
 }
 
 export interface SectorDonutOptions {
@@ -203,17 +204,23 @@ export function createSectorDonut(options: SectorDonutOptions): SectorDonutApi {
       ctx.stroke()
     }
 
-    // 중앙 텍스트 — 손익 금액만 표시 (도넛 rate 제거 — 다단계 2세션 결정 9, buyTotal 분모 폐지)
+    // 중앙 텍스트 — 손익 금액 + 수익률 (기초자산 분모 SSOT — computeCumulativePnl과 동일 소스, P10/P22).
+    // rate null/미지정 시 손익 금액만 표시 (P20 폴백 금지).
     const sumPnl = processed.reduce((s, r) => s + r.pnl, 0)
     const totalPnl = center?.pnl ?? sumPnl
     const centerTitle = center?.title ?? '누적 손익'
+    const centerRate = center?.rate
     ctx.fillStyle = totalPnl >= 0 ? COLOR.up : COLOR.down
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
     ctx.font = `bold 14px ${FONT_FAMILY}`
-    ctx.fillText(centerTitle, cx, cy - 10)
+    ctx.fillText(centerTitle, cx, cy - 18)
     ctx.font = `bold 16px ${FONT_FAMILY}`
-    ctx.fillText(fmtWon(totalPnl), cx, cy + 12)
+    ctx.fillText(fmtWon(totalPnl), cx, cy + 2)
+    if (centerRate !== undefined && centerRate !== null) {
+      ctx.font = `bold 12px ${FONT_FAMILY}`
+      ctx.fillText(`${centerRate >= 0 ? '+' : ''}${centerRate.toFixed(2)}%`, cx, cy + 22)
+    }
 
   }
 

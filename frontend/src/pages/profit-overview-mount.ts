@@ -5,7 +5,7 @@
 import { createProfitChart } from '../components/canvas-profit-chart'
 import { createSectorDonut, type SectorDonutCenter } from '../components/canvas-sector-donut'
 import { globalSettingsManager } from '../settings'
-import { FONT_SIZE, FONT_WEIGHT, COLOR, RADIUS } from '../components/common/ui-styles'
+import { FONT_SIZE, FONT_WEIGHT, COLOR, RADIUS, pnlColor, fmtWon } from '../components/common/ui-styles'
 import { createActionButton } from '../components/common/button'
 import { sectionTitle } from '../components/common/settings-common'
 import { ACCOUNT_LABELS_REAL, ACCOUNT_LABELS_TEST } from '../components/common/account-labels'
@@ -71,9 +71,10 @@ function makeCenterTitle(quickLabel: string | undefined): string {
 /** 도넛 차트 중앙 손익 계산 — 계좌 현황과 동일 SSOT 사용 (P10/P22).
  *  데이터 소스: filteredSellHistory (날짜 필터 적용).
  *  분모: 기초자산 분모 방식 — dateFrom 있을 때 findBaseAssetForDate로 전일 장마감 스냅샷 추출.
- *        baseAsset 없으면 earliestBaseAsset (둘 다 없으면 rate null — 도넛은 금액만 표시하므로 rate 미사용).
- *  도넛 rate 제거 (다단계 2세션 결정 9) — 중앙에 손익 금액만 표시. */
-function buildDonutCenter(state: ProfitOverviewState): SectorDonutCenter {
+ *        baseAsset 없으면 earliestBaseAsset (둘 다 없으면 rate null → '-' 표시, P20 폴백 금지).
+ *  도넛 중앙 + 업종별 종목 수익 섹션 타이틀 중앙 요소가 동일 소스(computeCumulativePnl)를 공유 (P10 SSOT).
+ *  rate null 시 도넛/타이틀 모두 수익률 미표시. */
+export function buildDonutCenter(state: ProfitOverviewState): SectorDonutCenter {
   const hotState = hotStore.getState()
   const settings = globalSettingsManager.getSettings()
   const isTestMode = settings?.trade_mode === 'test'
@@ -82,7 +83,7 @@ function buildDonutCenter(state: ProfitOverviewState): SectorDonutCenter {
   const baseAsset = state.localDateFrom
     ? findBaseAssetForDate(state.analysisDailySummary, state.localDateFrom)
     : undefined
-  const { pnl } = computeCumulativePnl({
+  const { pnl, rate } = computeCumulativePnl({
     sellHistory: state.filteredSellHistory,
     account: hotState.account,
     isTestMode,
@@ -91,13 +92,36 @@ function buildDonutCenter(state: ProfitOverviewState): SectorDonutCenter {
     baseAsset,
     earliestBaseAsset,
   })
-  return { pnl, title: makeCenterTitle(state.localQuickLabel) }
+  return { pnl, rate, title: makeCenterTitle(state.localQuickLabel) }
 }
 
 export function refreshFilteredViews(state: ProfitOverviewState): void {
   state.filteredSellHistory = filterTradeRows(state.sellHistory, state.localDateFrom, state.localDateTo)
-  state.donutChart?.updateData(buildSectorDonutRows(state.filteredSellHistory), buildDonutCenter(state))
+  const center = buildDonutCenter(state)
+  state.donutChart?.updateData(buildSectorDonutRows(state.filteredSellHistory), center)
+  updateSectorSummary(state, center)
   renderSectorStockPnl(state)
+}
+
+/** 업종별 종목 수익 섹션 타이틀 중앙 요약 갱신 — 도넛 중앙(center)과 동일 소스 재사용 (P10 SSOT).
+ *  기간 라벨 + 총 실현손익 + 수익률. rate null 시 수익률 미표시 (P20 폴백 금지). */
+function updateSectorSummary(state: ProfitOverviewState, center: SectorDonutCenter): void {
+  const { sectorSummaryLabelRef, sectorSummaryPnlRef, sectorSummaryRateRef } = state
+  if (sectorSummaryLabelRef) sectorSummaryLabelRef.textContent = center.title ?? '누적 손익'
+  if (sectorSummaryPnlRef && center.pnl !== undefined) {
+    const sign = center.pnl >= 0 ? '+' : ''
+    sectorSummaryPnlRef.textContent = `${sign}${fmtWon(center.pnl)}원`
+    sectorSummaryPnlRef.style.color = pnlColor(center.pnl)
+  }
+  if (sectorSummaryRateRef) {
+    if (center.rate !== undefined && center.rate !== null) {
+      const sign = center.rate >= 0 ? '+' : ''
+      sectorSummaryRateRef.textContent = `${sign}${center.rate.toFixed(2)}%`
+      sectorSummaryRateRef.style.color = pnlColor(center.rate)
+    } else {
+      sectorSummaryRateRef.textContent = ''
+    }
+  }
 }
 
 /* ── mount 헬퍼: 좌측 컬럼 (거래일별 수익률 차트 + 업종별 수익 도넛) ── */

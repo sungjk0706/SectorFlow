@@ -213,7 +213,25 @@ export function buildStockListSection(state: ProfitOverviewState): HTMLDivElemen
     fontWeight: FONT_WEIGHT.normal,
   })
   state.expandToggleBtn = toggleBtn
-  wrapper.appendChild(sectionTitle('업종별 종목 수익', toggleBtn))
+
+  // 타이틀 행 중앙: 기간 라벨 + 총 실현손익 + 수익률 (도넛 중앙과 동일 SSOT — buildDonutCenter 결과로 갱신, P10/P21).
+  // 초기값은 빈 문자열(placeholder 없음, P20) — refreshFilteredViews에서 첫 갱신.
+  const centerSlot = document.createElement('span')
+  Object.assign(centerSlot.style, { display: 'inline-flex', alignItems: 'baseline', gap: '8px' })
+  const labelRef = document.createElement('span')
+  Object.assign(labelRef.style, { fontSize: FONT_SIZE.label, color: COLOR.tertiary, fontWeight: FONT_WEIGHT.normal })
+  const pnlRef = document.createElement('span')
+  Object.assign(pnlRef.style, { fontVariantNumeric: 'tabular-nums', fontWeight: FONT_WEIGHT.semibold, fontSize: FONT_SIZE.body })
+  const rateRef = document.createElement('span')
+  Object.assign(rateRef.style, { fontVariantNumeric: 'tabular-nums', fontSize: FONT_SIZE.label })
+  centerSlot.appendChild(labelRef)
+  centerSlot.appendChild(pnlRef)
+  centerSlot.appendChild(rateRef)
+  state.sectorSummaryLabelRef = labelRef
+  state.sectorSummaryPnlRef = pnlRef
+  state.sectorSummaryRateRef = rateRef
+
+  wrapper.appendChild(sectionTitle('업종별 종목 수익', toggleBtn, centerSlot))
 
   const container = document.createElement('div')
   Object.assign(container.style, { flex: '1', minHeight: '0' })
