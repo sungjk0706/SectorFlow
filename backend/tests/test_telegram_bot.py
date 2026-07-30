@@ -652,18 +652,18 @@ class TestHandleCommand:
         mock_cmd.assert_called_once_with("tok", "123", None)
 
     @pytest.mark.asyncio
-    async def test_cmd_buy_routes_to_toggle_buy(self):
+    async def test_cmd_buy_routes_to_buy_history(self):
         bot = TelegramBot()
-        with patch.object(bot, "_cmd_toggle_auto_buy", new_callable=AsyncMock) as mock_cmd:
+        with patch.object(bot, "_cmd_buy_history", new_callable=AsyncMock) as mock_cmd:
             await bot._handle_command("tok", "123", "매수")
-        mock_cmd.assert_called_once_with("tok", "123", None)
+        mock_cmd.assert_called_once_with("tok", "123")
 
     @pytest.mark.asyncio
-    async def test_cmd_sell_routes_to_toggle_sell(self):
+    async def test_cmd_sell_routes_to_sell_history(self):
         bot = TelegramBot()
-        with patch.object(bot, "_cmd_toggle_auto_sell", new_callable=AsyncMock) as mock_cmd:
+        with patch.object(bot, "_cmd_sell_history", new_callable=AsyncMock) as mock_cmd:
             await bot._handle_command("tok", "123", "매도")
-        mock_cmd.assert_called_once_with("tok", "123", None)
+        mock_cmd.assert_called_once_with("tok", "123")
 
     @pytest.mark.asyncio
     async def test_cmd_status_routes_to_status_full(self):
@@ -914,70 +914,88 @@ class TestCmdToggleAutoMaster:
         assert "오류" in text
 
 
-# ── TelegramBot._cmd_toggle_auto_buy ────────────────────────────────────────────
+# ── TelegramBot._cmd_buy_history ────────────────────────────────────────────────
 
-class TestCmdToggleAutoBuy:
+class TestCmdBuyHistory:
     @pytest.mark.asyncio
-    async def test_toggle_on_sends_on_message(self):
+    async def test_no_records_sends_empty_message(self):
         bot = TelegramBot()
-        with patch.object(bot, "_toggle_setting_bool", new_callable=AsyncMock, return_value=True), \
+        with patch("backend.app.services.trade_history.get_buy_history", new_callable=AsyncMock, return_value=[]), \
              patch.object(bot, "_send", new_callable=AsyncMock) as mock_send:
-            await bot._cmd_toggle_auto_buy("tok", "123")
+            await bot._cmd_buy_history("tok", "123")
         mock_send.assert_called_once()
         text = mock_send.call_args[0][2]
-        assert "ON" in text
-        assert "자동 매수" in text
+        assert "내역 없음" in text
 
     @pytest.mark.asyncio
-    async def test_toggle_off_sends_off_message(self):
+    async def test_with_records_sends_list(self):
         bot = TelegramBot()
-        with patch.object(bot, "_toggle_setting_bool", new_callable=AsyncMock, return_value=False), \
+        records = [
+            {"date": "2026-07-31", "time": "09:15", "stk_nm": "삼성전자", "price": 80000,
+             "qty": 10, "total_amt": 800000, "sector": "반도체", "buy_rank": 1},
+            {"date": "2026-07-31", "time": "09:20", "stk_nm": "SK하이닉스", "price": 120000,
+             "qty": 5, "total_amt": 600000, "sector": "반도체", "buy_rank": 2},
+        ]
+        with patch("backend.app.services.trade_history.get_buy_history", new_callable=AsyncMock, return_value=records), \
              patch.object(bot, "_send", new_callable=AsyncMock) as mock_send:
-            await bot._cmd_toggle_auto_buy("tok", "123")
+            await bot._cmd_buy_history("tok", "123")
         mock_send.assert_called_once()
         text = mock_send.call_args[0][2]
-        assert "OFF" in text
+        assert "매수 체결 내역" in text
+        assert "삼성전자" in text
+        assert "SK하이닉스" in text
+        assert "80,000원" in text
+        assert "반도체" in text
 
     @pytest.mark.asyncio
-    async def test_exception_sends_error_message(self):
+    async def test_exception_sends_error(self):
         bot = TelegramBot()
-        with patch.object(bot, "_toggle_setting_bool", new_callable=AsyncMock, side_effect=Exception("fail")), \
+        with patch("backend.app.services.trade_history.get_buy_history", new_callable=AsyncMock, side_effect=Exception("fail")), \
              patch.object(bot, "_send", new_callable=AsyncMock) as mock_send:
-            await bot._cmd_toggle_auto_buy("tok", "123")
+            await bot._cmd_buy_history("tok", "123")
         mock_send.assert_called_once()
         assert "오류" in mock_send.call_args[0][2]
 
 
-# ── TelegramBot._cmd_toggle_auto_sell ───────────────────────────────────────────
+# ── TelegramBot._cmd_sell_history ───────────────────────────────────────────────
 
-class TestCmdToggleAutoSell:
+class TestCmdSellHistory:
     @pytest.mark.asyncio
-    async def test_toggle_on_sends_on_message(self):
+    async def test_no_records_sends_empty_message(self):
         bot = TelegramBot()
-        with patch.object(bot, "_toggle_setting_bool", new_callable=AsyncMock, return_value=True), \
+        with patch("backend.app.services.trade_history.get_sell_history", new_callable=AsyncMock, return_value=[]), \
              patch.object(bot, "_send", new_callable=AsyncMock) as mock_send:
-            await bot._cmd_toggle_auto_sell("tok", "123")
+            await bot._cmd_sell_history("tok", "123")
         mock_send.assert_called_once()
         text = mock_send.call_args[0][2]
-        assert "ON" in text
-        assert "자동 매도" in text
+        assert "내역 없음" in text
 
     @pytest.mark.asyncio
-    async def test_toggle_off_sends_off_message(self):
+    async def test_with_records_sends_list(self):
         bot = TelegramBot()
-        with patch.object(bot, "_toggle_setting_bool", new_callable=AsyncMock, return_value=False), \
+        records = [
+            {"date": "2026-07-31", "time": "10:00", "stk_nm": "삼성전자", "price": 85000,
+             "qty": 10, "total_amt": 850000, "realized_pnl": 50000, "pnl_rate": 6.25,
+             "reason": "익절"},
+        ]
+        with patch("backend.app.services.trade_history.get_sell_history", new_callable=AsyncMock, return_value=records), \
              patch.object(bot, "_send", new_callable=AsyncMock) as mock_send:
-            await bot._cmd_toggle_auto_sell("tok", "123")
+            await bot._cmd_sell_history("tok", "123")
         mock_send.assert_called_once()
         text = mock_send.call_args[0][2]
-        assert "OFF" in text
+        assert "매도 체결 내역" in text
+        assert "삼성전자" in text
+        assert "85,000원" in text
+        assert "손익" in text
+        assert "+50,000원" in text
+        assert "익절" in text
 
     @pytest.mark.asyncio
-    async def test_exception_sends_error_message(self):
+    async def test_exception_sends_error(self):
         bot = TelegramBot()
-        with patch.object(bot, "_toggle_setting_bool", new_callable=AsyncMock, side_effect=Exception("fail")), \
+        with patch("backend.app.services.trade_history.get_sell_history", new_callable=AsyncMock, side_effect=Exception("fail")), \
              patch.object(bot, "_send", new_callable=AsyncMock) as mock_send:
-            await bot._cmd_toggle_auto_sell("tok", "123")
+            await bot._cmd_sell_history("tok", "123")
         mock_send.assert_called_once()
         assert "오류" in mock_send.call_args[0][2]
 
@@ -1364,20 +1382,20 @@ class TestCmdAccount:
 
 class TestCmdSector:
     @pytest.mark.asyncio
-    async def test_sector_no_data(self):
+    async def test_sector_no_cache(self):
         bot = TelegramBot()
-        with patch("backend.app.services.sector_data_provider.get_sector_summary_inputs", new_callable=AsyncMock, return_value={"all_codes": []}), \
+        mock_state = MagicMock()
+        mock_state.sector_summary_cache = None
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch.object(bot, "_send", new_callable=AsyncMock) as mock_send:
             await bot._cmd_sector("tok", "123")
         mock_send.assert_called_once()
         text = mock_send.call_args[0][2]
-        assert "종목 데이터가 없습니다" in text
+        assert "업종 데이터가 아직 없습니다" in text
 
     @pytest.mark.asyncio
     async def test_sector_with_data(self):
         bot = TelegramBot()
-        inputs = {"all_codes": ["005930"], "trade_prices": {}, "trade_amounts": {}, "avg_amt_5d": {}}
-
         mock_sector1 = MagicMock()
         mock_sector1.rank = 1
         mock_sector1.sector = "반도체"
@@ -1389,8 +1407,9 @@ class TestCmdSector:
         mock_summary = MagicMock()
         mock_summary.sectors = [mock_sector1]
 
-        with patch("backend.app.services.sector_data_provider.get_sector_summary_inputs", new_callable=AsyncMock, return_value=inputs), \
-             patch("backend.app.domain.sector_calculator.compute_full_sector_summary", new_callable=AsyncMock, return_value=mock_summary), \
+        mock_state = MagicMock()
+        mock_state.sector_summary_cache = mock_summary
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch.object(bot, "_send", new_callable=AsyncMock) as mock_send:
             await bot._cmd_sector("tok", "123")
         mock_send.assert_called_once()
@@ -1398,16 +1417,18 @@ class TestCmdSector:
         assert "업종 분석 요약" in text
         assert "반도체" in text
         assert "상위" in text
+        assert "평균" in text
+        assert "avg" not in text
 
     @pytest.mark.asyncio
     async def test_sector_empty_sectors_list(self):
         bot = TelegramBot()
-        inputs = {"all_codes": ["005930"], "trade_prices": {}, "trade_amounts": {}, "avg_amt_5d": {}}
         mock_summary = MagicMock()
         mock_summary.sectors = []
 
-        with patch("backend.app.services.sector_data_provider.get_sector_summary_inputs", new_callable=AsyncMock, return_value=inputs), \
-             patch("backend.app.domain.sector_calculator.compute_full_sector_summary", new_callable=AsyncMock, return_value=mock_summary), \
+        mock_state = MagicMock()
+        mock_state.sector_summary_cache = mock_summary
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch.object(bot, "_send", new_callable=AsyncMock) as mock_send:
             await bot._cmd_sector("tok", "123")
         mock_send.assert_called_once()
@@ -1417,7 +1438,9 @@ class TestCmdSector:
     @pytest.mark.asyncio
     async def test_sector_exception_sends_error(self):
         bot = TelegramBot()
-        with patch("backend.app.services.sector_data_provider.get_sector_summary_inputs", new_callable=AsyncMock, side_effect=Exception("fail")), \
+        mock_state = MagicMock()
+        del mock_state.sector_summary_cache  # 접근 시 AttributeError 발생
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch.object(bot, "_send", new_callable=AsyncMock) as mock_send:
             await bot._cmd_sector("tok", "123")
         mock_send.assert_called_once()
@@ -1427,8 +1450,6 @@ class TestCmdSector:
     @pytest.mark.asyncio
     async def test_sector_with_lower_sectors(self):
         bot = TelegramBot()
-        inputs = {"all_codes": ["005930"], "trade_prices": {}, "trade_amounts": {}, "avg_amt_5d": {}}
-
         sectors = []
         for i in range(8):
             s = MagicMock()
@@ -1443,8 +1464,9 @@ class TestCmdSector:
         mock_summary = MagicMock()
         mock_summary.sectors = sectors
 
-        with patch("backend.app.services.sector_data_provider.get_sector_summary_inputs", new_callable=AsyncMock, return_value=inputs), \
-             patch("backend.app.domain.sector_calculator.compute_full_sector_summary", new_callable=AsyncMock, return_value=mock_summary), \
+        mock_state = MagicMock()
+        mock_state.sector_summary_cache = mock_summary
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch.object(bot, "_send", new_callable=AsyncMock) as mock_send:
             await bot._cmd_sector("tok", "123")
         mock_send.assert_called_once()
@@ -1504,6 +1526,38 @@ class TestCmdBuyCandidates:
             await bot._cmd_buy_candidates("tok", "123")
         mock_send.assert_called_once()
         text = mock_send.call_args[0][2]
+        assert "체결강도" not in text
+
+    @pytest.mark.asyncio
+    async def test_string_strength_does_not_crash(self):
+        """strength가 문자열로 저장되는 경우 str vs int 오류 방지 (문제1)."""
+        bot = TelegramBot()
+        targets = [
+            {"rank": 1, "name": "삼성전자", "cur_price": 80000, "change_rate": 1.5,
+             "strength": "120.50", "trade_amount": 5_0000_0000, "sector": "반도체"},
+        ]
+        with patch("backend.app.services.sector_data_provider.get_buy_targets_sector_stocks", new_callable=AsyncMock, return_value=targets), \
+             patch.object(bot, "_send", new_callable=AsyncMock) as mock_send:
+            await bot._cmd_buy_candidates("tok", "123")
+        mock_send.assert_called_once()
+        text = mock_send.call_args[0][2]
+        assert "삼성전자" in text
+        assert "체결강도" in text
+
+    @pytest.mark.asyncio
+    async def test_none_realtime_fields_shows_misusin(self):
+        """틱 미수신 시 None 필드가 "미수신"으로 표시되는지 확인 (P20 폴백 금지)."""
+        bot = TelegramBot()
+        targets = [
+            {"rank": 1, "name": "테스트", "cur_price": None, "change_rate": None,
+             "strength": None, "trade_amount": None, "sector": ""},
+        ]
+        with patch("backend.app.services.sector_data_provider.get_buy_targets_sector_stocks", new_callable=AsyncMock, return_value=targets), \
+             patch.object(bot, "_send", new_callable=AsyncMock) as mock_send:
+            await bot._cmd_buy_candidates("tok", "123")
+        mock_send.assert_called_once()
+        text = mock_send.call_args[0][2]
+        assert "미수신" in text
         assert "체결강도" not in text
 
 

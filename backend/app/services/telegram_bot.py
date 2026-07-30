@@ -4,8 +4,8 @@
 
 지원 명령어 (한글 / 영문 alias):
   자동 / auto       -- 자동매매 마스터 ON/OFF 토글 (time_scheduler_on)
-  매수              -- 자동 매수 스위치 ON/OFF 토글 (auto_buy_on)
-  매도              -- 자동 매도 스위치 ON/OFF 토글 (auto_sell_on)
+  매수              -- 매수 체결 내역 (최근 10건)
+  매도              -- 매도 체결 내역 (최근 10건)
   상태 / status     -- 스케줄·스위치 + 자동매매 가능 여부 + 계좌 요약
   현황              -- 상태 와 동일 (호환)
   잔고 / balance    -- 계좌 현황만
@@ -444,9 +444,9 @@ class TelegramBot:
         if cmd in ("자동", "auto"):
             await self._cmd_toggle_auto_master(token, chat_id, profile)
         elif cmd == "매수":
-            await self._cmd_toggle_auto_buy(token, chat_id, profile)
+            await self._cmd_buy_history(token, chat_id)
         elif cmd == "매도":
-            await self._cmd_toggle_auto_sell(token, chat_id, profile)
+            await self._cmd_sell_history(token, chat_id)
         elif cmd in ("상태", "status"):
             await self._cmd_status_full(token, chat_id, profile)
         elif cmd in ("현황",):
@@ -475,8 +475,8 @@ class TelegramBot:
         text = (
             "📋 <b>SectorFlow Bot 명령어</b>\n\n"
             "자동  -- 자동매매 마스터 ON/OFF (토글)\n"
-            "매수  -- 자동 매수 스위치 ON/OFF (토글)\n"
-            "매도  -- 자동 매도 스위치 ON/OFF (토글)\n"
+            "매수  -- 매수 체결 내역 (최근 10건)\n"
+            "매도  -- 매도 체결 내역 (최근 10건)\n"
             "상태  -- 스케줄·스위치 + 지금 자동매매 가능 여부 + 계좌 요약 (현황)\n"
             "잔고  -- 계좌 현황만 (계좌)\n"
             "업종  -- 업종 분석 상위/하위 요약\n"
@@ -528,27 +528,73 @@ class TelegramBot:
         except Exception as exc:
             await self._send(token, chat_id, f" 오류 발생: {str(exc)[:120]}")
 
-    async def _cmd_toggle_auto_buy(self, token: str, chat_id: str, profile: str | None = None):
+    async def _cmd_buy_history(self, token: str, chat_id: str) -> None:
+        """매수 체결 내역 최근 10건 전송 (trade_history SSOT — P10)."""
         try:
-            new = await self._toggle_setting_bool("auto_buy_on", "자동 매수")
-            await self._send(
-                token,
-                chat_id,
-                f"{'' if new else '⏸️'} <b>자동 매수</b> <b>{'ON' if new else 'OFF'}</b>",
-            )
-        except Exception as exc:
-            await self._send(token, chat_id, f" 오류 발생: {str(exc)[:120]}")
+            from backend.app.services.trade_history import get_buy_history
 
-    async def _cmd_toggle_auto_sell(self, token: str, chat_id: str, profile: str | None = None):
-        try:
-            new = await self._toggle_setting_bool("auto_sell_on", "자동 매도")
-            await self._send(
-                token,
-                chat_id,
-                f"{'' if new else '⏸️'} <b>자동 매도</b> <b>{'ON' if new else 'OFF'}</b>",
-            )
+            records = await get_buy_history()
+            now_str = datetime.now(_KST).strftime("%H:%M")
+
+            if not records:
+                await self._send(token, chat_id, f"📥 <b>매수 체결 내역</b> ({now_str})\n내역 없음")
+                return
+
+            lines = [f"📥 <b>매수 체결 내역</b> (최근 {min(len(records), 10)}건, {now_str})\n"]
+            for rec in records[:10]:
+                dt = f"{rec.get('date', '')} {rec.get('time', '')}".strip()
+                name = rec.get("stk_nm", "?")
+                price = int(rec.get("price", 0) or 0)
+                qty = int(rec.get("qty", 0) or 0)
+                total = int(rec.get("total_amt", 0) or 0)
+                sector = rec.get("sector", "")
+                sec_txt = f"  [{sector}]" if sector else ""
+                rank = rec.get("buy_rank")
+                rank_txt = f"  #{rank}" if rank else ""
+                lines.append(
+                    f"  {dt}  {name}  {price:,}원 × {qty}주 = {total:,}원{sec_txt}{rank_txt}"
+                )
+
+            await self._send(token, chat_id, "\n".join(lines))
         except Exception as exc:
-            await self._send(token, chat_id, f" 오류 발생: {str(exc)[:120]}")
+            await self._send(token, chat_id, f"⚠ 매수 내역 조회 오류: {str(exc)[:120]}")
+
+    async def _cmd_sell_history(self, token: str, chat_id: str) -> None:
+        """매도 체결 내역 최근 10건 전송 (trade_history SSOT — P10).
+
+        매도 내역에는 실현 손익(pnl)과 손익률(pnl_rate)을 포함 —
+        프론트엔드 수익현황 페이지 aggregatePnl과 동일 데이터 (P21 투명성).
+        """
+        try:
+            from backend.app.services.trade_history import get_sell_history
+
+            records = await get_sell_history()
+            now_str = datetime.now(_KST).strftime("%H:%M")
+
+            if not records:
+                await self._send(token, chat_id, f"📤 <b>매도 체결 내역</b> ({now_str})\n내역 없음")
+                return
+
+            lines = [f"📤 <b>매도 체결 내역</b> (최근 {min(len(records), 10)}건, {now_str})\n"]
+            for rec in records[:10]:
+                dt = f"{rec.get('date', '')} {rec.get('time', '')}".strip()
+                name = rec.get("stk_nm", "?")
+                price = int(rec.get("price", 0) or 0)
+                qty = int(rec.get("qty", 0) or 0)
+                total = int(rec.get("total_amt", 0) or 0)
+                pnl = int(rec.get("realized_pnl", 0) or 0)
+                pnl_rate = float(rec.get("pnl_rate", 0.0) or 0.0)
+                reason = rec.get("reason", "")
+                pnl_sign = "+" if pnl >= 0 else ""
+                reason_txt = f"  ({reason})" if reason else ""
+                lines.append(
+                    f"  {dt}  {name}  {price:,}원 × {qty}주 = {total:,}원"
+                    f"  손익 {pnl_sign}{pnl:,}원 ({pnl_rate:+.1f}%){reason_txt}"
+                )
+
+            await self._send(token, chat_id, "\n".join(lines))
+        except Exception as exc:
+            await self._send(token, chat_id, f"⚠ 매도 내역 조회 오류: {str(exc)[:120]}")
 
     async def _cmd_status_full(self, token: str, chat_id: str, profile: str | None = None):
         try:
@@ -613,28 +659,21 @@ class TelegramBot:
             await self._send(token, chat_id, f" 계좌 조회 오류: {str(exc)[:120]}")
 
     async def _cmd_sector(self, token: str, chat_id: str) -> None:
-        """업종 강도 상위/하위 요약."""
+        """업종 강도 상위/하위 요약.
+
+        sector_summary_cache를 직접 사용 (P10 SSOT — 프론트엔드 업종순위와 동일 데이터).
+        이전에는 compute_full_sector_summary를 기본값 파라미터로 재계산하여
+        엔진 설정(min_rise_ratio, 슬라이더 등)과 불일치하는 문제가 있었음.
+        """
         try:
-            from backend.app.services.sector_data_provider import get_sector_summary_inputs
-            from backend.app.domain.sector_calculator import compute_full_sector_summary
+            from backend.app.services.engine_state import state
 
-            inputs = await get_sector_summary_inputs()
-            if not inputs.get("all_codes"):
-                await self._send(token, chat_id, " 종목 데이터가 없습니다. 엔진 가동 후 다시 시도하세요.")
+            ss = state.sector_summary_cache
+            if not ss or not ss.sectors:
+                await self._send(token, chat_id, "📊 업종 데이터가 아직 없습니다. 엔진 가동 후 다시 시도하세요.")
                 return
 
-            # krx_codes/nxt_codes는 수신률 분리 집계 전용, all_filter_codes는 구독 대상 식별 전용
-            # — compute_full_sector_summary에는 all_codes만 전달
-            compute_inputs = {k: v for k, v in inputs.items() if k not in ("krx_codes", "nxt_codes", "all_filter_codes")}
-            summary = await compute_full_sector_summary(
-                **compute_inputs,
-            )
-
-            sectors = summary.sectors
-            if not sectors:
-                await self._send(token, chat_id, "📊 업종 데이터가 아직 없습니다.")
-                return
-
+            sectors = ss.sectors
             now_str = datetime.now(_KST).strftime("%H:%M")
             lines = [f"📊 <b>업종 분석 요약</b> ({now_str})\n"]
 
@@ -644,9 +683,9 @@ class TelegramBot:
                 amt_b = s.avg_trade_amount / 1e8
                 lines.append(
                     f"  {s.rank}. {s.sector}  "
-                    f"avg {s.avg_change_rate:+.2f}%  "
+                    f"평균 {s.avg_change_rate:+.2f}%  "
                     f"상승 {s.rise_count}/{s.total}  "
-                    f"거래대금 {amt_b:.0f}억"
+                    f"거래대금 {amt_b:,.1f}억"
                 )
 
             # 하위 3개 (역순)
@@ -656,8 +695,9 @@ class TelegramBot:
                     amt_b = s.avg_trade_amount / 1e8
                     lines.append(
                         f"  {s.rank}. {s.sector}  "
-                        f"avg {s.avg_change_rate:+.2f}%  "
-                        f"상승 {s.rise_count}/{s.total}"
+                        f"평균 {s.avg_change_rate:+.2f}%  "
+                        f"상승 {s.rise_count}/{s.total}  "
+                        f"거래대금 {amt_b:,.1f}억"
                     )
 
             await self._send(token, chat_id, "\n".join(lines))
@@ -665,7 +705,12 @@ class TelegramBot:
             await self._send(token, chat_id, f" 업종 조회 오류: {str(exc)[:120]}")
 
     async def _cmd_buy_candidates(self, token: str, chat_id: str) -> None:
-        """매수 후보 1~10순위 전송."""
+        """매수 후보 1~10순위 전송.
+
+        실시간 필드(cur_price, change_rate, strength, trade_amount)는 틱 미수신 시
+        None 또는 문자열(strength)일 수 있으므로 타입별 처리 (P20 폴백 금지 —
+        None은 "미수신"으로 명시 표시, 0으로 덮지 않음).
+        """
         try:
             from backend.app.services.sector_data_provider import get_buy_targets_sector_stocks
 
@@ -678,18 +723,56 @@ class TelegramBot:
 
             lines = [f"🎯 <b>매수 후보 TOP {len(targets)}</b> ({now_str})\n"]
             for t in targets:
-                rate = t["change_rate"]
-                sign = "▲" if rate > 0 else ("▼" if rate < 0 else "━")
-                strength = t["strength"]
-                str_txt = f"  체결강도 {strength:.0f}" if strength >= 0 else ""
-                ta = t.get("trade_amount") or 0
-                amt_억 = ta / 1_0000_0000 if ta > 0 else 0
-                amt_txt = f"  {amt_억:,.0f}억" if amt_억 > 0 else ""
+                # 등락률 — None(틱 미수신) 시 "미수신" 표시 (P20 폴백 금지)
+                rate_raw = t.get("change_rate")
+                if rate_raw is not None:
+                    try:
+                        rate = float(rate_raw)
+                    except (ValueError, TypeError):
+                        rate = 0.0
+                    sign = "▲" if rate > 0 else ("▼" if rate < 0 else "━")
+                    rate_txt = f"{sign}{abs(rate):.2f}%"
+                else:
+                    rate_txt = "미수신"
+
+                # 현재가 — None 시 "미수신"
+                cur_price_raw = t.get("cur_price")
+                if cur_price_raw is not None:
+                    try:
+                        price_txt = f"{int(cur_price_raw):,}원"
+                    except (ValueError, TypeError):
+                        price_txt = "미수신"
+                else:
+                    price_txt = "미수신"
+
+                # 체결강도 — engine_radar에서 문자열로 저장하므로 float 변환
+                strength_raw = t.get("strength")
+                if strength_raw is not None:
+                    try:
+                        strength = float(str(strength_raw).replace("%", "").replace(",", "").strip())
+                    except (ValueError, TypeError):
+                        strength = -1.0
+                    str_txt = f"  체결강도 {strength:.0f}" if strength >= 0 else ""
+                else:
+                    str_txt = ""
+
+                # 거래대금 — None 시 미표시
+                ta_raw = t.get("trade_amount")
+                if ta_raw is not None:
+                    try:
+                        ta = int(ta_raw)
+                    except (ValueError, TypeError):
+                        ta = 0
+                    amt_억 = ta / 1_0000_0000 if ta > 0 else 0
+                    amt_txt = f"  {amt_억:,.1f}억" if amt_억 > 0 else ""
+                else:
+                    amt_txt = ""
+
                 sector = t.get("sector") or ""
                 sec_txt = f"  [{sector}]" if sector else ""
                 lines.append(
                     f"  {t['rank']}. {t['name']}  "
-                    f"{t['cur_price']:,}원  {sign}{abs(rate):.2f}%"
+                    f"{price_txt}  {rate_txt}"
                     f"{str_txt}{amt_txt}{sec_txt}"
                 )
 
