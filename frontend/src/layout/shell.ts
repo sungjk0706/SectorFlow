@@ -6,6 +6,8 @@ import { createSidebar } from './sidebar'
 import { COLOR } from '../components/common/ui-styles'
 
 export const SETTINGS_PANEL_WIDTH = 340
+// 좌측 설정 패널 패딩 — dual(leftPanel)·triple(tripleLeft) 공통 (P23 일관성)
+export const SETTINGS_PANEL_PADDING = 4
 
 export function createLayoutShell(): {
   el: HTMLElement
@@ -77,7 +79,7 @@ export function createLayoutShell(): {
   // ── 좌측 패널 (dual 레이아웃 시 설정 카드) ──
   const leftPanel = document.createElement('div')
   leftPanel.style.cssText =
-    `width:${SETTINGS_PANEL_WIDTH}px;min-width:${SETTINGS_PANEL_WIDTH}px;border-right:1px solid ${COLOR.borderDark};overflow-y:auto;padding:4px;outline:none;display:none;`
+    `width:${SETTINGS_PANEL_WIDTH}px;min-width:${SETTINGS_PANEL_WIDTH}px;border-right:1px solid ${COLOR.borderDark};overflow-y:auto;padding:${SETTINGS_PANEL_PADDING}px;outline:none;display:none;`
 
   // ── 우측 패널 (dual 레이아웃 시 데이터 영역) ──
   const rightPanel = document.createElement('div')
@@ -93,7 +95,7 @@ export function createLayoutShell(): {
   tripleContainer.style.cssText = 'display:flex;flex:1;min-height:0;display:none;'
 
   const tripleLeft = document.createElement('div')
-  tripleLeft.style.cssText = `flex:4;overflow-y:auto;padding:8px;border-right:1px solid ${COLOR.borderDark};`
+  tripleLeft.style.cssText = `flex:4;overflow-y:auto;padding:${SETTINGS_PANEL_PADDING}px;border-right:1px solid ${COLOR.borderDark};`
 
   const tripleCenter = document.createElement('div')
   tripleCenter.style.cssText = `flex:3;overflow-y:auto;padding:8px;border-right:1px solid ${COLOR.borderDark};`
