@@ -83,8 +83,10 @@ export function createSectorDonut(options: SectorDonutOptions): SectorDonutApi {
   canvasWrap.style.cssText = `position:relative;flex:1;min-width:0;height:100%;background:${COLOR.white};overflow:hidden;`
   wrapper.appendChild(canvasWrap)
 
+  // 범례 폭 고정 — 가변 폭(width:auto) 시 업종명 길이에 따라 도넛 캔버스 폭이 변동하여
+  // 도넛 위치·크기가 흔들리는 문제 방지 (P24 단순성 — 근본 원인에 대한 최소 수정).
   const legendWrap = document.createElement('div')
-  legendWrap.style.cssText = 'flex:none;width:auto;max-width:45%;height:100%;overflow-y:auto;padding:4px 0;'
+  legendWrap.style.cssText = 'flex:0 0 38%;height:100%;overflow-y:auto;padding:4px 0;'
   wrapper.appendChild(legendWrap)
 
   const canvas = document.createElement('canvas')
