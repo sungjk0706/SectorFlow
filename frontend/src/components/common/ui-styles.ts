@@ -53,6 +53,11 @@ export const RADIUS = {
   pill: '9999px',  // 원형 배지, 토글
 } as const
 
+/* ── 레이아웃 간격 ── */
+
+/** 카드 제목(h3) 하단 margin — card-title.ts·card-header.ts 공통 참조 (P23 일관성) */
+export const CARD_TITLE_MARGIN_BOTTOM = 8
+
 /* ── 그림자 ── */
 
 export const SHADOW = {

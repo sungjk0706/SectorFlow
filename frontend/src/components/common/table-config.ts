@@ -53,6 +53,10 @@ export interface ColumnWidth {
   maxWidth: number
 }
 
+/** 셀 패딩 — 헤더/데이터 셀 상하좌우 통일 (P23 일관성).
+ *  auto-width.ts CELL_HORIZONTAL_PADDING과 동기화 필요 (CELL_PADDING * 2). */
+export const CELL_PADDING = 4
+
 export const COLUMN_WIDTH: Record<ColumnType, ColumnWidth> = {
   seq: { minWidth: 36, maxWidth: 36 },
   code: { minWidth: 72, maxWidth: 85 },

@@ -4,6 +4,7 @@
  */
 
 import { CELL_BORDER, COLOR, FONT_SIZE, FONT_WEIGHT, FONT_FAMILY } from './ui-styles'
+import { CELL_PADDING } from './table-config'
 import {
   type ColumnDef,
   type GroupRow,
@@ -63,7 +64,7 @@ export function createFixedMode<T extends object>(
     Object.assign(th.style, {
       boxSizing: 'border-box',
       textAlign: 'center',
-      padding: '4px 6px',
+      padding: `${CELL_PADDING}px`,
       fontSize: FONT_SIZE.header,
       fontWeight: FONT_WEIGHT.normal,
       whiteSpace: 'nowrap',
@@ -137,7 +138,7 @@ export function createFixedMode<T extends object>(
       const td = document.createElement('td')
       Object.assign(td.style, {
         boxSizing: 'border-box',
-        padding: '4px 6px',
+        padding: `${CELL_PADDING}px`,
         overflow: 'hidden',
         textOverflow: 'ellipsis',
         whiteSpace: 'nowrap',

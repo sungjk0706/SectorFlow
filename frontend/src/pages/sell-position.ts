@@ -165,7 +165,7 @@ function updateSellStatusBadge(): void {
 /** 헤더 + 보유 종목 요약 배지 행 빌드 */
 function buildSummary(root: HTMLElement): void {
   // 헤더: 제목
-  const headerRow = createCardHeaderWithMargin('보유종목', undefined, '8px')
+  const headerRow = createCardHeaderWithMargin('보유종목')
   root.appendChild(headerRow)
 
   // 보유 종목 요약 배지 행 — 공통 컴포넌트 (flex 자동 균등 분할)

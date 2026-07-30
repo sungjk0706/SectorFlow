@@ -4,26 +4,9 @@
  */
 
 import { createCardTitle } from './card-title'
+import { CARD_TITLE_MARGIN_BOTTOM } from './ui-styles'
 
-export function createCardHeader(title: string, wsBadge?: HTMLElement): HTMLElement {
-  const headerRow = document.createElement('div')
-  Object.assign(headerRow.style, {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: '12px',
-  })
-  
-  headerRow.appendChild(createCardTitle(title))
-  
-  if (wsBadge) {
-    headerRow.appendChild(wsBadge)
-  }
-  
-  return headerRow
-}
-
-export function createCardHeaderWithMargin(title: string, wsBadge?: HTMLElement, marginBottom: string = '4px'): HTMLElement {
+export function createCardHeaderWithMargin(title: string, wsBadge?: HTMLElement, marginBottom: string = `${CARD_TITLE_MARGIN_BOTTOM}px`): HTMLElement {
   const headerRow = document.createElement('div')
   Object.assign(headerRow.style, {
     display: 'flex',

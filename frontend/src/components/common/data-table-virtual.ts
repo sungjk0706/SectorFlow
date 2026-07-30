@@ -4,6 +4,7 @@
  */
 
 import { CELL_BORDER, COLOR, FONT_SIZE, FONT_WEIGHT, FONT_FAMILY } from './ui-styles'
+import { CELL_PADDING } from './table-config'
 import { createVirtualScroller } from '../virtual-scroller'
 import {
   type ColumnDef,
@@ -65,7 +66,7 @@ export function createVirtualScrollMode<T extends object>(
       alignItems: 'center',
       justifyContent: 'center',
       boxSizing: 'border-box',
-      padding: '4px 6px',
+      padding: `${CELL_PADDING}px`,
       fontSize: FONT_SIZE.header,
       fontWeight: FONT_WEIGHT.normal,
       whiteSpace: 'nowrap',
@@ -226,7 +227,7 @@ export function createVirtualScrollMode<T extends object>(
         const cell = document.createElement('div')
         Object.assign(cell.style, {
           boxSizing: 'border-box',
-          padding: '4px 6px',
+          padding: `${CELL_PADDING}px`,
           overflow: 'hidden',
           textOverflow: 'ellipsis',
           whiteSpace: 'nowrap',

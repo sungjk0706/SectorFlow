@@ -209,7 +209,7 @@ function updateBadges(): void {
 /** 헤더 + 한도 배지 행 빌드 */
 function buildHeader(root: HTMLElement): void {
   // 헤더: 제목 — 공통 컴포넌트 (sell-position.ts 동일 패턴, P23 일관성)
-  const headerRow = createCardHeaderWithMargin('매수후보', undefined, '8px')
+  const headerRow = createCardHeaderWithMargin('매수후보')
   root.appendChild(headerRow)
 
   // 한도 배지 행 — 공통 컴포넌트 (flex 3등분 고정)

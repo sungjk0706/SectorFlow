@@ -5,11 +5,13 @@
  * 9자 이내 종목명까지 표시하면서 공간 낭비를 줄인다.
  */
 
+import { CELL_PADDING } from './table-config'
+
 /** 기본 폰트 크기 — FONT_SIZE.body (13px) */
 const DEFAULT_FONT_SIZE = 13
 
-/** 셀 수평 패딩 합계 — padding: 4px 6px → 좌우 6px × 2 = 12px */
-const CELL_HORIZONTAL_PADDING = 12
+/** 셀 수평 패딩 합계 — table-config.ts CELL_PADDING과 동기화 (좌우 합) */
+const CELL_HORIZONTAL_PADDING = CELL_PADDING * 2
 
 /** 기본 최소 폭 (px) */
 const DEFAULT_MIN_WIDTH = 40
