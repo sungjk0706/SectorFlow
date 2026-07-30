@@ -117,8 +117,10 @@ function buildTeleCommandTable(): HTMLElement {
   ]
   const commands: CommandRow[] = [
     { cmd: '자동', desc: '자동매매 ON/OFF' }, { cmd: '매수', desc: '매수 체결 내역 (최근 10건)' },
-    { cmd: '매도', desc: '매도 체결 내역 (최근 10건)' }, { cmd: '상태', desc: '스케줄·스위치 + 자동매매 가능 여부 + 계좌 요약 (현황)' },
-    { cmd: '잔고', desc: '계좌 현황 (계좌)' }, { cmd: '업종', desc: '업종 분석 상위/하위 요약' },
+    { cmd: '매도', desc: '매도 체결 내역 (최근 10건)' }, { cmd: '상태', desc: '엔진·스케줄·스위치 + 리스크 상태 (현황)' },
+    { cmd: '잔고', desc: '계좌 현황 (계좌)' }, { cmd: '당일', desc: '당일 실현 손익' },
+    { cmd: '5일', desc: '최근 5거래일 실현 손익' }, { cmd: '당월', desc: '당월 실현 손익' },
+    { cmd: '누적', desc: '누적 실현 손익' }, { cmd: '업종', desc: '업종 분석 상위/하위 요약' },
     { cmd: '후보', desc: '매수 후보 1~10순위' }, { cmd: '도움말', desc: '명령어 목록' },
   ]
   const tableWrap = document.createElement('div')

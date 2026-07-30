@@ -6,10 +6,14 @@
   자동 / auto       -- 자동매매 마스터 ON/OFF 토글 (time_scheduler_on)
   매수              -- 매수 체결 내역 (최근 10건)
   매도              -- 매도 체결 내역 (최근 10건)
-  상태 / status     -- 스케줄·스위치 + 자동매매 가능 여부 + 계좌 요약
+  상태 / status     -- 엔진·스케줄·스위치 + 리스크 상태 (계좌 제외)
   현황              -- 상태 와 동일 (호환)
-  잔고 / balance    -- 계좌 현황만
+  잔고 / balance    -- 계좌 현황 (예수금/주문가능/평가/실현손익)
   계좌 / account    -- 잔고 와 동일 (호환)
+  당일              -- 당일 실현 손익 (손익금 + 수익률)
+  5일               -- 최근 5거래일 실현 손익
+  당월              -- 당월 실현 손익
+  누적              -- 누적 실현 손익
   업종 / sector     -- 업종 분석 상위/하위 요약
   후보 / candidate  -- 매수 후보 1~10순위
   설정 / settings   -- 주요 설정값 조회 (변경 불가, 조회 전용)
@@ -178,6 +182,39 @@ def _fmt_pct(v) -> str:
         return f"{float(v):+.1f}%"
     except (ValueError, TypeError):
         return "0.0%"
+
+
+def _fmt_signed_money(v) -> str:
+    """부호 붙인 금액 포맷 — 손익금 표시용 (P23 일관성 — _fmt_money와 단위 규칙 동일)."""
+    try:
+        n = int(v or 0)
+    except (ValueError, TypeError):
+        return "0"
+    sign = "+" if n >= 0 else "-"
+    return sign + _fmt_money(abs(n)) + "원"
+
+
+async def _compute_period_pnl(label: str, *, today_only: bool = False, date_from: str = "", date_to: str = "", is_test: bool) -> str:
+    """기간별 실현 손익 라인 1줄 생성 (P10 SSOT — trade_history.get_realized_pnl_summary, 프론트엔드 aggregatePnl과 동일 공식).
+
+    수익률 분모 = 매수원금 합계(buy_total) — 프론트엔드 computeCumulativePnl과 동일.
+    실전모드: 증권사 서버가 수익률 SSOT이므로 앱에서 재계산 금지 → 수익률 미표시 (AGENTS.md 실전vs테스트 테이블).
+    """
+    from backend.app.services.trade_history import get_realized_pnl_summary
+
+    trade_mode = "test" if is_test else "real"
+    pnl, buy_total = await get_realized_pnl_summary(
+        today_only=today_only, date_from=date_from, date_to=date_to, trade_mode=trade_mode,
+    )
+    pnl_txt = _fmt_signed_money(pnl)
+    if is_test:
+        rate = round(pnl / buy_total * 100, 2) if buy_total > 0 else 0.0
+        rate_txt = f"  ({_fmt_pct(rate)})"
+    else:
+        # 실전모드: 증권사 서버가 수익률 SSOT — 앱에서 재계산 금지
+        rate_txt = "  (수익률: 증권사 확인)"
+    return f"  {label}: {pnl_txt}{rate_txt}"
+
 
 
 def _build_settings_lines(flat: dict) -> str:
@@ -455,7 +492,15 @@ class TelegramBot:
             await self._cmd_account(token, chat_id)
         elif cmd in ("계좌", "account"):
             await self._cmd_account(token, chat_id)
-        elif cmd in ("업종", "업종", "sector"):
+        elif cmd == "당일":
+            await self._cmd_period_pnl(token, chat_id, "당일")
+        elif cmd == "5일":
+            await self._cmd_period_pnl(token, chat_id, "5일")
+        elif cmd == "당월":
+            await self._cmd_period_pnl(token, chat_id, "당월")
+        elif cmd == "누적":
+            await self._cmd_period_pnl(token, chat_id, "누적")
+        elif cmd in ("업종", "sector"):
             await self._cmd_sector(token, chat_id)
         elif cmd in ("후보", "candidate"):
             await self._cmd_buy_candidates(token, chat_id)
@@ -477,8 +522,12 @@ class TelegramBot:
             "자동  -- 자동매매 마스터 ON/OFF (토글)\n"
             "매수  -- 매수 체결 내역 (최근 10건)\n"
             "매도  -- 매도 체결 내역 (최근 10건)\n"
-            "상태  -- 스케줄·스위치 + 지금 자동매매 가능 여부 + 계좌 요약 (현황)\n"
-            "잔고  -- 계좌 현황만 (계좌)\n"
+            "상태  -- 엔진·스케줄·스위치 + 리스크 상태 (현황)\n"
+            "잔고  -- 계좌 현황 (계좌)\n"
+            "당일  -- 당일 실현 손익\n"
+            "5일   -- 최근 5거래일 실현 손익\n"
+            "당월  -- 당월 실현 손익\n"
+            "누적  -- 누적 실현 손익\n"
             "업종  -- 업종 분석 상위/하위 요약\n"
             "후보  -- 매수 후보 1~10순위\n"
             "설정  -- 주요 설정값 조회 (변경 불가, 조회 전용)\n"
@@ -596,13 +645,52 @@ class TelegramBot:
         except Exception as exc:
             await self._send(token, chat_id, f"⚠ 매도 내역 조회 오류: {str(exc)[:120]}")
 
-    async def _cmd_status_full(self, token: str, chat_id: str, profile: str | None = None):
+    async def _cmd_period_pnl(self, token: str, chat_id: str, period: str) -> None:
+        """기간별 실현 손익 전송 (당일/5일/당월/누적).
+
+        period: "당일" | "5일" | "당월" | "누적"
+        trade_history SSOT에서 집계 (P10), 프론트엔드 aggregatePnl과 동일 공식 (P23).
+        실전모드: 수익률은 증권사 서버 SSOT이므로 앱에서 재계산 금지 (AGENTS.md).
+        """
         try:
-            from backend.app.services.engine_lifecycle import get_engine_status
-            from backend.app.services.engine_account import get_account_snapshot
-            from backend.app.core.settings_file import load_integrated_system_settings
             from backend.app.core.trade_mode import is_test_mode
             from backend.app.services.engine_state import state
+
+            _is_test = is_test_mode(state.integrated_system_settings_cache)
+            now_str = datetime.now(_KST).strftime("%H:%M")
+
+            from datetime import date as _date
+            from backend.app.core.trading_calendar import get_kst_today, get_recent_trading_days
+
+            today = get_kst_today()
+            today_iso = today.isoformat()
+            label = period
+            if period == "당일":
+                line = await _compute_period_pnl("당일", today_only=True, is_test=_is_test)
+            elif period == "5일":
+                recent5 = get_recent_trading_days(5)
+                if recent5:
+                    line = await _compute_period_pnl(
+                        "5거래일", date_from=recent5[0].isoformat(), date_to=recent5[-1].isoformat(), is_test=_is_test,
+                    )
+                else:
+                    line = "  5거래일: 데이터 없음"
+            elif period == "당월":
+                month_start = _date(today.year, today.month, 1).isoformat()
+                line = await _compute_period_pnl("당월", date_from=month_start, date_to=today_iso, is_test=_is_test)
+            else:  # 누적
+                line = await _compute_period_pnl("누적", is_test=_is_test)
+
+            text = f"📈 <b>{label} 실현 손익</b> ({now_str})\n\n{line}"
+            await self._send(token, chat_id, text)
+        except Exception as exc:
+            await self._send(token, chat_id, f"⚠ {period} 손익 조회 오류: {str(exc)[:120]}")
+
+    async def _cmd_status_full(self, token: str, chat_id: str, profile: str | None = None):
+        """엔진·스케줄·스위치 + 리스크 상태 (계좌 제외 — 잔고 명령어와 분리, P23 책임 분리)."""
+        try:
+            from backend.app.services.engine_lifecycle import get_engine_status
+            from backend.app.core.settings_file import load_integrated_system_settings
 
             eng = get_engine_status()
             eng_running = eng.get("running", False)
@@ -612,13 +700,6 @@ class TelegramBot:
             sell_on = bool(flat["auto_sell_on"])
             eff = auto_trading_effective(flat)
             now_str = datetime.now(_KST).strftime("%H:%M:%S")
-
-            snap = await get_account_snapshot()
-            if snap:
-                _is_test = is_test_mode(state.integrated_system_settings_cache)
-                acct_lines = "\n" + await _build_account_brief_lines(snap, _is_test)
-            else:
-                acct_lines = "\n 계좌 스냅샷 없음 (엔진 가동 여부 확인)"
 
             # 리스크 차단 상태 (저장된 SSOT만 표시 — P21 사용자 투명성, P10 SSOT)
             risk_lines = _build_risk_status_lines()
@@ -634,7 +715,6 @@ class TelegramBot:
                 f"🤖 지금 자동매매 가능: {' 예' if eff else '⏸️ 아니오'}\n"
                 f"🕐 확인 시각: {now_str} (KST)"
                 f"{risk_lines}"
-                f"{acct_lines}"
             )
             await self._send(token, chat_id, text)
         except Exception as exc:

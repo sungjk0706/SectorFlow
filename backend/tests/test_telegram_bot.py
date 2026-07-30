@@ -729,6 +729,34 @@ class TestHandleCommand:
         mock_cmd.assert_called_once_with("tok", "123")
 
     @pytest.mark.asyncio
+    async def test_cmd_today_routes_to_period_pnl_today(self):
+        bot = TelegramBot()
+        with patch.object(bot, "_cmd_period_pnl", new_callable=AsyncMock) as mock_cmd:
+            await bot._handle_command("tok", "123", "당일")
+        mock_cmd.assert_called_once_with("tok", "123", "당일")
+
+    @pytest.mark.asyncio
+    async def test_cmd_5day_routes_to_period_pnl_5day(self):
+        bot = TelegramBot()
+        with patch.object(bot, "_cmd_period_pnl", new_callable=AsyncMock) as mock_cmd:
+            await bot._handle_command("tok", "123", "5일")
+        mock_cmd.assert_called_once_with("tok", "123", "5일")
+
+    @pytest.mark.asyncio
+    async def test_cmd_month_routes_to_period_pnl_month(self):
+        bot = TelegramBot()
+        with patch.object(bot, "_cmd_period_pnl", new_callable=AsyncMock) as mock_cmd:
+            await bot._handle_command("tok", "123", "당월")
+        mock_cmd.assert_called_once_with("tok", "123", "당월")
+
+    @pytest.mark.asyncio
+    async def test_cmd_cumulative_routes_to_period_pnl_cumulative(self):
+        bot = TelegramBot()
+        with patch.object(bot, "_cmd_period_pnl", new_callable=AsyncMock) as mock_cmd:
+            await bot._handle_command("tok", "123", "누적")
+        mock_cmd.assert_called_once_with("tok", "123", "누적")
+
+    @pytest.mark.asyncio
     async def test_cmd_candidate_routes_to_buy_candidates(self):
         bot = TelegramBot()
         with patch.object(bot, "_cmd_buy_candidates", new_callable=AsyncMock) as mock_cmd:
@@ -844,6 +872,11 @@ class TestCmdHelp:
         assert "매수" in text
         assert "매도" in text
         assert "도움말" in text
+        # 기간별 손익 명령어 포함 확인
+        assert "당일" in text
+        assert "5일" in text
+        assert "당월" in text
+        assert "누적" in text
 
 
 # ── TelegramBot._toggle_setting_bool ────────────────────────────────────────────
@@ -1000,11 +1033,119 @@ class TestCmdSellHistory:
         assert "오류" in mock_send.call_args[0][2]
 
 
+# ── TelegramBot._cmd_period_pnl ─────────────────────────────────────────────────
+
+class TestCmdPeriodPnl:
+    """기간별 실현 손익 명령어 (당일/5일/당월/누적) — P10 SSOT, P21 투명성."""
+
+    def _setup_test_mode(self):
+        mock_state = MagicMock()
+        mock_state.integrated_system_settings_cache = {"trade_mode": "test"}
+        return mock_state
+
+    @pytest.mark.asyncio
+    async def test_today_period(self):
+        bot = TelegramBot()
+        mock_state = self._setup_test_mode()
+        with patch("backend.app.services.engine_state.state", mock_state), \
+             patch("backend.app.services.trade_history.get_realized_pnl_summary", new_callable=AsyncMock, return_value=(50_000, 500_000)) as mock_pnl, \
+             patch("backend.app.core.trading_calendar.get_kst_today", return_value=__import__("datetime").date(2026, 7, 31)), \
+             patch.object(bot, "_send", new_callable=AsyncMock) as mock_send:
+            await bot._cmd_period_pnl("tok", "123", "당일")
+        mock_send.assert_called_once()
+        text = mock_send.call_args[0][2]
+        assert "당일 실현 손익" in text
+        assert "+50,000원" in text or "+5만원" in text
+        # today_only=True로 호출되었는지 확인
+        assert mock_pnl.call_args.kwargs.get("today_only") is True
+
+    @pytest.mark.asyncio
+    async def test_5day_period(self):
+        bot = TelegramBot()
+        mock_state = self._setup_test_mode()
+        from datetime import date
+        with patch("backend.app.services.engine_state.state", mock_state), \
+             patch("backend.app.services.trade_history.get_realized_pnl_summary", new_callable=AsyncMock, return_value=(120_000, 1_000_000)) as mock_pnl, \
+             patch("backend.app.core.trading_calendar.get_kst_today", return_value=date(2026, 7, 31)), \
+             patch("backend.app.core.trading_calendar.get_recent_trading_days", return_value=[date(2026, 7, 25), date(2026, 7, 28), date(2026, 7, 29), date(2026, 7, 30), date(2026, 7, 31)]), \
+             patch.object(bot, "_send", new_callable=AsyncMock) as mock_send:
+            await bot._cmd_period_pnl("tok", "123", "5일")
+        mock_send.assert_called_once()
+        text = mock_send.call_args[0][2]
+        assert "5일 실현 손익" in text
+        # date_from/date_to가 5거래일 범위로 설정되었는지 확인
+        assert mock_pnl.call_args.kwargs.get("date_from") == "2026-07-25"
+        assert mock_pnl.call_args.kwargs.get("date_to") == "2026-07-31"
+
+    @pytest.mark.asyncio
+    async def test_month_period(self):
+        bot = TelegramBot()
+        mock_state = self._setup_test_mode()
+        from datetime import date
+        with patch("backend.app.services.engine_state.state", mock_state), \
+             patch("backend.app.services.trade_history.get_realized_pnl_summary", new_callable=AsyncMock, return_value=(300_000, 2_000_000)) as mock_pnl, \
+             patch("backend.app.core.trading_calendar.get_kst_today", return_value=date(2026, 7, 31)), \
+             patch.object(bot, "_send", new_callable=AsyncMock) as mock_send:
+            await bot._cmd_period_pnl("tok", "123", "당월")
+        mock_send.assert_called_once()
+        text = mock_send.call_args[0][2]
+        assert "당월 실현 손익" in text
+        # date_from이 당월 1일인지 확인
+        assert mock_pnl.call_args.kwargs.get("date_from") == "2026-07-01"
+        assert mock_pnl.call_args.kwargs.get("date_to") == "2026-07-31"
+
+    @pytest.mark.asyncio
+    async def test_cumulative_period(self):
+        bot = TelegramBot()
+        mock_state = self._setup_test_mode()
+        with patch("backend.app.services.engine_state.state", mock_state), \
+             patch("backend.app.services.trade_history.get_realized_pnl_summary", new_callable=AsyncMock, return_value=(500_000, 5_000_000)) as mock_pnl, \
+             patch("backend.app.core.trading_calendar.get_kst_today", return_value=__import__("datetime").date(2026, 7, 31)), \
+             patch.object(bot, "_send", new_callable=AsyncMock) as mock_send:
+            await bot._cmd_period_pnl("tok", "123", "누적")
+        mock_send.assert_called_once()
+        text = mock_send.call_args[0][2]
+        assert "누적 실현 손익" in text
+        # 누적은 date_from/date_to 미지정
+        assert not mock_pnl.call_args.kwargs.get("date_from")
+        assert not mock_pnl.call_args.kwargs.get("date_to")
+
+    @pytest.mark.asyncio
+    async def test_real_mode_omits_rate(self):
+        """실전모드 — 수익률은 증권사 서버 SSOT이므로 앱에서 재계산 금지 (AGENTS.md)."""
+        bot = TelegramBot()
+        mock_state = MagicMock()
+        mock_state.integrated_system_settings_cache = {"trade_mode": "real"}
+        with patch("backend.app.services.engine_state.state", mock_state), \
+             patch("backend.app.services.trade_history.get_realized_pnl_summary", new_callable=AsyncMock, return_value=(500_000, 5_000_000)), \
+             patch("backend.app.core.trading_calendar.get_kst_today", return_value=__import__("datetime").date(2026, 7, 31)), \
+             patch.object(bot, "_send", new_callable=AsyncMock) as mock_send:
+            await bot._cmd_period_pnl("tok", "123", "누적")
+        mock_send.assert_called_once()
+        text = mock_send.call_args[0][2]
+        assert "증권사 확인" in text
+        # 테스트모드 수익률 표시 없음
+        assert "%)" not in text
+
+    @pytest.mark.asyncio
+    async def test_exception_sends_error(self):
+        bot = TelegramBot()
+        mock_state = self._setup_test_mode()
+        with patch("backend.app.services.engine_state.state", mock_state), \
+             patch("backend.app.services.trade_history.get_realized_pnl_summary", new_callable=AsyncMock, side_effect=Exception("fail")), \
+             patch("backend.app.core.trading_calendar.get_kst_today", return_value=__import__("datetime").date(2026, 7, 31)), \
+             patch.object(bot, "_send", new_callable=AsyncMock) as mock_send:
+            await bot._cmd_period_pnl("tok", "123", "당일")
+        mock_send.assert_called_once()
+        assert "오류" in mock_send.call_args[0][2]
+
+
 # ── TelegramBot._cmd_status_full ────────────────────────────────────────────────
 
 class TestCmdStatusFull:
     @pytest.mark.asyncio
     async def test_status_with_snapshot(self):
+        """상태 명령어 — 엔진·스케줄·스위치 + 리스크만 (계좌 제외, 잔고와 분리)."""
         bot = TelegramBot()
         flat = {
             "time_scheduler_on": True,
@@ -1015,40 +1156,34 @@ class TestCmdStatusFull:
             "sell_time_start": "09:00",
             "sell_time_end": "15:20",
         }
-        snap = {
-            "deposit": 5_000_000,
-            "orderable": 4_000_000,
-            "total_eval": 800_000,
-            "total_pnl": 100_000,
-            "total_rate": 14.29,
-            "position_count": 3,
-            "snapshot_at": "2026-07-11T10:30:00",
-        }
+        mock_cb = MagicMock()
+        mock_cb.get_state.return_value = "CLOSED"
+        mock_rm = MagicMock()
+        mock_rm.circuit_breaker = mock_cb
         mock_state = MagicMock()
         mock_state.integrated_system_settings_cache = {"trade_mode": "real"}
+        mock_state.krx_circuit_breaker_active = False
+        mock_state.market_phase = {}
         with patch("backend.app.services.engine_lifecycle.get_engine_status", return_value={"running": True}), \
              patch("backend.app.core.settings_file.load_integrated_system_settings", new_callable=AsyncMock, return_value=flat), \
-             patch("backend.app.services.engine_account.get_account_snapshot", new_callable=AsyncMock, return_value=snap), \
              patch("backend.app.services.telegram_bot.auto_trading_effective", return_value=True), \
+             patch("backend.app.services.risk_manager.get_risk_manager", return_value=mock_rm), \
              patch("backend.app.services.engine_state.state", mock_state), \
-             patch("backend.app.services.trade_history.get_realized_pnl_summary", new_callable=AsyncMock, return_value=(200_000, 5_000_000)), \
              patch.object(bot, "_send", new_callable=AsyncMock) as mock_send:
             await bot._cmd_status_full("tok", "123")
         mock_send.assert_called_once()
         text = mock_send.call_args[0][2]
         assert "가동중" in text
         assert "ON" in text
-        assert "예수금" in text
-        assert "5,000,000" in text
-        assert "주문가능" in text
-        assert "4,000,000" in text
-        # 라벨 명확화 + 누적 실현 손익 (P21/P23)
-        assert "보유 종목 평가 금액" in text
-        assert "누적 총 실현 손익금" in text
-        assert "200,000" in text
+        assert "자동매매 가능" in text
+        # 계좌 내용 제거 확인 (잔고 명령어와 분리)
+        assert "예수금" not in text
+        assert "주문가능" not in text
+        assert "보유 종목 평가" not in text
 
     @pytest.mark.asyncio
     async def test_status_without_snapshot(self):
+        """상태 명령어 — 계좌 스냅샷 없어도 정상 동작 (계좌 미조회)."""
         bot = TelegramBot()
         flat = {
             "time_scheduler_on": False,
@@ -1059,16 +1194,24 @@ class TestCmdStatusFull:
             "sell_time_start": "09:00",
             "sell_time_end": "15:20",
         }
+        mock_cb = MagicMock()
+        mock_cb.get_state.return_value = "CLOSED"
+        mock_rm = MagicMock()
+        mock_rm.circuit_breaker = mock_cb
+        mock_state = MagicMock()
+        mock_state.krx_circuit_breaker_active = False
+        mock_state.market_phase = {}
         with patch("backend.app.services.engine_lifecycle.get_engine_status", return_value={"running": False}), \
              patch("backend.app.core.settings_file.load_integrated_system_settings", new_callable=AsyncMock, return_value=flat), \
-             patch("backend.app.services.engine_account.get_account_snapshot", new_callable=AsyncMock, return_value={}), \
              patch("backend.app.services.telegram_bot.auto_trading_effective", return_value=False), \
+             patch("backend.app.services.risk_manager.get_risk_manager", return_value=mock_rm), \
+             patch("backend.app.services.engine_state.state", mock_state), \
              patch.object(bot, "_send", new_callable=AsyncMock) as mock_send:
             await bot._cmd_status_full("tok", "123")
         mock_send.assert_called_once()
         text = mock_send.call_args[0][2]
-        assert "스냅샷 없음" in text
         assert "정지" in text
+        assert "스냅샷 없음" not in text  # 계좌 미조회로 스냅샷 메시지 없음
 
     @pytest.mark.asyncio
     async def test_status_exception_sends_error(self):
