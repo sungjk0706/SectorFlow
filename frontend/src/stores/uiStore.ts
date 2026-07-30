@@ -40,6 +40,7 @@ export interface UIState {
     is_nxt_only?: boolean
     krx_countdown?: { label: string; remaining_sec: number } | null
     nxt_countdown?: { label: string; remaining_sec: number } | null
+    chart_reference_trading_day?: string
   }
 
   /* ── 매수 한도 상태 ── */
@@ -100,7 +101,7 @@ const initialState: UIState = {
   initialized: false,
   engineReady: false,
   avgAmtProgress: null,
-  marketPhase: { krx: '장마감', nxt: '장마감', krx_alert: null, is_nxt_only: false },
+  marketPhase: { krx: '장마감', nxt: '장마감', krx_alert: null, is_nxt_only: false, chart_reference_trading_day: '' },
   buyLimitStatus: { daily_buy_spent: 0 },
   wsSubscribeStatus: { index_subscribed: false, quote_subscribed: false },
   sectorScoresDelta: null,

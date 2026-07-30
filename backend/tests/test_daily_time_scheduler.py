@@ -834,6 +834,24 @@ class TestGetMarketPhase:
             # NXT '정규장 준비' 08:55 → 09:00까지 300초 (10분 이내)
             assert result["nxt_countdown"] == {"label": "메인마켓 장개시", "remaining_sec": 300}
 
+    def test_includes_chart_reference_trading_day(self):
+        """get_market_phase() 반환에 chart_reference_trading_day 필드 포함 검증 (P10/P16).
+        프론트 getTradingToday() SSOT — 백엔드 get_chart_reference_trading_day() 단일 소스."""
+        from datetime import date as _date
+        mock_state = MagicMock()
+        mock_state.market_phase = {"krx": "정규장", "nxt": "메인마켓"}
+        mock_state.krx_countdown_override = None
+        mock_state.nxt_countdown_override = None
+        # trading_calendar 캐시가 테스트 환경에서 미초기화 → get_chart_reference_trading_day patch
+        with patch("backend.app.services.engine_state.state", mock_state), \
+             patch("backend.app.core.trading_calendar.get_chart_reference_trading_day", return_value=_date(2026, 7, 30)):
+            result = get_market_phase()
+            assert "chart_reference_trading_day" in result
+            # ISO 날짜 형식 (YYYY-MM-DD) 검증
+            assert result["chart_reference_trading_day"] == "2026-07-30"
+            assert isinstance(result["chart_reference_trading_day"], str)
+            assert len(result["chart_reference_trading_day"]) == 10
+
 
 # ── calc_countdown ────────────────────────────────────────────────────────────
 

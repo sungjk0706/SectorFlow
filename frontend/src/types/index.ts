@@ -131,6 +131,7 @@ export interface EngineStatusPayload {
     is_nxt_only?: boolean;
     krx_countdown?: { label: string; remaining_sec: number } | null;
     nxt_countdown?: { label: string; remaining_sec: number } | null;
+    chart_reference_trading_day?: string;
   };
   position_build_failed?: boolean;
   degraded_mode?: boolean;

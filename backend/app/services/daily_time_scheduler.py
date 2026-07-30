@@ -458,6 +458,13 @@ def get_market_phase() -> dict:
     nxt_override = _get_active_override("nxt")
     phase["krx_countdown"] = krx_override if krx_override is not None else calc_countdown("krx", krx)
     phase["nxt_countdown"] = nxt_override if nxt_override is not None else calc_countdown("nxt", nxt)
+    # 차트 기준 거래일 — 프론트 getTradingToday() SSOT (P10 — 휴장일 캘린더 단일 소스)
+    try:
+        from backend.app.core.trading_calendar import get_chart_reference_trading_day
+        phase["chart_reference_trading_day"] = get_chart_reference_trading_day().isoformat()
+    except Exception:
+        logger.warning("[시스템] chart_reference_trading_day 산출 실패 — 빈 문자열 사용", exc_info=True)
+        phase["chart_reference_trading_day"] = ""
     return phase
 
 
