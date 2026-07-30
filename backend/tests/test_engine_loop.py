@@ -213,7 +213,7 @@ class TestGetAllTokensAsync:
 
     @pytest.mark.asyncio
     async def test_token_success_stored_in_state(self):
-        """토큰 발급 성공 → state.broker_tokens에 저장."""
+        """시나리오 2: broker=kiwoom, confirmed_data_broker="" → kiwoom get_access_token() 호출 O, kiwoom 토큰 저장."""
         mock_state = _mock_state()
         mock_state.broker_tokens = {}  # clear 가능한 dict
 
@@ -229,11 +229,13 @@ class TestGetAllTokensAsync:
             # asyncio.gather가 실제로 실행되도록 create_task 없이 직접 호출
             await engine_loop._get_all_tokens_async(router)
 
+        # 활성 broker의 get_access_token()이 실제 호출됐는지 검증 (P19 살아있는 경로)
+        auth_provider.get_access_token.assert_awaited_once()
         assert mock_state.broker_tokens.get("kiwoom") == "token_123"
 
     @pytest.mark.asyncio
     async def test_token_failure_returns_none(self):
-        """토큰 발급 실패 → broker_tokens에 저장 안함."""
+        """시나리오 8: 활성 broker 토큰 발급 실패 → broker_tokens에 저장 안함 + warning 로그 (시세 전용 모드 강등 경로 유지)."""
         mock_state = _mock_state()
         mock_state.broker_tokens = {}
 
@@ -249,6 +251,8 @@ class TestGetAllTokensAsync:
         ):
             await engine_loop._get_all_tokens_async(router)
 
+        # 발급 시도는 했으나 실패 → 저장 안함 (강등 경로는 run_engine_loop에서 access_token=None 처리)
+        auth_provider.get_access_token.assert_awaited_once()
         assert "kiwoom" not in mock_state.broker_tokens
         warning_msgs = [str(c) for c in mock_logger.warning.call_args_list]
         assert any("토큰 발급 실패" in m for m in warning_msgs)
@@ -275,9 +279,13 @@ class TestGetAllTokensAsync:
         assert mock_state.broker_tokens.get("kiwoom") == "new_token"
 
     @pytest.mark.asyncio
-    async def test_confirmed_data_broker_collected(self):
-        """confirmed_data_broker도 토큰 발급 대상에 포함."""
-        mock_state = _mock_state(confirmed_data_broker="ls")
+    async def test_confirmed_data_broker_excluded_from_startup(self):
+        """시나리오 4: broker=kiwoom, confirmed_data_broker=ls → kiwoom get_access_token() 호출 O, ls 호출 X, kiwoom만 저장.
+
+        기존 test_confirmed_data_broker_collected의 의도 반전 (Lazy Authentication 리팩토링).
+        confirmed_data_broker는 startup 발급 대상에서 제외되고 배치 자체 Lazy Auth에 위임.
+        """
+        mock_state = _mock_state(broker="kiwoom", confirmed_data_broker="ls")
         mock_state.integrated_system_settings_cache["ls_app_key"] = "ls_key"
         mock_state.integrated_system_settings_cache["ls_app_secret"] = "ls_secret"
         mock_state.broker_tokens = {}
@@ -293,8 +301,39 @@ class TestGetAllTokensAsync:
         with patch.object(engine_state, "state", mock_state):
             await engine_loop._get_all_tokens_async(router)
 
+        # 활성 broker(kiwoom)만 인증 호출 — confirmed_data_broker(ls)는 startup에서 인증하지 않음
+        kiwoom_auth.get_access_token.assert_awaited_once()
+        ls_auth.get_access_token.assert_not_called()
+        # 시나리오 5: 미사용 broker 토큰이 broker_tokens에 없음
         assert mock_state.broker_tokens.get("kiwoom") == "kw_token"
+        assert "ls" not in mock_state.broker_tokens
+
+    @pytest.mark.asyncio
+    async def test_active_broker_ls_confirmed_kiwoom_excluded(self):
+        """시나리오 1+3: broker=ls, confirmed_data_broker=kiwoom → ls get_access_token() 호출 O, kiwoom 호출 X, ls만 저장."""
+        mock_state = _mock_state(broker="ls", confirmed_data_broker="kiwoom")
+        # ls API 키 설정 (_mock_state가 broker=ls에 대해 ls_app_key/secret 자동 생성)
+        mock_state.integrated_system_settings_cache["kiwoom_app_key"] = "kw_key"
+        mock_state.integrated_system_settings_cache["kiwoom_app_secret"] = "kw_secret"
+        mock_state.broker_tokens = {}
+
+        ls_auth = MagicMock()
+        ls_auth.get_access_token = AsyncMock(return_value="ls_token")
+        kiwoom_auth = MagicMock()
+        kiwoom_auth.get_access_token = AsyncMock(return_value="kw_token")
+
+        router = MagicMock()
+        router._auth_cache = {"ls": ls_auth, "kiwoom": kiwoom_auth}
+
+        with patch.object(engine_state, "state", mock_state):
+            await engine_loop._get_all_tokens_async(router)
+
+        # 활성 broker(ls)만 인증 호출 — confirmed_data_broker(kiwoom)는 startup에서 인증하지 않음
+        ls_auth.get_access_token.assert_awaited_once()
+        kiwoom_auth.get_access_token.assert_not_called()
+        # 시나리오 5: 미사용 broker 토큰이 broker_tokens에 없음
         assert mock_state.broker_tokens.get("ls") == "ls_token"
+        assert "kiwoom" not in mock_state.broker_tokens
 
     @pytest.mark.asyncio
     async def test_broker_tokens_cleared_before_set(self):
@@ -315,9 +354,15 @@ class TestGetAllTokensAsync:
         assert mock_state.broker_tokens.get("kiwoom") == "new_token"
 
     @pytest.mark.asyncio
-    async def test_empty_broker_name_in_config_skipped(self):
-        """broker_config에서 빈 문자열 증권사는 스킵됨."""
-        mock_state = _mock_state(broker_config={"websocket": "", "order": "kiwoom"})
+    async def test_empty_active_broker_skipped(self):
+        """활성 broker가 빈 문자열이면 발급 대상에서 스킵 (early return).
+
+        기존 test_empty_broker_name_in_config_skipped 의도 보존 — 새 로직은
+        broker_config를 순회하지 않고 settings["broker"] 단일 항목을 조회하므로,
+        빈 broker는 자연 스킵됨. 빈 broker 스킵 검증은 test_no_valid_brokers_returns_early와
+        동일 경로(API 키 필터)로 보존됨.
+        """
+        mock_state = _mock_state(broker="")
         mock_state.broker_tokens = {}
 
         auth_provider = MagicMock()
@@ -326,11 +371,16 @@ class TestGetAllTokensAsync:
         router = MagicMock()
         router._auth_cache = {"kiwoom": auth_provider}
 
-        with patch.object(engine_state, "state", mock_state):
+        with (
+            patch.object(engine_state, "state", mock_state),
+            patch.object(engine_loop.asyncio, "gather", new_callable=AsyncMock, side_effect=swallow_gather_side_effect) as mock_gather,
+        ):
             await engine_loop._get_all_tokens_async(router)
 
-        # 빈 문자열은 수집되지 않음 — kiwoom만 토큰 발급
-        assert mock_state.broker_tokens.get("kiwoom") == "token"
+        # 빈 broker → 발급 대상 없음 → gather 미호출, 토큰 저장 없음
+        mock_gather.assert_not_called()
+        auth_provider.get_access_token.assert_not_called()
+        assert mock_state.broker_tokens == {}
 
 
 # ── _load_broker_spec_async ────────────────────────────────────────────────────

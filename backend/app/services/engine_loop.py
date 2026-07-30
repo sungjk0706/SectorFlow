@@ -46,34 +46,30 @@ async def _cache_and_bootstrap(settings: dict) -> None:
 
 async def _get_all_tokens_async(router) -> None:
     """
-    broker_config에 등장하는 모든 증권사 토큰을 병렬 발급한다.
-    router._auth_cache에 없는 증권사(stock 전용 등)도 _create_provider로 생성하여 발급.
-    발급된 토큰은 state.broker_tokens[broker_id]로 저장한다.
+    startup 인증 대상인 활성 broker 1개의 토큰만 발급한다 (Lazy Authentication).
+
+    - 발급 대상 = settings["broker"] 단일 항목.
+      startup 비배치 소비자는 engine_loop.py run_engine_loop()의
+      broker_tokens.get(broker_nm) 단일 지점이며, broker_nm = settings["broker"]이다.
+    - confirmed_data_broker는 startup에서 제외하고 market_close_pipeline 자체 Lazy Auth에 위임.
+    - router._auth_cache에 없는 증권사도 _create_provider로 생성하여 발급.
+    - 발급된 토큰은 state.broker_tokens[broker_id]로 저장한다.
     """
     auth_cache: dict[str, AuthProvider] = getattr(router, "_auth_cache", {})
 
-    # broker_config + confirmed_data_broker의 모든 증권사 수집 (auth_cache에 없는 stock 증권사 포함)
-    # 캐시는 app.py 시작 시 build_engine_settings_dict로 정규화되어
-    # broker_config가 항상 dict로 존재함 (P20 폴백 금지).
-    broker_config = engine_state.state.integrated_system_settings_cache["broker_config"]
-    all_broker_ids = set(auth_cache.keys())
-    for _feat, _bname in broker_config.items():
-        _bname = str(_bname or "").lower().strip()
-        if _bname:
-            all_broker_ids.add(_bname)
-    _confirmed_broker = str(
-        engine_state.state.integrated_system_settings_cache.get("confirmed_data_broker") or ""
+    # 활성 broker 1개만 발급 대상 (Lazy Authentication)
+    # confirmed_data_broker는 startup에서 제외 — 배치 경로가 자체 발급 담당.
+    broker_id = str(
+        engine_state.state.integrated_system_settings_cache.get("broker") or ""
     ).lower().strip()
-    if _confirmed_broker:
-        all_broker_ids.add(_confirmed_broker)
 
-    # API 키가 설정된 증권사만 발급 대상
-    valid_broker_ids = []
-    for bid in all_broker_ids:
-        _key = engine_state.state.integrated_system_settings_cache.get(f"{bid}_app_key", "")
-        _sec = engine_state.state.integrated_system_settings_cache.get(f"{bid}_app_secret", "")
+    # API 키가 설정된 활성 broker만 발급 대상
+    valid_broker_ids: list[str] = []
+    if broker_id:
+        _key = engine_state.state.integrated_system_settings_cache.get(f"{broker_id}_app_key", "")
+        _sec = engine_state.state.integrated_system_settings_cache.get(f"{broker_id}_app_secret", "")
         if _key and _sec:
-            valid_broker_ids.append(bid)
+            valid_broker_ids.append(broker_id)
 
     if not valid_broker_ids:
         return
