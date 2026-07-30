@@ -4,7 +4,7 @@
  * updateTimeSlotDisplay, createTimeDropdown(+createGridPanel+createFineAdjust), createTimePairInput
  */
 
-import { FONT_SIZE, FONT_WEIGHT, COLOR, RADIUS, SHADOW } from './ui-styles'
+import { FONT_SIZE, FONT_WEIGHT, COLOR, RADIUS, ROW_PADDING, SHADOW } from './ui-styles'
 
 /* ── 상수 ── */
 const HOURS = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'))
@@ -25,7 +25,7 @@ export function sectionTitle(text: string, rightSlot?: HTMLElement, centerSlot?:
     fontWeight: FONT_WEIGHT.normal,
     fontSize: FONT_SIZE.section,
     color: COLOR.down,
-    padding: '10px 0 6px',
+    padding: ROW_PADDING.section,
     borderBottom: '2px solid ' + COLOR.borderLight,
     marginBottom: '8px',
   })

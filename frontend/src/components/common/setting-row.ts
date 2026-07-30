@@ -9,7 +9,7 @@
  * - 컨트롤: setting-row-controls.ts (createToggleBtn, createRadioGroup, createSettingToggleRow)
  */
 
-import { COLOR, FONT_SIZE, RADIUS } from './ui-styles'
+import { COLOR, FONT_SIZE, RADIUS, ROW_PADDING } from './ui-styles'
 import { createInfoTooltip } from './info-tooltip'
 
 // 분할된 모듈 re-export — 외부 import 경로 유지 (4개 설정 페이지)
@@ -151,7 +151,7 @@ export function createSettingRow(label: string | HTMLElement, child: HTMLElement
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: '6px 0',
+    padding: ROW_PADDING.plain,
     borderBottom: '1px solid ' + COLOR.borderLight,
   })
   if (opts?.disabled) {

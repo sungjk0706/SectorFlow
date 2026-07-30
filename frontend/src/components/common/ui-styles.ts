@@ -266,6 +266,17 @@ export const ROW_HEIGHT_PX = {
   group: 48,
 } as const
 
+/* ── 설정 행 수직 padding (행간 간격 SSOT) ── */
+// 모든 설정 페이지 행간 간격의 단일 소스 (P10 SSOT, P23 일관성).
+// 토글 행: createSettingToggleRow / 일반 행: createSettingRow / 섹션 제목: sectionTitle
+// 조밀 행: sector-settings krx·nxt 행 (별도 컨텍스트, 조밀 의도 보존)
+export const ROW_PADDING = {
+  toggle:  '8px 0',      // 토글 행 (이전 10px 0 → 8px 0)
+  plain:   '4px 0',      // 일반 설정 행 (이전 6px 0 → 4px 0)
+  section: '8px 0 4px',  // 섹션 제목 (이전 10px 0 6px → 8px 0 4px)
+  compact: '2px 0',      // 조밀 행 (sector krx/nxt — 그대로 유지)
+} as const
+
 /* ── 다크테마 폼 컨트롤 ── */
 
 const DARK_FIELD_STYLE = {

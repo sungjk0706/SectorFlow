@@ -12,7 +12,7 @@ import { createProgressBar, type ProgressBarHandle } from '../components/common/
 import { createMarketCountRow, type MarketCountRowHandle } from '../components/common/market-count-row'
 import { createDescText, createStepLabel } from '../components/common/settings-common'
 import { createInfoTooltip } from '../components/common/info-tooltip'
-import { FONT_SIZE, COLOR, RADIUS } from '../components/common/ui-styles'
+import { FONT_SIZE, COLOR, RADIUS, ROW_PADDING } from '../components/common/ui-styles'
 import { createCardTitle } from '../components/common/card-title'
 import type { ReceiveRateEntry } from '../stores/uiStore'
 import type { AppSettings } from '../types'
@@ -190,7 +190,7 @@ function createBonusSliderBlock(key: string, label: string | string[], infoText:
   })
   // Row 1: 라벨(좌) + ⓘ + 숫자 입력란(우) — 우측 고정폭으로 아이콘/입력란 정렬 통일
   const labelRow = document.createElement('div')
-  Object.assign(labelRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0' })
+  Object.assign(labelRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: ROW_PADDING.plain })
   const labelSpan = document.createElement('span')
   Object.assign(labelSpan.style, { color: COLOR.neutral })
   const labelLines = Array.isArray(label) ? label : [label]
@@ -262,7 +262,7 @@ function buildReceiveProgressSection(root: HTMLElement): void {
 
   // KRX 행: 배지(KRX: N종목) + 진행 바(% 표시)
   krxRowEl = document.createElement('div')
-  Object.assign(krxRowEl.style, { display: 'flex', alignItems: 'center', gap: '10px', padding: '2px 0' })
+  Object.assign(krxRowEl.style, { display: 'flex', alignItems: 'center', gap: '10px', padding: ROW_PADDING.compact })
   krxCountRow = createMarketCountRow({ showTotal: false, showKrx: true, showNxt: false, showKospi: false, showKosdaq: false })
   Object.assign(krxCountRow.el.style, { flexShrink: '0' })
   krxCountRow.updateCounts({ total: 0, krx: _initialRate?.krx?.received ?? 0, nxt: 0, kospi: 0, kosdaq: 0 })
@@ -276,7 +276,7 @@ function buildReceiveProgressSection(root: HTMLElement): void {
 
   // NXT 행: 배지(NXT▲: N종목) + 진행 바(% 표시)
   nxtRowEl = document.createElement('div')
-  Object.assign(nxtRowEl.style, { display: 'flex', alignItems: 'center', gap: '10px', padding: '2px 0' })
+  Object.assign(nxtRowEl.style, { display: 'flex', alignItems: 'center', gap: '10px', padding: ROW_PADDING.compact })
   nxtCountRow = createMarketCountRow({ showTotal: false, showKrx: false, showNxt: true, showKospi: false, showKosdaq: false })
   Object.assign(nxtCountRow.el.style, { flexShrink: '0' })
   nxtCountRow.updateCounts({ total: 0, krx: 0, nxt: _initialRate?.nxt?.received ?? 0, kospi: 0, kosdaq: 0 })
@@ -348,7 +348,7 @@ function buildMaxTargetsSection(root: HTMLElement): void {
   maxTargetsInput = createNumInput({ value: 0, onChange: v => { const orig = currentVals.sector_max_targets; onNumChange('sector_max_targets', v, () => { currentVals.sector_max_targets = orig; maxTargetsInput!.setValue(orig) }) }, step: 1, min: 0, max: 100, suffix: '개', name: 'sector_max_targets' })
 
   const maxTargetsRow = document.createElement('div')
-  Object.assign(maxTargetsRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px solid ' + COLOR.borderLight })
+  Object.assign(maxTargetsRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: ROW_PADDING.plain, borderBottom: '1px solid ' + COLOR.borderLight })
   const maxTargetsLabel = document.createElement('span')
   maxTargetsLabel.textContent = '매수대상 업종수'
   Object.assign(maxTargetsLabel.style, { flex: '1.5', color: COLOR.neutral, whiteSpace: 'nowrap' })

@@ -5,7 +5,7 @@
  * 포함: createToggleBtn, createRadioGroup, createSettingToggleRow
  */
 
-import { COLOR, FONT_SIZE, FONT_WEIGHT, RADIUS, SHADOW, setDisabled } from './ui-styles'
+import { COLOR, FONT_SIZE, FONT_WEIGHT, RADIUS, ROW_PADDING, SHADOW, setDisabled } from './ui-styles'
 import { createInfoTooltip } from './info-tooltip'
 import { RIGHT_WRAP_GAP, RIGHT_WRAP_MARGIN } from './setting-row'
 
@@ -167,7 +167,7 @@ export function createSettingToggleRow(options: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: '10px 0',
+    padding: ROW_PADDING.toggle,
     borderBottom: '1px solid ' + COLOR.borderLight,
   })
   if (options.rowStyle) Object.assign(row.style, options.rowStyle)
