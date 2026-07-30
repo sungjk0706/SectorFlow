@@ -20,7 +20,7 @@ class TestApplySettingsChangeSectorBroadcast:
         """notify_desktop_sector_scores 예외 시 apply_settings_change 정상 반환."""
         from backend.app.services.engine_service import apply_settings_change
 
-        changed_keys = {"boost_order_ratio_pct"}
+        changed_keys = {"sector_max_targets"}
 
         with (
             patch(
@@ -53,7 +53,7 @@ class TestApplySettingsChangeSectorBroadcast:
         """notify_desktop_sector_scores 정상 시 apply_settings_change 정상 반환."""
         from backend.app.services.engine_service import apply_settings_change
 
-        changed_keys = {"boost_order_ratio_pct"}
+        changed_keys = {"sector_max_targets"}
 
         with (
             patch(
@@ -126,7 +126,7 @@ class TestApplySettingsChangeSectorBroadcast:
 
     @pytest.mark.asyncio
     async def test_rebuy_block_on_triggers_recompute(self):
-        """rebuy_block_on 변경 시 엔진 실행 중이면 recompute_sector_summary_now 호출."""
+        """rebuy_block_on 변경 시 엔진 실행 중이면 경량 재순위(recompute_buy_targets_only) 호출."""
         from backend.app.services.engine_service import apply_settings_change
 
         changed_keys = {"rebuy_block_on"}
@@ -160,11 +160,11 @@ class TestApplySettingsChangeSectorBroadcast:
             await apply_settings_change(changed_keys)
 
         schedule_contexts = [c.kwargs.get("context", "") for c in mock_schedule.call_args_list]
-        assert "업종 설정 변경" in schedule_contexts
+        assert "매수 차단 설정 변경" in schedule_contexts
 
     @pytest.mark.asyncio
     async def test_rebuy_block_on_no_recompute_when_engine_stopped(self):
-        """엔진 미실행 시 rebuy_block_on 변경은 recompute 호출하지 않음."""
+        """엔진 미실행 시 rebuy_block_on 변경은 경량 재순위 호출하지 않음."""
         from backend.app.services.engine_service import apply_settings_change
 
         changed_keys = {"rebuy_block_on"}
@@ -199,7 +199,7 @@ class TestApplySettingsChangeSectorBroadcast:
         # 엔진 미실행 → schedule_engine_task가 호출되지 않아야 함
         recompute_calls = [
             c for c in mock_schedule.call_args_list
-            if c.kwargs.get("context", "") == "업종 설정 변경"
+            if c.kwargs.get("context", "") == "매수 차단 설정 변경"
         ]
         assert recompute_calls == []
 

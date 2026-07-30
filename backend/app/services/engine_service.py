@@ -21,6 +21,7 @@ from backend.app.services.engine_lifecycle import (
     on_trade_mode_switched,
 )
 from backend.app.services.sector_data_provider import (
+    recompute_buy_targets_only,
     recompute_sector_summary_now,
 )
 
@@ -211,7 +212,12 @@ async def _apply_timetable_change(changed_keys: set[str]) -> None:
 
 
 async def _apply_sector_ui_change(changed_keys: set[str]) -> None:
-    """업종 정렬/필터 관련 설정 변경 시 업종 점수만 재계산 (종목 시세는 WS delta로만 전송)."""
+    """업종 정렬/필터·매수 차단 설정 변경 시 재계산 디스패치 (설계서 섹션 5-8).
+
+    _SECTOR_UI_KEYS 변경 → 업종 재계산 (recompute_sector_summary_now, 업종 스코어·컷오프 갱신).
+    _BUY_BLOCK_UI_KEYS 변경 → 경량 재순위 (recompute_buy_targets_only, 업종 스코어 캐시 재사용).
+    양쪽 교집합 시 업종 재계산 경로 우선 (안전 — 매수 후보는 전체 재계산에서 함께 갱신됨).
+    """
     from backend.app.services.engine_account_notify import notify_desktop_sector_scores
     _SECTOR_UI_KEYS = {
         "sector_sort_keys",
@@ -220,30 +226,42 @@ async def _apply_sector_ui_change(changed_keys: set[str]) -> None:
         "sector_bonus_rise_ratio_slider",
         "sector_bonus_relative_strength_slider",
         "sector_bonus_trade_amount_slider",
+    }
+    _BUY_BLOCK_UI_KEYS = {
         "buy_block_rise_on", "buy_block_rise_pct",
         "buy_block_fall_on", "buy_block_fall_pct",
-        # 가산점 설정
+        "rebuy_block_on",
+        # 가산점 — 매수 순위에만 영향, 업종 재계산 불필요 (설계 결정 9-2)
         "boost_high_breakout_on", "boost_high_breakout_score",
         "boost_order_ratio_on",
         "boost_order_ratio_pct", "boost_order_ratio_score",
         "boost_program_net_buy_on", "boost_program_net_buy_score",
-        # 재매수 차단 — 보유/금일매수 종목의 buy_targets/blocked_targets 분류에 영향
-        "rebuy_block_on",
     }
-    if not (changed_keys & _SECTOR_UI_KEYS):
+    _sector_hit = bool(changed_keys & _SECTOR_UI_KEYS)
+    _buy_block_hit = bool(changed_keys & _BUY_BLOCK_UI_KEYS)
+    if not (_sector_hit or _buy_block_hit):
         return
     if is_engine_running():
-        if "sector_min_trade_amt" in changed_keys:
+        if _sector_hit:
+            # 업종 재계산 경로 — 교집합 시 우선 (안전)
+            if "sector_min_trade_amt" in changed_keys:
+                schedule_engine_task(
+                    engine_state.state.on_filter_settings_changed(), context="필터 설정 변경"
+                )
             schedule_engine_task(
-                engine_state.state.on_filter_settings_changed(), context="필터 설정 변경"
+                recompute_sector_summary_now(), context="업종 설정 변경"
             )
-        schedule_engine_task(
-            recompute_sector_summary_now(), context="업종 설정 변경"
-        )
-    try:
-        await notify_desktop_sector_scores(force=True)
-    except Exception as e:
-        logger.warning("[설정] 업종 점수 전송 실패: %s", e, exc_info=True)
+        else:
+            # 경량 재순위 경로 — 업종 스코어 캐시 재사용, 매수 후보만 재생성
+            schedule_engine_task(
+                recompute_buy_targets_only(), context="매수 차단 설정 변경"
+            )
+    # 업종 재계산 경로만 sector_scores 전송 — 경량 경로는 buy_targets만 갱신 (notify_buy_targets_update)
+    if _sector_hit:
+        try:
+            await notify_desktop_sector_scores(force=True)
+        except Exception as e:
+            logger.warning("[설정] 업종 점수 전송 실패: %s", e, exc_info=True)
 
 
 async def _apply_telegram_toggle(changed_keys: set[str]) -> None:

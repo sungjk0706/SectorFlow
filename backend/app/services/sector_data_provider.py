@@ -321,3 +321,42 @@ async def _on_filter_settings_changed() -> None:
     중복 try/except를 제거한다.
     """
     await recompute_sector_summary_now()
+
+
+async def recompute_buy_targets_only() -> None:
+    """매수 차단·가산점 설정 변경 시 경량 재순위 — 업종 스코어 캐시 재사용, 매수 후보만 재생성.
+
+    업종 스코어·컷오프·순위는 불변이므로 compute_full_sector_summary 생략 (설계서 섹션 5-8).
+    sector_summary_cache.sectors 재사용 → build_buy_targets_from_settings만 재실행 →
+    notify_buy_targets_update()로 UI 갱신 (P21 사용자 투명성).
+    """
+    from backend.app.domain.buy_filter import build_buy_targets_from_settings
+    from backend.app.services.engine_lifecycle import is_engine_running
+    from backend.app.services.engine_account_notify import notify_buy_targets_update
+    from backend.app.services.engine_initial_data import _set_sector_summary
+
+    logger.info("[매수후보] 경량 재순위 진입, 실행중=%s", is_engine_running())
+    if not is_engine_running():
+        logger.info("[매수후보] 엔진 미실행으로 종료")
+        return
+    _cached = engine_state.state.sector_summary_cache
+    if _cached is None or not _cached.sectors:
+        logger.warning("[매수후보] 업종 스코어 캐시 미구축 — 경량 재순위 생략 (다음 전체 재계산에서 갱신)")
+        return
+    try:
+        from backend.app.services import engine_account
+        _held = await engine_account.get_held_codes()
+        _bought_today: set[str] = set()
+        if engine_state.state.auto_trade is not None:
+            _bought_today = set(engine_state.state.auto_trade._bought_today.keys())
+        _ss = build_buy_targets_from_settings(
+            _cached.sectors,
+            engine_state.state.integrated_system_settings_cache,
+            held_codes=_held,
+            bought_today_codes=_bought_today,
+        )
+        _set_sector_summary(_ss, "sector_data_provider.recompute_buy_targets_only")
+        await notify_buy_targets_update()
+        logger.info("[매수후보] 경량 재순위 종료")
+    except Exception as e:
+        logger.warning("[매수후보] 경량 재순위 실패: %s", e, exc_info=True)
