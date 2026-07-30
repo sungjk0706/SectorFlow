@@ -1049,15 +1049,16 @@ class TestCmdPeriodPnl:
         mock_state = self._setup_test_mode()
         with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.trade_history.get_realized_pnl_summary", new_callable=AsyncMock, return_value=(50_000, 500_000)) as mock_pnl, \
-             patch("backend.app.core.trading_calendar.get_kst_today", return_value=__import__("datetime").date(2026, 7, 31)), \
+             patch("backend.app.core.trading_calendar.get_chart_reference_trading_day", return_value=__import__("datetime").date(2026, 7, 31)), \
              patch.object(bot, "_send", new_callable=AsyncMock) as mock_send:
             await bot._cmd_period_pnl("tok", "123", "당일")
         mock_send.assert_called_once()
         text = mock_send.call_args[0][2]
         assert "당일 실현 손익" in text
         assert "+50,000원" in text or "+5만원" in text
-        # today_only=True로 호출되었는지 확인
-        assert mock_pnl.call_args.kwargs.get("today_only") is True
+        # date_from/date_to가 get_chart_reference_trading_day() 기준 당일로 설정되었는지 확인 (P10 SSOT)
+        assert mock_pnl.call_args.kwargs.get("date_from") == "2026-07-31"
+        assert mock_pnl.call_args.kwargs.get("date_to") == "2026-07-31"
 
     @pytest.mark.asyncio
     async def test_5day_period(self):
@@ -1066,7 +1067,7 @@ class TestCmdPeriodPnl:
         from datetime import date
         with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.trade_history.get_realized_pnl_summary", new_callable=AsyncMock, return_value=(120_000, 1_000_000)) as mock_pnl, \
-             patch("backend.app.core.trading_calendar.get_kst_today", return_value=date(2026, 7, 31)), \
+             patch("backend.app.core.trading_calendar.get_chart_reference_trading_day", return_value=date(2026, 7, 31)), \
              patch("backend.app.core.trading_calendar.get_recent_trading_days", return_value=[date(2026, 7, 25), date(2026, 7, 28), date(2026, 7, 29), date(2026, 7, 30), date(2026, 7, 31)]), \
              patch.object(bot, "_send", new_callable=AsyncMock) as mock_send:
             await bot._cmd_period_pnl("tok", "123", "5일")
@@ -1084,7 +1085,7 @@ class TestCmdPeriodPnl:
         from datetime import date
         with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.trade_history.get_realized_pnl_summary", new_callable=AsyncMock, return_value=(300_000, 2_000_000)) as mock_pnl, \
-             patch("backend.app.core.trading_calendar.get_kst_today", return_value=date(2026, 7, 31)), \
+             patch("backend.app.core.trading_calendar.get_chart_reference_trading_day", return_value=date(2026, 7, 31)), \
              patch.object(bot, "_send", new_callable=AsyncMock) as mock_send:
             await bot._cmd_period_pnl("tok", "123", "당월")
         mock_send.assert_called_once()
@@ -1100,7 +1101,7 @@ class TestCmdPeriodPnl:
         mock_state = self._setup_test_mode()
         with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.trade_history.get_realized_pnl_summary", new_callable=AsyncMock, return_value=(500_000, 5_000_000)) as mock_pnl, \
-             patch("backend.app.core.trading_calendar.get_kst_today", return_value=__import__("datetime").date(2026, 7, 31)), \
+             patch("backend.app.core.trading_calendar.get_chart_reference_trading_day", return_value=__import__("datetime").date(2026, 7, 31)), \
              patch.object(bot, "_send", new_callable=AsyncMock) as mock_send:
             await bot._cmd_period_pnl("tok", "123", "누적")
         mock_send.assert_called_once()
@@ -1118,7 +1119,7 @@ class TestCmdPeriodPnl:
         mock_state.integrated_system_settings_cache = {"trade_mode": "real"}
         with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.trade_history.get_realized_pnl_summary", new_callable=AsyncMock, return_value=(500_000, 5_000_000)), \
-             patch("backend.app.core.trading_calendar.get_kst_today", return_value=__import__("datetime").date(2026, 7, 31)), \
+             patch("backend.app.core.trading_calendar.get_chart_reference_trading_day", return_value=__import__("datetime").date(2026, 7, 31)), \
              patch.object(bot, "_send", new_callable=AsyncMock) as mock_send:
             await bot._cmd_period_pnl("tok", "123", "누적")
         mock_send.assert_called_once()
@@ -1133,11 +1134,33 @@ class TestCmdPeriodPnl:
         mock_state = self._setup_test_mode()
         with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.trade_history.get_realized_pnl_summary", new_callable=AsyncMock, side_effect=Exception("fail")), \
-             patch("backend.app.core.trading_calendar.get_kst_today", return_value=__import__("datetime").date(2026, 7, 31)), \
+             patch("backend.app.core.trading_calendar.get_chart_reference_trading_day", return_value=__import__("datetime").date(2026, 7, 31)), \
              patch.object(bot, "_send", new_callable=AsyncMock) as mock_send:
             await bot._cmd_period_pnl("tok", "123", "당일")
         mock_send.assert_called_once()
         assert "오류" in mock_send.call_args[0][2]
+
+    @pytest.mark.asyncio
+    async def test_today_period_premarket(self):
+        """08:00 프리마켓 개시 전 — get_chart_reference_trading_day()가 직전 거래일 반환 (P10 SSOT).
+
+        프론트엔드 getTradingToday()와 동일 동작 — 06:47에 당일 손익 조회 시 직전 거래일 기준으로 집계.
+        시나리오: 목 2026-07-30 06:47 → get_chart_reference_trading_day() → 수 2026-07-29 (직전 거래일).
+        """
+        bot = TelegramBot()
+        mock_state = self._setup_test_mode()
+        from datetime import date
+        with patch("backend.app.services.engine_state.state", mock_state), \
+             patch("backend.app.services.trade_history.get_realized_pnl_summary", new_callable=AsyncMock, return_value=(80_000, 800_000)) as mock_pnl, \
+             patch("backend.app.core.trading_calendar.get_chart_reference_trading_day", return_value=date(2026, 7, 29)), \
+             patch.object(bot, "_send", new_callable=AsyncMock) as mock_send:
+            await bot._cmd_period_pnl("tok", "123", "당일")
+        mock_send.assert_called_once()
+        text = mock_send.call_args[0][2]
+        assert "당일 실현 손익" in text
+        # 직전 거래일(수 2026-07-29) 기준으로 date_from/date_to 설정 — 프론트 getTradingToday()와 동일 (P10 SSOT)
+        assert mock_pnl.call_args.kwargs.get("date_from") == "2026-07-29"
+        assert mock_pnl.call_args.kwargs.get("date_to") == "2026-07-29"
 
 
 # ── TelegramBot._cmd_status_full ────────────────────────────────────────────────
@@ -1459,7 +1482,7 @@ class TestCmdAccount:
 
         테스트모드에서는 deposit이 SSOT가 아니므로 "예수금" 라벨 사용 금지.
         프론트엔드 profit-shared.ts renderAccountVals와 동일 기준.
-        실현 수익률 분모 = 누적투자금(accumulated_investment ?? initial_deposit).
+        실현 수익률 분모 = 매수원금 합계(realized_buy_total) — 양 모드 공통 (프론트엔드 computeCumulativePnl/aggregatePnl과 동일 — P10 SSOT).
         """
         bot = TelegramBot()
         snap = {
@@ -1491,12 +1514,12 @@ class TestCmdAccount:
         assert "보유 종목 평가 금액" in text
         assert "보유 종목 평가 손익금" in text
         assert "보유 종목 평가 수익률" in text
-        # 누적 실현 손익 — 테스트모드 분모 = accumulated_investment(10,000,000)
+        # 누적 실현 손익 — 분모 = realized_buy_total(8,000,000) — 양 모드 공통 (P10 SSOT)
         assert "누적 총 실현 손익금" in text
         assert "150,000" in text
         assert "누적 총 실현 수익률" in text
-        # 150,000 / 10,000,000 * 100 = 1.50%
-        assert "1.50" in text
+        # 150,000 / 8,000,000 * 100 = 1.875% → round 1.88%
+        assert "1.88" in text
         # 테스트모드에서는 "예수금" 라벨이 나오면 안 됨 (P23 일관성)
         assert "예수금" not in text
 

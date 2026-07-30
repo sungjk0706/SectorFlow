@@ -119,7 +119,8 @@ async def _build_account_brief_lines(snap: dict, is_test: bool) -> str:
       - 실전모드:   행 0 = "예수금"     (deposit, 증권사 REST kt00001 SSOT)
     주문가능 금액(orderable)은 양 모드 공통 표시 (프론트엔드와 동일).
     라벨은 프론트엔드 account-labels.ts와 동일 — "총평가/총손익" 모호성 제거 (P23).
-    누적 실현 손익금/수익률 추가 — 프론트엔드 aggregatePnl과 동일 공식 (P21).
+    누적 실현 손익금/수익률 추가 — 프론트엔드 aggregatePnl/computeCumulativePnl과 동일 공식 (P21).
+    수익률 분모 = 매수원금 합계(realized_buy_total) — 양 모드 공통 (프론트엔드와 동일 — P10 SSOT).
     """
     from backend.app.services.trade_history import get_realized_pnl_summary
 
@@ -139,11 +140,8 @@ async def _build_account_brief_lines(snap: dict, is_test: bool) -> str:
     # 누적 실현 손익 — trade_history SSOT에서 집계 (프론트엔드 aggregatePnl과 동일)
     trade_mode = "test" if is_test else "real"
     realized_pnl, realized_buy_total = await get_realized_pnl_summary(trade_mode=trade_mode)
-    # 수익률 분모: 테스트모드=누적투자금(투자원금 대비), 실전모드=매수총액 합계 (프론트엔드와 동일)
-    if is_test:
-        cum_denominator = int(snap.get("accumulated_investment", 0) or snap.get("initial_deposit", 0) or 0)
-    else:
-        cum_denominator = realized_buy_total
+    # 수익률 분모: 매수원금 합계 (프론트엔드 computeCumulativePnl/aggregatePnl과 동일 — P10 SSOT)
+    cum_denominator = realized_buy_total
     cum_rate = round(realized_pnl / cum_denominator * 100, 2) if cum_denominator > 0 else 0.0
 
     pnl_sign   = "+" if total_pnl >= 0 else ""
@@ -660,15 +658,17 @@ class TelegramBot:
             now_str = datetime.now(_KST).strftime("%H:%M")
 
             from datetime import date as _date
-            from backend.app.core.trading_calendar import get_kst_today, get_recent_trading_days
+            from backend.app.core.trading_calendar import get_chart_reference_trading_day, get_recent_trading_days
 
-            today = get_kst_today()
-            today_iso = today.isoformat()
+            # 거래일 기준 오늘 — get_chart_reference_trading_day() SSOT (프론트 getTradingToday()와 동일 의미 — P10).
+            # 08:00 프리마켓 개시 전에는 직전 거래일 반환 → 텔레그램 손익 명령어와 프론트 수익현황 페이지 기준 일치.
+            ref = get_chart_reference_trading_day()
+            ref_iso = ref.isoformat()
             label = period
             if period == "당일":
-                line = await _compute_period_pnl("당일", today_only=True, is_test=_is_test)
+                line = await _compute_period_pnl("당일", date_from=ref_iso, date_to=ref_iso, is_test=_is_test)
             elif period == "5일":
-                recent5 = get_recent_trading_days(5)
+                recent5 = get_recent_trading_days(5, from_date=ref)
                 if recent5:
                     line = await _compute_period_pnl(
                         "5거래일", date_from=recent5[0].isoformat(), date_to=recent5[-1].isoformat(), is_test=_is_test,
@@ -676,8 +676,8 @@ class TelegramBot:
                 else:
                     line = "  5거래일: 데이터 없음"
             elif period == "당월":
-                month_start = _date(today.year, today.month, 1).isoformat()
-                line = await _compute_period_pnl("당월", date_from=month_start, date_to=today_iso, is_test=_is_test)
+                month_start = _date(ref.year, ref.month, 1).isoformat()
+                line = await _compute_period_pnl("당월", date_from=month_start, date_to=ref_iso, is_test=_is_test)
             else:  # 누적
                 line = await _compute_period_pnl("누적", is_test=_is_test)
 
