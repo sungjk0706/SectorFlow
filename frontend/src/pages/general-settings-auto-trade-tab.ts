@@ -1,74 +1,15 @@
 // frontend/src/pages/general-settings-auto-trade-tab.ts
-// 일반설정 — 자동매매 탭 (F-04 분할, P24 단순성)
-// general-settings.ts에서 이관. Step 2: 토글→시간 설정 탭 이관, 상태 배지 추가, 뉴스/화면 섹션→각 탭 이관.
+// 일반설정 — 전역설정 탭 (F-04 분할, P24 단순성)
+// general-settings.ts에서 이관. 마스터 토글·배지·뉴스/화면 섹션은 각 탭으로 이관 완료.
+// 본 탭은 전역매매설정(매매 안전장치) 섹션만 담당.
 
 import { createMoneyInput, createNumInput, createSettingToggleRow } from '../components/common/setting-row'
 import { sectionTitle, createDescText } from '../components/common/settings-common'
-import { FONT_WEIGHT, setDisabled, COLOR, FONT_SIZE, RADIUS } from '../components/common/ui-styles'
+import { setDisabled } from '../components/common/ui-styles'
 import { toastResult } from '../components/common/toast'
-import { type GeneralSettingsState, GS, createHolidayBadge, updateHolidayBadges, state } from './general-settings-shared'
+import { type GeneralSettingsState, updateHolidayBadges, state } from './general-settings-shared'
 
-/* ── 자동매매 탭 ── */
-function buildMasterToggleRow(state: GeneralSettingsState): HTMLElement {
-  const r = createSettingToggleRow({
-    label: '자동매매',
-    toggleOn: false,
-    extras: [createHolidayBadge()],
-    onToggle: () => handleMasterToggle(state),
-  })
-  state.masterToggle = r.toggle
-  return r.el
-}
-
-// 자동매수 상태 배지 — 읽기 전용 (Step 2: 토글은 시간 설정 탭으로 이관, P21 투명성)
-// 켜짐=COLOR.up/COLOR.upBg, 꺼짐=중립 회색 (기존 표준 색상 재사용 — P23)
-function buildAutoBuyBadgeRow(state: GeneralSettingsState): HTMLElement {
-  const row = document.createElement('div')
-  Object.assign(row.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, paddingLeft: '20px', borderBottom: GS.rowBorder })
-  const label = document.createElement('span')
-  Object.assign(label.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
-  label.textContent = '자동매수'
-  row.appendChild(label)
-  state.autoBuyBadge = createStatusBadge()
-  row.appendChild(state.autoBuyBadge)
-  return row
-}
-
-// 자동매도 상태 배지 — 읽기 전용 (Step 2: 토글은 시간 설정 탭으로 이관, P21 투명성)
-function buildAutoSellBadgeRow(state: GeneralSettingsState): HTMLElement {
-  const row = document.createElement('div')
-  Object.assign(row.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, paddingLeft: '20px', borderBottom: GS.rowBorder })
-  const label = document.createElement('span')
-  Object.assign(label.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
-  label.textContent = '자동매도'
-  row.appendChild(label)
-  state.autoSellBadge = createStatusBadge()
-  row.appendChild(state.autoSellBadge)
-  return row
-}
-
-// 상태 배지 생성 — '켜짐'/'꺼짐' 클릭 불가 (설계서 3.3)
-function createStatusBadge(): HTMLElement {
-  const badge = document.createElement('span')
-  Object.assign(badge.style, {
-    fontSize: FONT_SIZE.chip, borderRadius: RADIUS.xs, padding: '1px 8px',
-    fontWeight: FONT_WEIGHT.normal, cursor: 'default', userSelect: 'none',
-  })
-  return badge
-}
-
-// 배지 텍스트/색상 업데이트 — syncAutoTradeTab에서 호출
-function updateStatusBadge(badge: HTMLElement, on: boolean): void {
-  badge.textContent = on ? '켜짐' : '꺼짐'
-  if (on) {
-    badge.style.color = COLOR.up
-    badge.style.background = COLOR.upBg
-  } else {
-    badge.style.color = COLOR.disabled
-    badge.style.background = COLOR.neutralBg
-  }
-}
-
+/* ── 전역설정 탭 ── */
 function buildRiskManagerMasterRow(state: GeneralSettingsState): HTMLElement {
   state.riskManagerChildren = document.createElement('div')
   const r = createSettingToggleRow({
@@ -209,11 +150,11 @@ function buildRiskBlockSellRow(state: GeneralSettingsState): HTMLElement {
 
 function buildRiskManagerChildren(state: GeneralSettingsState): HTMLElement {
   // 매매 안전장치 OFF 시 일괄 비활성화
-  // 순서: 동작 토글(매수/매도 차단) → 시장 조건(KOSPI/KOSDAQ) → 손실 조건(일일 손실/손실률/연속)
+  // 순서: 동작 토글(매수/매도 차단) → 시장 조건(코스피/코스닥) → 손실 조건(일일 손실/손실률/연속)
   state.riskManagerChildren!.appendChild(buildRiskBlockBuyRow(state))
   state.riskManagerChildren!.appendChild(buildRiskBlockSellRow(state))
   state.riskManagerChildren!.appendChild(createDescText('손실 상태에서 매도 차단 시 손실 확대 위험 — 신중하게 활성화하세요'))
-  // 시장 지수 급락 가드 (매매 안전장치 하위 — KOSPI/KOSDAQ 개별 토글이 독립 제어)
+  // 시장 지수 급락 가드 (매매 안전장치 하위 — 코스피/코스닥 개별 토글이 독립 제어)
   buildMarketGuardChildren(state)
   // 손실 조건
   buildDailyLossRow(state)
@@ -223,7 +164,7 @@ function buildRiskManagerChildren(state: GeneralSettingsState): HTMLElement {
 }
 
 // ── 시장 지수 급락 가드 ──
-// KOSPI/KOSDAQ 개별 토글이 독립 제어 (그룹 마스터 토글 없음 — 손실 조건 토글들과 동일 계층)
+// 코스피/코스닥 개별 토글이 독립 제어 (그룹 마스터 토글 없음 — 손실 조건 토글들과 동일 계층)
 // 매수/매도 차단 여부는 기존 risk_block_buy_on/risk_block_sell_on 재사용 (별도 토글 없음)
 function buildMarketGuardKospiRow(state: GeneralSettingsState): void {
   state.marketGuardKospiInput = createNumInput({
@@ -238,8 +179,8 @@ function buildMarketGuardKospiRow(state: GeneralSettingsState): void {
     step: 0.1, min: -100, max: 0, suffix: '%', name: 'market_guard_kospi_drop_threshold_pct',
   })
   const r = createSettingToggleRow({
-    label: 'KOSPI 급락 가드',
-    infoText: 'KOSPI 등락률이 이 값 이하이면 매매 차단. -100%~0%, 기본 -5%.',
+    label: '코스피 급락 가드',
+    infoText: '코스피 등락률이 이 값 이하이면 매매 차단. -100%~0%, 기본 -5%.',
     toggleOn: false,
     disableControlsOnToggle: true,
     controls: [state.marketGuardKospiInput.el],
@@ -267,8 +208,8 @@ function buildMarketGuardKosdaqRow(state: GeneralSettingsState): void {
     step: 0.1, min: -100, max: 0, suffix: '%', name: 'market_guard_kosdaq_drop_threshold_pct',
   })
   const r = createSettingToggleRow({
-    label: 'KOSDAQ 급락 가드',
-    infoText: 'KOSDAQ 등락률이 이 값 이하이면 매매 차단. -100%~0%, 기본 -5%.',
+    label: '코스닥 급락 가드',
+    infoText: '코스닥 등락률이 이 값 이하이면 매매 차단. -100%~0%, 기본 -5%.',
     toggleOn: false,
     disableControlsOnToggle: true,
     controls: [state.marketGuardKosdaqInput.el],
@@ -289,11 +230,6 @@ function buildMarketGuardChildren(state: GeneralSettingsState): void {
 }
 
 export function renderAutoTradeTab(state: GeneralSettingsState, container: HTMLElement): void {
-  container.appendChild(buildMasterToggleRow(state))
-  container.appendChild(buildAutoBuyBadgeRow(state))
-  container.appendChild(buildAutoSellBadgeRow(state))
-  container.appendChild(createDescText('켜고 끄는 조작은 "시간 설정" 탭의 시간 행 우측 토글에서'))
-
   // 전역매매설정 (매매 안전장치) 섹션 — 손실 한도/시장 급락 도달 시 자동 매매 중단
   container.appendChild(sectionTitle('전역매매설정 (매매 안전장치)'))
   container.appendChild(createDescText('손실 한도/시장 급락 도달 시 자동 매매 중단. 매매 안전장치 OFF 시 모든 조건이 적용되지 않습니다.'))
@@ -301,12 +237,9 @@ export function renderAutoTradeTab(state: GeneralSettingsState, container: HTMLE
   container.appendChild(buildRiskManagerChildren(state))
 }
 
-// 자동매매 탭 동기화 — Step 2 분할: 마스터 + 배지 + 안전장치만 (시간·뉴스·화면은 각 탭으로 이관)
+// 전역설정 탭 동기화 — 매매 안전장치만 (마스터·시간·뉴스·화면은 각 탭으로 이관)
 export function syncAutoTradeTab(r: Record<string, unknown>): void {
-  state.masterToggle?.setOn(!!r.time_scheduler_on)
   updateHolidayBadges()
-  updateStatusBadge(state.autoBuyBadge!, !!r.auto_buy_on)
-  updateStatusBadge(state.autoSellBadge!, !!r.auto_sell_on)
   syncRiskManager(state, r, document.activeElement)
 }
 
@@ -337,12 +270,4 @@ function syncRiskManager(state: GeneralSettingsState, r: Record<string, unknown>
   // 시장 지수 급락 가드 동기화 (매수/매도 차단은 기존 riskBlockBuyToggle/riskBlockSellToggle 재사용)
   syncToggleInputRow(state.marketGuardKospiToggle, state.marketGuardKospiInput, state.marketGuardKospiControls, !!r.market_guard_kospi_on, Number(r.market_guard_kospi_drop_threshold_pct ?? -5), act)
   syncToggleInputRow(state.marketGuardKosdaqToggle, state.marketGuardKosdaqInput, state.marketGuardKosdaqControls, !!r.market_guard_kosdaq_on, Number(r.market_guard_kosdaq_drop_threshold_pct ?? -5), act)
-}
-
-async function handleMasterToggle(state: GeneralSettingsState): Promise<void> {
-  const next = !state.vals.time_scheduler_on
-  state.vals.time_scheduler_on = next; state.masterToggle?.setOn(next)
-  const r = await state.settingsMgr!.saveSection({ time_scheduler_on: next })
-  toastResult(r)
-  if (!r.ok) { state.vals.time_scheduler_on = !next; state.masterToggle?.setOn(!next) }
 }

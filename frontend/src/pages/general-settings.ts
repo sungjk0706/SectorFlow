@@ -5,8 +5,8 @@
 // 파일 분할 (F-04, P24 단순성):
 // - general-settings.ts (본 파일): 탭 바, refreshUI, syncFromSettings, mount/unmount
 // - general-settings-shared.ts: 상태 객체 + GS 상수 + 공통 헬퍼
-// - general-settings-time-settings-tab.ts: 시간 설정 탭 (+ 자동매수/매도 토글)
-// - general-settings-auto-trade-tab.ts: 자동매매 탭 (마스터+배지+안전장치)
+// - general-settings-time-settings-tab.ts: 시간 설정 탭 (마스터 토글 + 자동매수/매도 토글·시간)
+// - general-settings-auto-trade-tab.ts: 전역설정 탭 (매매 안전장치)
 // - general-settings-news-settings-tab.ts: 뉴스 설정 탭 (Step 2 신설)
 // - general-settings-display-settings-tab.ts: 화면 설정 탭 (Step 2 신설)
 // - general-settings-telegram-tab.ts: 텔레그램 탭
@@ -76,7 +76,7 @@ function renderTabBar(): HTMLElement {
   Object.assign(bar.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid ' + COLOR.borderDark, marginBottom: '12px' })
 
   const tabs: { id: TabId; label: string }[] = [
-    { id: 'auto-trade', label: '자동매매' },
+    { id: 'auto-trade', label: '전역설정' },
     { id: 'time-settings', label: '시간 설정' },
     { id: 'news-settings', label: '뉴스 설정' },
     { id: 'display-settings', label: '화면 설정' },

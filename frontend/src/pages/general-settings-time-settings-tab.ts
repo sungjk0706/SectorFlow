@@ -5,6 +5,7 @@
 // Step 1 골조 + Step 2 자동매수/매도 시간쌍 이동 + Step 3 사전 준비 시간·거래소 고정 시간 이동 + Step 4 일봉 다운로드 이동.
 // Step 2(탭 재분류): 자동매수/매도 토글을 자동매매 탭에서 이관 — 시간+토글 통합 행 (설계서 3.2).
 // 토글 OFF 시에도 시간 입력 활성화 유지 (설계서 2-1, P24 탭 간 의존성 최소화, P21 안내 문구로 보완).
+// 마스터 토글(time_scheduler_on) 이관 — 시간 기반 자동매매 설정을 한 탭에 통합 (P24 단순성, P21 투명성).
 
 import { createNumInput, createSettingRow, createSettingToggleRow } from '../components/common/setting-row'
 import { sectionTitle, createDescText, parseHM, createTimeSlot, updateTimeSlotDisplay } from '../components/common/settings-common'
@@ -13,6 +14,27 @@ import { createTimePairInput } from '../components/common/time-pair-input'
 import { FONT_SIZE, FONT_WEIGHT, COLOR, RADIUS, setDisabled } from '../components/common/ui-styles'
 import { toastResult } from '../components/common/toast'
 import { type GeneralSettingsState, GS, scheduleTimetableSave, createHolidayBadge, state } from './general-settings-shared'
+
+// 자동매매 마스터 토글 (time_scheduler_on) — 시간 기반 스케줄러 전체 스위치
+// 자동매수/매도 시간·토글과 동일 탭에 배치하여 시간 기반 자동매매 설정 통합 (P24 단순성)
+async function handleMasterToggle(state: GeneralSettingsState): Promise<void> {
+  const next = !state.vals.time_scheduler_on
+  state.vals.time_scheduler_on = next; state.masterToggle?.setOn(next)
+  const r = await state.settingsMgr!.saveSection({ time_scheduler_on: next })
+  toastResult(r)
+  if (!r.ok) { state.vals.time_scheduler_on = !next; state.masterToggle?.setOn(!next) }
+}
+
+function buildMasterToggleRow(state: GeneralSettingsState): HTMLElement {
+  const r = createSettingToggleRow({
+    label: '자동매매',
+    toggleOn: false,
+    extras: [createHolidayBadge()],
+    onToggle: () => handleMasterToggle(state),
+  })
+  state.masterToggle = r.toggle
+  return r.el
+}
 
 // 시간쌍 순서 위반 경고 메시지 영역 (P21 투명성 — 행 하단 지속 표시, P23 createDescText 위치·폰트 일치, 경고색 적용)
 function createTimeOrderWarnEl(): HTMLElement {
@@ -224,9 +246,10 @@ function buildSubscribeMaxRow(state: GeneralSettingsState): HTMLElement {
 }
 
 export function renderTimeSettingsTab(state: GeneralSettingsState, container: HTMLElement): void {
+  container.appendChild(buildMasterToggleRow(state))
   container.appendChild(buildBuyTimeRow(state))
   container.appendChild(buildSellTimeRow(state))
-  container.appendChild(createDescText('시간 우측 토글로 자동매수/매도를 켜고 끕니다. 토글이 꺼져 있어도 시간은 미리 설정할 수 있습니다. 거래일 설정시간 내에서만 실행되며, 공휴일·주말에는 자동매매가 항상 차단됩니다.'))
+  container.appendChild(createDescText('자동매매 토글로 시간 기반 자동매매를 켜고 끕니다. 자동매수/자동매도 시간 우측 토글로 각각 켜고 끌 수 있으며, 토글이 꺼져 있어도 시간은 미리 설정할 수 있습니다. 거래일 설정시간 내에서만 실행되며, 공휴일·주말에는 자동매매가 항상 차단됩니다.'))
 
   // 사전 준비 시간 설정 (타임테이블 사용자 조정 3개) — P21 투명성
   container.appendChild(sectionTitle('사전 준비 시간 설정'))
@@ -247,9 +270,12 @@ export function renderTimeSettingsTab(state: GeneralSettingsState, container: HT
   container.appendChild(buildSubscribeMaxRow(state))
 }
 
-/* ── 시간 설정 탭 동기화 — Step 2 분할 (자동매매 탭에서 이관) ── */
-// 확정 시세 다운로드 시간 + 자동다운로드 토글 + 타임테이블 3슬롯 + 구독 한도 + 자동매수/매도 토글·시간쌍
+/* ── 시간 설정 탭 동기화 ── */
+// 마스터 토글 + 확정 시세 다운로드 시간 + 자동다운로드 토글 + 타임테이블 3슬롯 + 구독 한도 + 자동매수/매도 토글·시간쌍
 export function syncTimeSettingsTab(r: Record<string, unknown>): void {
+  // 마스터 토글 (time_scheduler_on)
+  state.masterToggle?.setOn(!!r.time_scheduler_on)
+
   // 확정 시세 다운로드 시간 + 자동다운로드 토글
   const [cdh, cdm] = parseHM(String(r['timetable.confirmed_download'] ?? '20:40'))
   state.confirmedDlH = cdh; state.confirmedDlM = cdm
