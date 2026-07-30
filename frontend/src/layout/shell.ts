@@ -6,8 +6,9 @@ import { createSidebar } from './sidebar'
 import { COLOR } from '../components/common/ui-styles'
 
 export const SETTINGS_PANEL_WIDTH = 340
-// 좌측 설정 패널 패딩 — dual(leftPanel)·triple(tripleLeft) 공통 (P23 일관성)
-export const SETTINGS_PANEL_PADDING = 4
+// 모든 패널(left/right/tripleLeft/tripleCenter/tripleRight) 공통 패딩 (P23 일관성)
+// tripleHeader는 제목 표시줄 역할이라 별도 값(12px 16px) 유지 — 패널 본체 아님
+export const PANEL_PADDING = 4
 
 export function createLayoutShell(): {
   el: HTMLElement
@@ -79,12 +80,12 @@ export function createLayoutShell(): {
   // ── 좌측 패널 (dual 레이아웃 시 설정 카드) ──
   const leftPanel = document.createElement('div')
   leftPanel.style.cssText =
-    `width:${SETTINGS_PANEL_WIDTH}px;min-width:${SETTINGS_PANEL_WIDTH}px;border-right:1px solid ${COLOR.borderDark};overflow-y:auto;padding:${SETTINGS_PANEL_PADDING}px;outline:none;display:none;`
+    `width:${SETTINGS_PANEL_WIDTH}px;min-width:${SETTINGS_PANEL_WIDTH}px;border-right:1px solid ${COLOR.borderDark};overflow-y:auto;padding:${PANEL_PADDING}px;outline:none;display:none;`
 
   // ── 우측 패널 (dual 레이아웃 시 데이터 영역) ──
   const rightPanel = document.createElement('div')
   rightPanel.style.cssText =
-    'flex:1;min-width:0;overflow-y:auto;padding:8px;display:flex;flex-direction:column;outline:none;'
+    `flex:1;min-width:0;overflow-y:auto;padding:${PANEL_PADDING}px;display:flex;flex-direction:column;outline:none;`
 
   // ── Triple 레이아웃 요소 (3컬럼 모드) ──
   const tripleHeader = document.createElement('div')
@@ -95,13 +96,13 @@ export function createLayoutShell(): {
   tripleContainer.style.cssText = 'display:flex;flex:1;min-height:0;display:none;'
 
   const tripleLeft = document.createElement('div')
-  tripleLeft.style.cssText = `flex:4;overflow-y:auto;padding:${SETTINGS_PANEL_PADDING}px;border-right:1px solid ${COLOR.borderDark};`
+  tripleLeft.style.cssText = `flex:4;overflow-y:auto;padding:${PANEL_PADDING}px;border-right:1px solid ${COLOR.borderDark};`
 
   const tripleCenter = document.createElement('div')
-  tripleCenter.style.cssText = `flex:3;overflow-y:auto;padding:8px;border-right:1px solid ${COLOR.borderDark};`
+  tripleCenter.style.cssText = `flex:3;overflow-y:auto;padding:${PANEL_PADDING}px;border-right:1px solid ${COLOR.borderDark};`
 
   const tripleRight = document.createElement('div')
-  tripleRight.style.cssText = 'flex:3;overflow-y:auto;padding:8px;'
+  tripleRight.style.cssText = `flex:3;overflow-y:auto;padding:${PANEL_PADDING}px;`
 
   tripleContainer.appendChild(tripleLeft)
   tripleContainer.appendChild(tripleCenter)
