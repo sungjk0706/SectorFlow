@@ -30,6 +30,7 @@ export {
   filterTradeRows,
   aggregatePnl,
   computeCumulativePnl,
+  cumulativeRealizedPnlBeforeDate,
   findBaseAssetForDate,
   buildMonthlyDrilldown,
   buildTodayDrilldown,
@@ -44,6 +45,7 @@ export {
 // profit-math.ts에서 계산 함수 import (DOM 렌더용 — 내부 사용)
 import {
   computeCumulativePnl,
+  cumulativeRealizedPnlBeforeDate,
   computeHoldingsSummary,
   computeTodayAggregates,
   findBaseAssetForDate,
@@ -204,9 +206,12 @@ export function updateSummaryCards(
   // 기초자산 추출 (dailySummary에서 기간 시작일의 전일 장마감 스냅샷)
   const dayBaseAssetRaw = findBaseAssetForDate(dailySummary, today)
   // 당일 카드 분모 = 전일 baseAsset + 당일 입금액 (결정 2). 단, baseAsset 없으면 earliestBaseAsset 적용 — daily_deposit 보정 제외
-  const dayBaseAsset = dayBaseAssetRaw != null
-    ? dayBaseAssetRaw + (account?.daily_deposit ?? 0)
-    : earliestBaseAsset
+  // 실전모드: 증권사 서버가 SSOT — 앱에서 수익률 재계산 금지 (AGENTS.md 실전vs테스트 테이블)
+  let dayBaseAsset: number | null = !isTestMode
+    ? null
+    : (dayBaseAssetRaw != null
+      ? dayBaseAssetRaw + (account?.daily_deposit ?? 0)
+      : (earliestBaseAsset ?? null))
   const fiveBaseAsset = (fivedayFrom && fivedayTo) ? findBaseAssetForDate(dailySummary, fivedayFrom) : undefined
   const monthBaseAsset = findBaseAssetForDate(dailySummary, monthStart)
 
@@ -225,6 +230,14 @@ export function updateSummaryCards(
       .filter(r => String(r.date ?? '') === today)
       .reduce((s, r) => s + Number(r.realized_pnl ?? 0), 0)
     dayPnl = realizedToday
+    // 스냅샷 미존재 시(테스트모드): accumulated_investment + 기간 전 누적 실현손익으로 분모 추정 (사용자 결정 A안)
+    // 입출금 없는 테스트모드: 기간 시작 시점 총자산 = 투자원금 + 기간 전 누적 실현손익
+    if (dayBaseAsset == null && isTestMode) {
+      const principal = account?.accumulated_investment ?? account?.initial_deposit ?? null
+      if (principal != null) {
+        dayBaseAsset = principal + cumulativeRealizedPnlBeforeDate(sellHistory, today)
+      }
+    }
     dayRate = dayBaseAsset != null ? computeWeightedRate(dayPnl, dayBaseAsset) : null
     els.todaySubTextEl.textContent = openSubText ?? ''
   }

@@ -229,6 +229,19 @@ export function aggregatePnl(
   return { pnl, buyTotal, rate: computeWeightedRate(pnl, buyTotal) }
 }
 
+/** sellHistory에서 지정 날짜 이전의 누적 실현손익 합계 (기간 시작 전 총자산 추정용).
+ *  입출금 없는 테스트모드에서: 기간 시작 시점 총자산 = accumulated_investment + 기간 전 누적 실현손익.
+ *  스냅샷 미존재 시 분모 추정에 사용 (사용자 결정 — A안). */
+export function cumulativeRealizedPnlBeforeDate(sellHistory: Record<string, unknown>[], date: string): number {
+  let sum = 0
+  for (const r of sellHistory) {
+    if (String(r.date ?? '') < date) {
+      sum += Number(r.realized_pnl ?? 0)
+    }
+  }
+  return sum
+}
+
 export interface CumulativePnlParams {
   sellHistory: Record<string, unknown>[]
   account: AccountSnapshot | null
@@ -240,30 +253,45 @@ export interface CumulativePnlParams {
 }
 
 /** 누적/기간 실현 손익 + 수익률 단일 계산 소스 (P10 SSOT).
- *  분모 규칙 (기초자산 분모 방식 + earliestBaseAsset — buyTotal 폐지, 다단계 1세션 결정 5):
- *    - 누적 카드 (dateFrom/dateTo 없음):
- *      · 테스트모드: accumulated_investment (initial_deposit 폴백)
- *      · 실전모드:   earliestBaseAsset (가장 오래된 total_asset 스냅샷 — buyTotal 폐지)
- *    - 기간 한정 카드 (dateFrom/dateTo 있음): 기초자산 (전일 장마감 총자산 + 당일 순입출금)
- *      · baseAsset 전달 시: baseAsset 분모 (사용자 결정 1·2)
- *      · baseAsset 미전달 시: earliestBaseAsset (둘 다 없으면 rate null → '-' 표시, P20 폴백 금지)
- *  rate null 반환: 분모 0/undefined 시 (P20 — buyTotal/0으로 덮지 않음).
+ *  분모 규칙 (테스트모드: 투자원금 기반 추정 / 실전모드: 증권사 SSOT — 앱 재계산 금지):
+ *    - 실전모드: 기간별 수익률은 증권사 서버가 SSOT (AGENTS.md 실전vs테스트 테이블).
+ *      · 증권사 REST API에 기간별 수익률 조회 기능이 없으므로 rate null → '-' 표시.
+ *      · 손익금(pnl)은 sellHistory 집계로 표시 (수익률만 미표시).
+ *    - 테스트모드 누적 카드 (dateFrom/dateTo 없음):
+ *      · accumulated_investment (initial_deposit 폴백)
+ *    - 테스트모드 기간 한정 카드 (dateFrom/dateTo 있음):
+ *      · baseAsset 전달 시: baseAsset 분모 (스냅샷 — 전일 장마감 총자산)
+ *      · baseAsset 미전달 시: earliestBaseAsset (가장 오래된 스냅샷)
+ *      · 스냅샷 모두 미존재 시: accumulated_investment + 기간 전 누적 실현손익
+ *        (입출금 없는 테스트모드에서 기간 시작 시점 총자산 추정 — 사용자 결정 A안)
+ *      · 위 모두 없으면 rate null → '-' 표시 (P20)
+ *  rate null 반환: 분모 0/undefined 시 또는 실전모드 시 (P20).
  *  dateFrom/dateTo 적용 시 해당 범위 내 손익만 집계.
  *  renderAccountVals(계좌 현황)·canvas-sector-donut(도넛 중앙)·updateSummaryCards(요약 카드)·
  *  updateStatistics(하단 통계)가 동일 분모·동일 데이터 범위를 사용하도록 추출 (P22 데이터 정합성). */
 export function computeCumulativePnl(params: CumulativePnlParams): { pnl: number; rate: number | null } {
   const { sellHistory, account, isTestMode, dateFrom, dateTo, baseAsset, earliestBaseAsset } = params
   const { pnl } = aggregatePnl(sellHistory, dateFrom, dateTo)
+  // 실전모드: 증권사 서버가 SSOT — 앱에서 수익률 재계산 금지 (AGENTS.md 실전vs테스트 테이블)
+  if (!isTestMode) {
+    return { pnl, rate: null }
+  }
   const isCumulative = !dateFrom && !dateTo
   let denominator: number | null
   if (isCumulative) {
-    // 누적 카드: 테스트=accumulated_investment, 실전=earliestBaseAsset (buyTotal 폐지)
-    denominator = isTestMode
-      ? (account?.accumulated_investment ?? account?.initial_deposit ?? null)
-      : (earliestBaseAsset ?? null)
+    // 누적 카드: accumulated_investment (initial_deposit 폴백)
+    denominator = account?.accumulated_investment ?? account?.initial_deposit ?? null
   } else {
-    // 기간 한정 카드: baseAsset ?? earliestBaseAsset (둘 다 없으면 null → rate null, P20)
+    // 기간 한정 카드: baseAsset ?? earliestBaseAsset (스냅샷 우선)
     denominator = baseAsset ?? earliestBaseAsset ?? null
+    // 스냅샷 미존재 시: accumulated_investment + 기간 전 누적 실현손익으로 분모 추정 (사용자 결정 A안)
+    // 입출금 없는 테스트모드: 기간 시작 시점 총자산 = 투자원금 + 기간 전 누적 실현손익
+    if (denominator == null && dateFrom) {
+      const principal = account?.accumulated_investment ?? account?.initial_deposit ?? null
+      if (principal != null) {
+        denominator = principal + cumulativeRealizedPnlBeforeDate(sellHistory, dateFrom)
+      }
+    }
   }
   return { pnl, rate: denominator ? computeWeightedRate(pnl, denominator) : null }
 }
