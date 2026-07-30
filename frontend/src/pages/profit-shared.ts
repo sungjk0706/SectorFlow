@@ -181,7 +181,7 @@ export function createSummaryCards(container: HTMLElement, callbacks: SummaryCar
  *      · 당일 카드: 전일 baseAsset + account.daily_deposit (당일 순입출금 보정, 결정 2)
  *    - 누적 카드: 테스트=accumulated_investment, 실전=earliestBaseAsset (buyTotal 폐지 — 다단계 1세션 결정 5)
  *  당일 카드 (F-3-c): PRE OPEN(개장 전) → 0원 + "개장 전" 서브 텍스트.
- *    08:00+ → 오늘 실현(sellHistory 오늘 매도 realized_pnl 합) + 보유 평가(computeHoldingsSummary.evalPnl).
+ *    08:00+ → 오늘 실현(sellHistory 오늘 매도 realized_pnl 합)만.
  *  dailySummary는 5거래일 날짜·base_asset·earliest_base_asset 추출에 사용 (날짜·기초자산 결정 SSOT). */
 export function updateSummaryCards(
   dailySummary: Record<string, unknown>[],
@@ -189,10 +189,8 @@ export function updateSummaryCards(
   sellHistory: Record<string, unknown>[],
   account: AccountSnapshot | null,
   isTestMode: boolean,
-  positions: Position[],
-  sectorStocks: Record<string, SectorStock>,
   earliestBaseAsset?: number,
-  openSubText?: string,  // 개장 중 서브 텍스트 (P21 투명성 — profit-detail: '최근 체결 기준', profit-overview: 생략='')
+  openSubText?: string,  // 개장 중 서브 텍스트 (P21 투명성 — 당일 카드 실현손익 전용화 후 평가손익 라벨 제거, profit-detail/profit-overview 모두 '')
 ): void {
   const today = getTradingToday()
   const yearMonth = today.slice(0, 7)
@@ -223,12 +221,11 @@ export function updateSummaryCards(
     dayRate = 0
     els.todaySubTextEl.textContent = '개장 전'
   } else {
-    // 08:00+: 오늘 실현(sellHistory 오늘 매도 realized_pnl 합) + 보유 평가(computeHoldingsSummary.evalPnl)
+    // 08:00+: 오늘 실현(sellHistory 오늘 매도 realized_pnl 합)만 (평가손익 제거 — 핵심 원칙)
     const realizedToday = sellHistory
       .filter(r => String(r.date ?? '') === today)
       .reduce((s, r) => s + Number(r.realized_pnl ?? 0), 0)
-    const { evalPnl } = computeHoldingsSummary(positions, sectorStocks)
-    dayPnl = realizedToday + evalPnl
+    dayPnl = realizedToday
     dayRate = dayBaseAsset != null ? computeWeightedRate(dayPnl, dayBaseAsset) : null
     els.todaySubTextEl.textContent = openSubText ?? ''
   }

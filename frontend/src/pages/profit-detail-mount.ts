@@ -228,9 +228,8 @@ export function restoreInitialView(state: ProfitDetailState, todayStr: string, i
       initState.dailySummary, state.summaryCardEls,
       state.sellHistory, initState.account,
       globalSettingsManager.getSettings()?.trade_mode === 'test',
-      initState.positions, initState.sectorStocks,
       extractEarliestBaseAsset(initState.dailySummary),
-      '최근 체결 기준',  // P21 투명성 — 수익상세는 실시간 틱 미반영, 최근 체결 기준 평가손익
+      '',  // P21 투명성 — 당일 카드는 실현손익만 (평가손익 제거)
     )
   }
 }
@@ -261,9 +260,8 @@ export function flushDirtyRender(state: ProfitDetailState): void {
       hotState.dailySummary, state.summaryCardEls,
       state.sellHistory, hotState.account,
       globalSettingsManager.getSettings()?.trade_mode === 'test',
-      hotState.positions, hotState.sectorStocks,
       extractEarliestBaseAsset(hotState.dailySummary),
-      '최근 체결 기준',  // P21 투명성 — 수익상세는 실시간 틱 미반영, 최근 체결 기준 평가손익
+      '',  // P21 투명성 — 당일 카드는 실현손익만 (평가손익 제거)
     )
   }
 
