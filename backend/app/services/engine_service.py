@@ -68,6 +68,7 @@ async def apply_settings_change(changed_keys: set[str]) -> None:
     await _apply_timetable_change(changed_keys)
     await _apply_sector_ui_change(changed_keys)
     await _apply_telegram_toggle(changed_keys)
+    await _apply_risk_block_toggle_change(changed_keys)
 
     # ── 매수 조건 스냅샷 무효화 — 설정 변경 시 매수 재평가 허용 ──
     try:
@@ -253,4 +254,45 @@ async def _apply_telegram_toggle(changed_keys: set[str]) -> None:
     from backend.app.services.telegram_bot import apply_telegram_polling_change
 
     await apply_telegram_polling_change(changed_keys)
+
+
+async def _apply_risk_block_toggle_change(changed_keys: set[str]) -> None:
+    """리스크 차단 마스터 토글 OFF 시 헤더 칩 즉시 해제 (P21 사용자 투명성, P10 SSOT).
+
+    차단의 마스터 스위치가 OFF되면 해당 side는 무조건 차단 해제이므로 칩 클리어가 P21 준수.
+    - risk_manager_on OFF → 매수+매도 칩 모두 클리어 (상위 마스터)
+    - risk_block_buy_on OFF → 매수 칩 클리어
+    - risk_block_sell_on OFF → 매도 칩 클리어
+
+    하위 조건 토글(market_guard_*, daily_loss_*, consecutive_loss_*)은 클리어하지 않음 —
+    다른 조건이 여전히 활성일 수 있어 칩 잔존이 P21 준수.
+    P23(일관성): trading.py risk-block-status 브로드캐스트 패턴과 동일 (_safe_broadcast 사용).
+    """
+    _RISK_BLOCK_MASTER_KEYS = {"risk_manager_on", "risk_block_buy_on", "risk_block_sell_on"}
+    if not (changed_keys & _RISK_BLOCK_MASTER_KEYS):
+        return
+    settings = get_settings_snapshot()
+    if not settings.get("risk_manager_on"):  # 상위 마스터 OFF → 매수/매도 모두 해제
+        try:
+            from backend.app.services.engine_account_notify import _safe_broadcast
+            await _safe_broadcast("risk-block-status", {"blocked": False, "side": "buy"})
+            await _safe_broadcast("risk-block-status", {"blocked": False, "side": "sell"})
+            logger.info("[설정] 매매 안전장치 마스터 OFF → 리스크 차단 칩 해제")
+        except Exception:
+            logger.warning("[설정] 리스크 차단 칩 해제 브로드캐스트 실패", exc_info=True)
+        return
+    if not settings.get("risk_block_buy_on"):
+        try:
+            from backend.app.services.engine_account_notify import _safe_broadcast
+            await _safe_broadcast("risk-block-status", {"blocked": False, "side": "buy"})
+            logger.info("[설정] 매수 차단 토글 OFF → 매수 리스크 차단 칩 해제")
+        except Exception:
+            logger.warning("[설정] 매수 리스크 차단 칩 해제 브로드캐스트 실패", exc_info=True)
+    if not settings.get("risk_block_sell_on"):
+        try:
+            from backend.app.services.engine_account_notify import _safe_broadcast
+            await _safe_broadcast("risk-block-status", {"blocked": False, "side": "sell"})
+            logger.info("[설정] 매도 차단 토글 OFF → 매도 리스크 차단 칩 해제")
+        except Exception:
+            logger.warning("[설정] 매도 리스크 차단 칩 해제 브로드캐스트 실패", exc_info=True)
 
