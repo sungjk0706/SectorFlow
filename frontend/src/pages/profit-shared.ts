@@ -58,7 +58,14 @@ export interface SummaryCardEls {
   totalCard: HTMLDivElement
 }
 
-const SUMMARY_CARD_STYLE = `flex:1;background:${COLOR.surfaceLight};border:1px solid ${COLOR.borderLight};border-radius:${RADIUS.sm};box-shadow:${SHADOW.card};padding:6px 12px;display:flex;flex-direction:column;justify-content:center;`
+export interface SummaryCardCallbacks {
+  onTodayClick?: () => void
+  onFivedayClick?: () => void
+  onMonthClick?: () => void
+  onTotalClick?: () => void
+}
+
+const SUMMARY_CARD_STYLE = `flex:1;background:${COLOR.surfaceLight};border:1px solid ${COLOR.borderLight};border-radius:${RADIUS.sm};box-shadow:${SHADOW.card};padding:6px 12px;display:flex;flex-direction:column;justify-content:center;cursor:pointer;`
 const SUMMARY_CARD_TITLES = ['당일 손익', '5거래일 손익', '당월 손익', '누적 손익']
 
 /** 요약 카드 1개 DOM 생성. 실패 시 null 반환 (P25 격리 + P22 인덱스 정합성 — 호출부에서 더미 push).
@@ -66,10 +73,12 @@ const SUMMARY_CARD_TITLES = ['당일 손익', '5거래일 손익', '당월 손�
 function buildSummaryCard(
   container: HTMLElement,
   title: string,
+  handler: (() => void) | undefined,
 ): { pnlEl: HTMLSpanElement; rateEl: HTMLSpanElement; cardEl: HTMLDivElement } | null {
   try {
     const card = document.createElement('div')
     card.style.cssText = SUMMARY_CARD_STYLE
+    if (handler) card.addEventListener('click', handler)
 
     const titleEl = document.createElement('div')
     Object.assign(titleEl.style, { fontSize: FONT_SIZE.section, color: COLOR.tertiary, whiteSpace: 'nowrap' })
@@ -99,10 +108,12 @@ function buildSummaryCard(
   }
 }
 
-/** 요약 카드 4개(당일/5거래일/당월/누적 손익) DOM 생성, 요소 참조 반환.
+/** 요약 카드 4개(당일/5거래일/당월/누적 손익) DOM 생성, 클릭 콜백 주입, 요소 참조 반환.
  *  전일 카드 제거 (다단계 1세션 결정 1). 4카드 동일 구조 (P23 일관성).
- *  카드는 표시 전용 — 클릭 팝업 제거 (P24 단순성, P21 사용자 투명성). */
-export function createSummaryCards(container: HTMLElement): SummaryCardEls {
+ *  카드 클릭 시 테이블 필터링 + 선택 강조 표시 (팝업 없음 — P24 단순성). */
+export function createSummaryCards(container: HTMLElement, callbacks: SummaryCardCallbacks = {}): SummaryCardEls {
+  const clickHandlers = [callbacks.onTodayClick, callbacks.onFivedayClick, callbacks.onMonthClick, callbacks.onTotalClick]
+
   const pnlEls: HTMLSpanElement[] = []
   const rateEls: HTMLSpanElement[] = []
   const cardEls: HTMLDivElement[] = []
@@ -110,7 +121,7 @@ export function createSummaryCards(container: HTMLElement): SummaryCardEls {
   for (let i = 0; i < 4; i++) {
     // P25: 카드 단위 격리 — 한 카드 생성 throw 시 다음 카드 계속 렌더링.
     // 실패 시 더미 push로 인덱스 정합성 유지 (P22). buildStatRow 패턴과 일치 (P23).
-    const built = buildSummaryCard(container, SUMMARY_CARD_TITLES[i])
+    const built = buildSummaryCard(container, SUMMARY_CARD_TITLES[i], clickHandlers[i])
     if (built) {
       pnlEls.push(built.pnlEl)
       rateEls.push(built.rateEl)

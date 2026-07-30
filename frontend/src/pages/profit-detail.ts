@@ -29,6 +29,7 @@ import {
 
 /* ── 모듈 변수 ── */
 export type LowerTab = 'buy' | 'sell'
+export type SelectedView = 'today' | 'fiveday' | 'month' | 'total' | null
 
 /* ── 1프레임 내 필터 결과 재사용 캐시 (P24 단순성 — filterTradeRows 중복 연산 방지) ── */
 export interface FilterCache {
@@ -63,6 +64,8 @@ export interface ProfitDetailState {
   unsubStore: (() => void) | null
   unsubUiStore: (() => void) | null
   tabRow: HTMLDivElement | null
+  // 뷰 선택
+  selectedView: SelectedView
   // 요약 카드 refs
   summaryCardEls: SummaryCardEls | null
   // 통계 정보 DOM 참조
@@ -72,6 +75,8 @@ export interface ProfitDetailState {
   statPnlEl: HTMLSpanElement | null
   statWinRateEl: HTMLSpanElement | null
   statAvgRateEl: HTMLSpanElement | null
+  // 하단 통계 카드 색상 연동
+  statCardEls: HTMLDivElement[]
   // rAF 배칭 상태
   rafId: number | null
   mounted: boolean
@@ -99,6 +104,7 @@ function createState(): ProfitDetailState {
     unsubStore: null,
     unsubUiStore: null,
     tabRow: null,
+    selectedView: null,
     summaryCardEls: null,
     statCountEl: null,
     statBuyAmtEl: null,
@@ -106,6 +112,7 @@ function createState(): ProfitDetailState {
     statPnlEl: null,
     statWinRateEl: null,
     statAvgRateEl: null,
+    statCardEls: [],
     rafId: null,
     mounted: false,
     dirtyHistory: false,
@@ -130,8 +137,9 @@ function mount(container: HTMLElement): void {
 
   const todayStr = getTradingToday()
   const monthStart = todayStr.slice(0, 8) + '01'
+  const monthEnd = todayStr.slice(0, 8) + '31'
 
-  root.appendChild(buildSummaryRow(state))
+  root.appendChild(buildSummaryRow(state, todayStr, monthStart, monthEnd))
 
   const lower = document.createElement('div')
   Object.assign(lower.style, { flex: '1', overflow: 'auto', display: 'flex', flexDirection: 'column' })

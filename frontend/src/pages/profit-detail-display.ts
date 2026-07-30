@@ -1,6 +1,6 @@
 // frontend/src/pages/profit-detail-display.ts
 // 수익 상세 페이지 — 카드/탭/테이블 표시 (F-05 분할).
-// 카드 클릭 팝업(드릴다운 모달) 제거 — 카드는 표시 전용 (P24 단순성, P21 사용자 투명성).
+// 카드 클릭 시 테이블 필터링 + 선택 강조 표시 (팝업/드릴다운 모달 없음 — P24 단순성).
 
 import { createDataTable, type DataTableApi } from '../components/common/data-table'
 import { FONT_WEIGHT, pnlColor, fmtWon, COLOR } from '../components/common/ui-styles'
@@ -53,6 +53,40 @@ function getFilteredRows(state: ProfitDetailState): { sells: Record<string, unkn
   return { sells, buys }
 }
 
+/* ── 요약 카드 선택 스타일 ── */
+function applyCardStyle(card: HTMLDivElement, active: boolean, borderActive: string, bgActive: string): void {
+  Object.assign(card.style, {
+    border: active ? '2px solid ' + borderActive : '1px solid ' + COLOR.borderLight,
+    background: active ? bgActive : COLOR.surfaceLight,
+  })
+}
+
+/* ── 하단 통계 카드 색상 연동 (상단 선택 기간과 동일 색) ── */
+export function updateStatCardSelection(state: ProfitDetailState): void {
+  const colorMap: Record<string, { border: string; bg: string }> = {
+    today: { border: COLOR.down, bg: COLOR.downBg },
+    fiveday: { border: COLOR.period5day, bg: COLOR.period5dayBg },
+    month: { border: COLOR.periodMonth, bg: COLOR.periodMonthBg },
+    total: { border: COLOR.periodTotal, bg: COLOR.periodTotalBg },
+  }
+  const sel = state.selectedView ? colorMap[state.selectedView] : undefined
+  for (const card of state.statCardEls) {
+    Object.assign(card.style, {
+      border: sel ? '2px solid ' + sel.border : '1px solid ' + COLOR.borderLight,
+      background: sel ? sel.bg : COLOR.surfaceLight,
+    })
+  }
+}
+
+export function updateCardSelection(state: ProfitDetailState): void {
+  if (!state.summaryCardEls) return
+  applyCardStyle(state.summaryCardEls.todayCard, state.selectedView === 'today', COLOR.down, COLOR.downBg)
+  applyCardStyle(state.summaryCardEls.fivedayCard, state.selectedView === 'fiveday', COLOR.period5day, COLOR.period5dayBg)
+  applyCardStyle(state.summaryCardEls.monthCard, state.selectedView === 'month', COLOR.periodMonth, COLOR.periodMonthBg)
+  applyCardStyle(state.summaryCardEls.totalCard, state.selectedView === 'total', COLOR.periodTotal, COLOR.periodTotalBg)
+  updateStatCardSelection(state)
+}
+
 /* ── 탭 헤더 텍스트 업데이트 ── */
 function setTabLabel(btn: HTMLButtonElement, label: string, count: number): void {
   // 라벨 텍스트 + 동적 숫자(파란색 강조) 분리 렌더
@@ -71,9 +105,17 @@ export function updateTabLabels(state: ProfitDetailState): void {
   if (state.buyTabBtn) setTabLabel(state.buyTabBtn, '매수 내역', filteredBuys.length)
 }
 
-/* ── 날짜 필터 → 거래내역 갱신 (restoreInitialView 기본값용) ── */
+/* ── 날짜 필터 → 거래내역 갱신 ── */
 export function filterByDate(state: ProfitDetailState, date: string): void {
   if (state.dateRangeInput) state.dateRangeInput.setValue(date, date)
+  if (state.tabRow) state.tabRow.style.display = 'flex'
+  showTable(state)
+  updateTabLabels(state)
+}
+
+/* ── 날짜 범위 필터 ── */
+export function filterByDateRange(state: ProfitDetailState, from: string, to: string): void {
+  if (state.dateRangeInput) state.dateRangeInput.setValue(from, to)
   if (state.tabRow) state.tabRow.style.display = 'flex'
   showTable(state)
   updateTabLabels(state)
@@ -162,7 +204,7 @@ export function showTable(state: ProfitDetailState): void {
 
 export function persistViewState(state: ProfitDetailState): void {
   const dr = state.dateRangeInput?.getValue() ?? { from: '', to: '' }
-  saveProfitDetailView({ from: dr.from, to: dr.to })
+  saveProfitDetailView({ selectedView: state.selectedView, from: dr.from, to: dr.to })
 }
 
 /* ── SummaryCardEls 타입 re-export (mount.ts에서 사용) ── */
