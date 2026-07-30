@@ -110,7 +110,7 @@ function updateSectorSummary(state: ProfitOverviewState, center: SectorDonutCent
   if (sectorSummaryLabelRef) sectorSummaryLabelRef.textContent = center.title ?? '누적 손익'
   if (sectorSummaryPnlRef && center.pnl !== undefined) {
     const sign = center.pnl >= 0 ? '+' : ''
-    sectorSummaryPnlRef.textContent = `${sign}${fmtWon(center.pnl)}원`
+    sectorSummaryPnlRef.textContent = `${sign}${fmtWon(center.pnl)}`
     sectorSummaryPnlRef.style.color = pnlColor(center.pnl)
   }
   if (sectorSummaryRateRef) {
