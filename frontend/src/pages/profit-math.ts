@@ -8,7 +8,7 @@
 // 의존성:
 // - computeWeightedRate (ui-styles) — 순수 수학 헬퍼
 // - normalizeStockCode (hotStore) — 순수 문자열 정규화
-// - getTradingToday, isPreOpenPhase (date) — 순수 날짜 유틸
+// - getTradingToday (date) — 순수 날짜 유틸
 // - Position, SectorStock (types) — 타입만
 // - SectorDonutRow, assignSectorColors (canvas-sector-donut) — 순수 함수/타입
 

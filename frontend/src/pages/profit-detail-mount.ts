@@ -7,6 +7,7 @@ import { createSearchInput } from '../components/common/search-input'
 import { createTabBar } from '../components/common/button'
 import { createDateRangeInput, type DateRangeInputApi } from '../components/common/date-range-input'
 import { hotStore } from '../stores/hotStore'
+import { uiStore } from '../stores/uiStore'
 import { globalSettingsManager } from '../settings'
 import {
   type SummaryCardEls,
@@ -228,7 +229,6 @@ export function restoreInitialView(state: ProfitDetailState, todayStr: string, i
       initState.dailySummary, state.summaryCardEls,
       state.sellHistory,
       globalSettingsManager.getSettings()?.trade_mode === 'test',
-      '',  // P21 투명성 — 당일 카드는 실현손익만 (평가손익 제거)
     )
   }
 }
@@ -259,7 +259,6 @@ export function flushDirtyRender(state: ProfitDetailState): void {
       hotState.dailySummary, state.summaryCardEls,
       state.sellHistory,
       globalSettingsManager.getSettings()?.trade_mode === 'test',
-      '',  // P21 투명성 — 당일 카드는 실현손익만 (평가손익 제거)
     )
   }
 
@@ -300,6 +299,18 @@ export function subscribeProfitDetailStore(state: ProfitDetailState, initState: 
       state.dirtySectorStocks = true
     }
 
+    if (state.rafId !== null) return
+    state.rafId = requestAnimationFrame(() => flushDirtyRender(state))
+  })
+
+  // marketPhase 구독 — chart_reference_trading_day 변화 시 요약 카드 재렌더링 (P16 살아있는 경로).
+  // 08:00 KST 전환 시 백엔드가 새 거래일로 갱신 → 당일 카드 자동 반영 (페이지 새로고침 불필요).
+  let prevRefDay = uiStore.getState().marketPhase.chart_reference_trading_day
+  state.unsubUiStore = uiStore.subscribe((uiCurr) => {
+    const refDayChanged = uiCurr.marketPhase.chart_reference_trading_day !== prevRefDay
+    if (!refDayChanged) return
+    prevRefDay = uiCurr.marketPhase.chart_reference_trading_day
+    state.dirtySummary = true
     if (state.rafId !== null) return
     state.rafId = requestAnimationFrame(() => flushDirtyRender(state))
   })

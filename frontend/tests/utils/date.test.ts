@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { getTradingToday, getTradingMonthStart, getLocalToday, isPreOpenPhase } from '../../src/utils/date'
+import { getTradingToday, getTradingMonthStart, getLocalToday } from '../../src/utils/date'
 import { uiStore } from '../../src/stores/uiStore'
 
 /**
@@ -96,31 +96,5 @@ describe('getLocalToday — 캘린더 날짜 (시간 무관, 유지)', () => {
     vi.setSystemTime(new Date('2026-07-30T07:00:00+09:00')) // 목요일 07:00
     setMarketPhase('장개시전', '장개시전', '2026-07-29')
     expect(getLocalToday()).toBe('2026-07-30') // 거래일 기준 아님 — 캘린더 날짜
-  })
-})
-
-describe('isPreOpenPhase — 백엔드 chart_reference_trading_day 기반 개장 전 판정', () => {
-  it('백엔드 전일 + 로컬 오늘과 다름 → true (개장 전)', () => {
-    vi.setSystemTime(new Date('2026-07-30T07:00:00+09:00')) // 목요일 07:00 (로컬 오늘=2026-07-30)
-    setMarketPhase('장개시전', '장개시전', '2026-07-29') // 백엔드 전일
-    expect(isPreOpenPhase()).toBe(true)
-  })
-
-  it('백엔드 오늘 + 로컬 오늘과 같음 → false (개장 후)', () => {
-    vi.setSystemTime(new Date('2026-07-30T10:00:00+09:00')) // 목요일 10:00 (로컬 오늘=2026-07-30)
-    setMarketPhase('정규장', '메인마켓', '2026-07-30') // 백엔드 오늘
-    expect(isPreOpenPhase()).toBe(false)
-  })
-
-  it('빈 문자열(WS 미연결) → false (0.5 보완안 — P21 초기 화면 동작 유지, P25 격리)', () => {
-    vi.setSystemTime(new Date('2026-07-30T07:00:00+09:00')) // 목요일 07:00
-    setMarketPhase('장개시전', '장개시전', '') // 빈 문자열
-    expect(isPreOpenPhase()).toBe(false) // !!'' = false → 현재 동작(초기 false) 유지
-  })
-
-  it('장마감 후 + 백엔드 오늘 → false', () => {
-    vi.setSystemTime(new Date('2026-07-30T21:00:00+09:00')) // 목요일 21:00
-    setMarketPhase('장마감', '장마감', '2026-07-30')
-    expect(isPreOpenPhase()).toBe(false)
   })
 })

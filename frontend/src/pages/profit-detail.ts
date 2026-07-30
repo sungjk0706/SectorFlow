@@ -62,6 +62,7 @@ export interface ProfitDetailState {
   dateRangeInput: DateRangeInputApi | null
   stockFilterInput: ReturnType<typeof createSearchInput> | null
   unsubStore: (() => void) | null
+  unsubUiStore: (() => void) | null
   tabRow: HTMLDivElement | null
   // 뷰 선택
   selectedView: SelectedView
@@ -101,6 +102,7 @@ function createState(): ProfitDetailState {
     dateRangeInput: null,
     stockFilterInput: null,
     unsubStore: null,
+    unsubUiStore: null,
     tabRow: null,
     selectedView: null,
     summaryCardEls: null,
@@ -162,6 +164,7 @@ function unmount(): void {
   state.dirtySummary = false
   state.dirtySectorStocks = false
   if (state.unsubStore) { state.unsubStore(); state.unsubStore = null }
+  if (state.unsubUiStore) { state.unsubUiStore(); state.unsubUiStore = null }
   if (state.sellTable) { state.sellTable.destroy(); state.sellTable = null }
   if (state.buyTable) { state.buyTable.destroy(); state.buyTable = null }
   Object.assign(state, createState())

@@ -48,7 +48,7 @@ import {
 } from './profit-math'
 
 import { FONT_SIZE, FONT_WEIGHT, pnlColor, fmtWon, COLOR, RADIUS, SHADOW } from '../components/common/ui-styles'
-import { getTradingToday, isPreOpenPhase } from '../utils/date'
+import { getTradingToday } from '../utils/date'
 import type { AccountSnapshot, Position, SectorStock } from '../types'
 
 /* ── 요약 카드 공통 함수 ── */
@@ -56,7 +56,6 @@ import type { AccountSnapshot, Position, SectorStock } from '../types'
 export interface SummaryCardEls {
   todayPnlEl: HTMLSpanElement
   todayRateEl: HTMLSpanElement
-  todaySubTextEl: HTMLSpanElement
   fivedayPnlEl: HTMLSpanElement
   fivedayRateEl: HTMLSpanElement
   monthPnlEl: HTMLSpanElement
@@ -80,13 +79,12 @@ const SUMMARY_CARD_STYLE = `flex:1;background:${COLOR.surfaceLight};border:1px s
 const SUMMARY_CARD_TITLES = ['당일 손익', '5거래일 손익', '당월 손익', '누적 손익']
 
 /** 요약 카드 1개 DOM 생성. 실패 시 null 반환 (P25 격리 + P22 인덱스 정합성 — 호출부에서 더미 push).
- *  당일 카드(isToday=true)에만 서브 텍스트 요소(개장 전 표시용) 추가 — F-3-c. */
+ *  4카드 동일 구조 (P23 일관성) — 당일 카드 특수 분기 제거 (개장 전 폴백 제거, P10 SSOT 단일 해석). */
 function buildSummaryCard(
   container: HTMLElement,
   title: string,
   handler: (() => void) | undefined,
-  isToday: boolean,
-): { pnlEl: HTMLSpanElement; rateEl: HTMLSpanElement; cardEl: HTMLDivElement; subTextEl?: HTMLSpanElement } | null {
+): { pnlEl: HTMLSpanElement; rateEl: HTMLSpanElement; cardEl: HTMLDivElement } | null {
   try {
     const card = document.createElement('div')
     card.style.cssText = SUMMARY_CARD_STYLE
@@ -112,16 +110,8 @@ function buildSummaryCard(
     card.appendChild(titleEl)
     card.appendChild(valRow)
 
-    let subTextEl: HTMLSpanElement | undefined
-    if (isToday) {
-      subTextEl = document.createElement('span')
-      Object.assign(subTextEl.style, { fontSize: FONT_SIZE.label, color: COLOR.tertiary, marginTop: '2px', minHeight: '1em' })
-      subTextEl.textContent = ''
-      card.appendChild(subTextEl)
-    }
-
     container.appendChild(card)
-    return { pnlEl, rateEl, cardEl: card, subTextEl }
+    return { pnlEl, rateEl, cardEl: card }
   } catch (e) {
     console.error('[profit-shared] summary card build error', e)
     return null
@@ -129,24 +119,22 @@ function buildSummaryCard(
 }
 
 /** 요약 카드 4개(당일/5거래일/당월/누적 손익) DOM 생성, 클릭 콜백 주입, 요소 참조 반환.
- *  전일 카드 제거 (다단계 1세션 결정 1). 당일 카드에 서브 텍스트 요소 포함 (F-3-c). */
+ *  전일 카드 제거 (다단계 1세션 결정 1). 4카드 동일 구조 (P23 일관성). */
 export function createSummaryCards(container: HTMLElement, callbacks: SummaryCardCallbacks = {}): SummaryCardEls {
   const clickHandlers = [callbacks.onTodayClick, callbacks.onFivedayClick, callbacks.onMonthClick, callbacks.onTotalClick]
 
   const pnlEls: HTMLSpanElement[] = []
   const rateEls: HTMLSpanElement[] = []
   const cardEls: HTMLDivElement[] = []
-  let todaySubTextEl: HTMLSpanElement | undefined
 
   for (let i = 0; i < 4; i++) {
     // P25: 카드 단위 격리 — 한 카드 생성 throw 시 다음 카드 계속 렌더링.
     // 실패 시 더미 push로 인덱스 정합성 유지 (P22). buildStatRow 패턴과 일치 (P23).
-    const built = buildSummaryCard(container, SUMMARY_CARD_TITLES[i], clickHandlers[i], i === 0)
+    const built = buildSummaryCard(container, SUMMARY_CARD_TITLES[i], clickHandlers[i])
     if (built) {
       pnlEls.push(built.pnlEl)
       rateEls.push(built.rateEl)
       cardEls.push(built.cardEl)
-      if (i === 0 && built.subTextEl) todaySubTextEl = built.subTextEl
     } else {
       const dummyPnl = document.createElement('span')
       dummyPnl.textContent = '-'
@@ -161,7 +149,6 @@ export function createSummaryCards(container: HTMLElement, callbacks: SummaryCar
 
   return {
     todayPnlEl: pnlEls[0], todayRateEl: rateEls[0],
-    todaySubTextEl: todaySubTextEl ?? document.createElement('span'),
     fivedayPnlEl: pnlEls[1], fivedayRateEl: rateEls[1],
     monthPnlEl: pnlEls[2], monthRateEl: rateEls[2],
     totalPnlEl: pnlEls[3], totalRateEl: rateEls[3],
@@ -175,15 +162,13 @@ export function createSummaryCards(container: HTMLElement, callbacks: SummaryCar
  *    - 실현 수익률 = 해당 기간 매도 완료된 종목들의 실현손익 합 ÷ 총 매수원금 합 × 100
  *    - 4카드(당일/5거래일/당월/누적) 동일 공식 (설계 원칙 5) — computeCumulativePnl이 aggregatePnl 기반으로 계산.
  *    - 실전모드: 증권사 서버가 SSOT — rate null → '-' 표시 (AGENTS.md 실전vs테스트 테이블).
- *  당일 카드 (F-3-c): PRE OPEN(개장 전) → 0원 + "개장 전" 서브 텍스트.
- *    08:00+ → 오늘 실현(sellHistory 오늘 매도 realized_pnl 합)만.
+ *  당일 카드: getTradingToday() SSOT 기준 당일 실현손익 (개장 전 폴백 제거 — P10 단일 해석, P20 폴백 금지).
  *  dailySummary는 5거래일 날짜 추출에만 사용 (날짜 결정 SSOT). */
 export function updateSummaryCards(
   dailySummary: Record<string, unknown>[],
   els: SummaryCardEls,
   sellHistory: Record<string, unknown>[],
   isTestMode: boolean,
-  openSubText?: string,  // 개장 중 서브 텍스트 (P21 투명성 — 당일 카드 실현손익 전용화 후 평가손익 라벨 제거, profit-detail/profit-overview 모두 '')
 ): void {
   const today = getTradingToday()
   const yearMonth = today.slice(0, 7)
@@ -195,35 +180,18 @@ export function updateSummaryCards(
   const fivedayFrom = recent5.length > 0 ? recent5[recent5.length - 1] : ''
   const fivedayTo = recent5.length > 0 ? recent5[0] : ''
 
-  // 당일 카드: 개장 전 여부 분기 (F-3-c)
-  const preOpen = isPreOpenPhase()
-  let dayPnl: number
-  let dayRate: number | null
-  if (preOpen) {
-    // 개장 전: 0원 + 0.00% (강제 — 당일 성과 미확정)
-    dayPnl = 0
-    dayRate = 0
-    els.todaySubTextEl.textContent = '개장 전'
-  } else {
-    // 08:00+: 오늘 실현(sellHistory 오늘 매도 realized_pnl 합)만 (평가손익 제거 — 핵심 원칙)
-    // 매수원금 기반 실현 수익률 — computeCumulativePnl(aggregatePnl) 사용
-    const dayS = computeCumulativePnl({ sellHistory, isTestMode, dateFrom: today, dateTo: today })
-    dayPnl = dayS.pnl
-    dayRate = dayS.rate
-    els.todaySubTextEl.textContent = openSubText ?? ''
-  }
-
-  // 5거래일/당월/누적 카드: computeCumulativePnl SSOT 호출 (분모 규칙은 함수 내부에서 통일)
+  // 4카드 동일 경로: computeCumulativePnl SSOT (P10 — 분모 규칙 단일 소스, P23 — 4카드 일관성)
+  const dayS = computeCumulativePnl({ sellHistory, isTestMode, dateFrom: today, dateTo: today })
   const fiveS = (fivedayFrom && fivedayTo)
     ? computeCumulativePnl({ sellHistory, isTestMode, dateFrom: fivedayFrom, dateTo: fivedayTo })
     : { pnl: 0, rate: 0 as number | null }
   const monS = computeCumulativePnl({ sellHistory, isTestMode, dateFrom: monthStart, dateTo: monthEnd })
   const allS = computeCumulativePnl({ sellHistory, isTestMode })  // 누적: 전체 매도 범위
 
-  els.todayPnlEl.textContent = fmtWon(dayPnl)
-  els.todayPnlEl.style.color = pnlColor(dayPnl)
-  els.todayRateEl.textContent = dayRate == null ? '-' : `${dayRate.toFixed(2)}%`
-  els.todayRateEl.style.color = pnlColor(dayPnl)
+  els.todayPnlEl.textContent = fmtWon(dayS.pnl)
+  els.todayPnlEl.style.color = pnlColor(dayS.pnl)
+  els.todayRateEl.textContent = dayS.rate == null ? '-' : `${dayS.rate.toFixed(2)}%`
+  els.todayRateEl.style.color = pnlColor(dayS.pnl)
   els.fivedayPnlEl.textContent = fmtWon(fiveS.pnl)
   els.fivedayPnlEl.style.color = pnlColor(fiveS.pnl)
   els.fivedayRateEl.textContent = fiveS.rate == null ? '-' : `${fiveS.rate.toFixed(2)}%`
