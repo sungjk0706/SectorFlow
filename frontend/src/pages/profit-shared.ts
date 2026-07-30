@@ -16,7 +16,6 @@ export {
   type PnlSummary,
   type DailyDrilldownRow,
   type TodayDrilldownRealizedRow,
-  type TodayDrilldownEvalRow,
   type TodayDrilldownResult,
   type CumulativeMonthlyRow,
   type DepositHistoryRow,

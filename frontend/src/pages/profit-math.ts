@@ -50,7 +50,7 @@ export interface DailyDrilldownRow {
   rate: number
 }
 
-/* ── 당일 드릴다운 행 (실현/평가 영역 구분 — P22 정합성: 실현+평가=당일 카드 총액) ── */
+/* ── 당일 드릴다운 행 (실현 영역만 — 핵심 원칙: 실현손익만) ── */
 
 export interface TodayDrilldownRealizedRow {
   stk_cd: string
@@ -58,19 +58,9 @@ export interface TodayDrilldownRealizedRow {
   realized_pnl: number
 }
 
-export interface TodayDrilldownEvalRow {
-  stk_cd: string
-  stk_nm: string
-  pnl: number
-  rate: number
-  evalAmt: number
-}
-
 export interface TodayDrilldownResult {
   realizedRows: TodayDrilldownRealizedRow[]
-  evalRows: TodayDrilldownEvalRow[]
   realizedTotal: number
-  evalTotal: number
 }
 
 /* ── 누적 드릴다운 (월별 누적 손익 + 입금 이력 — P10 SSOT) ── */
@@ -318,14 +308,11 @@ export function buildMonthlyDrilldown(
   return rows
 }
 
-/** 당일 드릴다운 빌더 — 실현(오늘 매도) + 평가(현재 보유) 영역 구분 (F-3-d, 결정 3·11).
+/** 당일 드릴다운 빌더 — 실현(오늘 매도) 영역만 (핵심 원칙: 실현손익만).
  *  realizedRows: 오늘 매도 종목별 realized_pnl 리스트 (sellHistory에서 오늘 날짜 필터).
- *  evalRows: 현재 보유 종목별 평가손익 (computePositionValuation 재사용 — P23 일관성).
- *  P22 정합성: realizedTotal + evalTotal = 당일 카드 총액 (updateSummaryCards 당일 계산식과 동일 소스). */
+ *  P22 정합성: realizedTotal = 당일 카드 총액 (3-1에서 평가 합산 제거와 일치). */
 export function buildTodayDrilldown(
   sellHistory: Record<string, unknown>[],
-  positions: Position[],
-  sectorStocks: Record<string, SectorStock>,
   today: string,
 ): TodayDrilldownResult {
   const realizedRows: TodayDrilldownRealizedRow[] = []
@@ -342,23 +329,7 @@ export function buildTodayDrilldown(
   }
   realizedRows.sort((a, b) => Math.abs(b.realized_pnl) - Math.abs(a.realized_pnl))
 
-  const evalRows: TodayDrilldownEvalRow[] = []
-  let evalTotal = 0
-  for (const p of positions) {
-    const v = computePositionValuation(p, sectorStocks)
-    if (v.isNull) continue  // cur_price null인 종목은 제외 (P21 — 호출처에서 '-' 표시와 별개)
-    evalRows.push({
-      stk_cd: p.stk_cd,
-      stk_nm: p.stk_nm,
-      pnl: v.pnl,
-      rate: v.rate,
-      evalAmt: v.evalAmt,
-    })
-    evalTotal += v.pnl
-  }
-  evalRows.sort((a, b) => Math.abs(b.pnl) - Math.abs(a.pnl))
-
-  return { realizedRows, evalRows, realizedTotal, evalTotal }
+  return { realizedRows, realizedTotal }
 }
 
 /** 5거래일 드릴다운 빌더 — 최근 5거래일 일별 실현손익 (F-3-d).

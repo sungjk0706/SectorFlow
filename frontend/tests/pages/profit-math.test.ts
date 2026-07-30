@@ -13,7 +13,6 @@ import {
   buildTodayDrilldown,
   computeTodayAggregates,
 } from '../../src/pages/profit-math'
-import type { Position, SectorStock } from '../../src/types'
 
 /* ── getRecent5TradingDays ── */
 
@@ -281,51 +280,22 @@ describe('buildChartFromDailySummary', () => {
 /* ── buildTodayDrilldown ── */
 
 describe('buildTodayDrilldown', () => {
-  function makePosition(code: string, qty: number, avgPrice: number): Position {
-    return {
-      stk_cd: code, stk_nm: `종목${code}`, qty, avg_price: avgPrice,
-      cur_price: 0, buy_amt: avgPrice * qty, pnl_rate: 0, buy_date: '20260720',
-    }
-  }
-
-  function makeSectorStock(code: string, curPrice: number | null): SectorStock {
-    return {
-      code, name: `종목${code}`, cur_price: curPrice, change: 0, change_rate: 0,
-      trade_amount: 0, strength: 0, sector: '업종1',
-    }
-  }
-
-  it('실현(오늘 매도) + 평가(현재 보유) 영역 구분', () => {
+  it('실현(오늘 매도) 영역만', () => {
     const sellHistory = [
       { date: '2026-07-29', stk_cd: '005930', stk_nm: '삼성전자', realized_pnl: 100000 },
       { date: '2026-07-28', stk_cd: '000660', stk_nm: 'SK하이닉스', realized_pnl: 50000 },
     ]
-    const positions = [makePosition('005930', 10, 70000)]
-    const sectorStocks = { '005930': makeSectorStock('005930', 80000) }
-    const result = buildTodayDrilldown(sellHistory, positions, sectorStocks, '2026-07-29')
+    const result = buildTodayDrilldown(sellHistory, '2026-07-29')
     // 실현: 오늘 매도 1건
     expect(result.realizedRows).toHaveLength(1)
     expect(result.realizedRows[0].stk_cd).toBe('005930')
     expect(result.realizedTotal).toBe(100000)
-    // 평가: 보유 1건
-    expect(result.evalRows).toHaveLength(1)
-    expect(result.evalRows[0].pnl).toBe(100000)  // (80000-70000) * 10
-    expect(result.evalTotal).toBe(100000)
   })
 
-  it('오늘 매도 없음 + 보유 없음', () => {
-    const result = buildTodayDrilldown([], [], {}, '2026-07-29')
+  it('오늘 매도 없음', () => {
+    const result = buildTodayDrilldown([], '2026-07-29')
     expect(result.realizedRows).toEqual([])
-    expect(result.evalRows).toEqual([])
     expect(result.realizedTotal).toBe(0)
-    expect(result.evalTotal).toBe(0)
-  })
-
-  it('cur_price null인 보유종목은 평가에서 제외 (P21)', () => {
-    const positions = [makePosition('005930', 10, 70000)]
-    const sectorStocks = { '005930': makeSectorStock('005930', null) }
-    const result = buildTodayDrilldown([], positions, sectorStocks, '2026-07-29')
-    expect(result.evalRows).toHaveLength(0)
   })
 })
 

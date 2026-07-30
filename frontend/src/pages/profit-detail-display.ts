@@ -167,7 +167,7 @@ function createDrilldownSummary(text: string, color: string): HTMLDivElement {
   return el
 }
 
-/** 당일 드릴다운 모달 콘텐츠 — 실현/평가 영역 구분 (P22 정합성: 실현+평가=당일 카드 총액). */
+/** 당일 드릴다운 모달 콘텐츠 — 실현 영역만 (핵심 원칙: 실현손익만). */
 function buildTodayDrilldownContent(result: TodayDrilldownResult): HTMLElement {
   const wrap = document.createElement('div')
 
@@ -182,31 +182,11 @@ function buildTodayDrilldownContent(result: TodayDrilldownResult): HTMLElement {
     if (i % 2 === 0) td.style.cssText = DRILLDOWN_TD_LEFT_STYLE
   })
   if (result.realizedRows.length === 0) {
-    wrap.appendChild(createDrilldownSummary('매도 내역이 없습니다.', COLOR.tertiary))
+    wrap.appendChild(createDrilldownSummary('거래 내역이 없습니다.', COLOR.tertiary))
   } else {
     wrap.appendChild(realizedTable)
   }
   wrap.appendChild(createDrilldownSummary(`실현 합계: ${result.realizedTotal >= 0 ? '+' : ''}${fmtWon(result.realizedTotal)}`, pnlColor(result.realizedTotal)))
-
-  wrap.appendChild(createDrilldownSectionTitle('평가 손익 (현재 보유 — 최근 체결 기준)'))
-  const evalRows = result.evalRows.map(r => [
-    { text: r.stk_nm, color: undefined },
-    { text: `${r.pnl >= 0 ? '+' : ''}${fmtWon(r.pnl)}`, color: pnlColor(r.pnl) },
-    { text: `${r.rate >= 0 ? '+' : ''}${r.rate.toFixed(2)}%`, color: pnlColor(r.pnl) },
-  ])
-  const evalTable = createDrilldownTable(['종목', '평가손익', '수익률'], evalRows)
-  evalTable.querySelectorAll('td').forEach((td, i) => {
-    if (i % 3 === 0) td.style.cssText = DRILLDOWN_TD_LEFT_STYLE
-  })
-  if (result.evalRows.length === 0) {
-    wrap.appendChild(createDrilldownSummary('보유 종목이 없습니다.', COLOR.tertiary))
-  } else {
-    wrap.appendChild(evalTable)
-  }
-  wrap.appendChild(createDrilldownSummary(`평가 합계: ${result.evalTotal >= 0 ? '+' : ''}${fmtWon(result.evalTotal)}`, pnlColor(result.evalTotal)))
-
-  const total = result.realizedTotal + result.evalTotal
-  wrap.appendChild(createDrilldownSummary(`당일 총 손익: ${total >= 0 ? '+' : ''}${fmtWon(total)}`, pnlColor(total)))
 
   return wrap
 }
@@ -273,9 +253,8 @@ function buildCumulativeDrilldownContent(result: CumulativeDrilldownResult): HTM
 /* ── 드릴다운 모달 오픈 (카드 클릭 핸들러 — F-4/F-6) ── */
 
 export function openTodayDrilldown(state: ProfitDetailState): void {
-  const hotState = hotStore.getState()
   const today = getTradingToday()
-  const result = buildTodayDrilldown(state.sellHistory, hotState.positions, hotState.sectorStocks, today)
+  const result = buildTodayDrilldown(state.sellHistory, today)
   showCustomDialog({
     title: '당일 손익 상세',
     content: buildTodayDrilldownContent(result),
