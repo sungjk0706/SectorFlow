@@ -18,6 +18,7 @@ from backend.app.services import trade_history
 from backend.app.services.engine_symbol_utils import _base_stk_cd
 from backend.app.services.risk_manager import get_risk_manager
 from backend.app.core.constants import BUY_COMMISSION
+from backend.app.domain.buy_filter import is_change_rate_blocked
 
 logger = logging.getLogger(__name__)
 
@@ -429,25 +430,23 @@ class AutoTradeManager:
         # 단일 소스 진리: master_stocks_cache에서 직접 읽기
         from backend.app.services.engine_state import state
 
-        # 등락률 가드 (토글 기반 — buy_filter.py와 동일 조건, P10 SSOT)
-        _rise_on = bool(raw_all.get("buy_block_rise_on", True))
-        _fall_on = bool(raw_all.get("buy_block_fall_on", True))
-        _rise_limit = float(raw_all.get("buy_block_rise_pct", 7.0))
-        _fall_limit = float(raw_all.get("buy_block_fall_pct", -7.0))
+        # 등락률 가드 — is_change_rate_blocked() 단일 판정 소스 (P10 SSOT, W3 중복 제거)
+        # 이중 게이트 의도 보존 (설계서 5-7): 후보 생성 시점(apply_buy_block_guards)과
+        # 주문 직전(execute_buy) 양쪽 차단 판정 유지 — 등락률 변동 방어.
         _change_rate = state.master_stocks_cache.get(stk_cd, {}).get("change_rate")
         if _change_rate is not None:
-            _blocked = False
-            _block_reason = ""
-            _reject_code = ""
-            if _rise_on and _rise_limit > 0 and _change_rate >= _rise_limit:
-                _blocked = True
-                _block_reason = f"상승률 {_change_rate:+.1f}%"
-                _reject_code = BUY_REJECT_RISE_GUARD
-            elif _fall_on and _fall_limit < 0 and _change_rate <= _fall_limit:
-                _blocked = True
-                _block_reason = f"하락률 {_change_rate:+.1f}%"
-                _reject_code = BUY_REJECT_FALL_GUARD
+            _blocked, _block_kind = is_change_rate_blocked(
+                _change_rate,
+                block_rise_on=bool(raw_all.get("buy_block_rise_on", True)),
+                block_rise_pct=float(raw_all.get("buy_block_rise_pct", 7.0)),
+                block_fall_on=bool(raw_all.get("buy_block_fall_on", True)),
+                block_fall_pct=float(raw_all.get("buy_block_fall_pct", -7.0)),
+            )
             if _blocked:
+                _block_reason = f"{_block_kind} {_change_rate:+.1f}%"
+                _reject_code = (
+                    BUY_REJECT_RISE_GUARD if _block_kind == "상승률" else BUY_REJECT_FALL_GUARD
+                )
                 stk_nm_g = data_manager.get_stock_name(stk_cd, access_token)
                 logger.info("[매매] [등락률가드] %s(%s) 등락률 %s — 매수 차단", stk_nm_g, stk_cd, _block_reason)
                 return False, _reject_code
