@@ -40,7 +40,7 @@ DEFAULT_USER_SETTINGS: dict[str, Any] = {
     "rebuy_block_on": True,
     "rebuy_block_period": "today",
     # 매수 차단 — 개별 종목 단위 (업종 단위 필터와 분리, P10/P23 책임 분리)
-    # buy_filter.create_buy_targets()에서 업종 파라미터와 함께 소비되지만
+    # buy_filter.apply_buy_block_guards()에서 업종 파라미터와 함께 소비되지만
     # 필터 계층이 다름: sector_* = 업종 단위, buy_block_* = 개별 종목 단위 매수 차단
     "buy_block_rise_on": True,
     "buy_block_rise_pct": 7.0,
