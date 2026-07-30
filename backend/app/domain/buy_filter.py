@@ -78,6 +78,28 @@ def calculate_boost_score(
 # 가드 필터링 함수
 # ──────────────────────────────────────────────────────────────────────────────
 
+def is_change_rate_blocked(
+    change_rate: float,
+    *,
+    block_rise_on: bool = True,
+    block_rise_pct: float = 7.0,
+    block_fall_on: bool = True,
+    block_fall_pct: float = -7.0,
+) -> tuple[bool, str]:
+    """
+    등락률 기반 매수 차단 판정 (순수 함수 — 객체 변이 없음).
+    check_stock_guards()와 trading.py execute_buy() 양쪽이 공유하는 단일 판정 소스 (W3 SSOT).
+    반환: (blocked, reason) — reason은 "" | "상승률" | "하락률".
+    block_rise_pct: 이 값 이상 상승 시 차단 (양수, 0 이하이면 검사 비활성)
+    block_fall_pct: 이 값 이하 하락 시 차단 (음수, 후안 B 부호 규약, 0 이상이면 검사 비활성)
+    """
+    if block_rise_on and block_rise_pct > 0 and change_rate >= block_rise_pct:
+        return True, "상승률"
+    if block_fall_on and block_fall_pct < 0 and change_rate <= block_fall_pct:
+        return True, "하락률"
+    return False, ""
+
+
 def check_stock_guards(
     stock,  # StockScore 타입 (순환 import 방지를 위해 타입 힌트 생략)
     *,
@@ -87,23 +109,24 @@ def check_stock_guards(
     block_fall_pct: float = -7.0,
 ) -> object:  # StockScore
     """
-    개별 종목 매수 가드 적용.
+    개별 종목 매수 가드 적용 (얇은 래퍼).
+    판정 로직은 is_change_rate_blocked()에 위임하고, 본 함수는 StockScore의
+    guard_pass/guard_reason 필드만 설정한다. 기존 시그니처·동작 유지 (호환성).
     block_rise_on: 상승률 차단 활성화 여부 (토글)
     block_rise_pct: 이 값 이상 상승 시 차단 (양수)
     block_fall_on: 하락률 차단 활성화 여부 (토글)
     block_fall_pct: 이 값 이하 하락 시 차단 (음수, 후안 B 부호 규약)
     (5거래일 평균 거래대금 필터는 업종분석 단계에서 1차 처리됨 — 여기서 중복 체크하지 않음)
     """
-    if block_rise_on and block_rise_pct > 0 and stock.change_rate >= block_rise_pct:
-        stock.guard_pass = False
-        stock.guard_reason = "상승률"
-        return stock
-    if block_fall_on and block_fall_pct < 0 and stock.change_rate <= block_fall_pct:
-        stock.guard_pass = False
-        stock.guard_reason = "하락률"
-        return stock
-    stock.guard_pass = True
-    stock.guard_reason = ""
+    blocked, reason = is_change_rate_blocked(
+        stock.change_rate,
+        block_rise_on=block_rise_on,
+        block_rise_pct=block_rise_pct,
+        block_fall_on=block_fall_on,
+        block_fall_pct=block_fall_pct,
+    )
+    stock.guard_pass = not blocked
+    stock.guard_reason = reason
     return stock
 
 
