@@ -29,6 +29,7 @@
 - **백엔드**: `engine_loop.py` 단일 함수 내부 로직만. 외부 인터페이스(함수 시그니처·반환값) 변경 없음.
 - **프론트엔드 / DB / 설정 스키마 / UI**: 변경 없음 (설계서 섹션 7 "미수정" 명시).
 - **배치 경로**: 변경 없음. 단, startup에서 `confirmed_data_broker` 토큰을 미리 발급하지 않게 되므로, 배치 시작 시 `if _broker_name not in broker_tokens` 분기(`market_close_pipeline.py:1098`)가 자체 발급을 담당. 기능적 회귀 없음 — 설계서 섹션 8·12로 검증 완료.
+- **시나리오 9(추가A) 사전조사 결과 (2026-07-30 확정)**: `test_market_close_pipeline.py:899` `test_broker_token_registered_and_cleaned`는 **`_broker_token_registered=True` 경로**(빈 `broker_tokens`에서 시작 → 배치 자체 발급 → `finally`에서 `pop`)만 검증. 시나리오 9(`_broker_token_registered=False`, startup 토큰 재사용 → `pop` 안 함)는 **기존 테스트로 커버되지 않음** 확정. 단, `test_market_close_pipeline.py` 추가는 설계서 섹션 6·7 "변경 파일 목록·`market_close_pipeline.py` 미수정"과 충돌 → **이번 작업에서 제외, 별도 이관** (사용자 결정 H 참조).
 - **`stop → reset_broker_session_state → reset_router → start_engine` 재기동 흐름**: 변경 없음 (설계서 섹션 7).
 
 ### 0.3 아키텍처 원칙 부합
@@ -97,6 +98,7 @@
 
 - **기존 테스트 업데이트**: `test_confirmed_data_broker_collected`(`278–297`) — 기존 의도("confirmed_data_broker도 발급 대상 포함")를 반전하여 "confirmed_data_broker는 startup 발급 대상에서 제외"로 변경.
   - 구현 진입 시 해당 테스트의 원래 의도를 커밋 히스토리와 함께 확인 후 **최소 변경** (설계서 섹션 14-3 승인 조건).
+  - **삭제 결정 시 최소 조건 (판단 기준)**: 커밋 히스토리상 이 테스트가 다중 broker 발급 의도 외의 별도 버그를 잡은 이력이 없을 때만 의도 반전 업데이트(삭제 아님)로 처리. 의도 반전이 불가능한 구조적 이유가 있을 때만 삭제 — 그 경우에도 동일 검증(활성 broker만 발급)을 신규 시나리오 3/4로 보존하므로 검증 공백 없음.
   - 기대: `broker=kiwoom, confirmed_data_broker=ls` → `broker_tokens`에 `kiwoom`만 존재, `ls` 부재.
 - **신규 테스트 추가** (`TestGetAllTokensAsync` 클래스 내): 설계서 섹션 9 시나리오 1·2·3·4·5 반영. **핵심 원칙(설계서 섹션 9)**: 단순히 `broker_tokens` 결과만 보지 말고, 실제로 어느 증권사의 `get_access_token()`이 호출됐는지까지 검증 (`auth_provider.get_access_token.assert_called_once()` / `.assert_not_called()`).
   - 시나리오 1: `broker=ls, confirmed_data_broker=""` → ls `get_access_token()` 호출 O, ls 토큰 저장
@@ -109,7 +111,7 @@
   - `test_token_failure_returns_none` — 토큰 발급 실패 시 저장 안함 (시나리오 8 관련, `get_access_token` 호출 검증 보강 가능)
   - `test_auth_cache_miss_creates_provider` — 캐시 미스 시 provider 생성
   - `test_broker_tokens_cleared_before_set` — clear 후 저장
-  - `test_empty_broker_name_in_config_skipped` — 정규화로 `broker_config`가 단일 `{broker}`로 수렴하므로, 빈 문자열 스킵 시나리오는 새 로직에서 자연 제거. **구현 진입 시 이 테스트의 유효성 재확인** — 새 발급 대상 계산이 `broker_config`를 순회하지 않으므로 해당 테스트가 더 이상 유효하지 않으면 의도를 보존하는 방향으로 업데이트 또는 삭제 (커밋 히스토리 확인 후 최소 변경).
+  - `test_empty_broker_name_in_config_skipped` — 정규화로 `broker_config`가 단일 `{broker}`로 수렴하므로, 빈 문자열 스킵 시나리오는 새 로직에서 자연 제거. **구현 진입 시 이 테스트의 유효성 재확인** — 새 발급 대상 계산이 `broker_config`를 순회하지 않으므로 해당 테스트가 더 이상 유효하지 않으면 의도를 보존하는 방향으로 업데이트 또는 삭제 (커밋 히스토리 확인 후 최소 변경). **삭제 결정 시 최소 조건 (판단 기준)**: 커밋 히스토리상 이 테스트가 빈 broker 스킵 의도 외의 별도 버그를 잡은 이력이 없을 때만 삭제 가능. 삭제 시에도 새 로직(`settings["broker"]` 단일 조회)이 빈 broker를 자연 스킵하는지를 시나리오 1/2의 `broker=""` 변형 또는 `test_no_valid_brokers_returns_early`로 보존 — 검증 공백 없음.
 - **`run_engine_loop` 관련 테스트**(`416–790`): `_get_all_tokens_async`를 `AsyncMock`으로 mock 하는 기존 패턴 유지 — 함수 시그니처 변경 없으므로 영향 없음.
 
 **검증 방법** (3단계 게이트 — 설계서 섹션 10):
@@ -152,6 +154,7 @@
 | E | 기존 테스트 업데이트 범위 | 다중 broker 발급 검증 테스트를 단일 발급로 변경 시, 기존 의도를 커밋 히스토리와 함께 확인 후 **최소 변경** | 섹션 14-3 |
 | F | `test_broker_change.py` 영향 | 1단계 검증에서 먼저 실행하여 회귀 없음 확인 (수정 아님, 검증만) | 섹션 14-4 |
 | G | 단일 구현 세션 분할 | 구현 로직 약 15줄 + 테스트 동일 파일/클래스 내 추가 → 단일 세션(3세션) 진행. 과잉 분할 회피 (P24) | 본 태스크 0.4 · 1 |
+| H | 시나리오 9(추가A) 처리 | **이번 작업 제외, 별도 이관** — 사전조사(2026-07-30)로 `test_market_close_pipeline.py:899`가 `_broker_token_registered=True` 경로만 검증하여 시나리오 9 커버 안 됨 확정. `test_market_close_pipeline.py` 추가는 설계서 섹션 6·7(변경 파일 목록·`market_close_pipeline.py` 미수정)과 충돌 → P24 단일 과제 준수 위해 제외. 별도 태스크에서 `broker == confirmed_data_broker` 시 배치 재사용·`pop` 안 함 검증 추가 (섹션 13 하드코딩 조사와 함께 또는 별도). | 본 태스크 0.2 · 3 |
 
 ---
 
@@ -169,7 +172,7 @@
 | 6 | 배치 자체 발급·재사용·pop 정리 동작 유지 | `test_market_close_pipeline.py` 기존 (변경 없음) | 자체 Lazy Auth 유지 |
 | 7 | startup 토큰 존재 시 배치 재사용 경로 유지 | `test_market_close_pipeline.py` 기존 (변경 없음) | `if _broker_name not in broker_tokens` 분기 |
 | 8 | 활성 broker 토큰 발급 실패 시 시세 전용 모드 강등 | `test_engine_loop.py` `test_token_failure_returns_none` + `run_engine_loop` 강등 테스트 유지 | `engine_loop.py:239-242` 경로 유지 |
-| 9 (추가A) | broker=kiwoom, confirmed_data_broker=kiwoom (동일) → 배치 재사용 후 pop 안 함 | `test_market_close_pipeline.py` — **기존 테스트로 커버되는지 구현 시 확인**, 커버 안 될 시 최소 추가 | `_broker_token_registered=False`로 pop 안 함 |
+| 9 (추가A) | broker=kiwoom, confirmed_data_broker=kiwoom (동일) → 배치 재사용 후 pop 안 함 | **이번 작업 제외 (사용자 결정 H)** — 사전조사로 `test_market_close_pipeline.py:899`가 `_broker_token_registered=True` 경로만 검증하여 커버 안 됨 확정. `test_market_close_pipeline.py` 추가는 설계서 범위 충돌 → 별도 태스크로 이관. | `_broker_token_registered=False`로 pop 안 함 |
 | 10 (추가B) | `confirmed_data_broker != broker` 시 배치 동작 | **이번 작업 제외** (사용자 결정 D) | 섹션 13 별도 이슈 해결 후 별도 태스크 |
 
 **기존 테스트 업데이트** (설계서 섹션 9 "기존 테스트 업데이트"):
@@ -200,4 +203,7 @@
 
 > 구현 중 태스크 기재 오류 발견 시 원인+수정 기록. (초기 작성 시 공란)
 
-- (없음)
+- **2026-07-30 (태스크 작성 세션 내 보완)**: 외부 검토(다른 AI) 의견 반영 2건.
+  1. 기존 테스트 2개(`test_confirmed_data_broker_collected`, `test_empty_broker_name_in_config_skipped`)의 "구현 시 판단" 항목에 **판단 기준(삭제 결정 시 최소 조건)** 한 줄씩 추가 — "구현하기 편한 쪽(테스트 약화/삭제)으로 기울 위험" 방어 (규칙 0-2-6·P21).
+  2. 시나리오 9(추가A) "구현 시 확인" 유예 → **사전조사 완료**. `test_market_close_pipeline.py:899`가 `_broker_token_registered=True` 경로만 검증하여 시나리오 9 커버 안 됨 확정. 설계서 섹션 6·7 범위 충돌로 **이번 작업 제외·별도 이관** 확정 (사용자 결정 H 신설, 0.2·3절 동기화).
+  - 외부 의견 3건(2697개 실행 시간 언급)은 AGENTS.md SSOT(표준 검증 명령어)와 충돌로 미반영 (P10).
