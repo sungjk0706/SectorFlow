@@ -217,10 +217,12 @@ async def sync_sector_from_custom_sectors() -> None:
         logger.info("[데이터] 사용자 업종 기반 종목 업종 동기화 — %d종목, 숨김 %d종목, 복원 %d종목", updated, orphaned, restored)
         
         # 메모리 캐시 sector 필드 갱신 (활성 + 복원 종목 모두 포함)
+        # orphan(master_stocks_table에 없는 종목)는 DB에서 hidden=1 처리되었으므로 캐시 갱신 스킵
         for row in rows:
             code = row["stock_code"]
-            sector = row["name"]
-            update_sector_in_cache(code, sector)
+            if code not in master_codes:
+                continue
+            update_sector_in_cache(code, row["name"])
         for row in hidden_rows:
             code = row["stock_code"]
             if code in master_codes:

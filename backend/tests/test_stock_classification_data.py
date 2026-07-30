@@ -275,10 +275,12 @@ class TestSyncSectorFromCustomSectors:
 
         with patch("backend.app.db.database.get_db_connection", new=AsyncMock(return_value=mock_conn)), \
              patch("backend.app.services.engine_state.state") as mock_state, \
-             patch("backend.app.core.stock_classification_data.update_sector_in_cache"):
+             patch("backend.app.core.stock_classification_data.update_sector_in_cache") as mock_update:
             mock_state.master_stocks_cache = {}
             await sync_sector_from_custom_sectors()
             mock_conn.commit.assert_called_once()
+            # orphan(999999)는 master_stocks_table에 없으므로 캐시 갱신 호출되지 않음
+            mock_update.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_db_error_rollback(self):
