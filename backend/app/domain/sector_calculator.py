@@ -195,3 +195,28 @@ async def compute_full_sector_summary(
         buy_targets=[],
         blocked_targets=[],
     )
+
+
+def select_top_sector_stocks(
+    sector_scores: list,  # list[SectorScore] — calculate_bonus_scores 결과 (정렬됨)
+    *,
+    max_sectors: int = 3,
+) -> list:  # list[tuple[StockScore, SectorScore]]
+    """
+    업종 단위 선택 종결점.
+
+    is_cutoff_passed=False 업종 제외, max_sectors 개까지 업종의 종목을
+    (stock, sector_score) 튜플 리스트로 평탄화. 차단·가산점·정렬 일체 수행 안 함.
+    sector_scores 재정렬 금지 — 이미 calculate_bonus_scores에서 순위 부여됨.
+    """
+    pairs: list = []
+    sector_count = 0
+    for sc in sector_scores:
+        if not sc.is_cutoff_passed:
+            continue
+        if sector_count >= max_sectors:
+            break
+        sector_count += 1
+        for s in sc.stocks:
+            pairs.append((s, sc))
+    return pairs
