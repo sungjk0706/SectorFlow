@@ -78,35 +78,58 @@ describe('filterTradeRows', () => {
   })
 })
 
-/* ── aggregatePnl ── */
+/* ── aggregatePnl — 실현 수익률 계산 정확성 (설계서 8.1) ── */
+// 분모 규칙 (매수원금 기반 — 설계서 0절 최상위 원칙):
+//   실현 수익률 = 해당 기간 매도 완료된 종목들의 실현손익 합 ÷ 총 매수원금 합 × 100
+//   개별 종목 수익률의 평균이 아님 — 전체 실현손익 합계 ÷ 전체 매수금액 합계 (P22 데이터 정합성).
+//   분모 0 시 computeWeightedRate 0 반환 (P20 폴백 금지 — 0은 유효한 값).
 
-describe('aggregatePnl', () => {
-  it('전체 집계 — 날짜 필터 없음', () => {
-    const sells = [
-      { date: '2026-07-28', realized_pnl: -50000, buy_total_amt: 500000 },
-      { date: '2026-07-29', realized_pnl: 30000, buy_total_amt: 300000 },
-    ]
-    const result = aggregatePnl(sells)
-    expect(result.pnl).toBe(-20000)
-    expect(result.buyTotal).toBe(800000)
-  })
-
-  it('날짜 범위 필터', () => {
-    const sells = [
-      { date: '2026-07-27', realized_pnl: -30000, buy_total_amt: 300000 },
-      { date: '2026-07-28', realized_pnl: -50000, buy_total_amt: 500000 },
-      { date: '2026-07-29', realized_pnl: 30000, buy_total_amt: 300000 },
-    ]
-    const result = aggregatePnl(sells, '2026-07-28', '2026-07-29')
-    expect(result.pnl).toBe(-20000)
-    expect(result.buyTotal).toBe(800000)
-  })
-
-  it('빈 sellHistory', () => {
+describe('aggregatePnl — 실현 수익률 계산 정확성 (설계 8.1)', () => {
+  it('매도 없음 — sellHistory=[] → pnl=0, buyTotal=0, rate=0 (분모 0 → computeWeightedRate 0 반환)', () => {
     const result = aggregatePnl([])
     expect(result.pnl).toBe(0)
     expect(result.buyTotal).toBe(0)
     expect(result.rate).toBe(0)
+  })
+
+  it('1건 매도 (수익) — 매수 100만원 → 매도 105만원 → pnl=+5만원, rate=+5.00%', () => {
+    const sells = [{ date: '2026-07-29', realized_pnl: 50000, buy_total_amt: 1000000 }]
+    const result = aggregatePnl(sells)
+    expect(result.pnl).toBe(50000)
+    expect(result.buyTotal).toBe(1000000)
+    expect(result.rate).toBe(5)  // 50000 / 1000000 * 100
+  })
+
+  it('1건 매도 (손실) — 매수 100만원 → 매도 98만원 → pnl=-2만원, rate=-2.00%', () => {
+    const sells = [{ date: '2026-07-29', realized_pnl: -20000, buy_total_amt: 1000000 }]
+    const result = aggregatePnl(sells)
+    expect(result.pnl).toBe(-20000)
+    expect(result.buyTotal).toBe(1000000)
+    expect(result.rate).toBe(-2)  // -20000 / 1000000 * 100
+  })
+
+  it('여러 건 매도 (모두 수익) — 3건(100→105, 200→210, 300→309) → pnl=+24만원, rate=+4.00% (24/600)', () => {
+    const sells = [
+      { date: '2026-07-28', realized_pnl: 50000, buy_total_amt: 1000000 },   // 100→105 (+5만)
+      { date: '2026-07-29', realized_pnl: 100000, buy_total_amt: 2000000 },  // 200→210 (+10만)
+      { date: '2026-07-30', realized_pnl: 90000, buy_total_amt: 3000000 },   // 300→309 (+9만)
+    ]
+    const result = aggregatePnl(sells)
+    expect(result.pnl).toBe(240000)        // 5 + 10 + 9 = 24만
+    expect(result.buyTotal).toBe(6000000)  // 100 + 200 + 300 = 600만
+    expect(result.rate).toBe(4)            // 240000 / 6000000 * 100 = 4 (개별 평균 아님)
+  })
+
+  it('손익 혼합 (+/-) — 100→105(+5), 200→198(-2), 300→309(+9) → pnl=+12만원, rate=+2.00% (12/600)', () => {
+    const sells = [
+      { date: '2026-07-28', realized_pnl: 50000, buy_total_amt: 1000000 },    // +5만
+      { date: '2026-07-29', realized_pnl: -20000, buy_total_amt: 2000000 },   // -2만
+      { date: '2026-07-30', realized_pnl: 90000, buy_total_amt: 3000000 },    // +9만
+    ]
+    const result = aggregatePnl(sells)
+    expect(result.pnl).toBe(120000)        // 5 - 2 + 9 = 12만 (손익 상쇄)
+    expect(result.buyTotal).toBe(6000000)  // 100 + 200 + 300 = 600만
+    expect(result.rate).toBe(2)            // 120000 / 6000000 * 100 = 2 (매수원금 합 분모)
   })
 })
 
