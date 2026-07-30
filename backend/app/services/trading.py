@@ -29,7 +29,10 @@ BUY_OK = ""
 # 전체 차단 사유 (차순위 시도 무의미 → 루프 종료)
 BUY_REJECT_DAILY_STATE = "daily_state"           # 일일 매수 상태 로드 실패
 BUY_REJECT_REALTIME_LATENCY = "realtime_latency" # 실시간 지연 200ms 초과
-BUY_REJECT_AUTO_BUY_OFF = "auto_buy_off"         # 자동매매 비활성화
+BUY_REJECT_AUTO_BUY_OFF = "auto_buy_off"         # 자동매수 OFF (auto_buy_on=False)
+BUY_REJECT_MASTER_OFF = "master_off"             # 자동매매 OFF (time_scheduler_on=False)
+BUY_REJECT_BUY_TIME_OUT = "buy_time_out"         # 자동매수 시간외 (buy_time 범위 외)
+BUY_REJECT_NON_TRADING_DAY = "non_trading_day"   # 휴일/주말 (비거래일)
 BUY_REJECT_MAX_HOLDING = "max_holding"           # 최대 보유 종목 수 초과
 BUY_REJECT_BUY_AMT_ZERO = "buy_amt_zero"         # 종목당 한도 설정값 0
 BUY_REJECT_DAILY_LIMIT = "daily_limit"           # 일일 매수 한도 초과
@@ -60,6 +63,9 @@ BUY_GLOBAL_REJECT_REASONS: frozenset[str] = frozenset({
     BUY_REJECT_DAILY_STATE,
     BUY_REJECT_REALTIME_LATENCY,
     BUY_REJECT_AUTO_BUY_OFF,
+    BUY_REJECT_MASTER_OFF,
+    BUY_REJECT_BUY_TIME_OUT,
+    BUY_REJECT_NON_TRADING_DAY,
     BUY_REJECT_MAX_HOLDING,
     BUY_REJECT_BUY_AMT_ZERO,
     BUY_REJECT_DAILY_LIMIT,
@@ -92,6 +98,9 @@ BUY_REJECT_REASON_TEXT: dict[str, str] = {
     BUY_REJECT_ORDER_FAIL:        "주문 전송 실패",
     BUY_REJECT_TEST_CASH:         "테스트 잔고 부족",
     BUY_REJECT_AUTO_BUY_OFF:      "자동매수 OFF",
+    BUY_REJECT_MASTER_OFF:        "자동매매 OFF",
+    BUY_REJECT_BUY_TIME_OUT:      "자동매수 시간외",
+    BUY_REJECT_NON_TRADING_DAY:   "휴일/주말",
     BUY_REJECT_REALTIME_LATENCY:  "실시간 지연",
     BUY_REJECT_TIME_BLOCKED:      "체결 불가 시간대",
     BUY_REJECT_REBUY:             "재매수 차단",

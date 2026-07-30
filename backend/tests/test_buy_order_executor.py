@@ -15,6 +15,7 @@ from backend.app.services.trading import (
     BUY_REJECT_RISK_LOSS_RATE, BUY_REJECT_RISK_CONSEC_LOSS,
     BUY_REJECT_MAX_HOLDING, BUY_REJECT_DAILY_LIMIT, BUY_REJECT_RISK_CASH,
     BUY_REJECT_BUY_AMT_ZERO, BUY_REJECT_REASON_TEXT,
+    BUY_REJECT_BUY_TIME_OUT, BUY_REJECT_MASTER_OFF,
 )
 from backend.app.domain.models import StockScore, SectorSummary, BuyTarget
 
@@ -136,9 +137,59 @@ class TestEarlyReturnGates:
     @pytest.mark.asyncio
     async def test_auto_buy_not_effective_returns_early(self, fresh_state, reset_cash_gate):
         with patch("backend.app.services.engine_state.state", fresh_state), \
-             patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=False):
+             patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=False), \
+             patch("backend.app.services.buy_order_executor.auto_buy_reject_reason",
+                   return_value=BUY_REJECT_BUY_TIME_OUT):
             await evaluate_buy_candidates()
         fresh_state.auto_trade.execute_buy.assert_not_called()
+        # 차단 사유가 "원인" 컬럼에 표시되는지 검증 (P21 사용자 투명성)
+        ss = fresh_state.sector_summary_cache
+        for bt in ss.buy_targets:
+            if bt.stock.guard_pass:
+                assert bt.reject_reason == BUY_REJECT_REASON_TEXT[BUY_REJECT_BUY_TIME_OUT]
+        reset_cash_gate.assert_awaited()
+
+    @pytest.mark.asyncio
+    async def test_auto_buy_time_out_marks_reject_reason(self, fresh_state, reset_cash_gate):
+        """자동매수 시간외 → 모든 매수 후보 "원인" 컬럼에 "자동매수 시간외" 표시 (P21)."""
+        with patch("backend.app.services.engine_state.state", fresh_state), \
+             patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=False), \
+             patch("backend.app.services.buy_order_executor.auto_buy_reject_reason",
+                   return_value=BUY_REJECT_BUY_TIME_OUT):
+            await evaluate_buy_candidates()
+        ss = fresh_state.sector_summary_cache
+        for bt in ss.buy_targets:
+            if bt.stock.guard_pass:
+                assert bt.reject_reason == "자동매수 시간외"
+        reset_cash_gate.assert_awaited()
+
+    @pytest.mark.asyncio
+    async def test_auto_buy_off_marks_reject_reason(self, fresh_state, reset_cash_gate):
+        """자동매수 OFF(auto_buy_on=False) → "원인" 컬럼에 "자동매수 OFF" 표시 (P21)."""
+        with patch("backend.app.services.engine_state.state", fresh_state), \
+             patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=False), \
+             patch("backend.app.services.buy_order_executor.auto_buy_reject_reason",
+                   return_value=BUY_REJECT_AUTO_BUY_OFF):
+            await evaluate_buy_candidates()
+        ss = fresh_state.sector_summary_cache
+        for bt in ss.buy_targets:
+            if bt.stock.guard_pass:
+                assert bt.reject_reason == "자동매수 OFF"
+        reset_cash_gate.assert_awaited()
+
+    @pytest.mark.asyncio
+    async def test_master_off_marks_reject_reason(self, fresh_state, reset_cash_gate):
+        """자동매매 OFF(time_scheduler_on=False) → "원인" 컬럼에 "자동매매 OFF" 표시 (P21)."""
+        with patch("backend.app.services.engine_state.state", fresh_state), \
+             patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=False), \
+             patch("backend.app.services.buy_order_executor.auto_buy_reject_reason",
+                   return_value=BUY_REJECT_MASTER_OFF):
+            await evaluate_buy_candidates()
+        ss = fresh_state.sector_summary_cache
+        for bt in ss.buy_targets:
+            if bt.stock.guard_pass:
+                assert bt.reject_reason == "자동매매 OFF"
+        reset_cash_gate.assert_awaited()
 
     @pytest.mark.asyncio
     async def test_holding_count_exceeds_max_returns_early(self, fresh_state, reset_cash_gate):

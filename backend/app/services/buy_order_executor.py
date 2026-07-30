@@ -7,7 +7,7 @@ engine_lifecycle.py에서 업종 매수 관련 함수를 분리.
 from __future__ import annotations
 import logging
 from backend.app.core.trade_mode import is_test_mode
-from backend.app.services.auto_trading_effective import auto_buy_effective
+from backend.app.services.auto_trading_effective import auto_buy_effective, auto_buy_reject_reason
 logger = logging.getLogger(__name__)
 
 # ── State Gate: 주문가능 금액 부족 시 evaluate_buy_candidates 호출 차단 ──
@@ -109,7 +109,12 @@ async def evaluate_buy_candidates() -> None:
         return
 
     # ── 자동매수 게이트 (auto_buy_on + 시간 범위 + 마스터 스위치 통합 체크) ──
+    # 사유별 분기 → 모든 매수 후보 "원인" 컬럼에 차단 사유 표시 (P21 사용자 투명성).
+    # 기존 전역 게이트(max_holding 등)와 동일 패턴 — _mark_all_reject_reasons 일관성 (P23).
     if not auto_buy_effective(state.integrated_system_settings_cache):
+        _reason = auto_buy_reject_reason(state.integrated_system_settings_cache)
+        if _reason:
+            await _mark_all_reject_reasons(ss, _reason)
         return
 
     # ── 전역 조건 사전 체크 ──────────────────────────────────────────
