@@ -914,6 +914,34 @@ class TestRunConfirmedPipeline:
             # broadcast_engine_status called twice: once for register, once for cleanup
             assert mock_broadcast.await_count == 2
 
+    @pytest.mark.asyncio
+    async def test_broker_token_reused_when_startup_token_exists(self):
+        """시나리오 9 (추가A): broker == confirmed_data_broker 시 startup 토큰 재사용 → pop 안 함.
+
+        Lazy Auth 설계서 섹션 9 시나리오 9:
+        broker=kiwoom, confirmed_data_broker=kiwoom (동일) → startup kiwoom 토큰 존재 →
+        배치 진입 시 `_broker_name not in broker_tokens` 조건 False → _broker_token_registered=False →
+        finally에서 pop 안 함 → 기존 kiwoom 토큰 유지 (재사용).
+        """
+        mock_state = _mock_state()
+        mock_state.integrated_system_settings_cache["confirmed_data_broker"] = "kiwoom"
+        mock_state.master_stocks_cache = {}
+        mock_state.broker_tokens = {"kiwoom": "startup_token"}
+        mock_auth = MagicMock()
+        mock_auth.get_access_token = AsyncMock(return_value="batch_token")
+        mock_sector = MagicMock()
+        mock_sector.fetch_all_stocks = AsyncMock(return_value=[])
+        with patch("backend.app.services.engine_state.state", mock_state), \
+             patch("backend.app.services.engine_account_notify._rebuild_layout_cache"), \
+             patch("backend.app.services.market_close_pipeline._broadcast_confirmed_progress"), \
+             patch("backend.app.core.broker_registry._create_provider", side_effect=lambda kind, *a, **kw: mock_auth if kind == "auth" else mock_sector), \
+             patch("backend.app.services.engine_lifecycle.broadcast_engine_status", new_callable=AsyncMock) as mock_broadcast:
+            await _run_confirmed_pipeline("test")
+            # 기존 startup 토큰 유지 — pop 안 함 (_broker_token_registered=False 경로)
+            assert mock_state.broker_tokens.get("kiwoom") == "startup_token"
+            # register/finally 모두 분기 진입 안 함 → broadcast 0회
+            assert mock_broadcast.await_count == 0
+
 
 # ── fetch_unified_confirmed_data ──────────────────────────────────────────────
 
