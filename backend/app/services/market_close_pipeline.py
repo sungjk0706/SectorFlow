@@ -1091,7 +1091,10 @@ async def _run_confirmed_pipeline(
 
         from backend.app.core.broker_registry import _create_provider
         _settings = engine_state.state.integrated_system_settings_cache
-        _broker_name = "kiwoom"
+        # 확정 시세 다운로드 증권사: confirmed_data_broker 우선, 빈 값이면 활성 broker 사용
+        # (settings_defaults.py 계약: "빈 문자열 = 현재 broker 사용")
+        _confirmed_broker = str(_settings.get("confirmed_data_broker") or "").strip().lower()
+        _broker_name = _confirmed_broker or str(_settings.get("broker") or "").strip().lower()
         _auth_cache: dict[str, AuthProvider] = {}
         _auth_provider = _create_provider("auth", _broker_name, _settings, _auth_cache)
         _broker_token = await _auth_provider.get_access_token() if _auth_provider else None
@@ -1269,7 +1272,10 @@ async def fetch_5d_data_only() -> dict:
     try:
         from backend.app.core.broker_registry import _create_provider
         _settings = engine_state.state.integrated_system_settings_cache
-        _broker_name = "kiwoom"
+        # 확정 시세 다운로드 증권사: confirmed_data_broker 우선, 빈 값이면 활성 broker 사용
+        # (settings_defaults.py 계약: "빈 문자열 = 현재 broker 사용")
+        _confirmed_broker = str(_settings.get("confirmed_data_broker") or "").strip().lower()
+        _broker_name = _confirmed_broker or str(_settings.get("broker") or "").strip().lower()
         _auth_cache: dict[str, AuthProvider] = {}
         _auth_provider = _create_provider("auth", _broker_name, _settings, _auth_cache)
         _broker_token = await _auth_provider.get_access_token() if _auth_provider else None
