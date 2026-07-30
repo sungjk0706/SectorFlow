@@ -161,6 +161,7 @@ export function createSettingRow(label: string | HTMLElement, child: HTMLElement
   if (opts?.style) Object.assign(div.style, opts.style)
 
   const labelSpan = document.createElement('span')
+  Object.assign(labelSpan.style, { fontSize: FONT_SIZE.settingsLabel })
   if (typeof label === 'string') {
     labelSpan.textContent = label
   } else {

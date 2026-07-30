@@ -8,6 +8,7 @@
 
 import { createNumInput, createSettingRow, createSettingToggleRow } from '../components/common/setting-row'
 import { sectionTitle, createDescText, parseHM, createTimeSlot, updateTimeSlotDisplay } from '../components/common/settings-common'
+import { createInfoTooltip } from '../components/common/info-tooltip'
 import { createTimePairInput } from '../components/common/time-pair-input'
 import { FONT_SIZE, FONT_WEIGHT, COLOR, RADIUS, setDisabled } from '../components/common/ui-styles'
 import { toastResult } from '../components/common/toast'
@@ -111,13 +112,17 @@ function buildSellTimeRow(state: GeneralSettingsState): HTMLElement {
   return wrapTimeRowWithWarn(r.el, warnEl)
 }
 
-function buildTimetableRow(state: GeneralSettingsState, labelText: string, key: 'timetable.realtime_reset' | 'timetable.ws_prestart' | 'timetable.krx_pre_subscribe', defaultTime: string): HTMLElement {
+function buildTimetableRow(state: GeneralSettingsState, labelText: string, key: 'timetable.realtime_reset' | 'timetable.ws_prestart' | 'timetable.krx_pre_subscribe', defaultTime: string, infoText?: string): HTMLElement {
   const row = document.createElement('div')
   Object.assign(row.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, paddingLeft: '20px', borderBottom: GS.rowBorder })
+  const labelWrap = document.createElement('span')
+  Object.assign(labelWrap.style, { display: 'inline-flex', alignItems: 'center', gap: '4px' })
   const label = document.createElement('span')
   Object.assign(label.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
   label.textContent = labelText
-  row.appendChild(label)
+  labelWrap.appendChild(label)
+  if (infoText) labelWrap.appendChild(createInfoTooltip(infoText))
+  row.appendChild(labelWrap)
   const [h, m] = parseHM(String(state.vals[key] ?? defaultTime))
   const slot = createTimeSlot(h, m, (nh, nm) => {
     updateTimeSlotDisplay(slot, nh, nm)
@@ -226,12 +231,9 @@ export function renderTimeSettingsTab(state: GeneralSettingsState, container: HT
   // 사전 준비 시간 설정 (타임테이블 사용자 조정 3개) — P21 투명성
   container.appendChild(sectionTitle('사전 준비 시간 설정'))
   container.appendChild(createDescText('너무 늦으면 실시간 데이터가 누락될 수 있습니다.'))
-  container.appendChild(buildTimetableRow(state, '실시간 데이터 필드 초기화', 'timetable.realtime_reset', '07:58'))
-  container.appendChild(createDescText('장 시작 전 필드를 비워 새 데이터를 받을 준비를 합니다'))
-  container.appendChild(buildTimetableRow(state, 'NXT 종목 구독 신청', 'timetable.ws_prestart', '07:59'))
-  container.appendChild(createDescText('NXT 프리마켓 시작 전 구독을 미리 신청합니다'))
-  container.appendChild(buildTimetableRow(state, 'KRX 종목 추가 구독', 'timetable.krx_pre_subscribe', '08:59'))
-  container.appendChild(createDescText('KRX 정규장 시작 전 KRX 단독 종목 구독을 추가합니다'))
+  container.appendChild(buildTimetableRow(state, '실시간 데이터 필드 초기화', 'timetable.realtime_reset', '07:58', '장 시작 전 필드를 비워 새 데이터를 받을 준비를 합니다'))
+  container.appendChild(buildTimetableRow(state, 'NXT 종목 구독 신청', 'timetable.ws_prestart', '07:59', 'NXT 프리마켓 시작 전 구독을 미리 신청합니다'))
+  container.appendChild(buildTimetableRow(state, 'KRX 종목 추가 구독', 'timetable.krx_pre_subscribe', '08:59', 'KRX 정규장 시작 전 KRX 단독 종목 구독을 추가합니다'))
 
   // 일봉차트 자동다운로드 (토글 + 시간 슬롯) — 단일 항목이라 섹션 제목 생략 (P24)
   container.appendChild(buildConfirmedDownloadRow(state))

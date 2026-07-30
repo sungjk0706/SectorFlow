@@ -3,13 +3,14 @@
 // 자동매매 탭에서 이관: 실시간 현재가 플래시 효과 토글
 
 import { createSettingToggleRow } from '../components/common/setting-row'
-import { sectionTitle, createDescText } from '../components/common/settings-common'
+import { sectionTitle } from '../components/common/settings-common'
 import { toastResult } from '../components/common/toast'
 import { type GeneralSettingsState, state } from './general-settings-shared'
 
 function buildUiFlashRow(state: GeneralSettingsState): HTMLElement {
   const r = createSettingToggleRow({
     label: '실시간 현재가 플래시 효과',
+    infoText: '실시간 시세 변경 시 노란색 플래시 깜빡임 효과 적용 여부',
     toggleOn: false,
     onToggle: async next => {
       state.vals.ui_price_flash_on = next
@@ -25,7 +26,6 @@ function buildUiFlashRow(state: GeneralSettingsState): HTMLElement {
 export function renderDisplaySettingsTab(state: GeneralSettingsState, container: HTMLElement): void {
   container.appendChild(sectionTitle('화면 표시'))
   container.appendChild(buildUiFlashRow(state))
-  container.appendChild(createDescText('실시간 시세 변경 시 노란색 플래시 깜빡임 효과 적용 여부'))
 }
 
 export function syncDisplaySettingsTab(r: Record<string, unknown>): void {
