@@ -162,6 +162,34 @@ async def _broadcast_test_cash_failed(*, stk_cd: str, reason: str) -> None:
         logger.warning("[매매] test-cash-failed 브로드캐스트 실패", exc_info=True)
 
 
+async def _broadcast_circuit_breaker_recovered() -> None:
+    """서킷브레이커 복구(HALF_OPEN → CLOSED) 시 헤더 칩 해제 (P21 사용자 투명성).
+
+    서킷브레이커는 전용 스위치 없이 60초 후 자동 복구하므로, 복구 시점에 칩도 자동 해제.
+    마스터 스위치 ON과 무관 — 서킷브레이커 상태 자체가 SSOT (P10).
+    P23(일관성): circuit-breaker-open 브로드캐스트 패턴과 동일 (_safe_broadcast 사용).
+    """
+    try:
+        from backend.app.services.engine_account_notify import _safe_broadcast
+        await _safe_broadcast("circuit-breaker-open", {"message": ""})
+    except Exception:
+        logger.warning("[매매] circuit-breaker-open 해제 브로드캐스트 실패", exc_info=True)
+
+
+async def _broadcast_test_cash_resolved() -> None:
+    """테스트모드 매수 성공 시 잔고 부족 칩 해제 (P21 사용자 투명성).
+
+    잔고 부족 상태가 해소되었으므로 칩도 자동 해제 — 수동 클릭 대기 불필요.
+    P23(일관성): _broadcast_test_cash_failed 패턴과 동일 (_safe_broadcast 사용).
+    P18(테스트모드 동등성): 테스트모드 전용 사유이므로 실전모드에서는 호출되지 않음.
+    """
+    try:
+        from backend.app.services.engine_account_notify import _safe_broadcast
+        await _safe_broadcast("test-cash-failed", {"failed": False})
+    except Exception:
+        logger.warning("[매매] test-cash-failed 해제 브로드캐스트 실패", exc_info=True)
+
+
 async def _handle_order_failure() -> None:
     """주문 전송 실패 공통 후처리 — RiskManager 실패 보고 + 서킷브레이커 차단 시 마스터 스위치 강제 OFF.
 
@@ -571,8 +599,13 @@ class AutoTradeManager:
             if prev_state == "HALF_OPEN" and new_state == "CLOSED":
                 logger.info("[매매] 서킷브레이커 복구 — 복구시도 → 정상")
                 _fire_and_forget_telegram("✅ [OMS] 서킷브레이커 복구 완료 — 주문 정상 작동 재개", self.get_settings_fn())
+                await _broadcast_circuit_breaker_recovered()
         except Exception:
             logger.warning("[매매] 리스크 관리자 성공 보고 실패", exc_info=True)
+
+        # ── 테스트모드 매수 성공 시 잔고 부족 칩 해제 (P21) ──
+        if is_test_mode(raw_all):
+            await _broadcast_test_cash_resolved()
 
         return True, BUY_OK
 
@@ -742,6 +775,7 @@ class AutoTradeManager:
             if prev_state == "HALF_OPEN" and new_state == "CLOSED":
                 logger.info("[매매] 서킷브레이커 복구 — 복구시도 → 정상")
                 _fire_and_forget_telegram("✅ [OMS] 서킷브레이커 복구 완료 — 주문 정상 작동 재개", self.get_settings_fn())
+                await _broadcast_circuit_breaker_recovered()
         except Exception:
             logger.warning("[매매] 리스크 관리자 성공 보고 실패", exc_info=True)
 

@@ -168,9 +168,14 @@ export function applyEngineReloadComplete(): void {
   uiStore.setState({ engineReloadComplete: true, circuitBreakerOpen: null })
 }
 
-/* ── circuit-breaker-open: OMS 서킷브레이커 발동 알림 ── */
+/* ── circuit-breaker-open: OMS 서킷브레이커 발동 알림 ──
+ *  message가 빈 문자열이면 복구 신호 — 칩 해제 (P21 사용자 투명성). */
 export function applyCircuitBreakerOpen(data: { message?: string }): void {
-  uiStore.setState({ circuitBreakerOpen: { message: data.message ?? '서킷브레이커 발동 — 자동매매 중지' } })
+  if (data.message) {
+    uiStore.setState({ circuitBreakerOpen: { message: data.message } })
+  } else {
+    uiStore.setState({ circuitBreakerOpen: null })
+  }
 }
 
 /* ── 서킷브레이커 알림 수동 해제 (사용자 클릭) ── */
