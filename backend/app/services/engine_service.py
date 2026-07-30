@@ -48,8 +48,10 @@ async def apply_settings_change(changed_keys: set[str]) -> None:
     await refresh_engine_integrated_system_settings_cache(None, use_root=True)
 
     # ── 2) broker / confirmed_data_broker 변경 → 엔진 재기동 (단일 진입점 보장, 조기 종료) ────────────
-    # confirmed_data_broker: 확정 시세 다운로드 증권사 — engine_loop._get_all_tokens_async에서
-    # 토큰 발급 대상에 포함되므로 변경 시 재기동 필요 (P21 사용자 투명성).
+    # confirmed_data_broker: 확정 시세 다운로드 증권사 — startup 토큰 발급 대상은 아니나
+    # (engine_loop._get_all_tokens_async는 settings["broker"] 단일 항목만 발급),
+    # 배치 경로(market_close_pipeline)가 integrated_system_settings_cache에서 값을 읽어
+    # 자체 Lazy Auth로 토큰을 발급받으므로 설정 캐시 갱신 + broker와 동일 재기동 처리 (P21/P23).
     if await _handle_broker_change(changed_keys):
         return
 
@@ -82,8 +84,10 @@ async def apply_settings_change(changed_keys: set[str]) -> None:
 async def _handle_broker_change(changed_keys: set[str]) -> bool:
     """broker / confirmed_data_broker 변경 시 엔진 재기동. 처리했으면 True(조기 종료), 아니면 False.
 
-    confirmed_data_broker는 확정 시세 다운로드 증권사로 engine_loop._get_all_tokens_async에서
-    토큰 발급 대상에 포함됨 — 변경 시 재기동 없이는 적용되지 않으므로 broker와 동일 처리 (P21/P23).
+    confirmed_data_broker는 확정 시세 다운로드 증권사로 startup 토큰 발급 대상은 아니나
+    (engine_loop._get_all_tokens_async는 settings["broker"] 단일 항목만 발급),
+    배치 경로(market_close_pipeline)가 integrated_system_settings_cache에서 값을 읽어
+    자체 Lazy Auth로 토큰을 발급받으므로 broker와 동일 재기동 처리 (P21/P23).
     """
     from backend.app.services.engine_account_notify import (
         notify_desktop_header_refresh,
