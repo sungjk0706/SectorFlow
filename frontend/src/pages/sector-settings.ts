@@ -336,7 +336,7 @@ function buildBonusSection(root: HTMLElement): void {
 
   const bonusDescWrap = document.createElement('div')
   Object.assign(bonusDescWrap.style, { borderBottom: '1px solid ' + COLOR.borderLight, marginBottom: '12px' })
-  bonusDescWrap.appendChild(createDescText('1위 = 조정 만점, 2위 = 조정 만점 - 1, ... 0점까지 1점씩 차감', { marginTop: '8px' }))
+  bonusDescWrap.appendChild(createDescText('1위가 만점, 순위당 1점씩 차감하여 0점까지', { marginTop: '8px' }))
   root.appendChild(bonusDescWrap)
 }
 
