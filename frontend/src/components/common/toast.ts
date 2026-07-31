@@ -1,10 +1,10 @@
 // frontend/src/components/common/toast.ts — 공통 토스트 알림 시스템
 import { COLOR, hexToRgba, RADIUS, SHADOW, BLUR } from './ui-styles'
 
-export type ToastType = 'success' | 'error' | 'warning' | 'info'
+type ToastType = 'success' | 'error' | 'warning' | 'info'
 
 // 하위 호환성을 위한 타입 정의
-export type LegacyToastType = 'saved' | 'error'
+type LegacyToastType = 'saved' | 'error'
 
 interface Toast {
   type: ToastType

@@ -70,7 +70,7 @@ function makeCenterTitle(quickLabel: string | undefined): string {
  *        실전모드: 증권사 서버가 SSOT — rate null → '-' 표시 (AGENTS.md 실전vs테스트 테이블).
  *  도넛 중앙 + 업종별 종목 수익 섹션 타이틀 중앙 요소가 동일 소스(computeCumulativePnl)를 공유 (P10 SSOT).
  *  rate null 시 도넛/타이틀 모두 수익률 미표시. */
-export function buildDonutCenter(state: ProfitOverviewState): SectorDonutCenter {
+function buildDonutCenter(state: ProfitOverviewState): SectorDonutCenter {
   const settings = globalSettingsManager.getSettings()
   const isTestMode = settings?.trade_mode === 'test'
   const { pnl, rate } = computeCumulativePnl({
@@ -237,7 +237,7 @@ export function buildLowerSection(): HTMLDivElement {
 
 /* ── 날짜 범위 적용 (레이스 가드 — P19: 빠른 연속 클릭 시 구식 응답 덮어쓰기 방지) ── */
 
-export async function applyDateRange(state: ProfitOverviewState, from: string, to: string, days?: number, label?: string): Promise<void> {
+async function applyDateRange(state: ProfitOverviewState, from: string, to: string, days?: number, label?: string): Promise<void> {
   const seq = ++state.applyDateRangeSeq
   try {
     const settings = globalSettingsManager.getSettings()
@@ -351,7 +351,7 @@ export function buildDonutChart(state: ProfitOverviewState, donutChartContainer:
 
 /* ── mount 헬퍼: rAF 배칭 렌더 (dirty 플래그 기반 selective update) ── */
 
-export function flushRender(state: ProfitOverviewState): void {
+function flushRender(state: ProfitOverviewState): void {
   state.rafId = requestAnimationFrame(() => {
     state.rafId = null
     if (!state.mounted) return

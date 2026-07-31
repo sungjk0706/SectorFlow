@@ -5,7 +5,7 @@
 import { getTradingToday, getTradingMonthStart } from '../utils/date'
 
 /* ── 날짜 범위 localStorage 영속화 ── */
-export const PROFIT_DATE_KEY = 'sf_profit_date_range'
+const PROFIT_DATE_KEY = 'sf_profit_date_range'
 
 export interface ProfitDateRange {
   from: string
@@ -21,7 +21,7 @@ const LEGACY_QUICK_LABEL_MAP: Record<string, string | undefined> = {
   '전일': undefined,
 }
 
-export function loadProfitDateRange(): ProfitDateRange | null {
+function loadProfitDateRange(): ProfitDateRange | null {
   try {
     const raw = localStorage.getItem(PROFIT_DATE_KEY)
     if (!raw) return null
@@ -59,7 +59,7 @@ export function saveProfitDateRange(from: string, to: string, quickLabel?: strin
   }
 }
 
-export function defaultDateRange(): { from: string; to: string } {
+function defaultDateRange(): { from: string; to: string } {
   return { from: getTradingMonthStart(), to: getTradingToday() }
 }
 

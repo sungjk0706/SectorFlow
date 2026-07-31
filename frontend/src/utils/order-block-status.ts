@@ -12,9 +12,9 @@
 import type { UIState } from '../stores/uiStore'
 import type { AppSettings } from '../types'
 
-export type OrderSide = 'buy' | 'sell'
+type OrderSide = 'buy' | 'sell'
 
-export interface OrderBlockStatus {
+interface OrderBlockStatus {
   /** 배지에 표시할 텍스트 ('매수 가능' | '차단: ...' | 'NXT만 가능' | '거래 시간 외') */
   text: string
   /** 차단 여부 (true=위험/강제 차단, false=정상 또는 정보 상태) */

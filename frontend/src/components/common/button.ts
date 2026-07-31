@@ -9,7 +9,7 @@ import { FONT_SIZE, FONT_WEIGHT, COLOR, FONT_FAMILY, RADIUS } from './ui-styles'
 
 export type ActionVariant = 'primary' | 'danger' | 'secondary' | 'warning'
 
-export interface ActionButtonOptions {
+interface ActionButtonOptions {
   label: string
   onClick: () => void
   variant?: ActionVariant
@@ -98,9 +98,9 @@ export function createActionButton(options: ActionButtonOptions): HTMLButtonElem
 
 /* ── Solid 컬러 버튼 ── */
 
-export type SolidBtnSize = 'sm' | 'md'
+type SolidBtnSize = 'sm' | 'md'
 
-export interface SolidButtonOptions {
+interface SolidButtonOptions {
   label: string
   onClick: (e: MouseEvent) => void
   /** 배경 컬러 (기본 COLOR.success) */
@@ -176,12 +176,12 @@ export function createSolidBtn(options: SolidButtonOptions): HTMLButtonElement {
 
 /* ── 탭 바 ── */
 
-export interface TabItem {
+interface TabItem {
   id: string
   label: string
 }
 
-export interface TabBarOptions {
+interface TabBarOptions {
   tabs: TabItem[]
   activeId: string
   onChange: (id: string) => void
@@ -275,7 +275,7 @@ export function createTabBar(options: TabBarOptions): { el: HTMLElement; buttons
 
 /* ── 토글 선택 버튼 ── */
 
-export interface ToggleSelectButtonOptions {
+interface ToggleSelectButtonOptions {
   label: string
   active: boolean
   onClick: () => void

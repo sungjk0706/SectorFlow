@@ -20,7 +20,7 @@ export interface SectorDonutCenter {
   title?: string          // 중앙 레이블 (예: "당월 손익", 미지정 시 "누적 손익")
 }
 
-export interface SectorDonutOptions {
+interface SectorDonutOptions {
   container: HTMLElement
   data: SectorDonutRow[]
   height?: number
@@ -40,11 +40,11 @@ export interface SectorDonutApi {
 const PADDING = 20
 
 // 도넛 색상 팔레트 — 수익/손실 계열 (외부 재사용을 위해 export)
-export const PROFIT_COLORS = [
+const PROFIT_COLORS = [
   '#f44336', '#e91e63', '#9c27b0', '#673ab7', '#3f51b5',
   '#2196f3', '#00bcd4', '#009688', '#4caf50', '#8bc34a',
 ]
-export const LOSS_COLORS = [
+const LOSS_COLORS = [
   '#1e88e5', '#03a9f4', '#00acc1', '#5c6bc0', '#7986cb',
   '#42a5f5', '#26c6da', '#66bb6a', '#9ccc65', '#80cbc4',
 ]

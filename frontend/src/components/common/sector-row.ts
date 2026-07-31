@@ -3,7 +3,7 @@
 import { FONT_SIZE, COLOR } from './ui-styles'
 import { createSolidBtn } from './button'
 
-export interface SectorRowOptions {
+interface SectorRowOptions {
   sectorName: string
   btnText: string
   btnDisabled?: boolean

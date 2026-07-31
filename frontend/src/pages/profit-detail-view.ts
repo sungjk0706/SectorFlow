@@ -5,9 +5,9 @@
 import type { SelectedView } from './profit-detail'
 
 /* ── 뷰 상태 localStorage 영속화 ── */
-export const PROFIT_DETAIL_VIEW_KEY = 'sf_profit_detail_view'
+const PROFIT_DETAIL_VIEW_KEY = 'sf_profit_detail_view'
 
-export interface ProfitDetailViewState {
+interface ProfitDetailViewState {
   selectedView: SelectedView
   from: string
   to: string

@@ -4,7 +4,7 @@ import { createActionButton } from './button'
 
 /* ── 타입 ── */
 
-export interface InputPopupOptions {
+interface InputPopupOptions {
   type: 'input'
   x: number
   y: number
@@ -15,7 +15,7 @@ export interface InputPopupOptions {
   cancelText?: string
 }
 
-export interface ConfirmPopupOptions {
+interface ConfirmPopupOptions {
   type: 'confirm'
   x: number
   y: number
@@ -26,9 +26,9 @@ export interface ConfirmPopupOptions {
   confirmColor?: string
 }
 
-export type ContextPopupOptions = InputPopupOptions | ConfirmPopupOptions
+type ContextPopupOptions = InputPopupOptions | ConfirmPopupOptions
 
-export type ContextPopupResult =
+type ContextPopupResult =
   | { confirmed: true; value: string }
   | { confirmed: true }
   | { confirmed: false }

@@ -4,13 +4,13 @@ import { createActionButton, type ActionVariant } from './button'
 
 /* ── 공개 타입 ── */
 
-export interface AlertDialogOptions {
+interface AlertDialogOptions {
   title: string
   message: string
   confirmText?: string
 }
 
-export interface ConfirmDialogOptions {
+interface ConfirmDialogOptions {
   title: string
   message: string
   confirmText?: string
@@ -18,7 +18,7 @@ export interface ConfirmDialogOptions {
   isDanger?: boolean
 }
 
-export interface CustomDialogOptions {
+interface CustomDialogOptions {
   title: string
   content: HTMLElement
   actions: Array<{

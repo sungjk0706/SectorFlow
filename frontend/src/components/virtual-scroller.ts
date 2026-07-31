@@ -16,7 +16,7 @@ export interface CellWithPrevContent extends HTMLElement {
   _prevContent?: string
 }
 
-export interface VirtualScrollerOptions<T> {
+interface VirtualScrollerOptions<T> {
   container: HTMLElement
   items: T[]
   getRowHeight: (item: T, index: number) => number
@@ -25,7 +25,7 @@ export interface VirtualScrollerOptions<T> {
   keyFn: (item: T, index: number) => string
 }
 
-export interface VirtualScrollerApi<T> {
+interface VirtualScrollerApi<T> {
   updateItems(items: T[]): void
   updateItem(index: number, item: T): void
   updateItemByKey(key: string): void
@@ -35,7 +35,7 @@ export interface VirtualScrollerApi<T> {
 
 // ── 고정 높이 모드 인터페이스 ────────────────────────────────
 
-export interface FixedHeightMode {
+interface FixedHeightMode {
   enabled: boolean
   rowHeight: number  // 모든 행이 동일한 높이 (enabled=false면 0)
 }
@@ -46,7 +46,7 @@ export interface FixedHeightMode {
  * 초기화 시 행 높이 균일 여부를 감지한다.
  * 모든 행의 높이가 동일하면 고정 높이 모드를 활성화한다.
  */
-export function detectFixedHeight<T>(
+function detectFixedHeight<T>(
   items: T[],
   getRowHeight: (item: T, index: number) => number,
 ): FixedHeightMode {
@@ -59,16 +59,9 @@ export function detectFixedHeight<T>(
 }
 
 /**
- * 고정 높이 모드에서의 오프셋 계산 — O(1) 산술
- */
-export function getOffsetFixed(index: number, rowHeight: number): number {
-  return index * rowHeight
-}
-
-/**
  * 고정 높이 모드에서의 총 높이 계산 — O(1) 산술
  */
-export function getTotalHeightFixed(count: number, rowHeight: number): number {
+function getTotalHeightFixed(count: number, rowHeight: number): number {
   return count * rowHeight
 }
 
@@ -77,7 +70,7 @@ export function getTotalHeightFixed(count: number, rowHeight: number): number {
  * offsets[i] = items[0..i-1]의 높이 합 (즉, items[i]의 top 위치)
  * totalHeight = 모든 행 높이의 합
  */
-export function computeOffsets<T>(
+function computeOffsets<T>(
   items: T[],
   getRowHeight: (item: T, index: number) => number,
 ): { offsets: number[]; totalHeight: number } {
@@ -94,7 +87,7 @@ export function computeOffsets<T>(
  * 가변 높이 모드: 특정 인덱스 이후만 증분 갱신한다.
  * fromIndex 이전의 오프셋은 변경하지 않는다.
  */
-export function recomputeOffsetsFrom<T>(
+function recomputeOffsetsFrom<T>(
   offsets: number[],
   items: T[],
   getRowHeight: (item: T, index: number) => number,
@@ -114,7 +107,7 @@ export function recomputeOffsetsFrom<T>(
  * 이진 탐색으로 시작 인덱스를 찾고, 끝 인덱스까지 선형 탐색.
  * overscan 포함.
  */
-export function computeVisibleRange(
+function computeVisibleRange(
   offsets: number[],
   _totalHeight: number,
   scrollTop: number,

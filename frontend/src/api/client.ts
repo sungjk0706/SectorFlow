@@ -28,12 +28,12 @@ interface RequestOptions {
   pageContext?: string;
 }
 
-export interface FreshnessResponse<T> {
+interface FreshnessResponse<T> {
   data: T;
   freshness: FreshnessMetadata;
 }
 
-export interface SectorScoresResponse {
+interface SectorScoresResponse {
   scores: SectorScoreRow[];
   ranked_count: number;
 }

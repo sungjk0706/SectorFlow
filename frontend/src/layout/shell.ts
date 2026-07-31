@@ -8,7 +8,7 @@ import { COLOR } from '../components/common/ui-styles'
 export const SETTINGS_PANEL_WIDTH = 340
 // 모든 패널(left/right/tripleLeft/tripleCenter/tripleRight) 공통 패딩 (P23 일관성)
 // tripleHeader는 제목 표시줄 역할이라 별도 값(12px 16px) 유지 — 패널 본체 아님
-export const PANEL_PADDING = 4
+const PANEL_PADDING = 4
 
 export function createLayoutShell(): {
   el: HTMLElement

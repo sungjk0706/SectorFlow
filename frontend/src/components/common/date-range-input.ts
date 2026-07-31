@@ -2,7 +2,7 @@
 
 import { COLOR, FONT_SIZE, RADIUS } from './ui-styles'
 
-export interface DateRangeInputOptions {
+interface DateRangeInputOptions {
   from?: string
   to?: string
   label?: string

@@ -31,11 +31,11 @@ import {
 } from './profit-detail-mount'
 
 /* ── 모듈 변수 ── */
-export type LowerTab = 'buy' | 'sell'
+type LowerTab = 'buy' | 'sell'
 export type SelectedView = 'today' | 'fiveday' | 'month' | 'total' | null
 
 /* ── 1프레임 내 필터 결과 재사용 캐시 (P24 단순성 — filterTradeRows 중복 연산 방지) ── */
-export interface FilterCache {
+interface FilterCache {
   sellRef: Record<string, unknown>[]  // 캐시 유효성 검증용 sellHistory 참조
   buyRef: Record<string, unknown>[]   // 캐시 유효성 검증용 buyHistory 참조
   from: string

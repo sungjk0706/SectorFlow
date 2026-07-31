@@ -19,7 +19,7 @@ export interface RouteConfig {
   settingsCard?: () => Promise<PageModule>
 }
 
-export interface RouterApi {
+interface RouterApi {
   init(contentEl: HTMLElement): void
   navigate(hash: string): void
   getCurrentRoute(): string

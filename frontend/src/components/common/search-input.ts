@@ -2,7 +2,7 @@
 
 import { COLOR, FONT_SIZE, FONT_WEIGHT, RADIUS } from './ui-styles'
 
-export interface SearchInputOptions {
+interface SearchInputOptions {
   placeholder?: string
   onSearch: (query: string) => void
   width?: string

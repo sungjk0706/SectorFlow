@@ -3,31 +3,9 @@
 //
 // 파일 분할 (F-05, P24 단순성):
 // - profit-math.ts: 순수 계산 함수 (DOM 의존 없음 — 집계·변환·평가 계산)
-// - profit-shared.ts (본 파일): DOM 렌더 함수 (요약 카드·계좌 현황) + profit-math re-export
+// - profit-shared.ts (본 파일): DOM 렌더 함수 (요약 카드·계좌 현황)
 //
 // 본 파일은 DOM 조작이 포함된 함수만 직접 구현.
-// 순수 계산 함수는 profit-math.ts에서 re-export (기존 import 경로 호환 — P23 일관성).
-
-// ── profit-math.ts re-export (기존 import 경로 호환 — P23 일관성) ──
-export {
-  // 타입
-  type SectorStockPnl,
-  type SectorPnlGroup,
-  type PnlSummary,
-  type CumulativePnlParams,
-  type PositionValuation,
-  // 함수
-  getRecent5TradingDays,
-  buildSectorDonutRows,
-  buildSectorStockPnl,
-  filterTradeRows,
-  aggregatePnl,
-  computeCumulativePnl,
-  buildChartFromDailySummary,
-  computePositionValuation,
-  computeHoldingsSummary,
-  computeTodayAggregates,
-} from './profit-math'
 
 // profit-math.ts에서 계산 함수 import (DOM 렌더용 — 내부 사용)
 import {
@@ -58,7 +36,7 @@ export interface SummaryCardEls {
   totalCard: HTMLDivElement
 }
 
-export interface SummaryCardCallbacks {
+interface SummaryCardCallbacks {
   onTodayClick?: () => void
   onFivedayClick?: () => void
   onMonthClick?: () => void

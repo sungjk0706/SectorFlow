@@ -255,21 +255,6 @@ export function positionTooltip(
 
 export const CELL_BORDER = `1px solid ${COLOR.border}`
 
-/* ── 행 높이 ── */
-
-export const ROW_HEIGHT = {
-  data: '32px',       // 데이터 행
-  header: '32px',     // 헤더 행
-  group: '48px',      // 업종 그룹 행
-} as const
-
-/** 행 높이 숫자값 (가상 스크롤러용) */
-export const ROW_HEIGHT_PX = {
-  data: 32,
-  header: 32,
-  group: 48,
-} as const
-
 /* ── 설정 행 수직 padding (행간 간격 SSOT) ── */
 // 모든 설정 페이지 행간 간격의 단일 소스 (P10 SSOT, P23 일관성).
 // 토글 행: createSettingToggleRow / 일반 행: createSettingRow / 섹션 제목: sectionTitle
@@ -304,30 +289,10 @@ export function createDarkInput(type: 'text' | 'password' = 'text'): HTMLInputEl
   return el
 }
 
-/** 다크테마 select (options: { value, label }[]) */
-export function createDarkSelect(options: { value: string; label: string; disabled?: boolean }[], value: string): HTMLSelectElement {
-  const el = document.createElement('select')
-  Object.assign(el.style, { ...DARK_FIELD_STYLE, cursor: 'pointer', appearance: 'none', backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23aaa'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 10px center' })
-  for (const opt of options) {
-    const o = document.createElement('option')
-    o.value = opt.value
-    o.textContent = opt.label
-    if (opt.disabled) { o.disabled = true; o.style.color = COLOR.tertiary }
-    el.appendChild(o)
-  }
-  el.value = value
-  return el
-}
-
 /* ── 스타일 헬퍼 ── */
 
 /** 요소 비활성화/활성화 설정 (opacity + pointerEvents) */
 export function setDisabled(el: HTMLElement, disabled: boolean): void {
   el.style.opacity = disabled ? '0.4' : '1'
   el.style.pointerEvents = disabled ? 'none' : 'auto'
-}
-
-/** 요소 표시/숨김 설정 (display) */
-export function setDisplay(el: HTMLElement, visible: boolean): void {
-  el.style.display = visible ? '' : 'none'
 }

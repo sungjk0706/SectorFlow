@@ -17,7 +17,7 @@ import type { StockClassificationPageState } from './stock-classification'
 
 /* ── 순환 참조 해결: main 잔류 함수 callback ── */
 
-export interface StagingPanelCallbacks {
+interface StagingPanelCallbacks {
   updateAllInlineMoveButtons: () => void
   updateRightPanel: () => void
 }
@@ -58,7 +58,7 @@ export function getAllStocks(state: StockClassificationPageState): Map<string, {
 /* ── Staging_Panel 함수 (Task 4) ── */
 
 /** Task 4.4: Chip DOM 생성 — 종목명 + 업종명 + × 버튼 */
-export function createChip(state: StockClassificationPageState, code: string): HTMLElement {
+function createChip(state: StockClassificationPageState, code: string): HTMLElement {
   const stock = getAllStocks(state).get(code)
   const stockName = stock?.name ?? code
 
@@ -124,7 +124,7 @@ export function addToStaging(state: StockClassificationPageState, code: string):
 }
 
 /** Task 4.2: Staging_Set에서 종목 제거 + 해당 Chip DOM만 삭제 (전체 리렌더링 금지) */
-export function removeFromStaging(state: StockClassificationPageState, code: string): void {
+function removeFromStaging(state: StockClassificationPageState, code: string): void {
   state.stagingSet.delete(code)
   const chip = state.stagingChipMap.get(code)
   if (chip) chip.remove()

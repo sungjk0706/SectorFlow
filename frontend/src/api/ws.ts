@@ -280,7 +280,4 @@ export function getCurrentPage(): string | null {
   return _currentPage
 }
 
-/** FID 구독 설정 → 백엔드 per-client FID 필터링 */
-export function subscribeFids(fids: string[]): void {
-  wsClient.send(JSON.stringify({ type: 'subscribe-fids', fids }))
-}
+

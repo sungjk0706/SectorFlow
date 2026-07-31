@@ -2,7 +2,7 @@
 import { COLOR, FONT_SIZE, RADIUS } from './ui-styles'
 // 슬라이더 공통 컴포넌트 — <input type="range"> 팩토리
 
-export interface SliderOptions {
+interface SliderOptions {
   min?: number          // 기본 0
   max?: number          // 기본 100
   value?: number        // 초기값
@@ -14,7 +14,7 @@ export interface SliderOptions {
   valueLabel?: (value: number) => string  // 현재 값 표시 라벨 (선택 — 지정 시 상단 우측에 표시)
 }
 
-export interface SliderHandle {
+interface SliderHandle {
   el: HTMLElement
   input: HTMLInputElement
   setValue: (v: number) => void
@@ -103,7 +103,7 @@ export function createSlider(opts: SliderOptions = {}): SliderHandle {
 
 /* ── 이중 라벨 슬라이더 ── */
 
-export interface DualLabelSliderOptions extends SliderOptions {
+interface DualLabelSliderOptions extends SliderOptions {
   leftLabel: (v: number) => string     // e.g. (v) => `업종내 상승비율 ${v}%`
   rightLabel: (v: number) => string    // e.g. (v) => `업종내 거래대금 ${100-v}%`
   leftColor: string                    // bold color (e.g. COLOR.down)

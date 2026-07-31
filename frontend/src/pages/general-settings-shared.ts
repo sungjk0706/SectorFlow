@@ -219,7 +219,7 @@ function createState(): GeneralSettingsState {
 export const state: GeneralSettingsState = createState()
 
 /* ── 헬퍼 ── */
-export function shouldForceOff(): boolean {
+function shouldForceOff(): boolean {
   return !state.tradingDayLoading && !state.isTradingDay
 }
 
@@ -274,7 +274,7 @@ export function resetState(): void {
 
 import type { EncryptionKeyState, SecretFieldStatus } from '../types'
 
-export interface EncryptionStatusMessage {
+interface EncryptionStatusMessage {
   text: string
   color: string
   bg: string
@@ -322,7 +322,7 @@ export const SECRET_FIELD_STATUS_MESSAGES: Record<SecretFieldStatus, EncryptionS
 
 // 저장 실패 오류 코드 → 사용자용 메시지 매핑 (설계 5 + 7.3).
 // SaveResult.errorCode 기반 — 세션6가 ApiError에서 전달.
-export const ENCRYPTION_ERROR_CODE_MESSAGES: Record<string, string> = {
+const ENCRYPTION_ERROR_CODE_MESSAGES: Record<string, string> = {
   ENCRYPTION_KEY_MISSING: '암호화 키가 설정되지 않아 저장할 수 없습니다.',
   ENCRYPTION_KEY_INVALID: '암호화 키를 사용할 수 없어 저장할 수 없습니다. 키 설정을 확인하세요.',
   ENCRYPTION_FAILED: '인증정보 암호화에 실패해 저장할 수 없습니다.',

@@ -1,19 +1,19 @@
 import type { FreshnessMetadata } from '../types'
 
-export type PageRefreshPolicy = 'always-fresh' | 'swr'
-export type PageRefreshStatus = 'fresh' | 'cached' | 'refreshing' | 'ignored' | 'error'
+type PageRefreshPolicy = 'always-fresh' | 'swr'
+type PageRefreshStatus = 'fresh' | 'cached' | 'refreshing' | 'ignored' | 'error'
 
 export const PAGE_REFRESH_TTL_MS = {
   'always-fresh': 3_000,
   swr: 60_000,
 } as const
 
-export interface PageRefreshResponse<T> {
+interface PageRefreshResponse<T> {
   data: T
   freshness?: FreshnessMetadata
 }
 
-export interface PageRefreshResult<T> {
+interface PageRefreshResult<T> {
   status: PageRefreshStatus
   data?: T
   freshness?: FreshnessMetadata
@@ -22,7 +22,7 @@ export interface PageRefreshResult<T> {
   refreshPromise?: Promise<PageRefreshResult<T>>
 }
 
-export interface PageRefreshOptions<T> {
+interface PageRefreshOptions<T> {
   key: string
   policy: PageRefreshPolicy
   fetcher: () => Promise<PageRefreshResponse<T>>
@@ -136,7 +136,7 @@ export function refreshPageData<T>(options: PageRefreshOptions<T>): Promise<Page
   return refreshPromise
 }
 
-export function invalidatePageRefresh(key?: string): void {
+function invalidatePageRefresh(key?: string): void {
   if (key === undefined) {
     for (const existingKey of generations.keys()) {
       generations.set(existingKey, currentGeneration(existingKey) + 1)

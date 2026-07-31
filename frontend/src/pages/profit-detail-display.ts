@@ -62,7 +62,7 @@ function applyCardStyle(card: HTMLDivElement, active: boolean, borderActive: str
 }
 
 /* ── 하단 통계 카드 색상 연동 (상단 선택 기간과 동일 색) ── */
-export function updateStatCardSelection(state: ProfitDetailState): void {
+function updateStatCardSelection(state: ProfitDetailState): void {
   const colorMap: Record<string, { border: string; bg: string }> = {
     today: { border: COLOR.down, bg: COLOR.downBg },
     fiveday: { border: COLOR.period5day, bg: COLOR.period5dayBg },

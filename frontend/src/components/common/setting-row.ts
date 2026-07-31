@@ -17,14 +17,14 @@ export * from './setting-row-inputs'
 export * from './setting-row-controls'
 
 /* ── 공통 너비 상수 ────────────────────────────────────────── */
-export const INPUT_WIDTH = 70
+const INPUT_WIDTH = 70
 export const TEXT_INPUT_WIDTH = 220
-export const SPIN_BUTTON_WIDTH = 22
-export const SUFFIX_GAP = 4
+const SPIN_BUTTON_WIDTH = 22
+const SUFFIX_GAP = 4
 // suffix 고정폭 — 모든 단위("%", "점", "개", "초", "회", "원", "만원", "억원")가 동일 너비 차지 → 정렬 통일 (P23 일관성)
-export const SUFFIX_WIDTH = 24
+const SUFFIX_WIDTH = 24
 // 입력 그룹 공통 너비 — 숫자/금액 입력란과 select가 동일한 오른쪽 기준 사용 (P23 일관성)
-export const CONTROL_WIDTH = INPUT_WIDTH + SPIN_BUTTON_WIDTH + SUFFIX_GAP + SUFFIX_WIDTH
+const CONTROL_WIDTH = INPUT_WIDTH + SPIN_BUTTON_WIDTH + SUFFIX_GAP + SUFFIX_WIDTH
 // select는 NumInput/MoneyInput과 동일한 오른쪽 끝 정렬을 유지 (P23 일관성)
 export const SELECT_WIDTH = CONTROL_WIDTH
 // rightWrap 간격 — ⓘ↔입력란↔suffix 그룹 내 통일 간격 (P23 일관성, P24 단순성)
@@ -201,34 +201,6 @@ export function createSettingRow(label: string | HTMLElement, child: HTMLElement
     Object.assign(child.style, { marginLeft: 'auto', marginRight: `${RIGHT_WRAP_MARGIN}px` })
     div.appendChild(child)
   }
-  return div
-}
-
-/* ── 설정 행: 레이블 위 — 입력란 아래 (2줄) ───────────────── */
-export function createSettingField(label: string, unit?: string, child?: HTMLElement, opts?: { disabled?: boolean; style?: Partial<CSSStyleDeclaration> }): HTMLElement {
-  const div = document.createElement('div')
-  div.style.marginBottom = '10px'
-  if (opts?.disabled) {
-    div.style.opacity = '0.4'
-    div.style.pointerEvents = 'none'
-  }
-  if (opts?.style) Object.assign(div.style, opts.style)
-
-  const labelDiv = document.createElement('div')
-  Object.assign(labelDiv.style, { color: `${COLOR.code}`, marginBottom: '4px' })
-  labelDiv.textContent = label
-  div.appendChild(labelDiv)
-
-  const row = document.createElement('div')
-  Object.assign(row.style, { display: 'flex', alignItems: 'center', gap: '4px' })
-  if (child) row.appendChild(child)
-  if (unit) {
-    const unitSpan = document.createElement('span')
-    Object.assign(unitSpan.style, { color: `${COLOR.tertiary}` })
-    unitSpan.textContent = unit
-    row.appendChild(unitSpan)
-  }
-  div.appendChild(row)
   return div
 }
 

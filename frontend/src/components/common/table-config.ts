@@ -48,7 +48,7 @@ export type ColumnType =
   | 'qty_desc'
   | 'empty'
 
-export interface ColumnWidth {
+interface ColumnWidth {
   minWidth: number
   maxWidth: number
 }

@@ -12,7 +12,7 @@ import { getLocalToday, getTradingMonthStart } from '../utils/date'
 
 // ── 타입 ────────────────────────────────────────────────────
 
-export interface ProfitChartRow {
+interface ProfitChartRow {
   date: string
   pnl: number | null
   rate: number
@@ -26,14 +26,14 @@ interface DisplayRow extends ProfitChartRow {
   cumulative: number
 }
 
-export interface QuickDateRange {
+interface QuickDateRange {
   label: string
   from?: string
   to?: string
   days?: number
 }
 
-export interface ProfitChartOptions {
+interface ProfitChartOptions {
   container: HTMLElement
   data: ProfitChartRow[]
   mode?: 'pnl' | 'volume'

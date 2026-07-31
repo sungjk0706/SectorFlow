@@ -226,7 +226,7 @@ export function restoreInitialView(state: ProfitDetailState, todayStr: string, i
 }
 
 /* ── mount 헬퍼: rAF 배칭 렌더 (dirty 플래그 기반 selective update) ── */
-export function flushDirtyRender(state: ProfitDetailState): void {
+function flushDirtyRender(state: ProfitDetailState): void {
   state.rafId = null
   if (!state.mounted) return
 

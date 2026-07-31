@@ -5,7 +5,7 @@
 import { FONT_WEIGHT, COLOR } from './ui-styles'
 import { createMarketLabel } from './ui-styles-cells'
 
-export interface MarketCounts {
+interface MarketCounts {
   total: number
   krx: number
   nxt: number

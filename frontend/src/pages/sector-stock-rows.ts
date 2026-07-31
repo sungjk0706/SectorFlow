@@ -42,7 +42,7 @@ export const COLUMNS: ColumnDef<DataRowItem>[] = [
 
 /* ── 행 타입 ── */
 
-export interface GroupRowItem {
+interface GroupRowItem {
   type: 'group'
   sector: string
   label: string
