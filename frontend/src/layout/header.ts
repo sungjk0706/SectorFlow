@@ -8,6 +8,7 @@ import { clearCircuitBreakerOpen, clearOrderTimeBlocked, clearRiskBlockStatus, c
 import type { IndexData } from '../types'
 import { BROKER_LABELS } from '../components/common/broker-badge'
 import { COLOR, RADIUS, BLUR, SURFACE_ALPHA, FONT_WEIGHT } from '../components/common/ui-styles'
+import { isInTradeTimeWindow } from '../utils/order-block-status'
 
 // ── 스타일 상수 ──
 
@@ -583,15 +584,18 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
         autoSellChip.style.display = ''
         teleChip.style.display = ''
         applyStatusChip(autoTradeChip, '자동매매', !!settings.time_scheduler_on)
+        // 자동매수/매도 칩: 토글 ON + 현재 시간이 작동 시간 창 내일 때만 활성(녹색).
+        // 시간 창 외면 회색(비활성) — 백엔드 _on_auto_trade_transition이 시간 전환 시점에
+        // settings-changed WS를 push하므로 별도 타이머 없이 자동 갱신 (P10 SSOT, P21 투명성).
         applyStatusChip(
           autoBuyChip,
           `자동매수 ${(settings.buy_time_start || '09:00').slice(0, 5)}~${(settings.buy_time_end || '15:20').slice(0, 5)}`,
-          !!settings.auto_buy_on,
+          !!settings.auto_buy_on && isInTradeTimeWindow(settings, 'buy'),
         )
         applyStatusChip(
           autoSellChip,
           `자동매도 ${(settings.sell_time_start || '09:00').slice(0, 5)}~${(settings.sell_time_end || '15:20').slice(0, 5)}`,
-          !!settings.auto_sell_on,
+          !!settings.auto_sell_on && isInTradeTimeWindow(settings, 'sell'),
         )
         applyStatusChip(teleChip, '텔레그램', settings.tele_on)
       } else {

@@ -49,6 +49,19 @@ const SIDE_TEXT: Record<OrderSide, {
 }
 
 /**
+ * 매수/매도 작동 시간 창 판정 (P10 SSOT — 백엔드 auto_trading_effective._in_time_range와 동일 로직).
+ * 헤더 칩 활성화와 주문 차단 배지 양쪽에서 공유 (P23 일관성).
+ * @returns 현재 KST 시각이 [start, end] 구간 내이면 true, 외면 false
+ */
+export function isInTradeTimeWindow(settings: AppSettings, side: OrderSide): boolean {
+  const t = SIDE_TEXT[side]
+  const nowKst = new Date().toLocaleTimeString('en-GB', { timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit' })
+  const start = String(settings[t.timeStart] ?? '09:00').slice(0, 5)
+  const end = String(settings[t.timeEnd] ?? '15:20').slice(0, 5)
+  return nowKst >= start && nowKst <= end
+}
+
+/**
  * 주문 차단 상태 판정.
  * @param side 'buy' | 'sell'
  * @param uiState uiStore 현재 상태
@@ -85,11 +98,10 @@ export function computeOrderBlockStatus(
     return { text: t.autoOff, blocked: true }
   }
 
-  // 작동 시간 범위 체크 (KST HH:MM 기준 — 백엔드 auto_buy/sell_effective와 동일 로직)
-  const nowKst = new Date().toLocaleTimeString('en-GB', { timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit' })
+  // 작동 시간 범위 체크 — isInTradeTimeWindow 공유 헬퍼 사용 (P10 SSOT, P23 일관성)
   const start = String(settings[t.timeStart] ?? '09:00').slice(0, 5)
   const end = String(settings[t.timeEnd] ?? '15:20').slice(0, 5)
-  if (nowKst < start || nowKst > end) {
+  if (!isInTradeTimeWindow(settings, side)) {
     return { text: t.outOfTime(start, end), blocked: true }
   }
 
