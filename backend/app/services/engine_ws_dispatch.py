@@ -180,7 +180,9 @@ async def handle_ws_data(data: dict) -> None:
 # ── JIF (장운영정보) 처리 ──────────────────────────────────────────────────
 # 안 D(하이브리드): JIF push를 1순위 장 상태 소스로 사용, 시간 기반(_broadcast_market_phase)이 보완.
 # JIF 장 상태 전환 코드(11/21/31/41/51/52/54/55/56/57/58) → _apply_market_phase()로 페이즈 갱신.
-# JIF 서킷브레이커 코드(61~71) → krx_alert 갱신 + 자동매매 임시중단/재개 (기존 로직 유지).
+# JIF 서킷브레이커/사이드카 코드(61~71) → krx_alert 갱신 + 자동매매 임시중단/재개.
+# - 서킷브레이커(61/68/69 발동, 63/71 해제): 시장 전체 거래 중단 → 자동매매 중단 대상.
+# - 사이드카(64/66 발동, 65/67 해제): 프로그램 매매만 5분 정지, 개인 투자자 매매 가능 → 자동매매 중단 아님 (UI 알림만).
 # 카운트다운 코드(22~25, 42~44, A2~A5 등)는 페이즈 전환 아님 → _JIF_IGNORE_CODES에서 무시 (P24).
 # 카운트다운 표시는 프론트엔드가 페이즈명 + 현재 시각으로 자체 계산 (P24 단순성).
 
@@ -189,17 +191,21 @@ _JSTATUS_KRX_ALERT: dict[str, str | None] = {
     "62": None,
     "63": "서킷브레이커 1단계 동시호가 종료",
     "64": "사이드카 매도 발동",
-    "65": None,
+    "65": "사이드카 매도 해제",
     "66": "사이드카 매수 발동",
-    "67": None,
+    "67": "사이드카 매수 해제",
     "68": "서킷브레이커 2단계 발동",
     "69": "서킷브레이커 3단계 발동, 당일 장종료",
     "70": None,
     "71": "서킷브레이커 2단계 동시호가 종료",
 }
 
-_KRX_CB_ACTIVATION_CODES: set[str] = {"61", "64", "66", "68", "69"}
-_KRX_CB_RELEASE_CODES: set[str] = {"63", "71"}
+# 서킷브레이커: 시장 전체 거래 중단 → 자동매매 중단 대상 (개인 매매 불가)
+_KRX_CIRCUIT_BREAKER_ACTIVATION_CODES: set[str] = {"61", "68", "69"}
+_KRX_CIRCUIT_BREAKER_RELEASE_CODES: set[str] = {"63", "71"}
+# 사이드카: 프로그램 매매만 5분 정지, 개인 투자자 매매 가능 → 자동매매 중단 대상 아님 (UI 알림만)
+_KRX_SIDECAR_ACTIVATION_CODES: set[str] = {"64", "66"}
+_KRX_SIDECAR_RELEASE_CODES: set[str] = {"65", "67"}
 
 # ── JIF 장 상태 전환 맵 (jangubun 1/2 = KRX) ──
 # 서킷브레이커(61~71)는 _JSTATUS_KRX_ALERT에서 처리, 여기서는 장 상태 전환만.
@@ -295,7 +301,9 @@ async def _handle_jif(data: dict) -> None:
     jangubun 1/2(코스피/코스닥):
       - jstatus 11/21/31/41/51/52/54 → KRX 페이즈 전환 (_apply_jif_phase) + override 초기화
       - jstatus 22~25/42~44 → KRX 카운트다운 (override 저장 + 브로드캐스트)
-      - jstatus 61~71 → krx_alert(서킷브레이커/사이드카) + 자동매매 임시중단/재개
+      - jstatus 61~71 → krx_alert(서킷브레이커/사이드카) 갱신.
+        서킷브레이커(61/68/69 발동, 63/71 해제)만 자동매매 임시중단/재개.
+        사이드카(64/66 발동, 65/67 해제)는 UI 알림만 (개인 투자자 매매 가능).
     jangubun 6(NXT):
       - jstatus 55/57/21/31/41/56/58 → NXT 페이즈 전환 (_apply_jif_phase) + override 초기화
       - jstatus A2~A5/B2~B5/C2~C4/D2~D4 → NXT 카운트다운 (override 저장 + 브로드캐스트)
@@ -357,7 +365,8 @@ async def _handle_jif(data: dict) -> None:
             engine_state.state.nxt_countdown_override = None
             _apply_jif_phase(nxt=new_nxt)
 
-    # ── 서킷브레이커/사이드카 처리 (기존 로직 유지) ──
+    # ── 서킷브레이커/사이드카 처리 — 3카테고리 분기 (P10 SSOT, P22 데이터 정합성) ──
+    # 서킷브레이커(시장 전체 중단)만 자동매매 중단, 사이드카(프로그램 매매만 5분 정지)는 개인 매매 유지.
     from backend.app.services.daily_time_scheduler import get_market_phase
     from backend.app.services.engine_account_notify import _broadcast
 
@@ -367,9 +376,14 @@ async def _handle_jif(data: dict) -> None:
         alert = _JSTATUS_KRX_ALERT.get(jstatus, "__no_change__")
         if alert == "__no_change__":
             return
-        # 해제 코드(63/71)는 krx_alert를 즉시 None으로 클리어 — 배지 즉시 소멸 (P24 단순성).
+        # 카테고리 분류: 서킷브레이커(자동매매 중단) / 사이드카(개인 매매 유지, UI 알림만)
+        is_cb_activation = jstatus in _KRX_CIRCUIT_BREAKER_ACTIVATION_CODES
+        is_cb_release = jstatus in _KRX_CIRCUIT_BREAKER_RELEASE_CODES
+        is_sidecar_activation = jstatus in _KRX_SIDECAR_ACTIVATION_CODES
+        is_sidecar_release = jstatus in _KRX_SIDECAR_RELEASE_CODES
+        # 해제 코드(서킷브레이커 63/71, 사이드카 65/67)는 krx_alert를 즉시 None으로 클리어 — 배지 즉시 소멸 (P24 단순성).
         # telegram 알림은 alert 원문을 그대로 사용하므로 krx_alert 클리어와 무관.
-        is_release = jstatus in _KRX_CB_RELEASE_CODES
+        is_release = is_cb_release or is_sidecar_release
         new_alert = None if is_release else alert
         if mp.get("krx_alert") == new_alert:
             return
@@ -377,18 +391,25 @@ async def _handle_jif(data: dict) -> None:
         await _broadcast("market-phase", get_market_phase())
         logger.info("[연결] 서킷브레이커/사이드카 알림 갱신: 장상태=%s → %s", jstatus, alert)
 
-        if jstatus in _KRX_CB_ACTIVATION_CODES:
+        if is_cb_activation:
             if not engine_state.state.krx_circuit_breaker_active:
                 engine_state.state.krx_circuit_breaker_active = True
-                logger.warning("[구독] 서킷브레이커/사이드카 발동 — 자동매매 임시 중단 (장상태=%s)", jstatus)
+                logger.warning("[구독] 서킷브레이커 발동 — 자동매매 임시 중단 (장상태=%s)", jstatus)
                 _notify_krx_cb_telegram(f"🛑 [KRX] {alert} — 자동매매 임시 중단", engine_state.state.integrated_system_settings_cache)
                 await _broadcast("krx-circuit-breaker", {"active": True, "alert": alert})
-        elif is_release:
+        elif is_cb_release:
             if engine_state.state.krx_circuit_breaker_active:
                 engine_state.state.krx_circuit_breaker_active = False
-                logger.info("[구독] 서킷브레이커/사이드카 해제 — 자동매매 자동 재개 (장상태=%s)", jstatus)
+                logger.info("[구독] 서킷브레이커 해제 — 자동매매 자동 재개 (장상태=%s)", jstatus)
                 _notify_krx_cb_telegram(f"✅ [KRX] {alert} — 자동매매 자동 재개", engine_state.state.integrated_system_settings_cache)
                 await _broadcast("krx-circuit-breaker", {"active": False, "alert": alert})
+        elif is_sidecar_activation:
+            # 사이드카: 프로그램 매매만 5분 정지, 개인 투자자 매매 가능 → 자동매매 중단 없음 (UI 알림만)
+            logger.info("[구독] 사이드카 발동 — 프로그램 매매 5분 정지 (자동매매 유지, 장상태=%s)", jstatus)
+            _notify_krx_cb_telegram(f"⚠️ [KRX] {alert} — 프로그램 매매 5분 정지 (개인 자동매매 유지)", engine_state.state.integrated_system_settings_cache)
+        elif is_sidecar_release:
+            logger.info("[구독] 사이드카 해제 — 프로그램 매매 재개 (자동매매 유지, 장상태=%s)", jstatus)
+            _notify_krx_cb_telegram(f"✅ [KRX] {alert} — 프로그램 매매 재개 (개인 자동매매 유지)", engine_state.state.integrated_system_settings_cache)
         return
 
 

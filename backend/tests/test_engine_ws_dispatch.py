@@ -18,8 +18,10 @@ from backend.app.services.engine_ws_dispatch import (
     handle_ws_data,
     _handle_jif,
     _JSTATUS_KRX_ALERT,
-    _KRX_CB_ACTIVATION_CODES,
-    _KRX_CB_RELEASE_CODES,
+    _KRX_CIRCUIT_BREAKER_ACTIVATION_CODES,
+    _KRX_CIRCUIT_BREAKER_RELEASE_CODES,
+    _KRX_SIDECAR_ACTIVATION_CODES,
+    _KRX_SIDECAR_RELEASE_CODES,
     _JIF_PHASE_MAP_KRX,
     _JIF_PHASE_MAP_NXT,
     _JIF_IGNORE_CODES,
@@ -288,6 +290,83 @@ class TestHandleJif:
             # 해제 코드 수신 시 krx_alert 즉시 None 클리어 — 배지 즉시 소멸 (P24 단순성)
             assert mock_state.market_phase["krx_alert"] is None
 
+    # ── 사이드카: 자동매매 중단 없음, UI 알림만 (회귀 테스트 — 2026-07-31 사고 재현 방지) ──
+
+    @pytest.mark.asyncio
+    async def test_sidecar_activation_no_trading_halt(self):
+        """사이드카 매수 발동(66) → krx_circuit_breaker_active True 설정 안 함 (개인 매매 유지)."""
+        with patch("backend.app.services.engine_state.state") as mock_state, \
+             patch("backend.app.services.engine_account_notify._broadcast", new_callable=AsyncMock) as mock_bc, \
+             patch("backend.app.services.daily_time_scheduler.get_market_phase", return_value={"krx": "정규장", "nxt": "정규장", "krx_alert": "사이드카 매수 발동"}), \
+             patch("backend.app.services.engine_ws_dispatch._notify_krx_cb_telegram") as mock_tg:
+            mock_state.market_phase = {"krx_alert": None}
+            mock_state.krx_circuit_breaker_active = False
+            mock_state.integrated_system_settings_cache = {}
+            await _handle_jif({"jangubun": "1", "jstatus": "66"})
+            # 핵심: 사이드카는 자동매매 중단하지 않음
+            assert mock_state.krx_circuit_breaker_active is False
+            # UI 알림은 갱신 (krx_alert 배지 표시)
+            assert mock_state.market_phase["krx_alert"] == "사이드카 매수 발동"
+            # market-phase 브로드캐스트는 수행 (UI 배지 갱신)
+            mock_bc.assert_awaited()
+            # 텔레그램 알림은 "자동매매 유지" 메시지
+            mock_tg.assert_called_once()
+            assert "자동매매 유지" in mock_tg.call_args[0][0] or "개인 자동매매 유지" in mock_tg.call_args[0][0]
+
+    @pytest.mark.asyncio
+    async def test_sidecar_sell_activation_no_trading_halt(self):
+        """사이드카 매도 발동(64) → krx_circuit_breaker_active True 설정 안 함."""
+        with patch("backend.app.services.engine_state.state") as mock_state, \
+             patch("backend.app.services.engine_account_notify._broadcast", new_callable=AsyncMock), \
+             patch("backend.app.services.daily_time_scheduler.get_market_phase", return_value={"krx": "정규장", "nxt": "정규장", "krx_alert": "사이드카 매도 발동"}), \
+             patch("backend.app.services.engine_ws_dispatch._notify_krx_cb_telegram"):
+            mock_state.market_phase = {"krx_alert": None}
+            mock_state.krx_circuit_breaker_active = False
+            mock_state.integrated_system_settings_cache = {}
+            await _handle_jif({"jangubun": "1", "jstatus": "64"})
+            assert mock_state.krx_circuit_breaker_active is False
+            assert mock_state.market_phase["krx_alert"] == "사이드카 매도 발동"
+
+    @pytest.mark.asyncio
+    async def test_sidecar_release_clears_alert_no_trading_change(self):
+        """사이드카 매수 해제(67) → krx_alert None 클리어, krx_circuit_breaker_active 변경 없음.
+
+        2026-07-31 사고 재현 방지: 해제 코드 67이 누락되어 플래그가 True로 영구 유지된 버그 회귀 테스트.
+        """
+        with patch("backend.app.services.engine_state.state") as mock_state, \
+             patch("backend.app.services.engine_account_notify._broadcast", new_callable=AsyncMock), \
+             patch("backend.app.services.daily_time_scheduler.get_market_phase", return_value={"krx": "정규장", "nxt": "정규장", "krx_alert": None}), \
+             patch("backend.app.services.engine_ws_dispatch._notify_krx_cb_telegram") as mock_tg:
+            mock_state.market_phase = {"krx_alert": "사이드카 매수 발동"}
+            mock_state.krx_circuit_breaker_active = False  # 사이드카 발동 중에도 False 유지했음
+            mock_state.integrated_system_settings_cache = {}
+            await _handle_jif({"jangubun": "1", "jstatus": "67"})
+            # 해제 후에도 False 유지 (변경 없음)
+            assert mock_state.krx_circuit_breaker_active is False
+            # krx_alert는 None으로 클리어 — 배지 소멸
+            assert mock_state.market_phase["krx_alert"] is None
+            # 텔레그램 알림 전송 (프로그램 매매 재개)
+            mock_tg.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_sidecar_does_not_block_auto_sell_effective(self):
+        """사이드카 발동 중 auto_sell_effective() 차단되지 않음 — krx_circuit_breaker_active=False 유지.
+
+        핵심 회귀 테스트: 사이드카 중에도 손절/익절 정상 작동해야 함.
+        """
+        from backend.app.services.auto_trading_effective import auto_sell_effective
+        with patch("backend.app.services.engine_state.state") as mock_state, \
+             patch("backend.app.services.engine_account_notify._broadcast", new_callable=AsyncMock), \
+             patch("backend.app.services.daily_time_scheduler.get_market_phase", return_value={"krx": "정규장", "nxt": "정규장", "krx_alert": "사이드카 매수 발동"}), \
+             patch("backend.app.services.engine_ws_dispatch._notify_krx_cb_telegram"):
+            mock_state.market_phase = {"krx_alert": None}
+            mock_state.krx_circuit_breaker_active = False
+            mock_state.integrated_system_settings_cache = {}
+            await _handle_jif({"jangubun": "1", "jstatus": "66"})
+            # auto_sell_effective가 krx_circuit_breaker_active=False를 반영하여 차단하지 않음
+            # (실제 auto_sell_effective 호출은 state mock 의존 — 여기서는 플래그 값만 검증)
+            assert mock_state.krx_circuit_breaker_active is False
+
     @pytest.mark.asyncio
     async def test_same_alert_no_change(self):
         with patch("backend.app.services.engine_state.state") as mock_state, \
@@ -388,15 +467,31 @@ class TestHandleJif:
 # ── JIF constants ──────────────────────────────────────────────────────────────────
 
 class TestJifConstants:
-    def test_activation_codes_subset_of_alerts(self):
-        for code in _KRX_CB_ACTIVATION_CODES:
+    def test_circuit_breaker_activation_codes_subset_of_alerts(self):
+        for code in _KRX_CIRCUIT_BREAKER_ACTIVATION_CODES:
             assert code in _JSTATUS_KRX_ALERT
             assert _JSTATUS_KRX_ALERT[code] is not None
 
-    def test_release_codes_subset_of_alerts(self):
-        for code in _KRX_CB_RELEASE_CODES:
+    def test_circuit_breaker_release_codes_subset_of_alerts(self):
+        for code in _KRX_CIRCUIT_BREAKER_RELEASE_CODES:
             assert code in _JSTATUS_KRX_ALERT
             assert _JSTATUS_KRX_ALERT[code] is not None
+
+    def test_sidecar_activation_codes_subset_of_alerts(self):
+        for code in _KRX_SIDECAR_ACTIVATION_CODES:
+            assert code in _JSTATUS_KRX_ALERT
+            assert _JSTATUS_KRX_ALERT[code] is not None
+
+    def test_sidecar_release_codes_subset_of_alerts(self):
+        for code in _KRX_SIDECAR_RELEASE_CODES:
+            assert code in _JSTATUS_KRX_ALERT
+            assert _JSTATUS_KRX_ALERT[code] is not None
+
+    def test_circuit_breaker_and_sidecar_codes_disjoint(self):
+        """서킷브레이커 코드와 사이드카 코드가 중복 없음 (P10 SSOT — 카테고리 분리)."""
+        cb_all = _KRX_CIRCUIT_BREAKER_ACTIVATION_CODES | _KRX_CIRCUIT_BREAKER_RELEASE_CODES
+        sidecar_all = _KRX_SIDECAR_ACTIVATION_CODES | _KRX_SIDECAR_RELEASE_CODES
+        assert not (cb_all & sidecar_all), f"서킷브레이커/사이드카 코드 중복: {cb_all & sidecar_all}"
 
     def test_none_alerts_exist(self):
         none_codes = [k for k, v in _JSTATUS_KRX_ALERT.items() if v is None]

@@ -66,7 +66,8 @@ def _build_risk_status_lines() -> str:
 
     표시 대상 (이미 engine_state에 저장된 상태):
       - OMS 서킷브레이커: RiskManager.circuit_breaker.get_state() (CLOSED/OPEN/HALF_OPEN)
-      - KRX 서킷브레이커/사이드카: engine_state.krx_circuit_breaker_active + market_phase["krx_alert"]
+      - KRX 서킷브레이커: engine_state.krx_circuit_breaker_active + market_phase["krx_alert"]
+        (사이드카는 krx_circuit_breaker_active 미설정 — 개인 매매 가능하므로 자동매매 중단 아님)
 
     일일 손실 한도 등 리스크 매니저 조건은 주문 시도 시에만 계산되어
     상태로 저장되지 않으므로 여기서 표시하지 않음 (추후 보강 시 본 함수에 추가).
@@ -80,7 +81,7 @@ def _build_risk_status_lines() -> str:
 
         # OMS 서킷브레이커 상태
         cb_state = get_risk_manager().circuit_breaker.get_state()
-        # KRX 서킷브레이커/사이드카 상태
+        # KRX 서킷브레이커 상태 (사이드카는 자동매매 중단 아님 — krx_circuit_breaker_active 미설정)
         krx_active = bool(state.krx_circuit_breaker_active)
         krx_alert = (state.market_phase.get("krx_alert") or "").strip()
 
@@ -99,7 +100,7 @@ def _build_risk_status_lines() -> str:
             alert_txt = f" — {krx_alert}" if krx_alert else ""
             return (
                 "\n\n🛡️ <b>리스크 상태</b>\n"
-                f"🚫 매매 차단 중: KRX 서킷브레이커/사이드카 발동{alert_txt}"
+                f"🚫 매매 차단 중: KRX 서킷브레이커 발동{alert_txt}"
             )
         # 정상
         return (
