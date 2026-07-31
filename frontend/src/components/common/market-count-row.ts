@@ -3,6 +3,7 @@
 // 사용처: sector-stock.ts (업종별 종목 시세), 2단계 sector-settings.ts (수신률 분리 배지)
 
 import { FONT_WEIGHT, COLOR } from './ui-styles'
+import { createMarketLabel } from './ui-styles-cells'
 
 export interface MarketCounts {
   total: number
@@ -43,27 +44,28 @@ function _appendStandardSegment(
 }
 
 /**
- * NXT 세그먼트 추가 — 보라 라벨 + ▲ 삼각 + 콜론 + 숫자 + '종목'.
- * 색상은 종목명 셀의 "통" 라벨(COLOR.nxtLabel)과 동일 — P23 일관성.
+ * 거래소 세그먼트 추가 — 둥근 사각 라벨 배지 + 거래소명 + 숫자 + '종목'.
+ * KRX/NXT 공통 구조. 배지는 종목명 셀의 "K"/"통" 라벨과 동일 (createMarketLabel 재사용 — P23).
  * 첫 세그먼트 시 marginLeft 없음 (표준 세그먼트와 동일).
  */
-function _appendNxtSegment(parent: HTMLElement, isFirst: boolean): HTMLSpanElement {
-  const label = document.createElement('span')
-  Object.assign(label.style, { color: COLOR.nxtLabel, marginLeft: isFirst ? '' : '14px' })
-  label.textContent = 'NXT'
-  parent.appendChild(label)
-  const tri = document.createElement('span')
-  Object.assign(tri.style, {
-    display: 'inline-block', width: '0', height: '0',
-    borderLeft: '5px solid transparent',
-    borderBottom: `5px solid ${COLOR.nxtLabel}`,
-    marginRight: '3px', verticalAlign: 'middle',
-  })
-  parent.appendChild(tri)
-  const colon = document.createElement('span')
-  Object.assign(colon.style, { color: COLOR.nxtLabel })
-  colon.textContent = ':'
-  parent.appendChild(colon)
+function _appendExchangeSegment(
+  parent: HTMLElement,
+  badgeText: 'K' | '통',
+  badgeBg: string,
+  badgeFg: string,
+  badgeTitle: string,
+  labelText: string,
+  labelColor: string,
+  isFirst: boolean,
+): HTMLSpanElement {
+  const badge = createMarketLabel(badgeText, badgeBg, badgeFg, badgeTitle)
+  badge.style.marginLeft = isFirst ? '' : '14px'
+  badge.style.marginRight = '4px'
+  parent.appendChild(badge)
+  const labelEl = document.createElement('span')
+  Object.assign(labelEl.style, { color: labelColor })
+  labelEl.textContent = labelText
+  parent.appendChild(labelEl)
   const numSpan = document.createElement('span')
   Object.assign(numSpan.style, { color: COLOR.down, fontWeight: FONT_WEIGHT.semibold })
   parent.appendChild(numSpan)
@@ -76,8 +78,8 @@ function _appendNxtSegment(parent: HTMLElement, isFirst: boolean): HTMLSpanEleme
 
 /**
  * 시장별 종목수 카운트 행 생성.
- * 구조: [합계: N종목] [KRX: N종목] [NXT▲: N종목] [코스피: N종목] [코스닥: N종목]
- * - NXT 라벨: 보라(COLOR.nxtLabel) + ▲ 삼각 — 종목명 셀 "통" 라벨과 동일 색상 (P23)
+ * 구조: [합계: N종목] [K 배지 KRX: N종목] [통 배지 NXT: N종목] [코스피: N종목] [코스닥: N종목]
+ * - KRX/NXT: 둥근 사각 배지(K/통) + 거래소명 — 종목명 셀 라벨과 동일 (P23 일관성)
  * - 코스닥 라벨: 자주색(COLOR.kosdaq)
  * - 숫자: 파랑(COLOR.down) + semibold, 단위 '종목': 회색(COLOR.neutral)
  * - 값 갱신: updateCounts()로 textContent만 교체 (innerHTML 파괴 금지)
@@ -97,8 +99,8 @@ export function createMarketCountRow(options: {
 
   let isFirst = true
   if (showTotal) { numSpans.total = _appendStandardSegment(el, '합계:', COLOR.neutral, isFirst); isFirst = false }
-  if (showKrx) { numSpans.krx = _appendStandardSegment(el, 'KRX:', COLOR.neutral, isFirst); isFirst = false }
-  if (showNxt) { numSpans.nxt = _appendNxtSegment(el, isFirst); isFirst = false }
+  if (showKrx) { numSpans.krx = _appendExchangeSegment(el, 'K', COLOR.krxLabelBg, COLOR.krxLabel, 'KRX 전용 종목', 'KRX:', COLOR.neutral, isFirst); isFirst = false }
+  if (showNxt) { numSpans.nxt = _appendExchangeSegment(el, '통', COLOR.nxtLabelBg, COLOR.nxtLabel, 'KRX+NXT 통합 거래 종목', 'NXT:', COLOR.nxtLabel, isFirst); isFirst = false }
   if (showKospi) { numSpans.kospi = _appendStandardSegment(el, '코스피:', COLOR.neutral, isFirst); isFirst = false }
   if (showKosdaq) { numSpans.kosdaq = _appendStandardSegment(el, '코스닥:', COLOR.kosdaq, isFirst) }
 

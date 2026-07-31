@@ -8,8 +8,9 @@ import { COLOR, FONT_SIZE, FONT_WEIGHT, rateColor, pnlColor, strengthColor, chan
 
 /* ── 종목명 셀 ── */
 
-/** 거래소 라벨 생성 — 둥근 사각 맥 아이콘 스타일 (em 단위로 셀 폰트 대비 자동 스케일) */
-function _createMarketLabel(text: 'K' | '통', bg: string, fg: string, title: string): HTMLElement {
+/** 거래소 라벨 생성 — 둥근 사각 맥 아이콘 스타일 (em 단위로 셀 폰트 대비 자동 스케일).
+ *  종목명 셀(createStockNameCell)과 카운트 행(market-count-row) 공통 사용 (P23 일관성). */
+export function createMarketLabel(text: 'K' | '통', bg: string, fg: string, title: string): HTMLElement {
   const label = document.createElement('span')
   Object.assign(label.style, {
     display: 'inline-flex',
@@ -24,7 +25,6 @@ function _createMarketLabel(text: 'K' | '통', bg: string, fg: string, title: st
     backgroundColor: bg,
     color: fg,
     flexShrink: '0',
-    marginLeft: '6px',
     userSelect: 'none',
   } as Partial<CSSStyleDeclaration>)
   label.textContent = text
@@ -56,8 +56,9 @@ export function createStockNameCell(
 
   // 거래소 라벨 — KRX 전용 "K" / 통합 "통" (P21 투명성: 모든 종목 명시적 표시)
   const label = nxtEnable
-    ? _createMarketLabel('통', COLOR.nxtLabelBg, COLOR.nxtLabel, 'KRX+NXT 통합 거래 종목')
-    : _createMarketLabel('K', COLOR.krxLabelBg, COLOR.krxLabel, 'KRX 전용 종목')
+    ? createMarketLabel('통', COLOR.nxtLabelBg, COLOR.nxtLabel, 'KRX+NXT 통합 거래 종목')
+    : createMarketLabel('K', COLOR.krxLabelBg, COLOR.krxLabel, 'KRX 전용 종목')
+  label.style.marginLeft = '6px'
   wrap.appendChild(label)
 
   return wrap
