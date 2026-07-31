@@ -143,19 +143,19 @@ async def _build_account_brief_lines(snap: dict, is_test: bool) -> str:
     realized_pnl, realized_buy_total = await get_realized_pnl_summary(trade_mode=trade_mode)
     # 수익률 분모: 매수원금 합계 (프론트엔드 computeCumulativePnl/aggregatePnl과 동일 — P10 SSOT)
     cum_denominator = realized_buy_total
-    cum_rate = round(realized_pnl / cum_denominator * 100, 2) if cum_denominator > 0 else 0.0
+    cum_rate = realized_pnl / cum_denominator * 100 if cum_denominator > 0 else 0.0
 
     pnl_sign   = "+" if total_pnl >= 0 else ""
     rate_sign  = "+" if total_rate >= 0 else ""
     cum_sign   = "+" if realized_pnl >= 0 else ""
     crate_sign = "+" if cum_rate >= 0 else ""
     return (
-        f"💰 {row0_label}: {row0_val:,.0f}원\n"
-        f"💳 주문가능: {orderable:,.0f}원\n"
-        f"📈 보유 종목 평가 금액: {total_eval:,.0f}원\n"
-        f"� 보유 종목 평가 손익금: {pnl_sign}{total_pnl:,.0f}원\n"
+        f"💰 {row0_label}: {row0_val:,}원\n"
+        f"💳 주문가능: {orderable:,}원\n"
+        f"📈 보유 종목 평가 금액: {total_eval:,}원\n"
+        f"� 보유 종목 평가 손익금: {pnl_sign}{total_pnl:,}원\n"
         f"📊 보유 종목 평가 수익률: {rate_sign}{total_rate:.2f}%\n"
-        f"💵 누적 총 실현 손익금: {cum_sign}{realized_pnl:,.0f}원\n"
+        f"💵 누적 총 실현 손익금: {cum_sign}{realized_pnl:,}원\n"
         f"📈 누적 총 실현 수익률: {crate_sign}{cum_rate:.2f}%\n"
         f"🏷️ 보유종목: {pos_cnt}개\n"
         f"🕐 기준시각: {snap_at}"
@@ -163,24 +163,35 @@ async def _build_account_brief_lines(snap: dict, is_test: bool) -> str:
 
 
 def _fmt_money(v) -> str:
-    """금액 포맷 — 만원/억원 단위로 간결 표시 (P24 단순성)."""
+    """금액 포맷 — 원화 정수 천 단위 콤마 (만/억 변환 제거 — 앱 데이터 그대로 전송, P23 프론트엔드 fmtWon과 동일)."""
     try:
-        n = int(v or 0)
+        return f"{int(v or 0):,}"
     except (ValueError, TypeError):
         return "0"
-    if abs(n) >= 100_000_000:
-        return f"{n / 100_000_000:.1f}억"
-    if abs(n) >= 10_000:
-        return f"{n / 10_000:.0f}만"
-    return f"{n:,}"
 
 
 def _fmt_pct(v) -> str:
-    """백분율 포맷 — 부호 붙여 간결 표시."""
+    """백분율 포맷 — 부호 + 소수점 2자리 (프론트엔드 fmtRate와 동일 — 앱 데이터 그대로 전송, P23)."""
     try:
-        return f"{float(v):+.1f}%"
+        f = float(v or 0)
     except (ValueError, TypeError):
-        return "0.0%"
+        return "0.00%"
+    if f > 0:
+        return f"+{f:.2f}%"
+    if f < 0:
+        return f"{f:.2f}%"
+    return "0.00%"
+
+
+def _fmt_score(v) -> str:
+    """가산점 포맷 — 정수는 정수로, 실수는 소수점 1자리 (프론트엔드 _formatScore/String과 동일 — P23)."""
+    try:
+        f = float(v or 0)
+    except (ValueError, TypeError):
+        return "0"
+    if f == int(f):
+        return str(int(f))
+    return f"{f:.1f}"
 
 
 def _fmt_signed_money(v) -> str:
@@ -207,7 +218,7 @@ async def _compute_period_pnl(label: str, *, today_only: bool = False, date_from
     )
     pnl_txt = _fmt_signed_money(pnl)
     if is_test:
-        rate = round(pnl / buy_total * 100, 2) if buy_total > 0 else 0.0
+        rate = pnl / buy_total * 100 if buy_total > 0 else 0.0
         rate_txt = f"  ({_fmt_pct(rate)})"
     else:
         # 실전모드: 증권사 서버가 수익률 SSOT — 앱에서 재계산 금지
@@ -768,7 +779,7 @@ class TelegramBot:
                 trade_amount_slider=int(cache.get("sector_bonus_trade_amount_slider", 0)),
             )
 
-            lines = [f"📊 <b>업종 상위 5</b> ({now_str})  만점 {total_max:.1f}\n"]
+            lines = [f"📊 <b>업종 상위 5</b> ({now_str})  만점 {_fmt_score(total_max)}\n"]
 
             for s in sectors[:5]:
                 # 업종 내 종목 — boost_score 내림차순, 동점 시 등락률 내림차순, 최대 5개
@@ -779,7 +790,7 @@ class TelegramBot:
                 stock_names = "  ".join(st.name for st in top_stocks)
                 lines.append(
                     f"<b>{s.rank}. {s.sector}</b>  "
-                    f"가산점 {s.final_score:.1f}/{total_max:.1f}"
+                    f"가산점 {_fmt_score(s.final_score)}/{_fmt_score(total_max)}"
                 )
                 if stock_names:
                     lines.append(f"  종목: {stock_names}")

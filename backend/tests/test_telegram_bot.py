@@ -1518,7 +1518,7 @@ class TestCmdAccount:
         assert "누적 총 실현 손익금" in text
         assert "150,000" in text
         assert "누적 총 실현 수익률" in text
-        # 150,000 / 8,000,000 * 100 = 1.875% → round 1.88%
+        # 150,000 / 8,000,000 * 100 = 1.875% → :.2f 표시 1.88%
         assert "1.88" in text
         # 테스트모드에서는 "예수금" 라벨이 나오면 안 됨 (P23 일관성)
         assert "예수금" not in text
@@ -1847,15 +1847,15 @@ class TestFmtMoney:
     def test_under_10k_uses_comma(self):
         assert _fmt_money(5000) == "5,000"
 
-    def test_10k_to_100m_uses_man(self):
-        assert _fmt_money(1_000_000) == "100만"
-        assert _fmt_money(50_000_000) == "5000만"
+    def test_millions_uses_full_comma(self):
+        assert _fmt_money(1_000_000) == "1,000,000"
+        assert _fmt_money(50_000_000) == "50,000,000"
 
-    def test_over_100m_uses_eok(self):
-        assert _fmt_money(200_000_000) == "2.0억"
+    def test_over_100m_uses_full_comma(self):
+        assert _fmt_money(200_000_000) == "200,000,000"
 
     def test_negative_over_100m(self):
-        assert _fmt_money(-500_000_000) == "-5.0억"
+        assert _fmt_money(-500_000_000) == "-500,000,000"
 
     def test_invalid_returns_zero(self):
         assert _fmt_money("abc") == "0"
@@ -1863,16 +1863,16 @@ class TestFmtMoney:
 
 class TestFmtPct:
     def test_positive(self):
-        assert _fmt_pct(7.0) == "+7.0%"
+        assert _fmt_pct(7.0) == "+7.00%"
 
     def test_negative(self):
-        assert _fmt_pct(-5.0) == "-5.0%"
+        assert _fmt_pct(-5.0) == "-5.00%"
 
     def test_zero(self):
-        assert _fmt_pct(0) == "+0.0%"
+        assert _fmt_pct(0) == "0.00%"
 
     def test_invalid(self):
-        assert _fmt_pct("abc") == "0.0%"
+        assert _fmt_pct("abc") == "0.00%"
 
 
 # ── _build_settings_lines ──────────────────────────────────────────────────────
@@ -1951,8 +1951,8 @@ class TestBuildSettingsLines:
         assert "종목당 금액" in text
         assert "재매수 차단: today" in text
         # 매수 차단(개별 종목 단위) — 매수 조건 섹션에 표시 (P23 책임 분리)
-        assert "상승 차단: +7.0%" in text
-        assert "하락 차단: -7.0%" in text
+        assert "상승 차단: +7.00%" in text
+        assert "하락 차단: -7.00%" in text
         # 일일 총매수 한도 OFF → 미포함
         assert "일일 총매수 한도" not in text
 
@@ -1976,7 +1976,7 @@ class TestBuildSettingsLines:
 
     def test_sell_section_includes_tp_only(self):
         text = _build_settings_lines(self._full_flat())
-        assert "익절: +5.0%" in text
+        assert "익절: +5.00%" in text
         # 손절/트레일링 OFF → 미포함
         assert "손절" not in text
         assert "트레일링" not in text
@@ -1993,7 +1993,7 @@ class TestBuildSettingsLines:
         flat["ts_start_val"] = 10.0
         flat["ts_drop_val"] = -3.0
         text = _build_settings_lines(flat)
-        assert "트레일링: 시작 +10.0% / 하락 -3.0%" in text
+        assert "트레일링: 시작 +10.00% / 하락 -3.00%" in text
 
     def test_risk_section_with_manager_on(self):
         text = _build_settings_lines(self._full_flat())
@@ -2014,13 +2014,13 @@ class TestBuildSettingsLines:
 
     def test_risk_section_always_shows_single_stock_exposure(self):
         text = _build_settings_lines(self._full_flat())
-        assert "종목 최대 노출: 2000만" in text
+        assert "종목 최대 노출: 20,000,000" in text
 
     def test_sector_section_includes_all_fields(self):
         text = _build_settings_lines(self._full_flat())
-        assert "최소 상승 비율: +60.0%" in text
+        assert "최소 상승 비율: +60.00%" in text
         assert "최대 업종 수: 3개" in text
-        assert "수신률 임계값: +70.0%" in text
+        assert "수신률 임계값: +70.00%" in text
         # 매수 차단(개별 종목 단위)은 업종 필터 섹션에서 분리 — 업종 섹션 본문에 미포함 (P23 책임 분리)
         sector_part = text.split("업종 필터", 1)[1]
         assert "상승 차단" not in sector_part
