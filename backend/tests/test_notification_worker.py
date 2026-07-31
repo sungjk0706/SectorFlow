@@ -47,14 +47,14 @@ class TestInit:
 class TestStart:
     def test_start_sets_running(self):
         w = _make_worker()
-        with patch("backend.app.services.notification_worker.asyncio.create_task", side_effect=swallow_coro_returning(MagicMock(done=MagicMock(return_value=False)))):
+        with patch("backend.app.services.engine_utils.asyncio.create_task", side_effect=swallow_coro_returning(MagicMock(done=MagicMock(return_value=False)))):
             w.start()
         assert w._running is True
 
     def test_start_creates_task(self):
         w = _make_worker()
         mock_task_obj = MagicMock(done=MagicMock(return_value=False))
-        with patch("backend.app.services.notification_worker.asyncio.create_task", side_effect=swallow_coro_returning(mock_task_obj)) as mock_ct:
+        with patch("backend.app.services.engine_utils.asyncio.create_task", side_effect=swallow_coro_returning(mock_task_obj)) as mock_ct:
             w.start()
         mock_ct.assert_called_once()
 
@@ -62,7 +62,7 @@ class TestStart:
         w = _make_worker()
         mock_task_obj = MagicMock(done=MagicMock(return_value=False))
         w._task = mock_task_obj
-        with patch("backend.app.services.notification_worker.asyncio.create_task") as mock_ct:
+        with patch("backend.app.services.engine_utils.asyncio.create_task") as mock_ct:
             w.start()
         mock_ct.assert_not_called()
 
@@ -71,7 +71,7 @@ class TestStart:
         mock_done_task = MagicMock(done=MagicMock(return_value=True))
         w._task = mock_done_task
         mock_new_task = MagicMock(done=MagicMock(return_value=False))
-        with patch("backend.app.services.notification_worker.asyncio.create_task", side_effect=swallow_coro_returning(mock_new_task)) as mock_ct:
+        with patch("backend.app.services.engine_utils.asyncio.create_task", side_effect=swallow_coro_returning(mock_new_task)) as mock_ct:
             w.start()
         mock_ct.assert_called_once()
 
@@ -91,7 +91,7 @@ class TestEnqueue:
         w = _make_worker()
         mock_queue = MagicMock()
         w._queue = mock_queue
-        with patch("backend.app.services.notification_worker.asyncio.create_task", side_effect=swallow_coro_returning(MagicMock(done=MagicMock(return_value=False)))):
+        with patch("backend.app.services.engine_utils.asyncio.create_task", side_effect=swallow_coro_returning(MagicMock(done=MagicMock(return_value=False)))):
             w.enqueue({"type": "telegram", "message": "hello"})
         mock_queue.put_nowait.assert_called_once()
 
@@ -100,7 +100,7 @@ class TestEnqueue:
         w._task = MagicMock(done=MagicMock(return_value=True))
         mock_queue = MagicMock()
         w._queue = mock_queue
-        with patch("backend.app.services.notification_worker.asyncio.create_task", side_effect=swallow_coro_returning(MagicMock(done=MagicMock(return_value=False)))):
+        with patch("backend.app.services.engine_utils.asyncio.create_task", side_effect=swallow_coro_returning(MagicMock(done=MagicMock(return_value=False)))):
             w.enqueue({"type": "test", "message": "msg"})
         mock_queue.put_nowait.assert_called_once()
 
@@ -117,7 +117,7 @@ class TestEnqueue:
         w = _make_worker()
         mock_queue = MagicMock()
         w._queue = mock_queue
-        with patch("backend.app.services.notification_worker.asyncio.create_task", side_effect=swallow_coro_then_raise(RuntimeError("no event loop"))):
+        with patch("backend.app.services.engine_utils.asyncio.create_task", side_effect=swallow_coro_then_raise(RuntimeError("no event loop"))):
             w.enqueue({"type": "telegram", "message": "msg"})
         mock_queue.put_nowait.assert_called_once()
 

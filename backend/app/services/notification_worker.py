@@ -8,10 +8,11 @@ REAL Consumer 경로에서 텔레그램 전송 + 파일 저장을 별도 작업�
 from __future__ import annotations
 import asyncio
 import logging
+from backend.app.services.engine_utils import TaskGuardMixin
 logger = logging.getLogger(__name__)
 
 
-class NotificationWorker:
+class NotificationWorker(TaskGuardMixin):
     """asyncio.Queue 기반 알림/파일저장 워커 (싱글톤)."""
 
     _instance: NotificationWorker | None = None
@@ -32,11 +33,7 @@ class NotificationWorker:
 
     def start(self) -> None:
         """워커 작업 시작. 이미 실행 중이면 no-op."""
-        if self._task and not self._task.done():
-            return
-        self._running = True
-        self._task = asyncio.create_task(self._consume_loop())
-        logger.info("[알림] 워커 작업 시작")
+        self._start_guarded(self._consume_loop, "[알림] 워커 작업 시작")
 
     def enqueue(self, msg: dict) -> None:
         """큐에 메시지 추가 (논블로킹). 워커 미시작이면 자동 시작."""

@@ -123,7 +123,7 @@ class TestStart:
         bot = TelegramBot()
         mock_task = MagicMock()
         mock_task.done.return_value = False
-        with patch("backend.app.services.telegram_bot.asyncio.create_task", side_effect=swallow_coro_returning(mock_task)):
+        with patch("backend.app.services.engine_utils.asyncio.create_task", side_effect=swallow_coro_returning(mock_task)):
             bot.start()
         assert bot._running is True
         assert bot._task is mock_task
@@ -134,7 +134,7 @@ class TestStart:
         existing_task.done.return_value = False
         bot._task = existing_task
         bot._running = True
-        with patch("backend.app.services.telegram_bot.asyncio.create_task") as mock_create:
+        with patch("backend.app.services.engine_utils.asyncio.create_task") as mock_create:
             bot.start()
         mock_create.assert_not_called()
         assert bot._task is existing_task
@@ -146,7 +146,7 @@ class TestStart:
         bot._task = old_task
         new_task = MagicMock()
         new_task.done.return_value = False
-        with patch("backend.app.services.telegram_bot.asyncio.create_task", side_effect=swallow_coro_returning(new_task)):
+        with patch("backend.app.services.engine_utils.asyncio.create_task", side_effect=swallow_coro_returning(new_task)):
             bot.start()
         assert bot._task is new_task
         assert bot._running is True

@@ -29,6 +29,7 @@ import httpx
 
 from backend.app.core.constants import _KST
 from backend.app.services.auto_trading_effective import auto_trading_effective
+from backend.app.services.engine_utils import TaskGuardMixin
 from backend.app.services.telegram_fmt import (
     fmt_won,
     fmt_rate,
@@ -268,7 +269,7 @@ def _build_settings_lines(flat: dict) -> str:
     )
 
 
-class TelegramBot:
+class TelegramBot(TaskGuardMixin):
     def __init__(self):
         self._task: asyncio.Task | None = None
         self._running = False
@@ -281,12 +282,8 @@ class TelegramBot:
         """폴링 태스크가 살아있는지 여부 (활성 설정 없음으로 자동 종료 후 False)."""
         return self._task is not None and not self._task.done()
 
-    def start(self, _db_getter=None):
-        if self._task and not self._task.done():
-            return
-        self._running = True
-        self._task = asyncio.create_task(self._poll_loop())
-        logger.info("[알림] 폴링 시작")
+    def start(self):
+        self._start_guarded(self._poll_loop, "[알림] 폴링 시작")
 
     async def stop_async(self) -> None:
         """폴링 작업이 httpx 대기 중이어도 취소·종료를 기다린다(데스크톱 종료 시 잔류 방지)."""

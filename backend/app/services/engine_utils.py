@@ -6,6 +6,32 @@ LazyEvent 등 엔진 전역에서 사용하는 유틸리티 클래스.
 """
 from __future__ import annotations
 import asyncio
+import logging
+from typing import Awaitable, Callable
+
+logger = logging.getLogger(__name__)
+
+
+class TaskGuardMixin:
+    """단일 백그라운드 asyncio 태스크 시작 가드 믹스인.
+
+    "이미 실행 중이면 no-op, 아니면 태스크 시작" 패턴의 단일 소스 (P10 SSOT, P24 중복 제거).
+    사용 클래스는 __init__에서 self._task: asyncio.Task | None = None,
+    self._running: bool = False 를 선언해야 함.
+    """
+
+    _task: asyncio.Task | None
+    _running: bool
+
+    def _start_guarded(self, coro_factory: Callable[[], Awaitable], log_msg: str) -> None:
+        """이미 실행 중이면 no-op, 아니면 태스크 시작."""
+        if self._task and not self._task.done():
+            return
+        self._running = True
+        self._task = asyncio.create_task(coro_factory())
+        logger.info(log_msg)
+
+
 class LazyEvent:
     """지연 초기화 Event.
 
