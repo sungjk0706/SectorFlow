@@ -1,7 +1,7 @@
 # 컬럼 자동 폭 — 데이터 분포 기반 산출 설계
 
-> **상태**: 설계 완료 (세션 1/3 — 다단계 워크플로우)
-> **다음 세션**: 태스크 파일 작성 (세션 2/3)
+> **상태**: 설계 보완 완료 (세션 1/3 — 다단계 워크플로우)
+> **다음 세션**: 태스크 파일 기준 구현 (세션 3/3)
 > **최종 세션**: 구현 + 검증 (세션 3/3)
 > **작성일**: 2026-07-31
 
@@ -54,15 +54,16 @@ finalWidth = clamp(rawWidth, minWidth, maxWidth)
 
 **변경**: `maxTextWidth = max(라벨 폭, 데이터 샘플의 P95 백분위 폭)`
 
-- P95(95백분위): 상위 5% 이상치를 무시하고, 95%의 데이터가 수용되는 폭.
-- 소수의 비정상적으로 긴 값(예: 외국계 기업명, 특수 거래대금)에 컬럼이 끌려다니지 않음.
-- 5% 미만 잘림은 `text-overflow: ellipsis`로 자연스럽게 처리 (이미 종목명 셀에 적용됨).
+- P95(95백분위)는 대표 폭을 데이터 분포의 상위 경계로 정하는 방법이다.
+- Nearest Rank는 작은 샘플에서 P95가 최댓값과 같을 수 있다. 따라서 샘플 20개 미만에서는 이상치 완화 효과를 과장하지 않고 기존 `max` 방식을 유지한다.
+- 샘플 20개 이상이면 상위 5%에 해당하는 값이 최소 한 개 이상 제외될 수 있다. 제외된 값은 `text-overflow: ellipsis`로 표시한다.
+- P95는 통계적 이상치 판정기가 아니라 컬럼 폭을 위한 보수적 대표값이며, 별도의 이상치 삭제나 데이터 변경을 수행하지 않는다.
 
 **P95 산출 알고리즘**:
 ```
 samples가 비어 있으면 → 0 (라벨 폭만 사용)
-samples.length <= 4이면 → max (샘플太少, P95 신뢰도 부족 → 기존 방식)
-samples.length >= 5이면 → percentile(samples, 95)
+samples.length < 20이면 → max (샘플 부족 또는 P95가 max와 같을 수 있음)
+samples.length >= 20이면 → percentile(samples, 95)
 ```
 
 **백분위 계산 (Nearest Rank 방식 — 단순·결정론적)**:
@@ -82,8 +83,9 @@ function percentile(values: number[], p: number): number {
 
 **규칙**: `maxTextWidth = max(라벨 폭, P95 데이터 폭)`
 
-- 라벨이 데이터보다 길면 라벨 폭 사용 (라벨 절대 안 잘림).
-- 데이터가 라벨보다 길면 P95 데이터 폭 사용 (데이터 95% 수용).
+- 라벨이 데이터보다 길면 라벨 폭을 대표 폭으로 사용한다.
+- 단, type/page 최대 폭 또는 절대 최대 폭이 라벨 폭보다 작으면 최종 캡이 우선하며, 해당 라벨은 기존 `ellipsis` 규칙으로 표시될 수 있다.
+- 데이터가 라벨보다 길면 P95 데이터 폭을 대표 폭으로 사용한다.
 
 ### 2.3 안전장치 — 최소/최대 캡 (극단값 차단)
 
@@ -93,7 +95,7 @@ function percentile(values: number[], p: number): number {
 
 | 계층 | 역할 | 값 |
 |------|------|-----|
-| **절대 캡** (하드코딩 불변값) | 극단값 차단, 최소 가독성 보장 | `ABSOLUTE_MIN=36`, `ABSOLUTE_MAX=240` |
+| **절대 캡** (하드코딩 불변값) | 폭 계산 가중치의 극단값 차단 | `ABSOLUTE_MIN=36`, `ABSOLUTE_MAX=240` |
 | **type 캡** (table-config.ts) | type별 합리적 범위 | 기존 `COLUMN_WIDTH[type]` 유지 |
 | **페이지 덮어쓰기** (ColumnDef.minWidth/maxWidth) | 페이지별 특수 요구 | 기존 방식 유지 (선택적) |
 
@@ -106,8 +108,10 @@ finalWidth = clamp(
 )
 ```
 
-- 절대 캡이 type/페이지 캡보다 우선하지 않고 **교집합**으로 동작 (가장 보수적).
-- 기존 type/페이지 덮어쓰기는 그대로 작동 → 기존 코드 호환성 100%.
+- 절대 캡은 type/페이지 캡과 **교집합**으로 동작한다.
+- 현재 `data-table.ts`는 페이지 min/max 중 하나라도 있으면 type 캡을 통째로 대체하므로, 구현 시 type 값과 페이지 값을 각 축별로 병합해야 한다.
+- 페이지 `minWidth`는 type 최소값과 비교해 더 큰 값을 사용하고, 페이지 `maxWidth`는 type 최대값과 비교해 더 작은 값을 사용한다.
+- 이 병합을 통해 기존 페이지별 의도를 유지하면서 type별 안전 범위도 잃지 않는다.
 
 ### 2.4 샘플 부족 시 폴백 (비대표적 데이터 방지)
 
@@ -118,11 +122,11 @@ finalWidth = clamp(
 | 샘플 수 | 전략 | 이유 |
 |---------|------|------|
 | 0 | 라벨 폭만 사용 | 데이터 없음 — 헤더 잘림 방지가 최우선 |
-| 1~4 | `max(라벨, 데이터 max)` (기존 방식) | 샘플太少, P95 신뢰도 부족 |
-| ≥5 | `max(라벨, P95)` (새 방식) | 충분한 샘플, 이상치 완화 효과 |
+| 1~19 | `max(라벨, 데이터 max)` (기존 방식) | Nearest Rank P95가 max와 같을 수 있어 이상치 완화 효과를 보장할 수 없음 |
+| ≥20 | `max(라벨, P95)` (새 방식) | 상위 5%에 해당하는 값이 최소 한 개 이상 제외될 수 있음 |
 
-- 5개 임계값은 통계적 P95 신뢰성의 최소 기준 (너무 작으면 상위 5% = 0.25개).
-- 임계값 상수화: `P95_MIN_SAMPLES = 5`.
+- 20개는 보편적인 통계 신뢰성 기준이 아니라, 현재 Nearest Rank 정의에서 P95가 max와 같지 않을 수 있도록 정한 구현 기준이다.
+- 임계값 상수화: `P95_MIN_SAMPLES = 20`.
 
 ---
 
@@ -231,8 +235,8 @@ function percentile(values: number[], p: number): number {
 ### 3.5 신규 상수
 
 ```typescript
-/** P95 백분위 적용 최소 샘플 수 (미만 시 max 사용 — 기존 방식) */
-const P95_MIN_SAMPLES = 5
+/** P95 백분위 적용 최소 샘플 수 (미만 시 max 사용 — Nearest Rank 특성 반영) */
+const P95_MIN_SAMPLES = 20
 
 /** 절대 최소 폭 (모든 컬럼 공통 하한) */
 const ABSOLUTE_MIN_WIDTH = 36
@@ -245,11 +249,13 @@ const ABSOLUTE_MAX_WIDTH = 240
 
 ## 4. 영향 범위 분석
 
-### 4.1 수정 파일 (단 1개)
+### 4.1 수정 파일
 
 | 파일 | 변경 내용 |
 |------|-----------|
 | `frontend/src/components/common/auto-width.ts` | `clampColWidth` 내부 로직, `computeColWidths` P95 로직, `percentile` 신규 함수, 상수 3개 |
+| `frontend/src/components/common/data-table.ts` | type 캡과 페이지 min/max를 각 축별로 병합하여 `auto-width.ts`에 전달 |
+| `frontend/tests/`의 기존 공통 컴포넌트 테스트 파일 | P95·캡 병합·첫 1회 고정 계약 회귀 테스트 |
 
 ### 4.2 자동 적용 대상 (수정 불필요 — 공통 함수 경유)
 
@@ -272,9 +278,9 @@ const ABSOLUTE_MAX_WIDTH = 240
 | 항목 | 호환성 | 근거 |
 |------|--------|------|
 | `ColumnDef.minWidth/maxWidth` 인터페이스 | 100% 유지 | 시그니처 변경 없음 |
-| `COLUMN_WIDTH[type]` 상수 | 100% 유지 | type 캡으로 여전히 사용 |
-| 페이지별 덮어쓰기 | 100% 유지 | 3계층 교집합에서 페이지 캡 포함 |
-| `createColumnWidthManager` (1회 계산) | 100% 유지 | 호출부 변경 없음 |
+| `COLUMN_WIDTH[type]` 상수 | 100% 유지 | type 캡 병합에 계속 사용 |
+| 페이지별 덮어쓰기 | 동작 유지 | type 캡과 각 축별 교집합으로 병합 |
+| `createColumnWidthManager` (1회 계산) | 100% 유지 | 첫 호출·고정 계약 유지 |
 | 고정/가상스크롤 모드 | 100% 유지 | 두 모드 모두 동일 경로 |
 
 ### 4.4 동작 변화 예측
@@ -300,9 +306,9 @@ const ABSOLUTE_MAX_WIDTH = 240
 - 기존 동작과 동일 (`computeColWidths` 주석: "샘플 비어도 라벨 폭 사용").
 - **안전**: 헤더 잘림 방지 유지.
 
-### 5.2 샘플 1~4개 (앱 시작 직후)
+### 5.2 샘플 1~19개 (앱 시작 직후)
 
-- `sampleWidths.length < 5` → `dataWidth = max(...sampleWidths)` (기존 방식).
+- `sampleWidths.length < 20` → `dataWidth = max(...sampleWidths)` (기존 방식).
 - **안전**: 비대표적 P95 방지.
 
 ### 5.3 모든 샘플이 동일 폭 (예: 모두 "100.0")
@@ -312,9 +318,10 @@ const ABSOLUTE_MAX_WIDTH = 240
 
 ### 5.4 극단적 이상치 1개 (예: 종목명 20자 1개, 나머지 4자)
 
-- 샘플 ≥5 → P95 사용 → 20자 이상치 무시 → 4~5자 폭으로 확정.
-- 20자 종목은 `text-overflow: ellipsis`로 잘림 (이미 종목명 셀에 적용됨).
-- **안전**: 5% 미만 잘림은 허용 설계.
+- 샘플 20개 이상 → Nearest Rank P95 사용 → 상위 5% 경계 밖의 이상치가 대표 폭에서 제외될 수 있음.
+- 샘플 5~19개 → P95가 max와 같을 수 있으므로 기존 max 방식 유지.
+- 대표 폭 밖의 긴 값은 `text-overflow: ellipsis`로 표시될 수 있다.
+- **안전**: 데이터 원본은 변경하지 않고 화면 표시 폭만 제한한다.
 
 ### 5.5 type 없는 컬럼 (stock-classification-center code)
 
@@ -340,13 +347,14 @@ const ABSOLUTE_MAX_WIDTH = 240
 
 ### 6.1 단위 테스트 (auto-width.ts)
 
-- `percentile([1,2,3,4,5,6,7,8,9,10], 95)` → 10 (상위 5% = 10번째).
+- `percentile([1,2,3,4,5,6,7,8,9,10], 95)` → 10 (Nearest Rank 특성상 max와 같음).
 - `percentile([1,2,3,4,5], 95)` → 5.
 - `percentile([], 95)` → 0.
 - `computeColWidths` 빈 샘플 → 라벨 폭.
-- `computeColWidths` 샘플 4개 → max 사용.
-- `computeColWidths` 샘플 10개 + 이상치 → P95 사용 (이상치 무시).
-- `clampColWidth` 3계층 캡 교집합.
+- `computeColWidths` 샘플 19개 → max 사용.
+- `computeColWidths` 샘플 20개 + 이상치 → P95 대표 폭 사용.
+- `clampColWidth` 절대 캡과 전달된 캡의 교집합.
+- `createColumnWidthManager` type 캡과 페이지 min/max의 축별 병합.
 
 ### 6.2 통합 검증
 
@@ -364,13 +372,14 @@ const ABSOLUTE_MAX_WIDTH = 240
 
 ## 7. 구현 세션 작업 순서 (참고용)
 
-1. `auto-width.ts`에 `percentile` 함수 + 상수 3개 추가.
-2. `clampColWidth` 내부 로직 수정 (3계층 캡).
-3. `computeColWidths` P95 로직 추가.
-4. 기존 테스트 실행 → 회귀 확인.
-5. 신규 단위 테스트 추가.
-6. `npm run typecheck && npm run build && npm run test`.
-7. 브라우저 화면 확인 (사용자).
+1. `data-table.ts`에서 type/page min/max를 각 축별로 병합.
+2. `auto-width.ts`에 `percentile` 함수 + 상수 3개 추가.
+3. `clampColWidth` 내부 로직 수정 (절대 캡과 병합 캡의 교집합).
+4. `computeColWidths` P95 로직 추가.
+5. 기존 테스트 실행 → 회귀 확인.
+6. 신규 단위 테스트 추가.
+7. `npm run typecheck && npm run build && npm run test`.
+8. 브라우저 화면 확인 (사용자).
 
 ---
 
@@ -378,20 +387,24 @@ const ABSOLUTE_MAX_WIDTH = 240
 
 | 원칙 | 부합 여부 | 근거 |
 |------|-----------|------|
-| P10 (SSOT) | 부합 | 폭 계산 로직이 `auto-width.ts` 단일 경로 |
-| P16 (살아있는 경로) | 부합 | 기존 호출부 그대로 사용, dead code 없음 |
-| P20 (폴백 금지) | 부합 | 샘플 부족 시 `max`는 폴백이 아닌 합리적 기본값 (명시적 전략) |
-| P21 (사용자 투명성) | 부합 | 라벨 잘림 방지, 잘림 시 ellipsis로 사용자 인지 가능 |
-| P23 (일관성) | 부합 | 기존 `clampColWidth`/`computeColWidths` 시그니처 유지 |
-| P24 (단순성) | 부합 | `percentile` 5줄 함수, 복잡도 낮음, 기존 구조 유지 |
+| P10 (SSOT) | 부합 | 폭 대표값은 `auto-width.ts`, type/page 캡 조립은 `data-table.ts`의 기존 공통 경로에서만 관리 |
+| P16 (살아있는 경로) | 부합 | `data-table.ts`의 실제 입력 조립과 `computeColWidths`에 연결하고 dead code를 남기지 않음 |
+| P20 (폴백 금지) | 부합 | 샘플 부족 시 `max`는 명시된 표본 부족 전략이며 P95 효과를 과장하지 않음 |
+| P21 (사용자 투명성) | 부합 | 캡 범위 내 라벨 우선, 범위를 벗어난 값은 기존 ellipsis로 표시 가능 |
+| P23 (일관성) | 부합 | 기존 시그니처·공통 테이블 경로·type 상수를 유지 |
+| P24 (단순성) | 부합 | Nearest Rank와 축별 캡 병합만 추가하고 별도 라이브러리·페이지 프리셋을 만들지 않음 |
 | P25 (격리된 실패) | 부합 | 컬럼별 독립 계산, 한 컬럼 오류가 다른 컬럼에 영향 없음 |
 
 ---
 
-## 9. 사용자 승인 필요 항목
+## 9. 설계 보완 결과
 
-1. **P95 백분위 채택** — 상위 5% 이상치 잘림 허용 (ellipsis 처리).
-   - 대안: P90(10% 잘림), P99(1% 잘림), max(기존=0% 잘림).
-2. **샘플 5개 임계값** — 미만 시 기존 max 방식.
-3. **ABSOLUTE_MAX_WIDTH=240** — 극단값 상한.
-4. **기존 페이지별 덮어쓰기 유지** — `buy-target-columns.ts`의 minWidth:140 등 그대로 둠.
+초기 설계의 사용자 결정 항목을 현재 코드 경로와 Nearest Rank 정의에 대조한 결과, 구현 기준을 다음처럼 보완했다.
+
+1. **P95 백분위 채택 유지** — Nearest Rank의 단순·결정론적 계산을 유지한다.
+2. **샘플 임계값을 5개에서 20개로 보완** — 샘플 5~19개에서는 P95가 max와 같을 수 있으므로 기존 max를 사용한다.
+3. **ABSOLUTE_MAX_WIDTH=240 유지** — percentage 변환 전 폭 계산 가중치 상한으로 정의한다. 실제 렌더링 px 상한으로 해석하지 않는다.
+4. **기존 페이지별 덮어쓰기 유지** — type 캡과 각 축별 교집합으로 병합하여 페이지 특수 요구와 공통 안전 범위를 함께 보존한다.
+5. **수정 범위 보완** — `auto-width.ts`뿐 아니라 type/page 캡을 조립하는 `data-table.ts`와 공통 테스트를 포함한다.
+
+근거: NIST는 백분위 추정에서 원하는 백분위가 관측값 사이에 위치하면 보간이 필요할 수 있고, 작은 표본에서는 방법에 따라 결과가 달라질 수 있다고 설명한다. 이번 구현은 보간 대신 Nearest Rank 단순성을 유지하되, 작은 표본에서 P95 효과를 과장하지 않는 보수적 임계값을 사용한다.
