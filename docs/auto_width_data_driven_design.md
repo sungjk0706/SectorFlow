@@ -130,7 +130,23 @@ finalWidth = clamp(
 - 20개는 보편적인 통계 신뢰성 기준이 아니라, 현재 Nearest Rank 정의에서 P95가 max와 같지 않을 수 있도록 정한 구현 기준이다.
 - 임계값 상수화: `P95_MIN_SAMPLES = 20`.
 
-### 2.5 수신율 임계값 기반 폭 계산 준비 게이트
+### 2.5 간헐·동적 구독 컬럼의 샘플 처리
+
+업종순위 수신율 95%는 `change_rate`·`trade_amount` 중심의 핵심 필드 기준이다. 프.순.매·호가잔량비·체결강도처럼 후속 동적 구독으로 들어오는 필드와 📰뉴스처럼 조건 발생 시에만 들어오는 필드는 같은 시점에 값이 없을 수 있다.
+
+#### 확정 규칙
+
+1. `null`, `undefined`, 빈 문자열, 공백만 있는 `render()` 결과는 폭 분포의 유효 샘플에 포함하지 않는다.
+2. 유효 샘플이 없으면 `dataWidth = 0`으로 두고, 컬럼 라벨 + 공통 셀 패딩을 대표 폭으로 사용한다.
+3. 유효 샘플이 1~19개이면 유효 샘플의 `max`를 사용한다. 단, 최종 type/page 캡을 넘지 않는다.
+4. 유효 샘플이 20개 이상이면 유효 샘플의 P95를 사용한다.
+5. 뉴스처럼 값이 간헐적인 컬럼은 별도 임의 `+5px`, `+7px`을 넣지 않는다. `labelWidth + CELL_HORIZONTAL_PADDING`와 기존 `news` type 캡(50~70)을 사용한다.
+6. 프.순.매·호가잔량비·체결강도처럼 동적 구독 지연이 있는 컬럼은 값이 준비되지 않아도 기존 type/page 캡을 안전 기본값으로 사용한다. 현재 매수후보의 `program_net` 고정폭 76px, `order_ratio` 최대폭 88px을 유지하고 업종별 종목의 `strength`는 기존 type 캡을 사용한다.
+7. 준비 완료 후 늦게 들어온 값이 고정 폭을 초과하면 폭을 재계산하지 않고 기존 셀 `ellipsis` 규칙으로 표시한다.
+
+이 정책은 필드명을 `auto-width.ts`에 하드코딩하지 않고, 공통 샘플 수집기에서 유효 텍스트만 선별하며 기존 type/page 캡을 재사용한다. 따라서 새로운 간헐 필드가 추가되어도 별도 폭 상수를 만들 필요가 없다.
+
+### 2.6 수신율 임계값 기반 폭 계산 준비 게이트
 
 현재 백엔드는 마스터 종목 캐시의 `change_rate`·`trade_amount` 수신 상태를 기준으로 KRX/NXT 수신율을 계산하고, 설정된 업종순위 수신율 임계값 통과 전에는 업종점수 전송을 대기시킨다. 이 기존 게이트를 컬럼 폭 계산의 **준비 신호**로 재사용한다.
 
@@ -200,13 +216,14 @@ export function computeColWidths(
     const col = columns[i]
     const labelWidth = estimateTextWidth(col.label, fontSize)
 
-    // 데이터 샘플 폭 배열 계산
+    // 유효 데이터 샘플 폭 배열 계산 — 빈 문자열·공백은 분포에서 제외
     const sampleWidths: number[] = []
     for (let j = 0; j < col.samples.length; j++) {
+      if (col.samples[j].trim().length === 0) continue
       sampleWidths.push(estimateTextWidth(col.samples[j], fontSize))
     }
 
-    // 대표 폭 선택 (샘플 수에 따른 단계적 전략)
+    // 대표 폭 선택 (유효 샘플 수에 따른 단계적 전략)
     let dataWidth: number
     if (sampleWidths.length === 0) {
       dataWidth = 0                                    // 데이터 없음 → 라벨만 사용
@@ -347,10 +364,11 @@ const ABSOLUTE_MAX_WIDTH = 240
 | name (종목명) | max(라벨, 가장 긴 종목명) | max(라벨, P95 종목명) | 이상치 완화 → 약간 좁아질 수 있음 |
 | amount (거래대금) | max(라벨, 가장 큰 값) | max(라벨, P95 값) | 대형주 이상치 완화 → 좁아짐 |
 | price (현재가) | max(라벨, 가장 비싼 주가) | max(라벨, P95 주가) | 고가주 이상치 완화 → 좁아짐 |
-| order_ratio | max(라벨, 데이터) | max(라벨, P95 데이터) | 라벨이 길어 라벨 폭 유지 |
-| news (📰뉴스) | max(라벨, 이모지) | 동일 (샘플 1자) | 변화 없음 |
+| order_ratio | max(라벨, 데이터) | 유효 샘플 부족 시 라벨·type/page 캡, 충분하면 P95 | 동적 구독 지연에도 기존 안전 폭 유지 |
+| program_net | max(라벨, 데이터) | 유효 샘플 부족 시 기존 페이지 76px 고정폭 | 늦은 수신에도 폭 이동 없음 |
+| news (📰뉴스) | max(라벨, 이모지) | 유효 샘플 없음이면 라벨+공통 패딩·news 캡 | 뉴스 수신 여부와 무관하게 기본 폭 유지 |
 
-**순 효과**: 이상치가 있는 컬럼(name/amount/price)이 약간 좁아지고, 그만큼 다른 컬럼으로 비중 재분배. 종목명 minWidth 보장(140)은 유지되므로 종목명이 지나치게 좁아지지는 않음.
+**순 효과**: 이상치가 있는 핵심 컬럼(name/amount/price)은 약간 좁아질 수 있고, 간헐 컬럼은 값 수신 여부와 무관하게 안전 기본 폭을 유지한다. 종목명 minWidth 보장(140)은 유지되므로 종목명이 지나치게 좁아지지는 않음.
 
 ---
 
@@ -398,7 +416,15 @@ const ABSOLUTE_MAX_WIDTH = 240
 - 기존 `maxWidth: 160`이 더 작으므로 실제 계산 가중치는 160이 우선한다 (3계층 교집합).
 - **안전**.
 
-### 5.8 수신율 임계값 미통과·통과 경계
+### 5.8 간헐·동적 구독 컬럼
+
+- `program_net_buy`, `order_ratio`, `news_boost`가 비어 있으면 빈 문자열을 유효 샘플로 세지 않는다.
+- 유효 샘플이 없으면 라벨·공통 패딩과 type/page 캡만으로 안전 폭을 계산한다.
+- 뉴스 컬럼은 `news` type의 50~70 가중치 범위 안에서 라벨과 공통 패딩을 우선한다.
+- 프.순.매와 호가잔량비는 현재 페이지의 76px 고정폭·88px 최대폭 설정을 그대로 안전 캡으로 사용한다.
+- 준비 완료 후 늦게 들어온 값은 고정 폭을 변경하지 않고 ellipsis로 처리한다.
+
+### 5.9 수신율 임계값 미통과·통과 경계
 
 - 준비 전 rows가 여러 번 갱신되어도 최종 폭은 고정하지 않는다.
 - 준비 완료 이벤트와 rows 갱신이 같은 시점에 들어오면 최신 rows로 1회 계산한다.
@@ -418,6 +444,8 @@ const ABSOLUTE_MAX_WIDTH = 240
 - `computeColWidths` 빈 샘플 → 라벨 폭.
 - `clampColWidth` 절대 캡과 병합된 type/page 캡의 교집합.
 - `createColumnWidthManager` type 캡과 페이지 min/max의 축별 병합.
+- 빈 문자열·공백 샘플이 P95 유효 샘플 수에 포함되지 않음.
+- 유효 샘플이 없는 뉴스·동적 구독 컬럼이 라벨+공통 패딩·type/page 캡으로 처리됨.
 - `createColumnWidthManager` 준비 전 rows에서는 최종 폭을 고정하지 않음.
 - `createColumnWidthManager` 준비 완료 후 첫 rows에서 1회 계산하고 이후 rows에서는 재계산하지 않음.
 - `percentile`은 내부 함수로 유지하고 export하지 않는다.
