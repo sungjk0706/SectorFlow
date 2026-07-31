@@ -7,14 +7,12 @@
 //
 // 의존성:
 // - computeWeightedRate (ui-styles) — 순수 수학 헬퍼
-// - normalizeStockCode (hotStore) — 순수 문자열 정규화
 // - getTradingToday (date) — 순수 날짜 유틸
-// - Position, SectorStock (types) — 타입만
+// - Position (types) — 타입만
 // - SectorDonutRow, assignSectorColors (canvas-sector-donut) — 순수 함수/타입
 
 import { computeWeightedRate, COLOR } from '../components/common/ui-styles'
-import { normalizeStockCode } from '../stores/hotStore'
-import type { Position, SectorStock } from '../types'
+import type { Position } from '../types'
 import type { SectorDonutRow } from '../components/canvas-sector-donut'
 import { assignSectorColors } from '../components/canvas-sector-donut'
 
@@ -232,7 +230,9 @@ export function buildChartFromDailySummary(summary: Record<string, unknown>[]): 
  * sell-position.ts 개별 행(cur_price/pnl/rate 컬럼)과 computeHoldingsSummary(요약행)가
  * 동일한 공식·null 패턴을 공유하도록 추출 (P10/P23 — 공식 중복 제거).
  *
- * - 현재가: sectorStocks[code].cur_price (실시간 틱, 없으면 null)
+ * - 현재가: p.cur_price (보유종목 자체의 실시간 갱신 값, 필터 무관 — P10 SSOT 정정)
+ *   틱 핸들러(applyRealData)가 sectorStocks와 동일한 실시간 가격으로 갱신하며,
+ *   보유종목은 필터와 무관하게 항상 갱신되므로 주 소스로 삼는다.
  * - 매입가: p.avg_price
  * - curPrice null → isNull=true, 나머지 필드 0 (P21 투명성 — 호출처에서 '-' 표시)
  *   isNull은 오직 curPrice null(시세 미수신)만 의미. qty<=0은 isNull=false이며
@@ -257,12 +257,10 @@ export interface PositionValuation {
 
 export function computePositionValuation(
   p: Position,
-  sectorStocks: Record<string, SectorStock>,
 ): PositionValuation {
   const qty = p.qty ?? 0
   const buyPrice = p.avg_price
-  const code = normalizeStockCode(p.stk_cd)
-  const curPriceRaw = sectorStocks[code]?.cur_price ?? null
+  const curPriceRaw = p.cur_price
   if (curPriceRaw == null) {
     return { curPrice: 0, buyPrice, qty, diff: 0, pnl: 0, rate: 0, evalAmt: 0, buyAmt: 0, isNull: true }
   }
@@ -287,13 +285,12 @@ export function computePositionValuation(
  */
 export function computeHoldingsSummary(
   positions: Position[],
-  sectorStocks: Record<string, SectorStock>,
 ): { evalTotal: number; evalPnl: number; evalRate: number; buyTotal: number; hasNullPrice: boolean } {
   let evalTotal = 0
   let buyTotal = 0
   let hasNullPrice = false
   for (const p of positions) {
-    const v = computePositionValuation(p, sectorStocks)
+    const v = computePositionValuation(p)
     if (v.isNull) {
       hasNullPrice = true
       continue

@@ -42,7 +42,7 @@ const COLUMNS: ColumnDef<Position>[] = [
   {
     key: 'cur_price', label: '현재가', align: 'right', type: 'price', flash: true,
     render: (p) => {
-      const v = computePositionValuation(p, hotStore.getState().sectorStocks)
+      const v = computePositionValuation(p)
       if (v.isNull) return createPriceCell(null, null)
       return createPriceCell(v.curPrice, v.rate)
     },
@@ -58,7 +58,7 @@ const COLUMNS: ColumnDef<Position>[] = [
   {
     key: 'pnl', label: '평가손익', align: 'right', type: 'pnl',
     render: (p) => {
-      const v = computePositionValuation(p, hotStore.getState().sectorStocks)
+      const v = computePositionValuation(p)
       const span = document.createElement('span')
       if (v.isNull) {
         span.textContent = '-'
@@ -72,7 +72,7 @@ const COLUMNS: ColumnDef<Position>[] = [
   {
     key: 'rate', label: '수익률', align: 'right', type: 'pnl_rate',
     render: (p) => {
-      const v = computePositionValuation(p, hotStore.getState().sectorStocks)
+      const v = computePositionValuation(p)
       const span = document.createElement('span')
       if (v.isNull) {
         span.textContent = '-'
@@ -162,7 +162,7 @@ function renderSummary(): void {
   }
   const state = hotStore.getState()
   const count = state.positionCount
-  const { evalTotal, evalPnl, evalRate, hasNullPrice } = computeHoldingsSummary(state.positions, state.sectorStocks)
+  const { evalTotal, evalPnl, evalRate, hasNullPrice } = computeHoldingsSummary(state.positions)
 
   if (summaryEvalBadge) {
     updateBadge(summaryEvalBadge, hasNullPrice ? '-' : fmtComma(evalTotal), {

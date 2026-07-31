@@ -38,7 +38,6 @@ export function renderAccountVals(state: ProfitOverviewState): void {
   const params: AccountValsParams = {
     account: hotState.account,
     positions: hotState.positions,
-    sectorStocks: hotState.sectorStocks,
     positionCount: hotState.positionCount ?? 0,
     isTestMode: settings?.trade_mode === 'test',
     buyHistory: state.buyHistory,

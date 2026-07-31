@@ -34,7 +34,7 @@ export interface Position {
   stk_nm: string;
   qty: number;
   avg_price: number;
-  cur_price: number;
+  cur_price: number | null;  // null = 틱 미수신 (백엔드 _reset_realtime_fields None 설정과 일치, P22)
   buy_amt: number;
   pnl_rate: number;
   nxt_enable?: boolean;
