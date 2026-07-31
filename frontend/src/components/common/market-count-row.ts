@@ -78,7 +78,7 @@ function _appendExchangeSegment(
 
 /**
  * 시장별 종목수 카운트 행 생성.
- * 구조: [합계: N종목] [K 배지 KRX: N종목] [통 배지 NXT: N종목] [코스피: N종목] [코스닥: N종목]
+ * 구조: [합계: N종목] [K 배지 KRX: N종목] [통 배지 통합: N종목] [코스피: N종목] [코스닥: N종목]
  * - KRX/NXT: 둥근 사각 배지(K/통) + 거래소명 — 종목명 셀 라벨과 동일 (P23 일관성)
  * - 코스닥 라벨: 자주색(COLOR.kosdaq)
  * - 숫자: 파랑(COLOR.down) + semibold, 단위 '종목': 회색(COLOR.neutral)
@@ -100,7 +100,7 @@ export function createMarketCountRow(options: {
   let isFirst = true
   if (showTotal) { numSpans.total = _appendStandardSegment(el, '합계:', COLOR.neutral, isFirst); isFirst = false }
   if (showKrx) { numSpans.krx = _appendExchangeSegment(el, 'K', COLOR.krxLabelBg, COLOR.krxLabel, 'KRX 전용 종목', 'KRX:', COLOR.neutral, isFirst); isFirst = false }
-  if (showNxt) { numSpans.nxt = _appendExchangeSegment(el, '통', COLOR.nxtLabelBg, COLOR.nxtLabel, 'KRX+NXT 통합 거래 종목', 'NXT:', COLOR.nxtLabel, isFirst); isFirst = false }
+  if (showNxt) { numSpans.nxt = _appendExchangeSegment(el, '통', COLOR.nxtLabelBg, COLOR.nxtLabel, 'KRX+NXT 통합 거래 종목', '통합:', COLOR.nxtLabel, isFirst); isFirst = false }
   if (showKospi) { numSpans.kospi = _appendStandardSegment(el, '코스피:', COLOR.neutral, isFirst); isFirst = false }
   if (showKosdaq) { numSpans.kosdaq = _appendStandardSegment(el, '코스닥:', COLOR.kosdaq, isFirst) }
 
