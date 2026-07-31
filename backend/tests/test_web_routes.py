@@ -12,16 +12,46 @@ from unittest.mock import AsyncMock, MagicMock, patch
 # ── account.py ────────────────────────────────────────────────────────────────
 
 class TestAccountRouter:
-    """account.py: 라우터만 정의, 엔드포인트 없음."""
+    """account.py: 계좌 조회 엔드포인트 계약."""
 
     def test_router_prefix_and_tags(self):
         from backend.app.web.routes.account import router
         assert router.prefix == "/api"
         assert "account" in router.tags
 
-    def test_router_has_no_routes(self):
+    def test_routes_require_current_user(self):
         from backend.app.web.routes.account import router
-        assert len(router.routes) == 0
+        from backend.app.web.deps import get_current_user
+
+        paths = {route.path: route for route in router.routes}
+        assert set(paths) == {"/api/account/snapshot", "/api/account/positions"}
+        for route in paths.values():
+            dependencies = {dependency.call for dependency in route.dependant.dependencies}
+            assert get_current_user in dependencies
+
+    async def test_snapshot_delegates_to_account_ssot(self):
+        from backend.app.web.routes.account import get_account_snapshot
+        expected = {"trade_mode": "test", "deposit": 1_000_000}
+        with patch(
+            "backend.app.web.routes.account.engine_account.get_account_snapshot",
+            new_callable=AsyncMock,
+            return_value=expected,
+        ) as getter:
+            result = await get_account_snapshot(_="dev")
+        assert result == expected
+        getter.assert_awaited_once_with()
+
+    async def test_positions_delegates_to_account_ssot(self):
+        from backend.app.web.routes.account import get_account_positions
+        expected = [{"stk_cd": "005930", "qty": 2, "avg_price": 70_000}]
+        with patch(
+            "backend.app.web.routes.account.engine_account.get_positions",
+            new_callable=AsyncMock,
+            return_value=expected,
+        ) as getter:
+            result = await get_account_positions(_="dev")
+        assert result == expected
+        getter.assert_awaited_once_with()
 
 
 # ── market.py ─────────────────────────────────────────────────────────────────
@@ -60,16 +90,73 @@ class TestGetTradingDay:
 
 
 class TestMarketRouter:
-    """market.py: 라우터 설정 검증."""
+    """market.py: 라우터 설정 및 조회 API 계약."""
 
     def test_router_prefix_and_tags(self):
         from backend.app.web.routes.market import router
         assert router.prefix == "/api"
         assert "market" in router.tags
 
-    def test_router_has_one_route(self):
+    def test_routes_require_current_user(self):
         from backend.app.web.routes.market import router
-        assert len(router.routes) == 1
+        from backend.app.web.deps import get_current_user
+
+        paths = {route.path: route for route in router.routes}
+        assert set(paths) == {
+            "/api/market/buy-targets",
+            "/api/market/sector-scores",
+            "/api/market/sector-stocks",
+            "/api/trading-day",
+        }
+        for route in paths.values():
+            dependencies = {dependency.call for dependency in route.dependant.dependencies}
+            assert get_current_user in dependencies
+
+    async def test_buy_targets_delegates_to_sector_ssot(self):
+        from backend.app.web.routes.market import get_buy_targets
+        expected = [{"code": "005930", "guard_pass": True}]
+        with patch(
+            "backend.app.web.routes.market.get_buy_targets_sector_stocks",
+            new_callable=AsyncMock,
+            return_value=expected,
+        ) as getter:
+            result = await get_buy_targets(_="dev")
+        assert result == expected
+        getter.assert_awaited_once_with()
+
+    async def test_sector_scores_converts_tuple_contract(self):
+        from backend.app.web.routes.market import get_sector_scores
+        scores = [{"rank": 1, "sector": "반도체", "is_cutoff_passed": True}]
+        with patch(
+            "backend.app.web.routes.market.get_sector_scores_snapshot",
+            return_value=(scores, 1),
+        ) as getter:
+            result = await get_sector_scores(_="dev")
+        assert result == {"scores": scores, "ranked_count": 1}
+        getter.assert_called_once_with()
+
+    async def test_sector_stocks_delegates_to_sector_ssot(self):
+        from backend.app.web.routes.market import get_sector_stocks_snapshot
+        expected = [{"code": "005930", "sector": "반도체", "cur_price": None}]
+        with patch(
+            "backend.app.web.routes.market.get_sector_stocks",
+            new_callable=AsyncMock,
+            return_value=expected,
+        ) as getter:
+            result = await get_sector_stocks_snapshot(_="dev")
+        assert result == expected
+        getter.assert_awaited_once_with()
+
+    async def test_service_errors_are_not_replaced_with_empty_data(self):
+        from backend.app.web.routes.market import get_buy_targets
+        error = RuntimeError("sector data unavailable")
+        with patch(
+            "backend.app.web.routes.market.get_buy_targets_sector_stocks",
+            new_callable=AsyncMock,
+            side_effect=error,
+        ):
+            with pytest.raises(RuntimeError, match="sector data unavailable"):
+                await get_buy_targets(_="dev")
 
 
 # ── settlement.py ─────────────────────────────────────────────────────────────
