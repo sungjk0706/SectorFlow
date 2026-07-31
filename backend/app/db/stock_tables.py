@@ -193,33 +193,6 @@ async def save_daily_account_snapshot(
     await conn.commit()
 
 
-async def get_account_snapshot_by_date(conn, *, date: str, trade_mode: str) -> dict | None:
-    """특정 날짜의 기초자산 스냅샷 조회. 없으면 None (P20 폴백 금지 — 명시적 미존재)."""
-    cursor = await conn.execute(
-        """SELECT date, trade_mode, total_asset, deposit, orderable,
-                  total_eval_amount, accumulated_investment,
-                  daily_deposit, daily_withdrawal, snapshot_at
-           FROM account_daily_snapshot
-           WHERE date = ? AND trade_mode = ?""",
-        (date, trade_mode),
-    )
-    row = await cursor.fetchone()
-    if not row:
-        return None
-    return {
-        "date": row["date"],
-        "trade_mode": row["trade_mode"],
-        "total_asset": int(row["total_asset"]),
-        "deposit": int(row["deposit"] or 0),
-        "orderable": int(row["orderable"] or 0),
-        "total_eval_amount": int(row["total_eval_amount"] or 0),
-        "accumulated_investment": int(row["accumulated_investment"] or 0),
-        "daily_deposit": int(row["daily_deposit"] or 0),
-        "daily_withdrawal": int(row["daily_withdrawal"] or 0),
-        "snapshot_at": row["snapshot_at"],
-    }
-
-
 async def get_base_asset_for_period(conn, *, date_from: str, trade_mode: str) -> int | None:
     """기간 시작 시점 기초자산 조회.
 

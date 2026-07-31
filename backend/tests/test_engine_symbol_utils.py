@@ -7,12 +7,14 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-from backend.app.services.engine_symbol_utils import (
+from backend.app.core.symbol_utils import (
     _base_stk_cd,
     _dict_get_fid,
     _fid9001_to_stk_cd,
     _parse_real_item_field,
     _real_item_stk_cd,
+)
+from backend.app.services.engine_symbol_utils import (
     is_nxt_enabled,
     get_ws_subscribe_code,
     get_stock_market,

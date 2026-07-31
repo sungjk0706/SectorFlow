@@ -5,15 +5,12 @@ from __future__ import annotations
 
 engine_service에서 분리된 순수 함수만 둔다 (로직·입출력 동일 유지).
 
-`_base_stk_cd`·`_real_item_stk_cd`(및 그 private helpers 3종)는 core/symbol_utils.py로
-이동됨 (P10 SSOT, C-06 역참조 해소). 본 모듈에서 재수출하여 기존 호출부·테스트 patch
-경로를 유지 (P16 살아있는 경로).
+`_base_stk_cd`·`_real_item_stk_cd`는 core/symbol_utils.py로 이동됨 (P10 SSOT,
+C-06 역참조 해소). 본 모듈에서 재수출하여 기존 호출부·테스트 patch 경로를 유지
+(P16 살아있는 경로).
 """
 from backend.app.core.symbol_utils import (
     _base_stk_cd,
-    _dict_get_fid,
-    _fid9001_to_stk_cd,
-    _parse_real_item_field,
     _real_item_stk_cd,
 )
 
