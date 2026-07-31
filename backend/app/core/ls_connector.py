@@ -629,37 +629,6 @@ class LsConnector(BrokerConnector):
             logger.warning("[구독] %s 실시간뉴스 구독 실패", _BROKER_DISPLAY)
         return success
 
-    async def _on_ws_message(self, payload: dict) -> None:
-        """_LsSocket 콜백 → 핸들러 직접 호출."""
-        if self._receive_callback:
-            if asyncio.iscoroutinefunction(self._receive_callback):
-                await self._receive_callback(payload)
-            else:
-                self._receive_callback(payload)
-
-    async def _on_socket_disconnect(self) -> None:
-        """_LsSocket 연결 끊김 시 호출 — 재연결 루프 기동."""
-        if self._stop_reconnect:
-            return
-        self._connected = False
-        try:
-            from backend.app.services.engine_state import state
-            state.login_ok = False
-        except Exception:
-            logger.warning("[연결] %s 로그인 상태 초기화 실패", _BROKER_DISPLAY, exc_info=True)
-        try:
-            from backend.app.services.ws_subscribe_control import broadcast_ws_connection_status
-            broadcast_ws_connection_status(False)
-        except Exception:
-            logger.warning("[연결] %s 연결 끊김 상태 알림 실패", _BROKER_DISPLAY, exc_info=True)
-        if self._reconnecting:
-            return
-        self._reconnecting = True
-        try:
-            await self._reconnect_loop()
-        finally:
-            self._reconnecting = False
-
     async def _reconnect_loop(self) -> None:
         """지수 백오프 재연결 루프 (1→2→4→8→16→32초, 최대 20회)."""
         delays = [1, 2, 4, 8, 16, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32]
@@ -731,34 +700,6 @@ class LsConnector(BrokerConnector):
             except Exception as e:
                 logger.warning("[연결] %s 재연결 %d회 실패: %s", _BROKER_DISPLAY, attempt, e, exc_info=True)
         logger.error("[연결] %s 최대 재연결 횟수(20회) 초과 — 중단", _BROKER_DISPLAY, exc_info=True)
-
-    def set_reconnect_success_callback(self, callback: Callable) -> None:
-        """재연결 성공 시 호출될 콜백 설정 (ConnectorManager가 구독 복원에 사용)."""
-        self._on_reconnect_success = callback
-
-    def _make_queue_callback(self) -> Callable[[dict], None] | None:
-        """시세 큐 누락 정책 콜백 생성 — 큐 가득 시 가장 오래된 데이터 버리고 최신 유지.
-
-        Producer-Consumer Queue가 설정되지 않은 경우 None 반환.
-        """
-        if self._ws_queue is None:
-            return None
-        _q = self._ws_queue
-        def _queue_put_with_drop(msg: dict) -> None:
-            try:
-                _q.put_nowait(msg)
-            except asyncio.QueueFull:
-                try:
-                    _q.get_nowait()
-                    _q.put_nowait(msg)
-                    logger.warning("[연결] %s 데이터 큐 누락 발생 — 최신 데이터 유지", _BROKER_DISPLAY)
-                except asyncio.QueueEmpty:
-                    _q.put_nowait(msg)
-        return _queue_put_with_drop
-
-    def set_message_callback(self, callback: Callable) -> None:
-        """메시지 수신 콜백 설정."""
-        self._receive_callback = callback
 
     def set_queue_callback(self, queue: asyncio.Queue) -> None:
         """Producer-Consumer Queue 설정 (누락 정책 적용)."""
