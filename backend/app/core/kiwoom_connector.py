@@ -272,10 +272,6 @@ class KiwoomConnector(BrokerConnector):
         """단건 종목 구독 등록 (하위 호환성용)."""
         return await self.subscribe_stocks([code])
 
-    async def unsubscribe(self, code: str, data_types: list[str]) -> bool:
-        """단건 종목 구독 해지 (하위 호환성용)."""
-        return await self.unsubscribe_stocks([code])
-
     async def subscribe_stocks(self, codes: list[str]) -> bool:
         """종목 리스트 실시간 구독 등록 (Kiwoom WebSocket: 벌크 청크 조립 후 ACK 대기)."""
         if not self.is_connected() or not self._socket:

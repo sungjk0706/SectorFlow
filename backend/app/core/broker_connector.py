@@ -55,12 +55,7 @@ class BrokerConnector(ABC):
     async def subscribe(self, code: str, data_types: list[str]) -> bool:
         """종목 구독 등록 (예: ['0B', '0D'])"""
         ...
-    
-    @abstractmethod
-    async def unsubscribe(self, code: str, data_types: list[str]) -> bool:
-        """종목 구독 해지"""
-        ...
-    
+
     async def receive(self) -> DataMessage | None:
         """데이터 수신 (블로킹) — 폴링 방식 커넥터용"""
         raise NotImplementedError("폴링 방식 커넥터는 receive()를 구현해야 합니다")

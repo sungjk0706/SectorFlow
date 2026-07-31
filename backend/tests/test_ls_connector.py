@@ -624,13 +624,6 @@ class TestLsConnectorSubscribeCompat:
             mock_sub.assert_called_once_with(["005930"])
             assert result is True
 
-    async def test_unsubscribe_delegates_to_unsubscribe_stocks(self):
-        conn = _make_ls_connector()
-        with patch.object(conn, "unsubscribe_stocks", AsyncMock(return_value=True)) as mock_unsub:
-            result = await conn.unsubscribe("005930", ["0B"])
-            mock_unsub.assert_called_once_with(["005930"])
-            assert result is True
-
 
 # ── LsConnector.subscribe_stocks / unsubscribe_stocks ──────────────────────────
 

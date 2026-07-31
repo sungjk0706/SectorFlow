@@ -7,8 +7,8 @@ KiwoomRestAPI: __init__, __aenter__/__aexit__, _get_client, _reset_client,
   revoke_token, get_access_token,
   _request (성공/429/예외), _paginated_request (단일/연속조회/토큰없음),
   get_deposit_detail, get_balance_detail,
-  fetch_ka10099_full (정상/숫자/알파벳/빈),
-  fetch_ka10001_nxt_enable (정상/중첩/실패)
+  fetch_ka10099_full (정상/숫자/알파벳/빈) — 테스트 헬퍼 경유,
+  fetch_ka10001_nxt_enable (정상/중첩/실패) — 테스트 헬퍼 경유
 
 의존성: httpx, broker_urls, broker_factory, kiwoom_stock_rest
 → 모두 mock으로 대체 (conftest hang 방지 원칙 준수)
@@ -21,6 +21,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from backend.app.core.constants import _KST
 from backend.tests.httpx_mock_helpers import mock_httpx_client, mock_httpx_response
+from backend.tests.broker_rest_test_helpers import fetch_ka10099_full, fetch_ka10001_nxt_enable
 
 
 # ── 헬퍼 ───────────────────────────────────────────────────────────────────────
@@ -524,7 +525,7 @@ class TestKiwoomRestFetchMarketCode:
             ]
         })
         with patch.object(api, "_call_api", AsyncMock(return_value=(mock_resp, False))):
-            result = await api.fetch_ka10099_full("0")
+            result = await fetch_ka10099_full(api, "0")
             assert len(result) == 2
             assert result[0] == ("005930", True, "0")
             assert result[1] == ("000660", False, "0")
@@ -538,7 +539,7 @@ class TestKiwoomRestFetchMarketCode:
             ]
         })
         with patch.object(api, "_call_api", AsyncMock(return_value=(mock_resp, False))):
-            result = await api.fetch_ka10099_full("10")
+            result = await fetch_ka10099_full(api, "10")
             assert len(result) == 1
             assert result[0] == ("0017J0", True, "10")
 
@@ -546,7 +547,7 @@ class TestKiwoomRestFetchMarketCode:
         api = _make_kiwoom_rest()
         api._token_info = _make_token_info()
         with patch.object(api, "_call_api", AsyncMock(return_value=(None, False))):
-            result = await api.fetch_ka10099_full("0")
+            result = await fetch_ka10099_full(api, "0")
             assert result == []
 
     async def test_empty_list(self):
@@ -554,7 +555,7 @@ class TestKiwoomRestFetchMarketCode:
         api._token_info = _make_token_info()
         mock_resp = mock_httpx_response(200, {"list": []})
         with patch.object(api, "_call_api", AsyncMock(return_value=(mock_resp, False))):
-            result = await api.fetch_ka10099_full("0")
+            result = await fetch_ka10099_full(api, "0")
             assert result == []
 
     async def test_no_list_key(self):
@@ -562,7 +563,7 @@ class TestKiwoomRestFetchMarketCode:
         api._token_info = _make_token_info()
         mock_resp = mock_httpx_response(200, {})
         with patch.object(api, "_call_api", AsyncMock(return_value=(mock_resp, False))):
-            result = await api.fetch_ka10099_full("0")
+            result = await fetch_ka10099_full(api, "0")
             assert result == []
 
     async def test_short_code_padded(self):
@@ -572,7 +573,7 @@ class TestKiwoomRestFetchMarketCode:
             "list": [{"code": "5930", "nxtEnable": "N", "marketCode": "0"}]
         })
         with patch.object(api, "_call_api", AsyncMock(return_value=(mock_resp, False))):
-            result = await api.fetch_ka10099_full("0")
+            result = await fetch_ka10099_full(api, "0")
             assert result[0][0] == "005930"
 
     async def test_exception_returns_empty(self):
@@ -581,7 +582,7 @@ class TestKiwoomRestFetchMarketCode:
         mock_resp = MagicMock()
         mock_resp.json.side_effect = Exception("parse error")
         with patch.object(api, "_call_api", AsyncMock(return_value=(mock_resp, False))):
-            result = await api.fetch_ka10099_full("0")
+            result = await fetch_ka10099_full(api, "0")
             assert result == []
 
 
@@ -593,7 +594,7 @@ class TestKiwoomRestFetchNxtEnable:
         api._token_info = _make_token_info()
         mock_resp = mock_httpx_response(200, {"nxtEnable": "Y"})
         with patch.object(api, "_call_api", AsyncMock(return_value=(mock_resp, False))):
-            result = await api.fetch_ka10001_nxt_enable("005930")
+            result = await fetch_ka10001_nxt_enable(api, "005930")
             assert result == "Y"
 
     async def test_success_nested_output(self):
@@ -601,7 +602,7 @@ class TestKiwoomRestFetchNxtEnable:
         api._token_info = _make_token_info()
         mock_resp = mock_httpx_response(200, {"output": {"nxtEnable": "N"}})
         with patch.object(api, "_call_api", AsyncMock(return_value=(mock_resp, False))):
-            result = await api.fetch_ka10001_nxt_enable("005930")
+            result = await fetch_ka10001_nxt_enable(api, "005930")
             assert result == "N"
 
     async def test_success_nested_output_list(self):
@@ -609,14 +610,14 @@ class TestKiwoomRestFetchNxtEnable:
         api._token_info = _make_token_info()
         mock_resp = mock_httpx_response(200, {"output1": [{"nxtEnable": "Y"}]})
         with patch.object(api, "_call_api", AsyncMock(return_value=(mock_resp, False))):
-            result = await api.fetch_ka10001_nxt_enable("005930")
+            result = await fetch_ka10001_nxt_enable(api, "005930")
             assert result == "Y"
 
     async def test_resp_none_returns_empty(self):
         api = _make_kiwoom_rest()
         api._token_info = _make_token_info()
         with patch.object(api, "_call_api", AsyncMock(return_value=(None, False))):
-            result = await api.fetch_ka10001_nxt_enable("005930")
+            result = await fetch_ka10001_nxt_enable(api, "005930")
             assert result == ""
 
     async def test_exception_returns_empty(self):
@@ -625,7 +626,7 @@ class TestKiwoomRestFetchNxtEnable:
         mock_resp = MagicMock()
         mock_resp.json.side_effect = Exception("parse error")
         with patch.object(api, "_call_api", AsyncMock(return_value=(mock_resp, False))):
-            result = await api.fetch_ka10001_nxt_enable("005930")
+            result = await fetch_ka10001_nxt_enable(api, "005930")
             assert result == ""
 
     async def test_no_nxt_enable_returns_N(self):
@@ -633,5 +634,5 @@ class TestKiwoomRestFetchNxtEnable:
         api._token_info = _make_token_info()
         mock_resp = mock_httpx_response(200, {"other": "data"})
         with patch.object(api, "_call_api", AsyncMock(return_value=(mock_resp, False))):
-            result = await api.fetch_ka10001_nxt_enable("005930")
+            result = await fetch_ka10001_nxt_enable(api, "005930")
             assert result == "N"

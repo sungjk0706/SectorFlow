@@ -4,7 +4,7 @@ LsTokenInfo: is_expired (정상/만료/issued_at=0)
 LsRestAPI: __init__, __aenter__/__aexit__, ensure_client, ensure_token, get_token,
   _issue_token (성공/429/HTTP실패/토큰필드없음/크리덴셜없음),
   revoke_token (정상/HTTP실패/토큰없음/예외),
-  call_api (GET/POST/429/예외/토큰없음),
+  call_api (GET/POST/429/예외/토큰없음) — 테스트 헬퍼 경유,
   buy_order (성공/HTTP실패/429/예외),
   sell_order (성공/HTTP실패/예외)
 
@@ -19,6 +19,7 @@ import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from backend.tests.httpx_mock_helpers import mock_httpx_client, mock_httpx_response
+from backend.tests.broker_rest_test_helpers import ls_call_api
 
 
 # ── 헬퍼 ───────────────────────────────────────────────────────────────────────
@@ -290,7 +291,7 @@ class TestLsRestRevokeToken:
         assert "토큰 폐기 생략 — HTTP 클라이언트 없음" in caplog.text
 
 
-# ── LsRestAPI.call_api ─────────────────────────────────────────────────────────
+# ── LsRestAPI.call_api (테스트 헬퍼 경유) ────────────────────────────────────────
 
 class TestLsRestCallApi:
     async def test_get_success(self):
@@ -303,7 +304,7 @@ class TestLsRestCallApi:
             patch.object(api, "ensure_client", AsyncMock()),
             patch.object(api, "ensure_token", AsyncMock(return_value=True)),
         ):
-            result = await api.call_api("https://api/test", method="GET")
+            result = await ls_call_api(api, "https://api/test", method="GET")
             assert result == {"data": "ok"}
 
     async def test_post_success(self):
@@ -316,7 +317,7 @@ class TestLsRestCallApi:
             patch.object(api, "ensure_client", AsyncMock()),
             patch.object(api, "ensure_token", AsyncMock(return_value=True)),
         ):
-            result = await api.call_api("https://api/test", method="POST", body={"key": "val"})
+            result = await ls_call_api(api, "https://api/test", method="POST", body={"key": "val"})
             assert result == {"data": "ok"}
 
     async def test_429_retry_then_success(self):
@@ -331,7 +332,7 @@ class TestLsRestCallApi:
             patch.object(api, "ensure_token", AsyncMock(return_value=True)),
             patch("backend.app.core.ls_rest.asyncio.sleep", new_callable=AsyncMock),
         ):
-            result = await api.call_api("https://api/test", method="POST")
+            result = await ls_call_api(api, "https://api/test", method="POST")
             assert result == {"ok": True}
 
     async def test_http_500(self):
@@ -344,7 +345,7 @@ class TestLsRestCallApi:
             patch.object(api, "ensure_client", AsyncMock()),
             patch.object(api, "ensure_token", AsyncMock(return_value=True)),
         ):
-            result = await api.call_api("https://api/test", method="POST")
+            result = await ls_call_api(api, "https://api/test", method="POST")
             assert result is None
 
     async def test_exception(self):
@@ -357,7 +358,7 @@ class TestLsRestCallApi:
             patch.object(api, "ensure_token", AsyncMock(return_value=True)),
             patch("backend.app.core.ls_rest.asyncio.sleep", new_callable=AsyncMock),
         ):
-            result = await api.call_api("https://api/test", method="POST")
+            result = await ls_call_api(api, "https://api/test", method="POST")
             assert result is None
 
     async def test_no_token(self):
@@ -367,7 +368,7 @@ class TestLsRestCallApi:
             patch.object(api, "ensure_client", AsyncMock()),
             patch.object(api, "ensure_token", AsyncMock(return_value=False)),
         ):
-            result = await api.call_api("https://api/test")
+            result = await ls_call_api(api, "https://api/test")
             assert result is None
 
     async def test_no_client(self):
@@ -375,7 +376,7 @@ class TestLsRestCallApi:
         api._token_info = _make_ls_token_info()
         api._client = None
         with patch.object(api, "ensure_client", AsyncMock()):
-            result = await api.call_api("https://api/test")
+            result = await ls_call_api(api, "https://api/test")
             assert result is None
 
 
