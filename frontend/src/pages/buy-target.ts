@@ -5,6 +5,9 @@ import { createDataTable, type DataTableApi } from '../components/common/data-ta
 import { hotStore } from '../stores/hotStore'
 import { uiStore } from '../stores/uiStore'
 import { notifyPageActive, notifyPageInactive } from '../api/ws'
+import { api } from '../api/client'
+import { applyAccountSnapshot, applyBuyTargetsSnapshot, applyPositionsSnapshot } from '../stores/hotStore'
+import { refreshPageData, createPageRefreshStatus } from '../utils/page-refresh'
 import { createCardHeaderWithMargin } from '../components/common/card-header'
 import { createSearchInput } from '../components/common/search-input'
 import { globalSettingsManager } from '../settings'
@@ -30,6 +33,40 @@ let onRealDataTick: ((e: Event) => void) | null = null
 let onOrderbookTick: ((e: Event) => void) | null = null
 let onProgramTick: ((e: Event) => void) | null = null
 let _mounted = false
+let pageDataReady = false
+let refreshStatus: ReturnType<typeof createPageRefreshStatus> | null = null
+
+async function refreshBuyTargetPage(): Promise<void> {
+  const isActive = () => _mounted
+  refreshStatus?.set('최신 데이터 확인 중')
+  pageDataReady = false
+  renderTableRows([])
+  const results = await Promise.all([
+    refreshPageData({
+      key: 'buy-target:account', policy: 'always-fresh', isActive,
+      fetcher: async () => api.getAccountSnapshot('buy-target'),
+      apply: (response) => applyAccountSnapshot(response.data, response.freshness),
+    }),
+    refreshPageData({
+      key: 'buy-target:positions', policy: 'always-fresh', isActive,
+      fetcher: async () => api.getAccountPositions('buy-target'),
+      apply: (response) => applyPositionsSnapshot(response.data, response.freshness),
+    }),
+    refreshPageData({
+      key: 'buy-target:targets', policy: 'always-fresh', isActive,
+      fetcher: async () => api.getBuyTargets('buy-target'),
+      apply: (response) => applyBuyTargetsSnapshot(response.data, response.freshness),
+    }),
+  ])
+  if (!_mounted) return
+  if (results.some(result => result.status === 'error')) {
+    refreshStatus?.set('최신 데이터를 확인하지 못했습니다')
+    return
+  }
+  pageDataReady = true
+  refreshStatus?.set('', false)
+  scheduleRender()
+}
 
 /* ── 렌더링 참조 상태 — scheduleRender 참조 비교용 (mount 시 초기화, unmount 시 reset)
  *    UIState/HotState 필드 타입을 직접 참조하여 SSOT 유지 (P10) ── */
@@ -344,7 +381,7 @@ function renderTableRows(buyTargets: StockScore[]): void {
 /** rAF 콜백 — 최신 상태로 테이블 + 배지 갱신 */
 function renderFrame(): void {
   rafHandle = null
-  if (!_mounted) return
+  if (!_mounted || !pageDataReady) return
   const latest = hotStore.getState()
   const latestUi = uiStore.getState()
 
@@ -434,14 +471,16 @@ function mount(container: HTMLElement): void {
   Object.assign(root.style, { display: 'flex', flexDirection: 'column', height: '100%' })
 
   buildHeader(root)
+  refreshStatus = createPageRefreshStatus()
+  root.appendChild(refreshStatus.el)
   buildSearchRow(root)
   buildTableArea(root)
   container.appendChild(root)
 
   // 초기 데이터 + 렌더링 상태 초기화
   initRenderState(initState, uiStore.getState())
-  updateBadges()
-  renderTableRows(initState.buyTargets)
+  // 최신 HTTP 스냅샷 확인 전에는 기존 hotStore 값을 화면에 노출하지 않는다.
+  renderTableRows([])
 
   // Store 구독 — rAF 배칭 + reference equality guard
   unsubTargets = hotStore.subscribe(() => scheduleRender())
@@ -449,6 +488,7 @@ function mount(container: HTMLElement): void {
 
   // O(1) 초저지연 DOM 갱신 이벤트 리스너
   setupTickListeners()
+  void refreshBuyTargetPage()
 }
 
 /* ── unmount ── */
@@ -476,6 +516,8 @@ function unmount(): void {
   searchInput = null
   searchTerm = ''
   resetRenderState()
+  pageDataReady = false
+  refreshStatus = null
 }
 
 export default { mount, unmount }

@@ -7,6 +7,9 @@ import { createDataTable, type DataTableApi, type ColumnDef } from '../component
 import { hotStore, normalizeStockCode, getPositionIndex, type HotState } from '../stores/hotStore'
 import { uiStore } from '../stores/uiStore'
 import { notifyPageActive, notifyPageInactive } from '../api/ws'
+import { api } from '../api/client'
+import { applyAccountSnapshot, applyPositionsSnapshot } from '../stores/hotStore'
+import { refreshPageData, createPageRefreshStatus } from '../utils/page-refresh'
 import { createCardHeaderWithMargin } from '../components/common/card-header'
 import { globalSettingsManager } from '../settings'
 import { rateColor, pnlColor, fmtComma, fmtRate, createCodeCell, createStockNameColumn, createNumberCell, createPriceCell, COLOR } from '../components/common/ui-styles'
@@ -105,6 +108,37 @@ let _summaryRafId: number | null = null
 let _statusRafId: number | null = null
 let onRealDataTick: ((e: Event) => void) | null = null
 let _mounted = false
+let pageDataReady = false
+let refreshStatus: ReturnType<typeof createPageRefreshStatus> | null = null
+
+async function refreshSellPositionPage(): Promise<void> {
+  const isActive = () => _mounted
+  refreshStatus?.set('최신 데이터 확인 중')
+  pageDataReady = false
+  dataTable?.updateRows([])
+  renderSummary()
+  const results = await Promise.all([
+    refreshPageData({
+      key: 'sell-position:account', policy: 'always-fresh', isActive,
+      fetcher: async () => api.getAccountSnapshot('sell-position'),
+      apply: (response) => applyAccountSnapshot(response.data, response.freshness),
+    }),
+    refreshPageData({
+      key: 'sell-position:positions', policy: 'always-fresh', isActive,
+      fetcher: async () => api.getAccountPositions('sell-position'),
+      apply: (response) => applyPositionsSnapshot(response.data, response.freshness),
+    }),
+  ])
+  if (!_mounted) return
+  if (results.some(result => result.status === 'error')) {
+    refreshStatus?.set('최신 데이터를 확인하지 못했습니다')
+    return
+  }
+  pageDataReady = true
+  refreshStatus?.set('', false)
+  renderSummary()
+  dataTable?.updateRows(hotStore.getState().positions)
+}
 
 /* ── hotStore 구독 참조 상태 — onHotStoreChange 참조 비교용 (mount 시 초기화, unmount 시 reset) ── */
 let _prevPositions: HotState['positions'] = []
@@ -120,6 +154,12 @@ let summaryStatusBadge: BadgeHandle | null = null
 /** 보유 종목 요약 행 렌더 — positions + sectorStocks에서 직접 계산 (개별 종목 행과 동일 소스·공식)
  *  P21/P23: cur_price null인 보유종목 있으면 평가금액/평가손익/수익률 '-' 표시 (개별 행과 동일 null 패턴) */
 function renderSummary(): void {
+  if (!pageDataReady) {
+    if (summaryEvalBadge) updateBadge(summaryEvalBadge, '—')
+    if (summaryPnlBadge) updateBadge(summaryPnlBadge, '—')
+    if (summaryRateBadge) updateBadge(summaryRateBadge, '—')
+    return
+  }
   const state = hotStore.getState()
   const count = state.positionCount
   const { evalTotal, evalPnl, evalRate, hasNullPrice } = computeHoldingsSummary(state.positions, state.sectorStocks)
@@ -209,6 +249,7 @@ function buildTableArea(root: HTMLElement): void {
 /** hotStore 구독 콜백 — reference equality guard + rAF 배칭
  *  account 변경 시 요약 행 즉시 갱신, positions/sectorStocks 변경 시 rAF로 updateRows */
 function onHotStoreChange(state: HotState): void {
+  if (!pageDataReady) return
   const positionsChanged = state.positions !== _prevPositions
   const sectorStocksChanged = state.sectorStocks !== _prevSectorStocks
   const accountChanged = state.account !== _prevAccount
@@ -283,6 +324,8 @@ function mount(container: HTMLElement): void {
   Object.assign(root.style, { display: 'flex', flexDirection: 'column', height: '100%' })
 
   buildSummary(root)
+  refreshStatus = createPageRefreshStatus()
+  root.appendChild(refreshStatus.el)
   buildTableArea(root)
   container.appendChild(root)
 
@@ -291,7 +334,7 @@ function mount(container: HTMLElement): void {
   _prevPositions = state.positions
   _prevSectorStocks = state.sectorStocks
   _prevAccount = state.account
-  dataTable?.updateRows(state.positions)
+  dataTable?.updateRows([])
   renderSummary()
   updateSellStatusBadge()
 
@@ -307,6 +350,7 @@ function mount(container: HTMLElement): void {
 
   // O(1) 초저지연 DOM 갱신 이벤트 리스너
   setupTickListener()
+  void refreshSellPositionPage()
 }
 
 function unmount(): void {
@@ -330,6 +374,8 @@ function unmount(): void {
   _prevPositions = []
   _prevSectorStocks = {}
   _prevAccount = null
+  pageDataReady = false
+  refreshStatus = null
 }
 
 export default { mount, unmount }

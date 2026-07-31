@@ -13,6 +13,9 @@ import { createTabBar } from '../components/common/button'
 import { createSearchInput } from '../components/common/search-input'
 import { hotStore } from '../stores/hotStore'
 import { notifyPageActive, notifyPageInactive } from '../api/ws'
+import { api } from '../api/client'
+import { recordFreshness } from '../stores/hotStore'
+import { refreshPageData, createPageRefreshStatus } from '../utils/page-refresh'
 import type { DataTableApi } from '../components/common/data-table'
 import type { DateRangeInputApi } from '../components/common/date-range-input'
 import { type SummaryCardEls } from './profit-shared'
@@ -123,6 +126,43 @@ function createState(): ProfitDetailState {
 }
 
 const state: ProfitDetailState = createState()
+let refreshStatus: ReturnType<typeof createPageRefreshStatus> | null = null
+
+async function refreshProfitDetailPage(): Promise<void> {
+  const isActive = () => state.mounted
+  refreshStatus?.set('최신 데이터 확인 중')
+  const results = await Promise.all([
+    refreshPageData({
+      key: 'profit-detail:buy-history', policy: 'always-fresh', isActive,
+      fetcher: async () => ({ data: await api.getBuyHistory(), freshness: hotStore.getState().freshness.trade_history }),
+      apply: (response) => {
+        recordFreshness(response.freshness)
+        hotStore.setState({ buyHistory: response.data })
+        return true
+      },
+    }),
+    refreshPageData({
+      key: 'profit-detail:sell-history', policy: 'always-fresh', isActive,
+      fetcher: async () => ({ data: await api.getSellHistory(), freshness: hotStore.getState().freshness.trade_history }),
+      apply: (response) => {
+        recordFreshness(response.freshness)
+        hotStore.setState({ sellHistory: response.data })
+        return true
+      },
+    }),
+  ])
+  if (!state.mounted) return
+  if (results.some(result => result.status === 'error')) {
+    refreshStatus?.set('최신 데이터를 확인하지 못했습니다')
+    return
+  }
+  refreshStatus?.set('', false)
+  const current = hotStore.getState()
+  state.buyHistory = current.buyHistory
+  state.sellHistory = current.sellHistory
+  state.dirtyHistory = true
+  state.dirtySummary = true
+}
 
 /* ── mount ── */
 function mount(container: HTMLElement): void {
@@ -134,6 +174,8 @@ function mount(container: HTMLElement): void {
   const root = document.createElement('div')
   Object.assign(root.style, { display: 'flex', flexDirection: 'column', height: '100%' })
   root.appendChild(createCardTitle('수익상세'))
+  refreshStatus = createPageRefreshStatus()
+  root.appendChild(refreshStatus.el)
 
   const todayStr = getTradingToday()
   const monthStart = todayStr.slice(0, 8) + '01'
@@ -153,11 +195,13 @@ function mount(container: HTMLElement): void {
   const initState = hotStore.getState()
   restoreInitialView(state, todayStr, initState)
   subscribeProfitDetailStore(state, initState)
+  void refreshProfitDetailPage()
 }
 
 /* ── unmount ── */
 function unmount(): void {
   state.mounted = false
+  refreshStatus = null
   notifyPageInactive('profit-detail')
   if (state.rafId !== null) { cancelAnimationFrame(state.rafId); state.rafId = null }
   state.dirtyHistory = false

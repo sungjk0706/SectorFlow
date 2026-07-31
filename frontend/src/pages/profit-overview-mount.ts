@@ -359,12 +359,12 @@ export function flushRender(state: ProfitOverviewState): void {
 
     if (state.dirtyAccount) {
       state.dirtyAccount = false
-      renderAccountVals(state)
+      if (state.dataReady) renderAccountVals(state)
     }
 
     if (state.dirtyHistory) {
       state.dirtyHistory = false
-      renderAccountVals(state)
+      if (state.dataReady) renderAccountVals(state)
       refreshFilteredViews(state)
     }
 

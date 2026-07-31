@@ -152,3 +152,19 @@ export function clearPageRefreshCache(): void {
   invalidatePageRefresh()
   requests.clear()
 }
+
+export function createPageRefreshStatus(): { el: HTMLDivElement; set: (message: string, visible?: boolean) => void } {
+  const el = document.createElement('div')
+  Object.assign(el.style, {
+    color: '#8b949e',
+    fontSize: '12px',
+    minHeight: '18px',
+    padding: '2px 4px',
+  })
+  const set = (message: string, visible = true): void => {
+    el.textContent = message
+    el.style.display = visible && message ? '' : 'none'
+  }
+  set('', false)
+  return { el, set }
+}

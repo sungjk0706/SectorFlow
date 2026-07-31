@@ -13,6 +13,9 @@ import { COLOR } from '../components/common/ui-styles'
 import { globalSettingsManager } from '../settings'
 import { hotStore } from '../stores/hotStore'
 import { notifyPageActive, notifyPageInactive } from '../api/ws'
+import { api } from '../api/client'
+import { applyAccountSnapshot, applyPositionsSnapshot } from '../stores/hotStore'
+import { refreshPageData, createPageRefreshStatus } from '../utils/page-refresh'
 import type { ProfitChartApi } from '../components/canvas-profit-chart'
 import type { SectorDonutApi } from '../components/canvas-sector-donut'
 import type { AccountSnapshot } from '../types'
@@ -83,6 +86,7 @@ export interface ProfitOverviewState {
   prevAccountRef: AccountSnapshot | null
   prevPositionsRef: unknown[]
   prevTradeMode: string | undefined
+  dataReady: boolean
 }
 
 function createState(): ProfitOverviewState {
@@ -124,10 +128,38 @@ function createState(): ProfitOverviewState {
     prevAccountRef: null,
     prevPositionsRef: [],
     prevTradeMode: undefined,
+    dataReady: false,
   }
 }
 
 const state: ProfitOverviewState = createState()
+let refreshStatus: ReturnType<typeof createPageRefreshStatus> | null = null
+
+async function refreshProfitOverviewPage(): Promise<void> {
+  refreshStatus?.set('최신 데이터 확인 중')
+  state.dataReady = false
+  const isActive = () => state.mounted
+  const results = await Promise.all([
+    refreshPageData({
+      key: 'profit-overview:account', policy: 'always-fresh', isActive,
+      fetcher: async () => api.getAccountSnapshot('profit-overview'),
+      apply: (response) => applyAccountSnapshot(response.data, response.freshness),
+    }),
+    refreshPageData({
+      key: 'profit-overview:positions', policy: 'always-fresh', isActive,
+      fetcher: async () => api.getAccountPositions('profit-overview'),
+      apply: (response) => applyPositionsSnapshot(response.data, response.freshness),
+    }),
+  ])
+  if (!state.mounted) return
+  if (results.some(result => result.status === 'error')) {
+    refreshStatus?.set('최신 데이터를 확인하지 못했습니다')
+    return
+  }
+  state.dataReady = true
+  refreshStatus?.set('', false)
+  renderAccountVals(state)
+}
 
 /* ── mount ── */
 function mount(container: HTMLElement): void {
@@ -139,6 +171,8 @@ function mount(container: HTMLElement): void {
   const root = document.createElement('div')
   Object.assign(root.style, { display: 'flex', flexDirection: 'column', height: '100%' })
   root.appendChild(createCardTitle('수익현황'))
+  refreshStatus = createPageRefreshStatus()
+  root.appendChild(refreshStatus.el)
 
   const settings = globalSettingsManager.getSettings()
   const isTestMode = settings?.trade_mode === 'test'
@@ -181,7 +215,8 @@ function mount(container: HTMLElement): void {
   // hotStore 구독 + 실시간 틱 핸들러
   subscribeProfitOverviewStore(state, initState)
 
-  renderAccountVals(state)
+  // 계좌·보유 스냅샷 확인 전에는 기존 hotStore 값을 계좌 패널에 표시하지 않는다.
+  void refreshProfitOverviewPage()
 }
 
 /* ── unmount ── */
