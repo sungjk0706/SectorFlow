@@ -109,6 +109,7 @@ async def _send_initial_snapshot_delayed(websocket: WebSocket, ws_manager) -> No
             scores, ranked_count = scores_result if isinstance(scores_result, tuple) else (scores_result, 0)
             if scores:
                 from backend.app.pipelines.pipeline_compute import get_current_receive_rate
+                from backend.app.services.engine_account_notify import get_freshness
                 scores_payload = {
                     "_v": 1,
                     "scores": scores,
@@ -120,6 +121,7 @@ async def _send_initial_snapshot_delayed(websocket: WebSocket, ws_manager) -> No
                         "ranked_sectors_count": ranked_count,
                         "receive_rate": get_current_receive_rate(),
                     },
+                    "freshness": get_freshness("sector_scores"),
                 }
                 await ws_manager.send_to(websocket, "sector-scores", scores_payload)
             else:
@@ -135,8 +137,13 @@ async def _send_initial_snapshot_delayed(websocket: WebSocket, ws_manager) -> No
 
         targets = await get_buy_targets_sector_stocks()
         if targets:
+            from backend.app.services.engine_account_notify import get_freshness
             await ws_manager.send_to(
-                websocket, "buy-targets-update", {"_v": 1, "buy_targets": targets}
+                websocket, "buy-targets-update", {
+                    "_v": 1,
+                    "buy_targets": targets,
+                    "freshness": get_freshness("buy_targets"),
+                }
             )
 
         # 엔진 상태 전송 (engine-status) — broker_statuses/market_phase 포함, token_ready와 무관하게 즉시 전송

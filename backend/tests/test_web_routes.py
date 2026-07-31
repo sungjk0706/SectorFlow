@@ -38,7 +38,9 @@ class TestAccountRouter:
             return_value=expected,
         ) as getter:
             result = await get_account_snapshot(_="dev")
-        assert result == expected
+        assert result["data"] == expected
+        assert result["freshness"]["group"] == "account"
+        assert isinstance(result["freshness"]["revision"], int)
         getter.assert_awaited_once_with()
 
     async def test_positions_delegates_to_account_ssot(self):
@@ -50,7 +52,9 @@ class TestAccountRouter:
             return_value=expected,
         ) as getter:
             result = await get_account_positions(_="dev")
-        assert result == expected
+        assert result["data"] == expected
+        assert result["freshness"]["group"] == "account"
+        assert isinstance(result["freshness"]["revision"], int)
         getter.assert_awaited_once_with()
 
 
@@ -121,7 +125,9 @@ class TestMarketRouter:
             return_value=expected,
         ) as getter:
             result = await get_buy_targets(_="dev")
-        assert result == expected
+        assert result["data"] == expected
+        assert result["freshness"]["group"] == "buy_targets"
+        assert isinstance(result["freshness"]["revision"], int)
         getter.assert_awaited_once_with()
 
     async def test_sector_scores_converts_tuple_contract(self):
@@ -132,7 +138,9 @@ class TestMarketRouter:
             return_value=(scores, 1),
         ) as getter:
             result = await get_sector_scores(_="dev")
-        assert result == {"scores": scores, "ranked_count": 1}
+        assert result["data"] == {"scores": scores, "ranked_count": 1}
+        assert result["freshness"]["group"] == "sector_scores"
+        assert isinstance(result["freshness"]["revision"], int)
         getter.assert_called_once_with()
 
     async def test_sector_stocks_delegates_to_sector_ssot(self):
@@ -144,7 +152,9 @@ class TestMarketRouter:
             return_value=expected,
         ) as getter:
             result = await get_sector_stocks_snapshot(_="dev")
-        assert result == expected
+        assert result["data"] == expected
+        assert result["freshness"]["group"] == "sector_stocks"
+        assert isinstance(result["freshness"]["revision"], int)
         getter.assert_awaited_once_with()
 
     async def test_service_errors_are_not_replaced_with_empty_data(self):

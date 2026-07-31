@@ -15,6 +15,7 @@ from backend.app.services.engine_account_notify import (
     _compute_position_delta,
     _snap_equal,
     _safe_broadcast,
+    _next_revision,
     _rebuild_positions_cache,
     _POSITION_CMP_KEYS,
 )
@@ -32,12 +33,13 @@ async def broadcast_account_update(positions: list[dict], snapshot: dict, reason
     from backend.app.web.ws_manager import ws_manager
     active_pages = ws_manager.get_active_pages()
 
-    await _broadcast_account_to_pages(changed_positions, removed_codes, snapshot, active_pages)
+    revision = _next_revision("account")
+    await _broadcast_account_to_pages(changed_positions, removed_codes, snapshot, active_pages, revision)
     _update_account_notify_cache(positions, snapshot)
     _log_account_broadcast(reason, snapshot, positions, changed_positions, removed_codes, active_pages)
 
 
-async def _broadcast_account_to_pages(changed_positions, removed_codes, snapshot, active_pages) -> None:
+async def _broadcast_account_to_pages(changed_positions, removed_codes, snapshot, active_pages, revision: int = 0) -> None:
     """활성 페이지에 맞춰 이벤트 분리 전송 (P23 — 각 이벤트 단일 payload 계약).
 
     - 수익현황만 활성 → `account-summary-update` (경량화 payload)
@@ -52,6 +54,7 @@ async def _broadcast_account_to_pages(changed_positions, removed_codes, snapshot
     if profit_overview_active and not sell_position_active:
         lightweight_payload = _build_lightweight_payload_for_profit_overview(snapshot, changed_positions, removed_codes)
         try:
+            lightweight_payload["freshness"] = {"group": "account", "revision": revision}
             await ws_manager.broadcast_to_pages("account-summary-update", lightweight_payload, {"profit-overview"})
         except Exception as e:
             logger.warning("[시스템] 수익현황 경량화 페이로드 전송 실패: %s", e, exc_info=True)
@@ -62,6 +65,7 @@ async def _broadcast_account_to_pages(changed_positions, removed_codes, snapshot
         "snapshot": dict(snapshot),
         "changed_positions": changed_positions,
         "removed_codes": removed_codes,
+        "freshness": {"group": "account", "revision": revision},
     }
     target_pages = set()
     if sell_position_active:
@@ -75,7 +79,7 @@ async def _broadcast_account_to_pages(changed_positions, removed_codes, snapshot
         except Exception as e:
             logger.warning("[시스템] 계좌 화면 전송 실패: %s", e, exc_info=True)
     else:
-        await _safe_broadcast("account-update", payload)
+        await _safe_broadcast("account-update", payload, group="account", revision=revision)
 
 
 def _update_account_notify_cache(positions: list[dict], snapshot: dict) -> None:

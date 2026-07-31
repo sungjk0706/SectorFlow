@@ -19,6 +19,8 @@ import {
   applyBuyHistoryUpdate,
   applyDailySummaryUpdate,
   applySectorScores,
+  isFreshnessNewer,
+  recordFreshness,
   hotStore,
   applyInitialSnapshotHot,
 } from './stores/hotStore'
@@ -94,26 +96,28 @@ export function bindWSToStore(
 
 
   pricesClient.onEvent('buy-targets-update', (data) => {
-    applyBuyTargetsUpdate(data as { buy_targets: StockScore[] })
+    applyBuyTargetsUpdate(data as { buy_targets: StockScore[]; freshness?: import('./types').FreshnessMetadata })
   })
 
   pricesClient.onEvent('sector-stocks-refresh', (data) => {
-    applySectorStocksRefresh(data as { stocks: SectorStock[] })
+    applySectorStocksRefresh(data as { stocks: SectorStock[]; freshness?: import('./types').FreshnessMetadata })
   })
 
   /* ── prices 채널 델타 이벤트 핸들러 (Phase 2 — 증분 갱신) ── */
   pricesClient.onEvent('sector-stocks-delta', (data) => {
-    applySectorStocksDelta(data as { added: SectorStock[]; removed: string[] })
+    applySectorStocksDelta(data as { added: SectorStock[]; removed: string[]; freshness?: import('./types').FreshnessMetadata })
   })
 
   pricesClient.onEvent('buy-targets-delta', (data) => {
-    applyBuyTargetsDelta(data as { added: StockScore[]; removed: string[]; changed: StockScore[] })
+    applyBuyTargetsDelta(data as { added: StockScore[]; removed: string[]; changed: StockScore[]; freshness?: import('./types').FreshnessMetadata })
   })
 
   pricesClient.onEvent('buy-history-append', (data) => {
-    const { trade } = data as { trade: Record<string, unknown> }
-    if (trade) {
-      hotStore.setState((state) => ({ buyHistory: [trade, ...state.buyHistory] }))
+    const event = data as { trade: Record<string, unknown>; freshness?: import('./types').FreshnessMetadata }
+    if (event.freshness && !isFreshnessNewer(event.freshness)) return
+    if (event.freshness) recordFreshness(event.freshness)
+    if (event.trade) {
+      hotStore.setState((state) => ({ buyHistory: [event.trade, ...state.buyHistory] }))
     }
   })
 
@@ -153,7 +157,7 @@ export function bindWSToStore(
   })
 
   settingsClient.onEvent('daily-summary-update', (data) => {
-    applyDailySummaryUpdate(data as { daily_summary: Record<string, unknown>[] })
+    applyDailySummaryUpdate(data as { daily_summary: Record<string, unknown>[]; freshness?: import('./types').FreshnessMetadata })
   })
 
 
@@ -168,7 +172,10 @@ export function bindWSToStore(
   })
 
   pricesClient.onEvent('sell-history-append', (data) => {
-    const { trade, daily_summary } = data as { trade: Record<string, unknown>; daily_summary: Record<string, unknown>[] }
+    const event = data as { trade: Record<string, unknown>; daily_summary: Record<string, unknown>[]; freshness?: import('./types').FreshnessMetadata }
+    if (event.freshness && !isFreshnessNewer(event.freshness)) return
+    if (event.freshness) recordFreshness(event.freshness)
+    const { trade, daily_summary } = event
     hotStore.setState((state) => {
       const patch: Partial<typeof state> = {}
       if (trade) patch.sellHistory = [trade, ...state.sellHistory]
@@ -186,11 +193,11 @@ export function bindWSToStore(
   })
 
   pricesClient.onEvent('sell-history-update', (data) => {
-    applySellHistoryUpdate(data as { sell_history: Record<string, unknown>[] })
+    applySellHistoryUpdate(data as { sell_history: Record<string, unknown>[]; freshness?: import('./types').FreshnessMetadata })
   })
 
   pricesClient.onEvent('buy-history-update', (data) => {
-    applyBuyHistoryUpdate(data as { buy_history: Record<string, unknown>[] })
+    applyBuyHistoryUpdate(data as { buy_history: Record<string, unknown>[]; freshness?: import('./types').FreshnessMetadata })
   })
 
   pricesClient.onEvent('realtime-reset', () => {

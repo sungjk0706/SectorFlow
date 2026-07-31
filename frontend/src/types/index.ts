@@ -1,5 +1,18 @@
 // frontend/src/types/index.ts
 
+export interface FreshnessMetadata {
+  group: 'account' | 'buy_targets' | 'sector_scores' | 'sector_stocks' | 'trade_history';
+  revision: number;
+}
+
+export interface FreshnessSnapshot {
+  account: FreshnessMetadata;
+  buy_targets: FreshnessMetadata;
+  sector_scores: FreshnessMetadata;
+  sector_stocks: FreshnessMetadata;
+  trade_history: FreshnessMetadata;
+}
+
 export interface AccountSnapshot {
   total_buy_amount: number;
   total_sell_amount: number;
@@ -331,6 +344,7 @@ export interface SectorStatus {
 }
 
 export interface SectorScoresEvent {
+  freshness?: FreshnessMetadata;
   scores?: SectorScoreRow[];
   changed_scores?: SectorScoreRow[];
   status: SectorStatus;
@@ -374,6 +388,7 @@ export interface NewsHitEvent {
 }
 
 export interface AccountUpdateEvent {
+  freshness?: FreshnessMetadata;
   snapshot: AccountSnapshot;
   changed_positions?: Position[];
   removed_codes?: string[];
@@ -389,6 +404,7 @@ export interface AccountUpdateEvent {
  * - position_count: 보유 종목 수
  */
 export interface AccountSummaryUpdateEvent {
+  freshness?: FreshnessMetadata;
   snapshot: Partial<AccountSnapshot>;
   position_count: number;
   changed_positions?: Partial<Position>[];

@@ -51,6 +51,13 @@ function makeInitialHotState(): HotState {
     sellHistory: [],
     buyHistory: [],
     dailySummary: [],
+    freshness: {
+      account: { group: 'account', revision: 0 },
+      buy_targets: { group: 'buy_targets', revision: 0 },
+      sector_scores: { group: 'sector_scores', revision: 0 },
+      sector_stocks: { group: 'sector_stocks', revision: 0 },
+      trade_history: { group: 'trade_history', revision: 0 },
+    },
   }
 }
 
@@ -1260,6 +1267,23 @@ describe('hotStore — account-update / account-summary-update 이벤트 분리 
       expect(state.positions.length).toBe(1)
       expect(state.positions[0].stk_cd).toBe('005930')
       expect(state.positionCount).toBe(1)
+    })
+
+    it('WS의 더 최신 account revision이 오래된 응답으로 덮어써지지 않음', () => {
+      applyAccountUpdate({
+        freshness: { group: 'account', revision: 2 },
+        snapshot: { total_buy_amount: 0, total_sell_amount: 0, total_eval_amount: 900000, total_pnl: 0, total_pnl_rate: 0, deposit: 7000000, trade_mode: 'test', position_count: 0 },
+        changed_positions: [],
+        removed_codes: [],
+      })
+      applyAccountUpdate({
+        freshness: { group: 'account', revision: 1 },
+        snapshot: { total_buy_amount: 0, total_sell_amount: 0, total_eval_amount: 800000, total_pnl: 0, total_pnl_rate: 0, deposit: 6000000, trade_mode: 'test', position_count: 0 },
+        changed_positions: [],
+        removed_codes: [],
+      })
+      expect(hotStore.getState().account?.deposit).toBe(7000000)
+      expect(hotStore.getState().freshness.account.revision).toBe(2)
     })
   })
 })

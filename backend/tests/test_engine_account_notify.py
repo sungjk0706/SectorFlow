@@ -24,11 +24,40 @@ from backend.app.services.engine_account_notify import (
     notify_buy_targets_update,
     _BUY_TARGET_CMP_KEYS,
     _BUY_TARGET_REALTIME_KEYS,
+    _next_revision,
+    get_freshness,
+    get_freshness_snapshot,
+    _broadcast,
 )
 from backend.app.services.engine_account_broadcast import (
     _build_lightweight_payload_for_profit_overview,
     _broadcast_account_to_pages,
 )
+
+
+# ── WS/HTTP 최신성 계약 ─────────────────────────────────────────────────────────
+
+class TestFreshnessContract:
+    def test_revision_is_monotonic_per_group(self):
+        before = get_freshness("account")["revision"]
+        revision = _next_revision("account")
+        assert revision == before + 1
+        assert get_freshness("account") == {"group": "account", "revision": revision}
+        assert get_freshness("sector_scores")["revision"] == 0
+
+    def test_initial_snapshot_exposes_all_groups(self):
+        snapshot = get_freshness_snapshot()
+        assert set(snapshot) == {"account", "buy_targets", "sector_scores", "sector_stocks", "trade_history"}
+        assert all(meta["group"] == group for group, meta in snapshot.items())
+
+    @pytest.mark.asyncio
+    async def test_ws_payload_contains_server_freshness_metadata(self):
+        with patch("backend.app.web.ws_manager.ws_manager") as manager:
+            manager.broadcast = AsyncMock()
+            await _broadcast("sector-scores", {"scores": []}, group="sector_scores")
+        payload = manager.broadcast.await_args.args[1]
+        assert payload["freshness"]["group"] == "sector_scores"
+        assert isinstance(payload["freshness"]["revision"], int)
 
 
 # ── NotificationCache ────────────────────────────────────────────────────────────

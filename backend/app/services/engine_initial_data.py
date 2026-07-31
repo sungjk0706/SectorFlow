@@ -82,6 +82,9 @@ async def build_initial_snapshot() -> dict:
         "broker_config":    engine_state.state.integrated_system_settings_cache["broker_config"],
         "avg_amt_refresh":  None,
     }
+    from backend.app.services.engine_account_notify import get_freshness_snapshot
+    snapshot["freshness"] = get_freshness_snapshot()
+
 
     # Delta 캐시 초기화 — sector_stocks는 분할 전송 시점에 초기화
     try:
@@ -108,7 +111,8 @@ async def build_sector_stocks_payload() -> dict:
     except Exception:
         logger.warning("[시스템] 증분 캐시 초기화 실패", exc_info=True)
 
-    return {"_v": 1, "stocks": filtered}
+    from backend.app.services.engine_account_notify import get_freshness
+    return {"_v": 1, "stocks": filtered, "freshness": get_freshness("sector_stocks")}
 
 
 # ── 데이터 필드 필터링 ─────────────────────────────────────────────

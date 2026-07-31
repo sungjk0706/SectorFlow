@@ -11,6 +11,8 @@ import type {
   AccountSummaryUpdateEvent,
   SectorScoresEvent,
   RealDataEvent,
+  FreshnessMetadata,
+  FreshnessSnapshot,
 } from '../types'
 
 /** 종목코드 정규화 헬퍼 */
@@ -45,6 +47,7 @@ export interface HotState {
   buyHistory: Record<string, unknown>[]
   /** WS push 전용 (최근 N거래일) — HTTP 덮어쓰기 금지 (P10 SSOT) */
   dailySummary: Record<string, unknown>[]
+  freshness: FreshnessSnapshot
 }
 
 const initialState: HotState = {
@@ -57,9 +60,27 @@ const initialState: HotState = {
   sellHistory: [],
   buyHistory: [],
   dailySummary: [],
+  freshness: {
+    account: { group: 'account', revision: 0 },
+    buy_targets: { group: 'buy_targets', revision: 0 },
+    sector_scores: { group: 'sector_scores', revision: 0 },
+    sector_stocks: { group: 'sector_stocks', revision: 0 },
+    trade_history: { group: 'trade_history', revision: 0 },
+  },
 }
 
 export const hotStore = createStore<HotState>(initialState)
+
+export function isFreshnessNewer(metadata: FreshnessMetadata | undefined): boolean {
+  if (!metadata) return true
+  return metadata.revision >= hotStore.getState().freshness[metadata.group].revision
+}
+
+export function recordFreshness(metadata: FreshnessMetadata): void {
+  hotStore.setState((state) => ({
+    freshness: { ...state.freshness, [metadata.group]: metadata },
+  }))
+}
 
 /* ── 인덱스 캐시 (모듈 스코프 — Zustand state 외부) ── */
 let _buyTargetIndexCache: Map<string, number> = new Map()
@@ -135,6 +156,8 @@ function scheduleTickFlush(): void {
 
 /* ── account-update: 계좌·보유종목 갱신 — 전체 payload (매도포지션/폴백) ── */
 export function applyAccountUpdate(data: AccountUpdateEvent): void {
+  if (!isFreshnessNewer(data.freshness)) return
+  if (data.freshness) recordFreshness(data.freshness)
   if (data.changed_positions) {
     const changed = data.changed_positions ?? []
     const removed = data.removed_codes ?? []
@@ -191,6 +214,8 @@ export function applyAccountUpdate(data: AccountUpdateEvent): void {
 
 /* ── account-summary-update: 계좌·보유종목 갱신 — 경량화 payload (수익현황 전용) ── */
 export function applyAccountSummaryUpdate(data: AccountSummaryUpdateEvent): void {
+  if (!isFreshnessNewer(data.freshness)) return
+  if (data.freshness) recordFreshness(data.freshness)
   const positionCount = data.position_count ?? 0
   const incomingSnap = data.snapshot
   const prevAccount = hotStore.getState().account
@@ -546,7 +571,9 @@ export function applyRealtimeReset(): void {
 //   news_boost_title 제외 (세션 4 — 동일 단일 경로, P10 SSOT).
 //   applyBuyTargetsUpdate는 초기 buy-targets-update 수신 시에만 news_boost 포함,
 //   이후 갱신은 applyNewsHit이 담당하므로 same 비교에서 제외해 이중 갱신 경로 차단.
-export function applyBuyTargetsUpdate(data: { buy_targets: StockScore[] }): void {
+export function applyBuyTargetsUpdate(data: { buy_targets: StockScore[]; freshness?: FreshnessMetadata }): void {
+  if (data.freshness && !isFreshnessNewer(data.freshness)) return
+  if (data.freshness) recordFreshness(data.freshness)
   const sectorStocks = hotStore.getState().sectorStocks
   const prev = hotStore.getState().buyTargets
   // P22: news_boost_title은 백엔드 스냅샷에 없음 (news-hit 이벤트가 단일 소스, 세션 4).
@@ -625,10 +652,13 @@ export function applyNewsHit(data: { codes: string[]; scores: number[]; boost_sc
 // 재결합하여 단일 소스 일관성 유지. applyBuyTargetsUpdate의 결합 패턴과 동일 (P23 일관성).
 // binding.ts 인라인 45줄 → action 추출 (P23/P24, COUPLING-S8 후속).
 export function applyBuyTargetsDelta(data: {
+  freshness?: FreshnessMetadata
   added?: StockScore[]
   removed?: string[]
   changed?: StockScore[]
 }): void {
+  if (data.freshness && !isFreshnessNewer(data.freshness)) return
+  if (data.freshness) recordFreshness(data.freshness)
   const { added, removed, changed } = data
   hotStore.setState((state) => {
     let buyTargets = state.buyTargets
@@ -697,6 +727,8 @@ export function applyBuyTargetsDelta(data: {
 
 /* ── sector-scores: 업종 점수·상태 갱신 (delta 머지) ── */
 export function applySectorScores(data: SectorScoresEvent): void {
+  if (data.freshness && !isFreshnessNewer(data.freshness)) return
+  if (data.freshness) recordFreshness(data.freshness)
   if (data.delta && data.changed_scores) {
     // delta 모드: changed_scores를 기존 배열에 머지, removed_sectors 제거
     const current = hotStore.getState().sectorScores
@@ -757,7 +789,9 @@ function rebindBuyTargetsRealtime(
   return changed
 }
 
-export function applySectorStocksRefresh(data: { stocks: SectorStock[] }): void {
+export function applySectorStocksRefresh(data: { stocks: SectorStock[]; freshness?: FreshnessMetadata }): void {
+  if (data.freshness && !isFreshnessNewer(data.freshness)) return
+  if (data.freshness) recordFreshness(data.freshness)
   const stocks = data.stocks ?? []
   const newRecord = stocksToMap(stocks)
   hotStore.setState((state) => {
@@ -772,7 +806,9 @@ export function applySectorStocksRefresh(data: { stocks: SectorStock[] }): void 
 // P10(SSOT) + P22(데이터 정합성): sectorStocks 증분 교체 후 buyTargets 실시간 필드도
 // 새 기준으로 재결합. removed 종목이 buyTargets에 있으면 sectorStocks에서 사라져
 // 다음 틱에서도 갱신 불가 → stale 잔류 방지. applySectorStocksRefresh와 동일 계약.
-export function applySectorStocksDelta(data: { added: SectorStock[]; removed: string[] }): void {
+export function applySectorStocksDelta(data: { added: SectorStock[]; removed: string[]; freshness?: FreshnessMetadata }): void {
+  if (data.freshness && !isFreshnessNewer(data.freshness)) return
+  if (data.freshness) recordFreshness(data.freshness)
   const added = data.added ?? []
   const removed = data.removed ?? []
   if (added.length === 0 && removed.length === 0) return
@@ -797,17 +833,23 @@ export function applySectorStocksDelta(data: { added: SectorStock[]; removed: st
 }
 
 /* ── sell-history-update: 매도 내역 갱신 ── */
-export function applySellHistoryUpdate(data: { sell_history: Record<string, unknown>[] }): void {
+export function applySellHistoryUpdate(data: { sell_history: Record<string, unknown>[]; freshness?: FreshnessMetadata }): void {
+  if (data.freshness && !isFreshnessNewer(data.freshness)) return
+  if (data.freshness) recordFreshness(data.freshness)
   hotStore.setState({ sellHistory: data.sell_history ?? [] })
 }
 
 /* ── daily-summary-update: 일별 요약 갱신 ── */
-export function applyDailySummaryUpdate(data: { daily_summary: Record<string, unknown>[] }): void {
+export function applyDailySummaryUpdate(data: { daily_summary: Record<string, unknown>[]; freshness?: FreshnessMetadata }): void {
+  if (data.freshness && !isFreshnessNewer(data.freshness)) return
+  if (data.freshness) recordFreshness(data.freshness)
   hotStore.setState({ dailySummary: data.daily_summary ?? [] })
 }
 
 /* ── buy-history-update: 매수 내역 갱신 ── */
-export function applyBuyHistoryUpdate(data: { buy_history: Record<string, unknown>[] }): void {
+export function applyBuyHistoryUpdate(data: { buy_history: Record<string, unknown>[]; freshness?: FreshnessMetadata }): void {
+  if (data.freshness && !isFreshnessNewer(data.freshness)) return
+  if (data.freshness) recordFreshness(data.freshness)
   hotStore.setState({ buyHistory: data.buy_history ?? [] })
 }
 
@@ -836,6 +878,7 @@ export function applyInitialSnapshotHot(data: Record<string, unknown>): void {
   const newSellHistory = (data.sell_history as Record<string, unknown>[]) ?? []
   const newBuyHistory = (data.buy_history as Record<string, unknown>[]) ?? []
   const newDailySummary = (data.daily_summary as Record<string, unknown>[]) ?? []
+  const freshness = data.freshness as FreshnessSnapshot | undefined
   hotStore.setState({
     account: accountSnap,
     positionCount: accountSnap?.position_count || newPositions.length,
@@ -846,5 +889,6 @@ export function applyInitialSnapshotHot(data: Record<string, unknown>): void {
     sellHistory: newSellHistory.length > 0 ? newSellHistory : prev.sellHistory,
     buyHistory: newBuyHistory.length > 0 ? newBuyHistory : prev.buyHistory,
     dailySummary: newDailySummary.length > 0 ? newDailySummary : prev.dailySummary,
+    freshness: freshness ? { ...prev.freshness, ...freshness } : prev.freshness,
   })
 }

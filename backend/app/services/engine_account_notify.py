@@ -80,20 +80,54 @@ _TICK_FIELDS = ("cur_price", "change", "change_rate", "trade_amount", "strength"
 # ── Delta 캐시 (notify_cache로 통합됨) ──────────────────────────────────────
 
 
+# ── WS/HTTP 최신성 계약 ─────────────────────────────────────────────────────
+# revision은 데이터 그룹별 서버 단조 증가값이다. _v는 payload 버전이므로
+# 최신성 비교에 사용하지 않는다. 이 모듈이 HTTP 조회와 WS 전송의 공통 소유자다.
+_FRESHNESS_GROUPS = ("account", "buy_targets", "sector_scores", "sector_stocks", "trade_history")
+_freshness_revisions = {group: 0 for group in _FRESHNESS_GROUPS}
+
+
+def _next_revision(group: str) -> int:
+    if group not in _freshness_revisions:
+        raise ValueError(f"알 수 없는 최신성 그룹: {group}")
+    _freshness_revisions[group] += 1
+    return _freshness_revisions[group]
+
+
+def get_freshness(group: str) -> dict[str, str | int]:
+    """HTTP 조회가 반환할 현재 서버 기준 최신성 메타데이터."""
+    if group not in _freshness_revisions:
+        raise ValueError(f"알 수 없는 최신성 그룹: {group}")
+    return {"group": group, "revision": _freshness_revisions[group]}
+
+
+def get_freshness_snapshot(groups: tuple[str, ...] = _FRESHNESS_GROUPS) -> dict[str, dict[str, str | int]]:
+    """초기 스냅샷용 그룹별 최신성 메타데이터."""
+    return {group: get_freshness(group) for group in groups}
+
+
 # ── WS 브로드캐스트 헬퍼 (lazy import로 순환 임포트 방지) ──────────────────
-async def _broadcast(event_type: str, data: dict) -> None:
-    """ws_manager.broadcast() 래퍼."""
+async def _broadcast(event_type: str, data: dict, *, group: str | None = None, revision: int | None = None) -> None:
+    """ws_manager.broadcast() 래퍼 및 데이터 그룹 revision 부착."""
     from backend.app.web.ws_manager import ws_manager
     if "_v" not in data:
         data["_v"] = 1
+    if group is not None:
+        data["freshness"] = {"group": group, "revision": revision if revision is not None else _next_revision(group)}
     await ws_manager.broadcast(event_type, data)
 
 
-async def _safe_broadcast(event_type: str, payload: dict | None) -> None:
-    """안전한 브로드캐스트 전송 (예외 처리 통합)"""
+async def _safe_broadcast(
+    event_type: str,
+    payload: dict | None,
+    *,
+    group: str | None = None,
+    revision: int | None = None,
+) -> None:
+    """안전한 브로드캐스트 전송 (예외 처리 통합)."""
     if payload is not None:
         try:
-            await _broadcast(event_type, payload)
+            await _broadcast(event_type, payload, group=group, revision=revision)
         except Exception as e:
             logger.warning(f"[시스템] {event_type} 화면 전송 실패: {e}", exc_info=True)
 
@@ -264,7 +298,7 @@ async def notify_desktop_sector_scores(*, force: bool = False) -> None:
                 "waiting": True,
             },
         }
-        await _safe_broadcast("sector-scores", payload)
+        await _safe_broadcast("sector-scores", payload, group="sector_scores")
         return
 
     from backend.app.services.sector_data_provider import get_sector_scores_snapshot
@@ -285,7 +319,7 @@ async def notify_desktop_sector_scores(*, force: bool = False) -> None:
         # 최초 전송 또는 force → 전체 데이터
         payload = _build_sector_score_full_payload(scores, ranked_count)
 
-    await _safe_broadcast("sector-scores", payload)
+    await _safe_broadcast("sector-scores", payload, group="sector_scores")
     notify_cache.prev_scores = scores
 
 
@@ -354,7 +388,7 @@ async def notify_desktop_sector_stocks_refresh(*, force: bool = False) -> None:
 
     if force or not notify_cache.prev_sector_stock_codes:
         # 전체 리스트를 sector-stocks-refresh로 전송
-        await _safe_broadcast("sector-stocks-refresh", {"stocks": stocks})
+        await _safe_broadcast("sector-stocks-refresh", {"stocks": stocks}, group="sector_stocks")
     else:
         added_codes = new_codes - notify_cache.prev_sector_stock_codes
         removed_codes = notify_cache.prev_sector_stock_codes - new_codes
@@ -368,7 +402,7 @@ async def notify_desktop_sector_stocks_refresh(*, force: bool = False) -> None:
         await _safe_broadcast("sector-stocks-delta", {
             "added": added_stocks,
             "removed": list(removed_codes),
-        })
+        }, group="sector_stocks")
 
     # notify_cache.prev_sector_stock_codes 갱신
     notify_cache.prev_sector_stock_codes = new_codes
@@ -426,7 +460,7 @@ async def notify_buy_targets_update() -> None:
     # 초기 상태 (캐시 없음): 전체 리스트 전송
     if notify_cache.prev_buy_targets_map is None:
         notify_cache.prev_buy_targets_map = cur_map
-        await _safe_broadcast("buy-targets-update", {"buy_targets": targets})
+        await _safe_broadcast("buy-targets-update", {"buy_targets": targets}, group="buy_targets")
         return
 
     # delta 계산
@@ -455,7 +489,7 @@ async def notify_buy_targets_update() -> None:
         return  # 변경 없음 → 전송 생략
 
     notify_cache.prev_buy_targets_map = cur_map
-    await _safe_broadcast("buy-targets-delta", {"added": added, "removed": removed, "changed": changed})
+    await _safe_broadcast("buy-targets-delta", {"added": added, "removed": removed, "changed": changed}, group="buy_targets")
 
 
 async def broadcast_engine_status_ws(engine_status: dict) -> None:
