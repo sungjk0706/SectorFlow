@@ -147,12 +147,7 @@ const COLUMNS: ColumnDef<SectorScoreRow>[] = [
     label: '집중도',
     align: 'right',
     type: 'score',
-    render: (row) => {
-      const span = document.createElement('span')
-      span.textContent = String(row.bonus_relative_strength)
-      span.style.fontWeight = FONT_WEIGHT.bold
-      return span
-    },
+    render: (row) => String(row.bonus_relative_strength),
     headerStyle: NO_BORDER,
     cellStyle: NO_BORDER,
   },
