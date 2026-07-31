@@ -65,7 +65,10 @@ async function refreshBuyTargetPage(): Promise<void> {
   }
   pageDataReady = true
   refreshStatus?.set('', false)
-  scheduleRender()
+  // sell-position.ts와 동일 패턴 — 성공 후 현재 store 값을 직접 렌더.
+  // scheduleRender()만 호출하면 applyBuyTargetsUpdate의 same skip으로 참조가
+  // 변경되지 않아 renderFrame의 targetsChanged=false가 되어 테이블이 빈 상태로 고정됨 (P16).
+  renderTableRows(hotStore.getState().buyTargets)
 }
 
 /* ── 렌더링 참조 상태 — scheduleRender 참조 비교용 (mount 시 초기화, unmount 시 reset)
