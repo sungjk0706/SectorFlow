@@ -1,0 +1,14 @@
+{
+  "SessionEnd": [
+    {
+      "matcher": "",
+      "hooks": [
+        {
+          "type": "command",
+          "command": ".devin/scripts/continuity-loop.sh",
+          "timeout": 30
+        }
+      ]
+    }
+  ]
+}

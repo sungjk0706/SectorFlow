@@ -637,6 +637,7 @@ SectorFlow is a local real-time stock auto-trading web app for one person.
 - **DB 스키마 변경, 마이그레이션, 테이블 수정**: 먼저 `/db-backup` 호출 후 진행
 - **매매 로직, 증권사 API, 주문 코드**: 먼저 `/safe-trade` 호출
 - **신규 로직 구현**: 계획은 `/problem-solve` 호출, 구현은 `/backend-fix` 또는 `/frontend-fix` 호출
+- **대규모 전수 조사 (한 세션으로 끝낼 수 없는 전체 파일 조사)**: `/continuity-investigation` 호출 — 상태 파일 기반 세션 분할·자동 이어하기. 조사만 담당, 수정은 기존 스킬로 위임
 
 확실하지 않으면 먼저 `/problem-solve`를 호출합니다. 스킬이 명시적으로 호출되지 않더라도 항상 이 파일의 규칙을 따릅니다.
 

@@ -86,3 +86,6 @@ env/
 
 # Handover — 세션 간 에이전트 간략 소통 문서 (git 추적 제외, 규칙 0-6-2/8-1/8-2)
 HANDOVER.md
+
+# Continuity Loop state — 연속성 루프 조사 상태 (git 추적 제외, 런타임 생성물)
+.devin/state/
