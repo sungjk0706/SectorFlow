@@ -868,11 +868,9 @@ class TestDailyBuySpentFeeInclusive:
             {"stk_cd": "000660", "price": 120000, "qty": 5, "total_amt": 600000 + round(600000 * BUY_COMMISSION), "ts": "2026-07-23T10:30:00"},
         ]
         with patch("backend.app.services.trading.trade_history.get_buy_history", new_callable=AsyncMock, return_value=rows):
-            spent, bought_today, symbol_spent = await mgr._load_daily_buy_state()
+            spent, bought_today = await mgr._load_daily_buy_state()
         expected_total = (700000 + round(700000 * BUY_COMMISSION)) + (600000 + round(600000 * BUY_COMMISSION))
         assert spent == expected_total
-        assert symbol_spent["005930"] == 700000 + round(700000 * BUY_COMMISSION)
-        assert symbol_spent["000660"] == 600000 + round(600000 * BUY_COMMISSION)
         assert set(bought_today.keys()) == {"005930", "000660"}
 
     @pytest.mark.asyncio
@@ -883,33 +881,30 @@ class TestDailyBuySpentFeeInclusive:
             {"stk_cd": "005930", "price": 70000, "qty": 10, "total_amt": 700000, "ts": "2026-07-23T10:00:00"},
         ]
         with patch("backend.app.services.trading.trade_history.get_buy_history", new_callable=AsyncMock, return_value=rows):
-            spent, _, symbol_spent = await mgr._load_daily_buy_state()
+            spent, _ = await mgr._load_daily_buy_state()
         assert spent == 700000
-        assert symbol_spent["005930"] == 700000
 
     @pytest.mark.asyncio
     async def test_load_empty_rows_returns_zero(self):
         """당일 매수 이력 없으면 spent=0 (None 아님)."""
         mgr = _make_manager()
         with patch("backend.app.services.trading.trade_history.get_buy_history", new_callable=AsyncMock, return_value=[]):
-            spent, bought_today, symbol_spent = await mgr._load_daily_buy_state()
+            spent, bought_today = await mgr._load_daily_buy_state()
         assert spent == 0
         assert bought_today == {}
-        assert symbol_spent == {}
 
     @pytest.mark.asyncio
     async def test_load_failure_returns_none(self):
         """조회 실패 시 spent=None (매수 차단 모드)."""
         mgr = _make_manager()
         with patch("backend.app.services.trading.trade_history.get_buy_history", new_callable=AsyncMock, side_effect=RuntimeError("db error")):
-            spent, bought_today, symbol_spent = await mgr._load_daily_buy_state()
+            spent, bought_today = await mgr._load_daily_buy_state()
         assert spent is None
         assert bought_today == {}
-        assert symbol_spent == {}
 
     @pytest.mark.asyncio
     async def test_post_buy_accumulation_test_mode_includes_fee(self):
-        """테스트모드 매수 성공 후 _daily_buy_spent/_symbol_daily_buy_spent가 수수료 포함으로 누적.
+        """테스트모드 매수 성공 후 _daily_buy_spent가 수수료 포함으로 누적.
         trade_history.record_buy의 total_amt 공식(base + round(base*BUY_COMMISSION))과 동일 (P10/P22)."""
         from backend.app.core.constants import BUY_COMMISSION
         mgr = _make_manager(_raw_settings(rebuy_block_on=False))
@@ -947,7 +942,6 @@ class TestDailyBuySpentFeeInclusive:
         _expected_fee = round(_expected_base * BUY_COMMISSION)
         _expected_spent = _expected_base + _expected_fee
         assert mgr._daily_buy_spent == _expected_spent
-        assert mgr._symbol_daily_buy_spent["005930"] == _expected_spent
 
     @pytest.mark.asyncio
     async def test_post_buy_accumulation_real_mode_excludes_fee(self):
@@ -982,7 +976,90 @@ class TestDailyBuySpentFeeInclusive:
         # 실전모드: fee=0 → spent = base만
         _expected_base = 14 * 70000
         assert mgr._daily_buy_spent == _expected_base
-        assert mgr._symbol_daily_buy_spent["005930"] == _expected_base
+
+
+# ── 종목당 1회 매수금액 단일화 (P10 SSOT, P15 단일 경로, P21 사용자 투명성) ──────
+# 누적 한도 로직 제거 검증 — 재매수 차단 OFF 시 같은 종목 buy_amt만큼 반복 매수 허용.
+
+class TestBuyAmtSinglePurchase:
+    """buy_amt를 '종목당 1회 매수금액'으로 단일화한 뒤 핵심 동작 검증.
+    누적 한도(_symbol_daily_buy_spent) 제거로 재매수 차단 OFF 시 반복 매수가 차단되지 않는지 확인."""
+
+    @pytest.mark.asyncio
+    async def test_rebuy_block_disabled_buys_full_buy_amt_each_time(self):
+        """재매수 차단 OFF + 같은 종목 2회 매수 → 2회 모두 buy_amt 전체만큼 매수 (누적 한도로 잔여 축소 안 됨).
+        핵심 사용자 의도 검증 — 종목당 1회 매수금액 단일화 (P10/P21)."""
+        from backend.app.core.constants import BUY_COMMISSION
+        mgr = _make_manager(_raw_settings(rebuy_block_on=False))
+        with patch("backend.app.services.engine_state.state") as mock_state, \
+             patch("backend.app.services.trading.auto_buy_effective", return_value=True), \
+             patch("backend.app.services.engine_account.get_positions", new_callable=AsyncMock, return_value=[]), \
+             patch("backend.app.services.trading.is_test_mode", return_value=True), \
+             patch("backend.app.services.settlement_engine.get_available_cash", return_value=10_000_000), \
+             patch("backend.app.services.dry_run.estimate_fill_price", return_value=70000), \
+             patch("backend.app.services.trading.get_risk_manager") as mock_rm, \
+             patch("backend.app.services.data_manager.get_stock_name", return_value="삼성전자"), \
+             patch("backend.app.services.engine_strategy_core.reserve_test_buy_power", new_callable=AsyncMock, return_value=(True, "", 490350)), \
+             patch("backend.app.services.dry_run.fake_send_order", new_callable=AsyncMock, return_value={"success": True, "order_id": "test1"}), \
+             patch("backend.app.services.dry_run.set_stock_name", new_callable=AsyncMock), \
+             patch("backend.app.services.dry_run.fake_fill_event", new_callable=AsyncMock), \
+             patch("backend.app.services.trade_history.record_buy", new_callable=AsyncMock), \
+             patch("backend.app.core.journal.record_order_request", new_callable=AsyncMock), \
+             patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock), \
+             patch("backend.app.services.engine_lifecycle.schedule_engine_task", side_effect=_close_coro), \
+             patch("backend.app.services.trading._fire_and_forget_telegram"):
+            mock_state.realtime_latency_exceeded = False
+            mock_state.integrated_system_settings_cache = _raw_settings(rebuy_block_on=False)
+            mock_state.master_stocks_cache = {}
+            mock_rm.return_value.circuit_breaker.get_state.return_value = "CLOSED"
+            mock_rm.return_value.get_withdrawable_deposit.return_value = 10_000_000
+            mock_rm.return_value.check_buy_order_allowed = AsyncMock(return_value=(True, "승인"))
+            # 1차 매수
+            result1, _reason1 = await mgr.execute_buy("005930", 70000, "token")
+            assert result1 is True
+            # 체결 완료 + 연속신호 차단 해제 시뮬레이션 (fake_fill_event가 mock로 실제 실행 안 됨)
+            mgr._buy_state["005930"] = {"last_req_ts": 0.0, "has_open_buy": False}
+            # 2차 매수 — 누적 한도 없이 buy_amt 전체 재사용
+            result2, _reason2 = await mgr.execute_buy("005930", 70000, "token")
+            assert result2 is True
+        # 2회 모두 buy_amt=1,000,000 기반 14주 매수 → spent = 980,147 * 2
+        _expected_base = 14 * 70000
+        _expected_fee = round(_expected_base * BUY_COMMISSION)
+        _expected_spent = _expected_base + _expected_fee
+        assert mgr._daily_buy_spent == _expected_spent * 2
+
+    @pytest.mark.asyncio
+    async def test_buy_amt_on_false_no_symbol_spent_reference(self):
+        """buy_amt_on=False 분기가 _symbol_daily_buy_spent 참조 없이 동작하는지 검증 (dead code 제거 확인).
+        effective_buy_amt=None → 주문가능 금액이 상한 (P16 살아있는 경로)."""
+        mgr = _make_manager(_raw_settings(buy_amt_on=False, max_daily_total_buy_on=False))
+        # _symbol_daily_buy_spent 인스턴스 변수 완전 제거 확인 (P16 dead code 제거)
+        assert not hasattr(mgr, "_symbol_daily_buy_spent")
+        with patch("backend.app.services.engine_state.state") as mock_state, \
+             patch("backend.app.services.trading.auto_buy_effective", return_value=True), \
+             patch("backend.app.services.engine_account.get_positions", new_callable=AsyncMock, return_value=[]), \
+             patch("backend.app.services.trading.is_test_mode", return_value=True), \
+             patch("backend.app.services.settlement_engine.get_available_cash", return_value=10_000_000), \
+             patch("backend.app.services.dry_run.estimate_fill_price", return_value=70000), \
+             patch("backend.app.services.trading.get_risk_manager") as mock_rm, \
+             patch("backend.app.services.data_manager.get_stock_name", return_value="삼성전자"), \
+             patch("backend.app.services.engine_strategy_core.reserve_test_buy_power", new_callable=AsyncMock, return_value=(True, "", 0)), \
+             patch("backend.app.services.dry_run.fake_send_order", new_callable=AsyncMock, return_value={"success": True, "order_id": "test1"}), \
+             patch("backend.app.services.dry_run.set_stock_name", new_callable=AsyncMock), \
+             patch("backend.app.services.dry_run.fake_fill_event", new_callable=AsyncMock), \
+             patch("backend.app.services.trade_history.record_buy", new_callable=AsyncMock), \
+             patch("backend.app.core.journal.record_order_request", new_callable=AsyncMock), \
+             patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock), \
+             patch("backend.app.services.engine_lifecycle.schedule_engine_task", side_effect=_close_coro), \
+             patch("backend.app.services.trading._fire_and_forget_telegram"):
+            mock_state.realtime_latency_exceeded = False
+            mock_state.integrated_system_settings_cache = _raw_settings(buy_amt_on=False, max_daily_total_buy_on=False)
+            mock_state.master_stocks_cache = {}
+            mock_rm.return_value.circuit_breaker.get_state.return_value = "CLOSED"
+            mock_rm.return_value.get_withdrawable_deposit.return_value = 10_000_000
+            mock_rm.return_value.check_buy_order_allowed = AsyncMock(return_value=(True, "승인"))
+            result, _reason = await mgr.execute_buy("005930", 70000, "token")
+        assert result is True
 
 
 # ── execute_buy 매수 근거 전달 (BUY-REASON-S4: P10 SSOT, P15 단일 경로, P16 살아있는 경로, P20 폴백 금지) ──

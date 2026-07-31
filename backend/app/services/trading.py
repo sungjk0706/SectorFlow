@@ -53,7 +53,6 @@ BUY_REJECT_SIGNAL_INTERVAL = "signal_interval"   # 30초 연속신호 차단
 BUY_REJECT_PRICE_ZERO = "price_zero"             # 현재가 ≤ 0
 BUY_REJECT_RISE_GUARD = "rise_guard"             # 등락률 상승 가드
 BUY_REJECT_FALL_GUARD = "fall_guard"             # 등락률 하락 가드
-BUY_REJECT_SYMBOL_LIMIT = "symbol_limit"         # 종목당 한도 초과
 BUY_REJECT_RISK_SINGLE = "risk_single"           # 단일 종목 비중 초과
 
 # 조건부 사유 (buy_order_executor에서 잔액 재조회로 전체/종목별 판별)
@@ -92,7 +91,6 @@ BUY_REJECT_REASON_TEXT: dict[str, str] = {
     BUY_REJECT_RISK_LOSS_RATE:    "일일 손실률 한도",
     BUY_REJECT_RISK_CONSEC_LOSS:  "연속 손실 한도",
     BUY_REJECT_RISK_SINGLE:       "단일 종목 비중 초과",
-    BUY_REJECT_SYMBOL_LIMIT:      "종목당 한도 초과",
     BUY_REJECT_OPEN_ORDER:        "미체결 주문 존재",
     BUY_REJECT_SIGNAL_INTERVAL:   "연속신호 차단",
     BUY_REJECT_QTY_ZERO:          "매수수량 0",
@@ -242,12 +240,11 @@ class AutoTradeManager:
         self._daily_buy_date: str = ""
         self._daily_buy_spent: int | None = None  # None = 로드 실패 (매수 차단)
         self._bought_today: dict[str, float] = {}  # stk_cd -> buy timestamp
-        self._symbol_daily_buy_spent: dict[str, int] = {}
         # ── 글로벌 매수 락: 동시 매수 요청 순차 처리 (TOCTOU 경쟁 상태 방지, P22) ──
         self._buy_lock: asyncio.Lock | None = None
 
-    async def _load_daily_buy_state(self) -> tuple[int | None, dict[str, float], dict[str, int]]:
-        """기동 시 trade_history에서 오늘 매수 합계 + 매수 종목 timestamp dict + 종목당 누적 매수금액 로드.
+    async def _load_daily_buy_state(self) -> tuple[int | None, dict[str, float]]:
+        """기동 시 trade_history에서 오늘 매수 합계 + 매수 종목 timestamp dict 로드.
         한도 체크 기준 = trade_history.total_amt (테스트: 수수료 포함 / 실전: 순수 매수가).
         실패 시 spent=None 반환 — 호출부에서 매수 차단."""
         try:
@@ -255,27 +252,25 @@ class AutoTradeManager:
             # total_amt 사용 — trade_history.record_buy 공식과 단일 기준 (P10 SSOT, P22 정합성)
             spent = sum(int(r.get("total_amt", 0) or 0) for r in rows)
             bought_today: dict[str, float] = {}
-            symbol_spent: dict[str, int] = {}
             for r in rows:
                 cd = str(r.get("stk_cd", "")).strip()
                 if cd:
-                    symbol_spent[cd] = symbol_spent.get(cd, 0) + int(r.get("total_amt", 0) or 0)
                     ts_str = r.get("ts") or r.get("date", "")
                     try:
                         ts_dt = datetime.fromisoformat(ts_str)
                         bought_today[cd] = ts_dt.timestamp()
                     except (ValueError, TypeError):
                         logger.warning("[매매] 일일 매수 상태 — %s 시각 해석 실패 (시각=%r), 해당 종목 건너뜀", cd, ts_str)
-            return spent, bought_today, symbol_spent
+            return spent, bought_today
         except Exception:
             logger.critical("[매매] 일일 매수 상태 로드 실패 — 매수 차단 모드 진입: %s", exc_info=True)
-            return None, {}, {}
+            return None, {}
 
     async def _ensure_daily_buy_counter(self) -> None:
         today = datetime.now().strftime("%Y-%m-%d")
         if self._daily_buy_date != today:
             self._daily_buy_date = today
-            self._daily_buy_spent, self._bought_today, self._symbol_daily_buy_spent = await self._load_daily_buy_state()  # type: ignore
+            self._daily_buy_spent, self._bought_today = await self._load_daily_buy_state()
             if self._daily_buy_spent is None:
                 logger.critical(
                     "[매매] 일일 매수 상태 로드 실패 — 날짜=%s 매수 차단 모드 (trade_history 조회 실패)",
@@ -386,7 +381,7 @@ class AutoTradeManager:
             logger.info("[매매] [매수제한] 잔고 보유종목 %d종목 ≥ 최대 %d종목. %s 매수 차단.", holding_count, max_limit, stk_cd)
             return False, BUY_REJECT_MAX_HOLDING
 
-        # ── 종목당 일일 최대 매수 금액 (buy_amt_on=False → 한도 없음) ──
+        # ── 종목당 1회 매수 금액 (buy_amt_on=False → 한도 없음) ──
         buy_amt_on = bool(raw_all.get("buy_amt_on", True))
         buy_amt = settings.get("buy_amt", 0)
         max_daily_total = int(settings.get("max_daily_total_buy_amt", 0) or 0)
@@ -394,24 +389,18 @@ class AutoTradeManager:
         if buy_amt_on:
             if buy_amt <= 0:
                 return False, BUY_REJECT_BUY_AMT_ZERO
-            # ── 종목당 일일 누적 매수금액 한도 체크 ──
-            symbol_spent = self._symbol_daily_buy_spent.get(stk_cd, 0)
-            symbol_remain = max(0, int(buy_amt) - symbol_spent)
-            if symbol_remain <= 0:
-                logger.info("[매매] [종목당한도] %s 차단. 종목누적 %s원 / 한도 %s원", stk_cd, f"{symbol_spent:,}", f"{int(buy_amt):,}")
-                return False, BUY_REJECT_SYMBOL_LIMIT
+            # ── 종목당 1회 매수금액 (재매수 차단은 rebuy_block_on이 담당) ──
             # 일일 한도 내에서 실제 사용 가능 금액 계산 (잔여 한도가 종목당 한도보다 적으면 잔여 한도만큼만 매수)
             if max_daily_on and max_daily_total > 0:
                 daily_remain = max(0, max_daily_total - self._daily_buy_spent)
                 if daily_remain <= 0:
                     logger.info("[매매] [일일매수한도] %s 차단. 잔여 0원 / 한도 %s원", stk_cd, f"{max_daily_total:,}")
                     return False, BUY_REJECT_DAILY_LIMIT
-                effective_buy_amt = min(symbol_remain, daily_remain)
+                effective_buy_amt = min(int(buy_amt), daily_remain)
             else:
-                effective_buy_amt = symbol_remain
+                effective_buy_amt = int(buy_amt)
         else:
             # buy_amt_on=False → 종목당 한도 없음, 일일 한도만 적용
-            symbol_spent = self._symbol_daily_buy_spent.get(stk_cd, 0)
             if max_daily_on and max_daily_total > 0:
                 daily_remain = max(0, max_daily_total - self._daily_buy_spent)
                 if daily_remain <= 0:
@@ -549,13 +538,12 @@ class AutoTradeManager:
         fill_price = int(order_price) if order_price > 0 else int(current_price)
         if is_test_mode(raw_all):
             fill_price = dry_run.estimate_fill_price(fill_price, "BUY")
-        # 한도 누적 기준 = trade_history.record_buy의 total_amt 공식과 동일 (P10/P22)
+        # 일일 누적 한도 기준 = trade_history.record_buy의 total_amt 공식과 동일 (P10/P22)
         # 테스트모드: 수수료 포함 / 실전모드: 순수 매수가 (P18 — 실전은 증권사 서버가 SSOT, 앱 수수료 계산 금지)
         _base = int(buy_qty * fill_price)
         _fee = round(_base * BUY_COMMISSION) if is_test_mode(raw_all) else 0
         spent = _base + _fee
         self._daily_buy_spent += max(0, spent)
-        self._symbol_daily_buy_spent[stk_cd] = self._symbol_daily_buy_spent.get(stk_cd, 0) + max(0, spent)
 
         # ── 매수 성공 즉시 _bought_today 반영 (테스트/실전 공통 — 원칙 18 동등성) ──
         if stk_cd not in self._bought_today:

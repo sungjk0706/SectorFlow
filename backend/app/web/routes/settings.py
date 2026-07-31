@@ -153,7 +153,6 @@ async def _reset_buy_state_and_broadcast() -> None:
     if state.auto_trade:
         state.auto_trade._daily_buy_spent = 0
         state.auto_trade._bought_today = {}
-        state.auto_trade._symbol_daily_buy_spent = {}
         state.auto_trade._buy_state.clear()
     # 주문 간격 타이머 리셋 (매수/매도)
     state._last_global_buy_ts = 0.0
