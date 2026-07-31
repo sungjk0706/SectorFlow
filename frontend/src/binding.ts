@@ -238,11 +238,15 @@ export function bindWSToStore(
     }
     applySectorScores(d as unknown as SectorScoresEvent)
     // sectorScoresDelta (uiStore) 갱신 + 수신 대기 상태 (P21 투명성)
+    // sectorDataReady — 컬럼 폭 계산 게이트: waiting!==true 시 준비 완료, waiting===true 시 대기.
+    // 초기 sectorScoresWaiting=false 기본값만으로 준비 완료로 판단하지 않고 실제 이벤트로만 전환.
+    const waiting = d.status?.waiting === true
     uiStore.setState({
       sectorScoresDelta: d.delta
         ? { delta: true, changed_sectors: d.changed_sectors ?? [], removed_sectors: d.removed_sectors ?? [] }
         : null,
-      sectorScoresWaiting: d.status?.waiting === true,
+      sectorScoresWaiting: waiting,
+      sectorDataReady: !waiting,
     })
     // receiveRate는 receive-rate 이벤트가 단일 소스(P10 SSOT) — sector-scores에서 중복 갱신 제거
   })

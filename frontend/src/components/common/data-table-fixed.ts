@@ -27,6 +27,7 @@ export function createFixedMode<T extends object>(
   emptyText: string,
   rowStyle?: (row: T, index: number) => Partial<CSSStyleDeclaration> | undefined,
   zebraStriping?: boolean,
+  widthReady?: () => boolean,
 ): DataTableApi<T> {
   let destroyed = false
   let currentRows: TableRow<T>[] = []
@@ -167,8 +168,9 @@ export function createFixedMode<T extends object>(
     for (let i = 0; i < colEls.length; i++) colEls[i].style.width = `${percentages[i]}%`
   }
 
-  // 컬럼 너비 관리자 — 첫 updateRows 시 1회만 데이터 기반 폭 계산 후 고정
-  const widthMgr = createColumnWidthManager(columns, updateColWidths)
+  // 컬럼 너비 관리자 — 첫 updateRows 시 1회만 데이터 기반 폭 계산 후 고정.
+  // widthReady 게이트(실시간 업종 데이터 전용): false면 최종 폭 고정 보류, true면 1회 계산 후 고정.
+  const widthMgr = createColumnWidthManager(columns, updateColWidths, widthReady)
 
   // Phase 2.1: 렌더링 주기 제한 (requestAnimationFrame)
   let pendingRows: TableRow<T>[] | null = null

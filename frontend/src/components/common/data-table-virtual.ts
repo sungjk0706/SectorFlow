@@ -33,6 +33,7 @@ export function createVirtualScrollMode<T extends object>(
   rowHeight: number,
   groupRowHeight: number,
   zebraStriping: boolean,
+  widthReady?: () => boolean,
 ): DataTableApi<T> {
   let destroyed = false
   const keyFn = options.keyFn!
@@ -139,8 +140,9 @@ export function createVirtualScrollMode<T extends object>(
   })
   gridRo.observe(scrollContainer)
 
-  // 컬럼 너비 관리자 — 첫 updateRows 시 1회만 데이터 기반 폭 계산 후 고정
-  const widthMgr = createColumnWidthManager(columns, updateGridTemplate)
+  // 컬럼 너비 관리자 — 첫 updateRows 시 1회만 데이터 기반 폭 계산 후 고정.
+  // widthReady 게이트(실시간 업종 데이터 전용): false면 최종 폭 고정 보류, true면 1회 계산 후 고정.
+  const widthMgr = createColumnWidthManager(columns, updateGridTemplate, widthReady)
 
   /** 행이 그룹 행으로 렌더링되었는지 판별 (data-row-type 속성 기반) */
   function wasGroupRow(rowEl: HTMLElement): boolean {

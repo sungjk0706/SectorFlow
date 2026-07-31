@@ -326,6 +326,9 @@ class SectorStockTable extends HTMLElement {
           ? COLOR.downBg
           : row.eliminated ? COLOR.hoverBg : '',
       }),
+      // 컬럼 폭 계산 준비 게이트 — 백엔드 수신율 임계값 통과 후 실제 rows로 1회 계산 (P10 SSOT).
+      // 준비 전에는 헤더/type 캡 기반 안전 폭으로 대기, 준비 완료 후 영구 고정.
+      widthReady: () => uiStore.getState().sectorDataReady,
     })
 
     this.scrollContainer.appendChild(this.dataTable.el)
@@ -467,7 +470,15 @@ class SectorStockTable extends HTMLElement {
         policy: 'swr',
         isActive: () => this._mounted,
         fetcher: () => api.getSectorScores('sector-ranking'),
-        apply: response => applySectorScoresSnapshot(response.data.scores, response.freshness!),
+        apply: response => {
+          // 비-WS 확정 데이터 스냅샷 — 컬럼 폭 계산 게이트 준비 완료 전환 (P10 SSOT).
+          // WS sector-scores가 없는 환경에서도 업종 테이블 폭이 1회 계산되도록 보장.
+          const applied = applySectorScoresSnapshot(response.data.scores, response.freshness!)
+          if (applied) {
+            uiStore.setState({ sectorDataReady: true })
+          }
+          return applied
+        },
       }),
     ]
     Promise.all(refreshes).then(results => {

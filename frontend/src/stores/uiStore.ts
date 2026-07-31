@@ -57,6 +57,13 @@ export interface UIState {
    * 임계값 통과 후 정상 sector-scores 전송 시 false로 해제. */
   sectorScoresWaiting: boolean
 
+  /* ── 업종 데이터 준비 상태 (컬럼 폭 계산 게이트 — P10 SSOT) ──
+   * 백엔드 수신율 임계값 게이트 결과를 재사용.
+   * 초기 false — sectorScoresWaiting=false 기본값만으로 준비 완료로 판단하지 않음.
+   * WS sector-scores 이벤트에서 waiting!==true 수신 시 true, waiting===true 시 false.
+   * 비-WS 확정 데이터 스냅샷 수신 시 true. */
+  sectorDataReady: boolean
+
   /* ── 업종 요약 ── */
   sectorSummary: Record<string, unknown> | null
 
@@ -106,6 +113,7 @@ const initialState: UIState = {
   wsSubscribeStatus: { index_subscribed: false, quote_subscribed: false },
   sectorScoresDelta: null,
   sectorScoresWaiting: false,
+  sectorDataReady: false,
   sectorSummary: null,
   engineReloadComplete: false,
   receiveRate: null,

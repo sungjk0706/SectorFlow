@@ -13,11 +13,31 @@ const DEFAULT_FONT_SIZE = 13
 /** 셀 수평 패딩 합계 — table-config.ts CELL_PADDING과 동기화 (좌우 합) */
 const CELL_HORIZONTAL_PADDING = CELL_PADDING * 2
 
-/** 기본 최소 폭 (px) */
-const DEFAULT_MIN_WIDTH = 40
+/** P95 백분위 적용 최소 샘플 수 (미만 시 max 사용 — Nearest Rank 특성 반영) */
+const P95_MIN_SAMPLES = 20
+
+/** 절대 최소 폭 (모든 컬럼 공통 하한 — 극단값 차단) */
+const ABSOLUTE_MIN_WIDTH = 36
+
+/** 절대 최대 폭 (모든 컬럼 공통 상한 — 폭 계산 가중치 상한, percentage 변환 전) */
+const ABSOLUTE_MAX_WIDTH = 240
 
 /** 한글 문자 폭 대비 영문/숫자 배율. Tahoma/굴림 13px 기준 실측에 가까운 1.4 사용. */
 const KOREAN_SCALE = 1.4
+
+/**
+ * 배열의 p백분위 값 (Nearest Rank 방식 — 단순·결정론적, 보간 없음).
+ * - 입력 배열을 복사한 뒤 오름차순 정렬하여 원본을 변경하지 않음.
+ * - 빈 배열은 0 반환.
+ * - Math.ceil((p / 100) * length) rank 사용 → 보수적 (더 큰 폭, 잘림 최소화).
+ * - 마지막 인덱스 보호 적용.
+ */
+function percentile(values: number[], p: number): number {
+  if (values.length === 0) return 0
+  const sorted = [...values].sort((a, b) => a - b)
+  const rank = Math.ceil((p / 100) * sorted.length)
+  return sorted[Math.min(rank - 1, sorted.length - 1)]
+}
 
 /**
  * 한글 유니코드 범위 판별.
@@ -68,7 +88,11 @@ export interface ColumnWidthInput {
 
 /**
  * 단일 텍스트 폭을 클램프된 px 폭으로 변환.
- * rawWidth = textWidth + 셀 패딩, minWidth/maxWidth 클램핑.
+ * rawWidth = textWidth + 셀 패딩.
+ * 3계층 캡 교집합 — 절대 캡(ABSOLUTE_MIN/MAX)과 전달된 minWidth/maxWidth(병합된 type/page 캡)의 교집합.
+ * - 최소 폭: max(ABSOLUTE_MIN_WIDTH, minWidth) — 전달값 없으면 절대 최소값.
+ * - 최대 폭: min(ABSOLUTE_MAX_WIDTH, maxWidth) — 전달값 없으면 절대 최대값.
+ * - min > max 시 기존 경고 후 max로 보정.
  */
 export function clampColWidth(
   textWidth: number,
@@ -76,8 +100,8 @@ export function clampColWidth(
   maxWidth?: number,
 ): number {
   const rawWidth = textWidth + CELL_HORIZONTAL_PADDING
-  let minW = minWidth ?? DEFAULT_MIN_WIDTH
-  let maxW = maxWidth ?? Infinity
+  let minW = minWidth !== undefined ? Math.max(ABSOLUTE_MIN_WIDTH, minWidth) : ABSOLUTE_MIN_WIDTH
+  let maxW = maxWidth !== undefined ? Math.min(ABSOLUTE_MAX_WIDTH, maxWidth) : ABSOLUTE_MAX_WIDTH
   if (minW > maxW) {
     console.warn(
       `[auto-width] minWidth(${minW}) > maxWidth(${maxW}), clamping minWidth to maxWidth`,
@@ -89,8 +113,13 @@ export function clampColWidth(
 
 /**
  * 각 컬럼의 클램프된 px 폭 계산 (컨테이너 너비 무관).
- * 1. 각 컬럼의 maxTextWidth = max(헤더 텍스트 폭, 데이터 샘플 최대 폭)
- * 2. clampColWidth로 px 폭 산출
+ * 1. 유효 데이터 샘플 폭 배열 계산 — null·undefined·빈 문자열·공백은 분포에서 제외.
+ * 2. 대표 폭 선택 (유효 샘플 수에 따른 단계적 전략):
+ *    - 0개: dataWidth=0 (라벨 폭만 사용)
+ *    - 1~19개: max (Nearest Rank P95가 max와 같을 수 있어 기존 방식 유지)
+ *    - ≥20개: P95 (Nearest Rank — 상위 5% 이상치 완화)
+ * 3. maxTextWidth = max(라벨 폭, 대표 데이터 폭)
+ * 4. clampColWidth로 px 폭 산출 (3계층 캡 교집합)
  */
 export function computeColWidths(
   columns: ColumnWidthInput[],
@@ -102,12 +131,28 @@ export function computeColWidths(
 
   for (let i = 0; i < columns.length; i++) {
     const col = columns[i]
-    let maxTextWidth = estimateTextWidth(col.label, fontSize)
+    const labelWidth = estimateTextWidth(col.label, fontSize)
+
+    // 유효 데이터 샘플 폭 배열 — 빈 문자열·공백은 분포에서 제외 (간헐·동적 컬럼 처리)
+    const sampleWidths: number[] = []
     const samples = col.samples
     for (let j = 0; j < samples.length; j++) {
-      const w = estimateTextWidth(samples[j], fontSize)
-      if (w > maxTextWidth) maxTextWidth = w
+      if (samples[j] == null) continue
+      if (samples[j].trim().length === 0) continue
+      sampleWidths.push(estimateTextWidth(samples[j], fontSize))
     }
+
+    // 대표 폭 선택 (유효 샘플 수에 따른 단계적 전략)
+    let dataWidth: number
+    if (sampleWidths.length === 0) {
+      dataWidth = 0                                    // 데이터 없음 → 라벨만 사용
+    } else if (sampleWidths.length < P95_MIN_SAMPLES) {
+      dataWidth = Math.max(...sampleWidths)            // 샘플 부족 → max (기존 방식)
+    } else {
+      dataWidth = percentile(sampleWidths, 95)         // 충분 → P95
+    }
+
+    const maxTextWidth = Math.max(labelWidth, dataWidth)
     widths[i] = clampColWidth(maxTextWidth, col.minWidth, col.maxWidth)
   }
 

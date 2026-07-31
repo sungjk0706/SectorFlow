@@ -247,6 +247,9 @@ function mount(container: HTMLElement): void {
     rowStyle,
     rowFooter: (row) => renderScoreBar(row),
     emptyText: '업종 데이터가 없습니다. 엔진이 기동 중인지 확인해주세요.',
+    // 컬럼 폭 계산 준비 게이트 — 백엔드 수신율 임계값 통과 후 실제 rows로 1회 계산 (P10 SSOT).
+    // 준비 전에는 헤더/type 캡 기반 안전 폭으로 대기, 준비 완료 후 영구 고정.
+    widthReady: () => uiStore.getState().sectorDataReady,
   })
 
   // 행 클릭 — DataTable 내부 행 요소의 _rowKey 역추적 (내부 직접 부착, 결정사항 B)

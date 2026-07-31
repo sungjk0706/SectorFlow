@@ -24,6 +24,7 @@ function makeCleanUiState(): UIState {
     wsSubscribeStatus: { index_subscribed: true, quote_subscribed: true },
     sectorScoresDelta: null,
     sectorScoresWaiting: false,
+    sectorDataReady: false,
     sectorSummary: null,
     engineReloadComplete: true,
     receiveRate: null,

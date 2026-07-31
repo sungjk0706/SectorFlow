@@ -61,6 +61,14 @@ export interface DataTableOptions<T> {
   rowHeight?: number
   groupRowHeight?: number
   zebraStriping?: boolean
+  /**
+   * 컬럼 폭 계산 준비 조건 (실시간 업종 데이터 테이블 전용).
+   * - false 반환 시 최종 폭 계산을 보류하고 헤더/type 캡 기반 안전 폭으로 대기.
+   * - true 반환 시 현재 rows의 render 결과로 1회 계산 후 영구 고정.
+   * - 생략 시 기본값 true — 일반 테이블은 기존 즉시 계산 정책 유지.
+   * 백엔드 수신율 임계값 게이트 결과(sectorDataReady)를 재사용하며 프론트에서 재계산하지 않음.
+   */
+  widthReady?: () => boolean
 }
 
 export interface DataTableApi<T> {
@@ -123,26 +131,56 @@ function extractSamples<T>(
  * 컬럼 너비 관리자 — 첫 updateRows 시 1회만 데이터 기반 폭 계산 후 고정.
  * 두 모드(fixed/virtualScroll)가 공통 사용하며 applyWidths 콜백만 모드별 주입.
  * 첫 데이터로 적절한 폭을 자동 계산하고, 이후 어떤 데이터 변화에도 재계산하지 않아 컬럼 구분선이 완전 고정됨.
+ *
+ * widthReady 준비 조건(실시간 업종 데이터 전용):
+ * - widthReady가 false를 반환하면 최종 폭을 고정하지 않고 대기(헤더/type 캡 기반 안전 폭 유지).
+ * - widthReady가 true를 반환하면 현재 rows의 render 결과로 1회 계산 후 영구 고정.
+ * - 준비 완료 이벤트가 중복되어도 이미 initialized면 폭을 변경하지 않음.
+ * - 생략 시 기본값 true — 일반 테이블은 기존 즉시 계산 정책 유지.
  */
 export function createColumnWidthManager<T extends object>(
   columns: ColumnDef<T>[],
   applyWidths: (percentages: number[]) => void,
+  widthReady?: () => boolean,
 ) {
   const fontSize = 13 // FONT_SIZE.body (13px) — auto-width.ts DEFAULT_FONT_SIZE와 동일
   let initialized = false
 
-  /** 첫 updateRows 시 1회만 전체 데이터로 폭 계산 + 적용. 이후 호출은 no-op. */
+  /** type 캡과 페이지 min/max를 각 축별로 교집합 병합.
+   *  - 최소 폭: type 최소값과 페이지 최소값 중 큰 값 (한쪽만 지정 시 반대쪽 type 캡 유지).
+   *  - 최대 폭: type 최대값과 페이지 최대값 중 작은 값 (한쪽만 지정 시 반대쪽 type 캡 유지).
+   *  기존에는 페이지 min/max 중 하나라도 있으면 type 캡을 통째로 대체했으나,
+   *  축별 교집합으로 병합하여 페이지 특수 의도와 type 안전 범위를 함께 보존. */
+  function mergeCaps(col: ColumnDef<T>): { minWidth?: number; maxWidth?: number } {
+    const typeWidth = col.type ? COLUMN_WIDTH[col.type] : undefined
+    const typeMin = typeWidth?.minWidth
+    const typeMax = typeWidth?.maxWidth
+    const pageMin = col.minWidth
+    const pageMax = col.maxWidth
+    // 최소 축: 둘 다 있으면 큰 값, 한쪽만 있으면 그 값, 없으면 undefined
+    const minWidth = typeMin !== undefined && pageMin !== undefined
+      ? Math.max(typeMin, pageMin)
+      : typeMin !== undefined ? typeMin : pageMin
+    // 최대 축: 둘 다 있으면 작은 값, 한쪽만 있으면 그 값, 없으면 undefined
+    const maxWidth = typeMax !== undefined && pageMax !== undefined
+      ? Math.min(typeMax, pageMax)
+      : typeMax !== undefined ? typeMax : pageMax
+    return { minWidth, maxWidth }
+  }
+
+  /** 준비 완료 시 1회만 전체 데이터로 폭 계산 + 적용. 이후 호출은 no-op. */
   function initFromRows(rows: TableRow<T>[]) {
     if (initialized) return
+    // widthReady 게이트 — false면 최종 폭 고정 보류 (헤더/type 캡 기반 안전 폭 유지)
+    if (widthReady && !widthReady()) return
     initialized = true
     const samples = extractSamples(columns, rows)
     const inputs: ColumnWidthInput[] = columns.map((col, i) => {
-      const typeWidth = col.type ? COLUMN_WIDTH[col.type] : undefined
-      const hasExplicitWidth = col.minWidth !== undefined || col.maxWidth !== undefined
+      const caps = mergeCaps(col)
       return {
         label: typeof col.label === 'string' ? col.label : (col.label.textContent || ''),
-        minWidth: hasExplicitWidth ? col.minWidth : typeWidth?.minWidth,
-        maxWidth: hasExplicitWidth ? col.maxWidth : typeWidth?.maxWidth,
+        minWidth: caps.minWidth,
+        maxWidth: caps.maxWidth,
         samples: samples[i],
       }
     })
@@ -170,6 +208,7 @@ export function createDataTable<T extends object>(
     rowHeight = 32,
     groupRowHeight = 48,
     zebraStriping = false,
+    widthReady,
   } = options
 
   if (virtualScroll && !options.keyFn) {
@@ -177,7 +216,7 @@ export function createDataTable<T extends object>(
   }
 
   if (virtualScroll) {
-    return createVirtualScrollMode(options, columns, stickyHeader, emptyText, rowStyle, rowFooter, rowHeight, groupRowHeight, zebraStriping)
+    return createVirtualScrollMode(options, columns, stickyHeader, emptyText, rowStyle, rowFooter, rowHeight, groupRowHeight, zebraStriping, widthReady)
   }
-  return createFixedMode(options, columns, stickyHeader, emptyText, rowStyle, zebraStriping)
+  return createFixedMode(options, columns, stickyHeader, emptyText, rowStyle, zebraStriping, widthReady)
 }
