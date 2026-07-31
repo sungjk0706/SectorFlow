@@ -381,7 +381,7 @@ class AutoTradeManager:
             logger.info("[매매] [매수제한] 잔고 보유종목 %d종목 ≥ 최대 %d종목. %s 매수 차단.", holding_count, max_limit, stk_cd)
             return False, BUY_REJECT_MAX_HOLDING
 
-        # ── 종목당 1회 매수 금액 (buy_amt_on=False → 한도 없음) ──
+        # ── 종목당 1회 매수금액 (buy_amt_on=False → 한도 없음) ──
         buy_amt_on = bool(raw_all.get("buy_amt_on", True))
         buy_amt = settings.get("buy_amt", 0)
         max_daily_total = int(settings.get("max_daily_total_buy_amt", 0) or 0)

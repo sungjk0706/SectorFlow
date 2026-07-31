@@ -315,7 +315,7 @@ function buildBuyAmountSection(root: HTMLElement): void {
   {
     const r = createSettingToggleRow({
       label: '전체 일일 한도',
-      infoText: '하루 매수 총액 제한. 수수료 포함. OFF 시 제한 없음, 종목당 한도가 우선 적용.',
+      infoText: '전체 일일 누적 한도. 수수료 포함. OFF 시 제한 없음.',
       toggleOn: false,
       onToggle: next => { vals.max_daily_total_buy_on = next; saveHelper!.saveImmediate({ max_daily_total_buy_on: next }) },
       disableControlsOnToggle: true,
@@ -344,12 +344,12 @@ function buildBuyAmountSection(root: HTMLElement): void {
 function buildRebuySection(root: HTMLElement): void {
   root.appendChild(sectionTitle('동일 종목 재매수 제어'))
 
-  // 종목당 일일 최대 매수 금액 (토글 + 입력)
+  // 종목당 1회 매수 금액 (토글 + 입력)
   buyAmtInput = createMoneyInput({ value: 0, onChange: v => { const orig = Number(vals.buy_amt); vals.buy_amt = v; saveHelper!.autoSave('buy_amt', v, () => { vals.buy_amt = orig; buyAmtInput!.setValue(orig) }) }, min: 0, max: 1_000_000_000, unit: 'manwon', name: 'buy_amt' })
   {
     const r = createSettingToggleRow({
-      label: '종목당 일일 한도',
-      infoText: '종목당 하루 매수 금액 제한. 수수료 포함. OFF 시 한도 없음, 주문가능금액 전체로 매수 시도.',
+      label: '종목당 1회 매수금액',
+      infoText: '1회 매수 시 금액. 수수료 포함. OFF 시 한도 없음, 주문가능금액 전체로 매수 시도. 같은 종목 재매수는 "재매수 차단" 설정이 담당.',
       toggleOn: true,
       onToggle: next => { vals.buy_amt_on = next; saveHelper!.saveImmediate({ buy_amt_on: next }) },
       disableControlsOnToggle: true,
