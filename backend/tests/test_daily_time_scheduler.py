@@ -87,17 +87,13 @@ from backend.app.services.daily_time_scheduler import (  # noqa: E402
     KRX_CLOSE_COUNTDOWN_10M,
     KRX_CLOSE_COUNTDOWN_5M,
     KRX_CLOSE_COUNTDOWN_1M,
-    KRX_CLOSE_COUNTDOWN_10S,
     KRX_OPEN_COUNTDOWN_10M,
     KRX_OPEN_COUNTDOWN_5M,
     KRX_OPEN_COUNTDOWN_1M,
-    KRX_OPEN_COUNTDOWN_10S,
     NXT_PRE_CLOSE_COUNTDOWN_5M,
     NXT_PRE_CLOSE_COUNTDOWN_1M,
-    NXT_PRE_CLOSE_COUNTDOWN_10S,
     NXT_AFT_CLOSE_COUNTDOWN_5M,
     NXT_AFT_CLOSE_COUNTDOWN_1M,
-    NXT_AFT_CLOSE_COUNTDOWN_10S,
 )
 
 
@@ -1174,6 +1170,43 @@ class TestApplyMarketPhase:
             assert mock_state.market_phase["krx"] == "정규장"
             assert mock_state.market_phase["nxt"] == "메인마켓"  # 기존 값 유지
 
+    def test_apply_market_phase_clears_krx_override_on_change(self):
+        """krx 페이즈 변경 시 krx_countdown_override 초기화 (stale 카운트다운 방지 — P10/P22)."""
+        mock_state = MagicMock()
+        mock_state.market_phase = {"krx": "정규장", "nxt": "메인마켓"}
+        mock_state.krx_countdown_override = {"label": "정규장 장마감", "remaining_sec": 300}
+        mock_state.nxt_countdown_override = None
+        with patch("backend.app.services.engine_state.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler.get_market_phase", return_value={"krx": "종가 동시호가", "nxt": "메인마켓", "krx_countdown": None, "nxt_countdown": None}), \
+             patch("backend.app.services.daily_time_scheduler.schedule_engine_task", side_effect=_close_coro):
+            _apply_market_phase({"krx": "종가 동시호가", "nxt": "메인마켓"})
+            assert mock_state.krx_countdown_override is None
+
+    def test_apply_market_phase_clears_nxt_override_on_change(self):
+        """nxt 페이즈 변경 시 nxt_countdown_override 초기화 (stale 카운트다운 방지 — P10/P22)."""
+        mock_state = MagicMock()
+        mock_state.market_phase = {"krx": "정규장", "nxt": "프리마켓"}
+        mock_state.krx_countdown_override = None
+        mock_state.nxt_countdown_override = {"label": "프리마켓 장마감", "remaining_sec": 60}
+        with patch("backend.app.services.engine_state.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler.get_market_phase", return_value={"krx": "정규장", "nxt": "정규장 준비", "krx_countdown": None, "nxt_countdown": None}), \
+             patch("backend.app.services.daily_time_scheduler.schedule_engine_task", side_effect=_close_coro):
+            _apply_market_phase({"krx": "정규장", "nxt": "정규장 준비"})
+            assert mock_state.nxt_countdown_override is None
+
+    def test_apply_market_phase_no_change_keeps_override(self):
+        """페이즈 미변경 시 override 유지 (불필요한 초기화 금지 — P24 단순성)."""
+        mock_state = MagicMock()
+        mock_state.market_phase = {"krx": "정규장", "nxt": "메인마켓"}
+        krx_override = {"label": "정규장 장마감", "remaining_sec": 300}
+        mock_state.krx_countdown_override = krx_override
+        mock_state.nxt_countdown_override = None
+        with patch("backend.app.services.engine_state.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler.get_market_phase", return_value={"krx": "정규장", "nxt": "메인마켓", "krx_countdown": None, "nxt_countdown": None}), \
+             patch("backend.app.services.daily_time_scheduler.schedule_engine_task", side_effect=_close_coro):
+            _apply_market_phase({"krx": "정규장", "nxt": "메인마켓"})
+            assert mock_state.krx_countdown_override is krx_override
+
 
 # ── _on_krx_market_open ───────────────────────────────────────────────────────
 
@@ -1951,15 +1984,15 @@ class TestRetryPipelineCatchup:
 class TestTimetableBuilder:
     """build_timetable_from_cache 단위 테스트 — 캐시 기반 동적 빌드 (Step 2 + 4세션 통합)."""
 
-    def test_build_with_cache_values_returns_33_items(self):
-        """캐시에서 4개 direct 시각을 읽어 33항목 리스트 반환 (토글 ON, 09:00:30 + 22 countdown 포함)."""
+    def test_build_with_cache_values_returns_27_items(self):
+        """캐시에서 4개 direct 시각을 읽어 27항목 리스트 반환 (토글 ON, 09:00:30 + 16 countdown 포함 — 10초 제거)."""
         tt = build_timetable_from_cache({
             "timetable.realtime_reset": "07:55",
             "timetable.ws_prestart": "07:56",
             "timetable.krx_pre_subscribe": "08:58",
             "timetable.confirmed_download": "20:40",
         })
-        assert len(tt) == 33
+        assert len(tt) == 27
         # 4개 direct 항목 — 캐시 시각 반영 (time 필드는 3-tuple)
         assert tt[0]["time"] == (7, 55, 0)
         assert tt[0]["kind"] == "direct"
@@ -1970,10 +2003,10 @@ class TestTimetableBuilder:
         assert tt[3]["time"] == (8, 58, 0)
         assert tt[3]["kind"] == "direct"
         assert tt[3]["action"] is _on_krx_pre_subscribe
-        # 마지막 direct 항목 — 확정 데이터 다운로드 (인덱스 32)
-        assert tt[32]["time"] == (20, 40, 0)
-        assert tt[32]["kind"] == "direct"
-        assert tt[32]["action"] is _on_confirmed_download
+        # 마지막 direct 항목 — 확정 데이터 다운로드 (인덱스 26)
+        assert tt[26]["time"] == (20, 40, 0)
+        assert tt[26]["kind"] == "direct"
+        assert tt[26]["action"] is _on_confirmed_download
         # 7개 phase 항목 — 코드 상수 유지 (3-tuple 정규화, 18:00 엔트리 제거)
         assert tt[2]["time"] == _to3(NXT_PREMARKET_START)
         assert tt[4]["time"] == _to3(KRX_REGULAR_START)
@@ -1981,9 +2014,9 @@ class TestTimetableBuilder:
         assert tt[5]["kind"] == "phase"
         assert "09:00:30" in tt[5]["ctx"]
         assert tt[9]["time"] == _to3(NXT_AFTERMARKET_END)  # 18:00 제거로 인덱스 10→9
-        # 22개 countdown 항목 — 인덱스 10~31
+        # 16개 countdown 항목 — 인덱스 10~25 (10초 엔트리 6개 제거)
         assert tt[10]["kind"] == "countdown"
-        assert tt[31]["kind"] == "countdown"
+        assert tt[25]["kind"] == "countdown"
 
     def test_build_with_empty_cache_falls_back_to_defaults(self):
         """캐시에 키 없으면 DEFAULT_USER_SETTINGS 기본값(07:58/07:59/08:59/20:40) 사용."""
@@ -1991,7 +2024,7 @@ class TestTimetableBuilder:
         assert tt[0]["time"] == (7, 58, 0)
         assert tt[1]["time"] == (7, 59, 0)
         assert tt[3]["time"] == (8, 59, 0)
-        assert tt[32]["time"] == (20, 40, 0)  # confirmed_download 기본값 (인덱스 32)
+        assert tt[26]["time"] == (20, 40, 0)  # confirmed_download 기본값 (인덱스 26)
 
     def test_build_with_none_cache_value_falls_back_to_default(self):
         """캐시 값이 None/빈 문자열이면 DEFAULT_USER_SETTINGS 기본값 사용 (P20)."""
@@ -2016,7 +2049,7 @@ class TestTimetableBuilder:
         assert "07:56" in tt[1]["ctx"]
         assert "08:58" in tt[3]["ctx"]
         assert "09:00:30" in tt[5]["ctx"]  # NXT 메인마켓 진입 (초 단위)
-        assert "20:40" in tt[32]["ctx"]  # confirmed_download (인덱스 32)
+        assert "20:40" in tt[26]["ctx"]  # confirmed_download (인덱스 26)
 
     def test_build_toggle_off_skips_confirmed_download(self):
         """scheduler_market_close_on=False 시 마지막 direct 항목 스킵 (P16 살아있는 경로)."""
@@ -2027,9 +2060,9 @@ class TestTimetableBuilder:
             "timetable.confirmed_download": "20:40",
             "scheduler_market_close_on": False,
         })
-        assert len(tt) == 32  # confirmed_download 항목 스킵 (33 - 1)
+        assert len(tt) == 26  # confirmed_download 항목 스킵 (27 - 1)
         # 마지막 항목은 countdown — confirmed_download direct 없음
-        assert tt[31]["kind"] == "countdown"
+        assert tt[25]["kind"] == "countdown"
         # confirmed_download action을 가진 항목 없음
         assert not any(e.get("action") is _on_confirmed_download for e in tt)
 
@@ -2042,8 +2075,8 @@ class TestTimetableBuilder:
             "timetable.confirmed_download": "20:40",
             "scheduler_market_close_on": True,
         })
-        assert len(tt) == 33
-        assert tt[32]["action"] is _on_confirmed_download
+        assert len(tt) == 27
+        assert tt[26]["action"] is _on_confirmed_download
 
     def test_parse_hm_tuple_valid(self):
         """정상 HH:MM → (h, m) 튜플."""
@@ -2417,22 +2450,22 @@ class TestCountdownTimetableEntries:
         return build_timetable_from_cache(dict(DEFAULT_USER_SETTINGS))
 
     def test_krx_open_countdown_entries_exist(self):
-        """KRX 장개시 카운트다운 엔트리 4개(10분/5분/1분/10초) 존재."""
+        """KRX 장개시 카운트다운 엔트리 3개(10분/5분/1분) 존재."""
         entries = self._build_entries()
         countdown_krx_open = [
             e for e in entries
             if e.get("kind") == "countdown" and e.get("market") == "krx" and "장개시" in e["ctx"]
         ]
-        assert len(countdown_krx_open) == 4
+        assert len(countdown_krx_open) == 3
 
     def test_krx_close_countdown_entries_exist(self):
-        """KRX 장마감 카운트다운 엔트리 4개(10분/5분/1분/10초) 존재."""
+        """KRX 장마감 카운트다운 엔트리 3개(10분/5분/1분) 존재."""
         entries = self._build_entries()
         countdown_krx_close = [
             e for e in entries
             if e.get("kind") == "countdown" and e.get("market") == "krx" and "장마감" in e["ctx"]
         ]
-        assert len(countdown_krx_close) == 4
+        assert len(countdown_krx_close) == 3
 
     def test_nxt_premarket_countdown_entries_exist(self):
         """NXT 프리마켓 장개시/장마감 카운트다운 엔트리 존재."""
@@ -2441,8 +2474,8 @@ class TestCountdownTimetableEntries:
             e for e in entries
             if e.get("kind") == "countdown" and e.get("market") == "nxt" and "프리마켓" in e["ctx"]
         ]
-        # 장개시 4개(10분/5분/1분/10초) + 장마감 3개(5분/1분/10초 — 10분전 없음)
-        assert len(countdown_nxt_pre) == 7
+        # 장개시 3개(10분/5분/1분) + 장마감 2개(5분/1분 — 10분전 없음)
+        assert len(countdown_nxt_pre) == 5
 
     def test_nxt_aftermarket_countdown_entries_exist(self):
         """NXT 에프터마켓 장개시/장마감 카운트다운 엔트리 존재."""
@@ -2451,8 +2484,8 @@ class TestCountdownTimetableEntries:
             e for e in entries
             if e.get("kind") == "countdown" and e.get("market") == "nxt" and "에프터마켓" in e["ctx"]
         ]
-        # 장개시 4개(10분/5분/1분/10초) + 장마감 3개(5분/1분/10초 — 10분전 없음)
-        assert len(countdown_nxt_aft) == 7
+        # 장개시 3개(10분/5분/1분) + 장마감 2개(5분/1분 — 10분전 없음)
+        assert len(countdown_nxt_aft) == 5
 
     def test_no_18pm_phase_entry(self):
         """18:00 phase 엔트리 제거됨 (P23 — '애프터마켓 지속' 전환 제거)."""
@@ -2478,27 +2511,23 @@ class TestCountdownConstants:
     """카운트다운 임계 시각 상수 값 검증 (P10 SSOT — 거래소 규정 코드 상수)."""
 
     def test_krx_close_countdown_constants(self):
-        """KRX 장마감 카운트다운 임계 시각 — 10분/5분/1분/10초."""
+        """KRX 장마감 카운트다운 임계 시각 — 10분/5분/1분."""
         assert KRX_CLOSE_COUNTDOWN_10M == (15, 10)
         assert KRX_CLOSE_COUNTDOWN_5M == (15, 15)
         assert KRX_CLOSE_COUNTDOWN_1M == (15, 19)
-        assert KRX_CLOSE_COUNTDOWN_10S == (15, 19, 50)
 
     def test_krx_open_countdown_constants(self):
-        """KRX 장개시 카운트다운 임계 시각 — 10분/5분/1분/10초."""
+        """KRX 장개시 카운트다운 임계 시각 — 10분/5분/1분."""
         assert KRX_OPEN_COUNTDOWN_10M == (8, 50)
         assert KRX_OPEN_COUNTDOWN_5M == (8, 55)
         assert KRX_OPEN_COUNTDOWN_1M == (8, 59)
-        assert KRX_OPEN_COUNTDOWN_10S == (8, 59, 50)
 
     def test_nxt_pre_close_countdown_constants(self):
-        """NXT 프리마켓 장마감 카운트다운 임계 — 5분/1분/10초 (10분전 없음)."""
+        """NXT 프리마켓 장마감 카운트다운 임계 — 5분/1분 (10분전 없음)."""
         assert NXT_PRE_CLOSE_COUNTDOWN_5M == (8, 45)
         assert NXT_PRE_CLOSE_COUNTDOWN_1M == (8, 49)
-        assert NXT_PRE_CLOSE_COUNTDOWN_10S == (8, 49, 50)
 
     def test_nxt_aft_close_countdown_constants(self):
-        """NXT 에프터마켓 장마감 카운트다운 임계 — 5분/1분/10초 (10분전 없음)."""
+        """NXT 에프터마켓 장마감 카운트다운 임계 — 5분/1분 (10분전 없음)."""
         assert NXT_AFT_CLOSE_COUNTDOWN_5M == (19, 55)
         assert NXT_AFT_CLOSE_COUNTDOWN_1M == (19, 59)
-        assert NXT_AFT_CLOSE_COUNTDOWN_10S == (19, 59, 50)

@@ -4,7 +4,7 @@
 
 import { uiStore } from '../stores/uiStore'
 import type { UIState } from '../stores/uiStore'
-import { clearCircuitBreakerOpen, clearOrderTimeBlocked, clearRiskBlockStatus, clearTestCashFailed, clearPositionBuildFailed, clearDegradedMode } from '../stores/uiStore'
+import { clearCircuitBreakerOpen, clearRiskBlockStatus, clearTestCashFailed, clearPositionBuildFailed, clearDegradedMode } from '../stores/uiStore'
 import type { IndexData } from '../types'
 import { BROKER_LABELS } from '../components/common/broker-badge'
 import { COLOR, RADIUS, BLUR, SURFACE_ALPHA, FONT_WEIGHT } from '../components/common/ui-styles'
@@ -77,12 +77,11 @@ function formatCountdown(
   if (!countdown) return null
   const { label, remaining_sec } = countdown
   if (remaining_sec <= 0) return null
-  if (remaining_sec >= 60) {
-    const min = Math.floor(remaining_sec / 60)
-    const sec = remaining_sec % 60
-    return sec > 0 ? `${label} ${min}분 ${sec}초 전` : `${label} ${min}분 전`
-  }
-  return `${label} ${remaining_sec}초 전`
+  // 분 단위까지만 표시 (60초 미만은 표시 안 함 — 개인 투자자에게 불필요한 노이즈).
+  if (remaining_sec < 60) return null
+  const min = Math.floor(remaining_sec / 60)
+  const sec = remaining_sec % 60
+  return sec > 0 ? `${label} ${min}분 ${sec}초 전` : `${label} ${min}분 전`
 }
 
 function applyMarketPhaseChip(
@@ -338,16 +337,6 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
   })
   header.appendChild(circuitBreakerChip)
 
-  // 체결 불가 시간대 주문 일시중단 칩 (클릭 시 해제)
-  // 시장 상태 그룹 우측에 배치: NXT 카운트다운 → KRX 장운영 → 본 칩
-  const orderTimeBlockedChip = createChipEl()
-  orderTimeBlockedChip.style.display = 'none'
-  orderTimeBlockedChip.style.cursor = 'pointer'
-  orderTimeBlockedChip.addEventListener('click', () => {
-    try { clearOrderTimeBlocked() } catch (e) { console.error('[Header] orderTimeBlocked clear error', e) }
-  })
-  header.insertBefore(orderTimeBlockedChip, krxAlertChip)
-
   // 리스크 매니저 차단 칩 (빨간색 — 손실 한도 도달, 클릭 시 해제)
   const riskBlockChip = createChipEl()
   riskBlockChip.style.display = 'none'
@@ -409,7 +398,7 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
   // ── Store 구독 ──
 
   function onStateChange(state: UIState): void {
-    const { marketPhase, avgAmtProgress, status, settings, indexData, circuitBreakerOpen, orderTimeBlocked, riskBlockStatus, testCashFailed, positionBuildFailed, degradedMode } = state
+    const { marketPhase, avgAmtProgress, status, settings, indexData, circuitBreakerOpen, riskBlockStatus, testCashFailed, positionBuildFailed, degradedMode } = state
 
     // P25: 칩 단위 격리 — 각 칩 렌더링 throw 시 해당 칩만 미갱신 + 로깅, 다음 칩 계속
     // (F-02 잔존 위험 해결 — onStateChange 콜백 내부 칩 간 격리)
@@ -426,21 +415,6 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
         circuitBreakerChip.style.display = 'none'
       }
     } catch (e) { console.error('[header] circuitBreaker chip error', e) }
-
-    // 체결 불가 시간대 주문 상태 칩 (파란색 정보 — NXT만 가능 / 거래 시간 외)
-    // 시간대 상태는 위험이 아닌 사실 알림이므로 정보색 사용 (P21 투명성, P23 일관성)
-    try {
-      if (orderTimeBlocked) {
-        orderTimeBlockedChip.style.display = ''
-        orderTimeBlockedChip.style.background = `${COLOR.downBg}`
-        orderTimeBlockedChip.style.color = `${COLOR.down}`
-        orderTimeBlockedChip.style.border = `1px solid ${COLOR.down}40`
-        const icon = orderTimeBlocked.level === 'nxt_only' ? 'ℹ' : '🕐'
-        orderTimeBlockedChip.textContent = `${icon} ${orderTimeBlocked.reason}`
-      } else {
-        orderTimeBlockedChip.style.display = 'none'
-      }
-    } catch (e) { console.error('[header] orderTimeBlocked chip error', e) }
 
     // 리스크 매니저 차단 칩 (빨간색 — 손실 한도 도달, 클릭 시 해제)
     try {

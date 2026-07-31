@@ -424,20 +424,20 @@ class TestHandleJif:
 
     @pytest.mark.asyncio
     async def test_jif_countdown_handled(self):
-        """jstatus=22 (장개시 10초전) → 카운트다운 코드 처리, _apply_jif_phase 미호출 + override 저장 + 브로드캐스트."""
+        """jstatus=23 (장개시 1분전) → 카운트다운 코드 처리, _apply_jif_phase 미호출 + override 저장 + 브로드캐스트."""
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "시가 동시호가", "nxt": "정규장 준비"}
         with patch("backend.app.services.engine_ws_dispatch.engine_state.state", mock_state), \
              patch("backend.app.services.engine_ws_dispatch._apply_jif_phase") as mock_apply, \
              patch("backend.app.services.engine_account_notify._broadcast", new_callable=AsyncMock) as mock_bc, \
              patch("backend.app.services.daily_time_scheduler.get_market_phase", return_value={"krx": "시가 동시호가", "nxt": "정규장 준비"}):
-            await _handle_jif({"jangubun": "1", "jstatus": "22"})
+            await _handle_jif({"jangubun": "1", "jstatus": "23"})
             mock_apply.assert_not_called()  # 카운트다운 코드는 페이즈 전환 아님
             mock_bc.assert_awaited_once()  # 카운트다운 브로드캐스트
-            # override 저장 확인 — jstatus=22는 KRX 장개시 10초전
+            # override 저장 확인 — jstatus=23는 KRX 장개시 1분전
             assert mock_state.krx_countdown_override is not None
             assert mock_state.krx_countdown_override["label"] == "정규장 장개시"
-            assert mock_state.krx_countdown_override["remaining_sec"] == 10
+            assert mock_state.krx_countdown_override["remaining_sec"] == 60
 
     @pytest.mark.asyncio
     async def test_jif_nxt_aftermarket_close(self):
@@ -553,16 +553,16 @@ class TestJifConstants:
             f"NXT 카운트다운 맵과 무시 코드 중복: {set(_JIF_COUNTDOWN_NXT.keys()) & ignore}"
 
     def test_countdown_krx_entry_count(self):
-        """_JIF_COUNTDOWN_KRX는 7개 (장개시 4 + 장마감 3 — 10분전 코드 없음)."""
-        assert len(_JIF_COUNTDOWN_KRX) == 7
+        """_JIF_COUNTDOWN_KRX는 5개 (장개시 3 + 장마감 2 — 10분전 코드 없음, 10초 제거)."""
+        assert len(_JIF_COUNTDOWN_KRX) == 5
 
     def test_countdown_nxt_entry_count(self):
-        """_JIF_COUNTDOWN_NXT는 14개 (프리마켓 장개시 4 + 장마감 3 + 에프터마켓 장개시 4 + 장마감 3)."""
-        assert len(_JIF_COUNTDOWN_NXT) == 14
+        """_JIF_COUNTDOWN_NXT는 10개 (프리마켓 장개시 3 + 장마감 2 + 에프터마켓 장개시 3 + 장마감 2 — 10초 제거)."""
+        assert len(_JIF_COUNTDOWN_NXT) == 10
 
     def test_countdown_remaining_sec_values(self):
-        """remaining_sec 값이 API 문서 기준 (600/300/60/10) 일치 (P10 SSOT — 설계 문서 3.2 오류 바로잡기)."""
-        expected = {600, 300, 60, 10}
+        """remaining_sec 값이 API 문서 기준 (600/300/60) 일치 — 10초 코드 제거 (P10 SSOT)."""
+        expected = {600, 300, 60}
         krx_secs = {sec for _, sec in _JIF_COUNTDOWN_KRX.values()}
         nxt_secs = {sec for _, sec in _JIF_COUNTDOWN_NXT.values()}
         assert krx_secs == expected, f"KRX remaining_sec 값 불일치: {krx_secs}"
@@ -574,10 +574,9 @@ class TestJifConstants:
             code for code, (label, _) in _JIF_COUNTDOWN_KRX.items()
             if "장마감" in label
         }
-        # 장마감 코드는 44/43/42 (5분/1분/10초) — 10분전 코드 없음
+        # 장마감 코드는 44/43 (5분/1분) — 10분전/10초전 코드 없음
         assert "44" in close_codes
         assert "43" in close_codes
-        assert "42" in close_codes
         # 10분전(600초) 장마감 코드 없음 확인
         close_10min = [
             code for code, (label, sec) in _JIF_COUNTDOWN_KRX.items()

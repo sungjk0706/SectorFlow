@@ -42,34 +42,29 @@ NXT_AFTERMARKET_END   = (20, 0)    # 20:00 애프터마켓 종료 → 장마감
 # ── 카운트다운 임계 시각 (거래소 규정 — 사용자 조정 불가, 코드 상수 P10/P24) ──
 # JIF에 10분전 코드 없는 구간(KRX 장마감, NXT 프리마켓/에프터마켓 장마감)은
 # _TIMETABLE 보조 엔트리만 담당 — JIF 매핑 테이블(engine_ws_dispatch.py)과 중복 없음.
+# 카운트다운은 분 단위까지만 표시 (10초 엔트리 제거 — 개인 투자자에게 불필요한 노이즈).
 # KRX 정규장 장마감 카운트다운 임계 (→ 15:20, 종가동시호가 개시)
 KRX_CLOSE_COUNTDOWN_10M = (15, 10)       # 15:10 장마감 10분전 (보조 전용 — JIF 10분전 코드 없음)
 KRX_CLOSE_COUNTDOWN_5M  = (15, 15)       # 15:15 장마감 5분전
 KRX_CLOSE_COUNTDOWN_1M  = (15, 19)       # 15:19 장마감 1분전
-KRX_CLOSE_COUNTDOWN_10S = (15, 19, 50)   # 15:19:50 장마감 10초전
 # KRX 정규장 장개시 카운트다운 임계 (→ 09:00)
 KRX_OPEN_COUNTDOWN_10M = (8, 50)         # 08:50 장개시 10분전
 KRX_OPEN_COUNTDOWN_5M  = (8, 55)         # 08:55 장개시 5분전
 KRX_OPEN_COUNTDOWN_1M  = (8, 59)         # 08:59 장개시 1분전
-KRX_OPEN_COUNTDOWN_10S = (8, 59, 50)     # 08:59:50 장개시 10초전
 # NXT 프리마켓 장마감 카운트다운 임계 (→ 08:50, 5분전이 최대)
 NXT_PRE_CLOSE_COUNTDOWN_5M  = (8, 45)    # 08:45 프리마켓 장마감 5분전
 NXT_PRE_CLOSE_COUNTDOWN_1M  = (8, 49)    # 08:49 프리마켓 장마감 1분전
-NXT_PRE_CLOSE_COUNTDOWN_10S = (8, 49, 50)  # 08:49:50 프리마켓 장마감 10초전
 # NXT 프리마켓 장개시 카운트다운 임계 (→ 08:00)
 NXT_PRE_OPEN_COUNTDOWN_10M  = (7, 50)    # 07:50 프리마켓 장개시 10분전
 NXT_PRE_OPEN_COUNTDOWN_5M   = (7, 55)    # 07:55 프리마켓 장개시 5분전
 NXT_PRE_OPEN_COUNTDOWN_1M   = (7, 59)    # 07:59 프리마켓 장개시 1분전
-NXT_PRE_OPEN_COUNTDOWN_10S  = (7, 59, 50)  # 07:59:50 프리마켓 장개시 10초전
 # NXT 에프터마켓 장개시 카운트다운 임계 (→ 15:40)
 NXT_AFT_OPEN_COUNTDOWN_10M  = (15, 30)   # 15:30 에프터마켓 장개시 10분전
 NXT_AFT_OPEN_COUNTDOWN_5M   = (15, 35)   # 15:35 에프터마켓 장개시 5분전
 NXT_AFT_OPEN_COUNTDOWN_1M   = (15, 39)   # 15:39 에프터마켓 장개시 1분전
-NXT_AFT_OPEN_COUNTDOWN_10S  = (15, 39, 50)  # 15:39:50 에프터마켓 장개시 10초전
 # NXT 에프터마켓 장마감 카운트다운 임계 (→ 20:00, 5분전이 최대)
 NXT_AFT_CLOSE_COUNTDOWN_5M  = (19, 55)   # 19:55 에프터마켓 장마감 5분전
 NXT_AFT_CLOSE_COUNTDOWN_1M  = (19, 59)   # 19:59 에프터마켓 장마감 1분전
-NXT_AFT_CLOSE_COUNTDOWN_10S = (19, 59, 50)  # 19:59:50 에프터마켓 장마감 10초전
 
 # ── 사전 트리거 시각 (장 시작 전 사전 준비 — 안 D 4단계) ──────────────────────
 REALTIME_FIELDS_RESET_TIME = (7, 58)   # 07:58 실시간 필드 초기화 (WS 구독 1분 전)
@@ -773,6 +768,11 @@ def _apply_market_phase(phase: dict) -> None:
       - KRX "정규장" 진입 → _on_krx_market_open() (09:00, 업종 재계산)
       - KRX "종가 동시호가" 진입 → _on_krx_closing_auction_start() (15:20, KRX 단독 종목 구독해지)
       - NXT "장마감" 진입 → _on_ws_subscribe_end() (20:00, WS 연결 해제 + 구독 해지)
+
+    페이즈 변경 시 countdown override 초기화 (P10 SSOT · P16 살아있는 경로):
+      JIF 경로는 _handle_jif에서 페이즈 전환 전 override를 초기화하지만, 타임테이블 보완 경로는
+      본 함수로 직접 진입하므로 여기서 초기화하지 않으면 stale override가 브로드캐스트에 반영됨.
+      두 경로 모두 본 함수를 경유하므로 여기서 초기화하여 경로 대칭화 (P22 데이터 정합성).
     """
     try:
         from backend.app.services.engine_account_notify import _broadcast
@@ -782,6 +782,13 @@ def _apply_market_phase(phase: dict) -> None:
         new_nxt = phase.get("nxt", "")
         engine_state.state.market_phase["krx"] = new_krx
         engine_state.state.market_phase["nxt"] = new_nxt
+        # 페이즈 변경 시 countdown override 초기화 — stale 카운트다운이 브로드캐스트에 반영되지 않도록
+        # get_market_phase() 호출 전에 수행 (P10 SSOT, P22 데이터 정합성).
+        # JIF 경로는 _handle_jif에서 이미 초기화하지만, 타임테이블 보완 경로는 본 함수가 유일 적용점.
+        if prev_krx != new_krx:
+            engine_state.state.krx_countdown_override = None
+        if prev_nxt != new_nxt:
+            engine_state.state.nxt_countdown_override = None
         broadcast_phase = get_market_phase()
         schedule_engine_task(_broadcast("market-phase", broadcast_phase), context="market-phase 브로드캐스트")
         # ── 체결 불가 시간대 주문 상태 브로드캐스트 (P21 사용자 투명성) ──
@@ -1036,34 +1043,29 @@ def build_timetable_from_cache(settings: dict) -> list[dict]:
         {"time": _to3(NXT_AFTERMARKET_END),  "kind": "phase",  "ctx": "NXT 장마감 진입 감지 (20:00)"},
         # ── 카운트다운 갱신 엔트리 (kind="countdown" — 페이즈 전환 아님, JIF 미수신 공백 보조) ──
         # JIF override 활성 시 _timetable_event_fired()에서 스킵 (JIF 1순위 — 중복 갱신 방지).
+        # 카운트다운은 분 단위까지만 표시 (10초 엔트리 제거 — 개인 투자자에게 불필요한 노이즈).
         # KRX 장개시 카운트다운 (→ 09:00)
         {"time": _to3(KRX_OPEN_COUNTDOWN_10M),  "kind": "countdown", "market": "krx", "ctx": "KRX 장개시 10분전 (08:50)"},
         {"time": _to3(KRX_OPEN_COUNTDOWN_5M),   "kind": "countdown", "market": "krx", "ctx": "KRX 장개시 5분전 (08:55)"},
         {"time": _to3(KRX_OPEN_COUNTDOWN_1M),   "kind": "countdown", "market": "krx", "ctx": "KRX 장개시 1분전 (08:59)"},
-        {"time": _to3(KRX_OPEN_COUNTDOWN_10S),  "kind": "countdown", "market": "krx", "ctx": "KRX 장개시 10초전 (08:59:50)"},
         # KRX 장마감 카운트다운 (→ 15:20) — 10분전은 보조 전용 (JIF 10분전 코드 없음)
         {"time": _to3(KRX_CLOSE_COUNTDOWN_10M), "kind": "countdown", "market": "krx", "ctx": "KRX 장마감 10분전 (15:10)"},
         {"time": _to3(KRX_CLOSE_COUNTDOWN_5M),  "kind": "countdown", "market": "krx", "ctx": "KRX 장마감 5분전 (15:15)"},
         {"time": _to3(KRX_CLOSE_COUNTDOWN_1M),  "kind": "countdown", "market": "krx", "ctx": "KRX 장마감 1분전 (15:19)"},
-        {"time": _to3(KRX_CLOSE_COUNTDOWN_10S), "kind": "countdown", "market": "krx", "ctx": "KRX 장마감 10초전 (15:19:50)"},
         # NXT 프리마켓 장개시 카운트다운 (→ 08:00)
         {"time": _to3(NXT_PRE_OPEN_COUNTDOWN_10M),  "kind": "countdown", "market": "nxt", "ctx": "NXT 프리마켓 장개시 10분전 (07:50)"},
         {"time": _to3(NXT_PRE_OPEN_COUNTDOWN_5M),   "kind": "countdown", "market": "nxt", "ctx": "NXT 프리마켓 장개시 5분전 (07:55)"},
         {"time": _to3(NXT_PRE_OPEN_COUNTDOWN_1M),   "kind": "countdown", "market": "nxt", "ctx": "NXT 프리마켓 장개시 1분전 (07:59)"},
-        {"time": _to3(NXT_PRE_OPEN_COUNTDOWN_10S),  "kind": "countdown", "market": "nxt", "ctx": "NXT 프리마켓 장개시 10초전 (07:59:50)"},
         # NXT 프리마켓 장마감 카운트다운 (→ 08:50, 5분전이 최대)
         {"time": _to3(NXT_PRE_CLOSE_COUNTDOWN_5M),  "kind": "countdown", "market": "nxt", "ctx": "NXT 프리마켓 장마감 5분전 (08:45)"},
         {"time": _to3(NXT_PRE_CLOSE_COUNTDOWN_1M),  "kind": "countdown", "market": "nxt", "ctx": "NXT 프리마켓 장마감 1분전 (08:49)"},
-        {"time": _to3(NXT_PRE_CLOSE_COUNTDOWN_10S), "kind": "countdown", "market": "nxt", "ctx": "NXT 프리마켓 장마감 10초전 (08:49:50)"},
         # NXT 에프터마켓 장개시 카운트다운 (→ 15:40)
         {"time": _to3(NXT_AFT_OPEN_COUNTDOWN_10M),  "kind": "countdown", "market": "nxt", "ctx": "NXT 에프터마켓 장개시 10분전 (15:30)"},
         {"time": _to3(NXT_AFT_OPEN_COUNTDOWN_5M),   "kind": "countdown", "market": "nxt", "ctx": "NXT 에프터마켓 장개시 5분전 (15:35)"},
         {"time": _to3(NXT_AFT_OPEN_COUNTDOWN_1M),   "kind": "countdown", "market": "nxt", "ctx": "NXT 에프터마켓 장개시 1분전 (15:39)"},
-        {"time": _to3(NXT_AFT_OPEN_COUNTDOWN_10S),  "kind": "countdown", "market": "nxt", "ctx": "NXT 에프터마켓 장개시 10초전 (15:39:50)"},
         # NXT 에프터마켓 장마감 카운트다운 (→ 20:00, 5분전이 최대)
         {"time": _to3(NXT_AFT_CLOSE_COUNTDOWN_5M),  "kind": "countdown", "market": "nxt", "ctx": "NXT 에프터마켓 장마감 5분전 (19:55)"},
         {"time": _to3(NXT_AFT_CLOSE_COUNTDOWN_1M),  "kind": "countdown", "market": "nxt", "ctx": "NXT 에프터마켓 장마감 1분전 (19:59)"},
-        {"time": _to3(NXT_AFT_CLOSE_COUNTDOWN_10S), "kind": "countdown", "market": "nxt", "ctx": "NXT 에프터마켓 장마감 10초전 (19:59:50)"},
     ]
 
     # 마지막 항목 — 확정 데이터 다운로드 (timetable.confirmed_download)
