@@ -837,11 +837,15 @@ async def _step4_save_to_db_and_cache(
         _conn = await _get_conn()
 
         if confirmed_codes:
-            placeholders = ",".join("?" for _ in confirmed_codes)
-            confirmed_codes_list = list(confirmed_codes)
+            from backend.app.services.engine_account import get_held_codes
+            held_codes = await get_held_codes()
+            # 보유종목은 매매부적격(2단계 필터 탈락)이어도 시세 추적 대상이므로 캐시/DB에서 유지 (P10·P16·P21)
+            keep_codes = confirmed_codes | held_codes
+            placeholders = ",".join("?" for _ in keep_codes)
+            keep_codes_list = list(keep_codes)
 
             async with get_db_lock():
-                await _conn.execute(f"DELETE FROM master_stocks_table WHERE code NOT IN ({placeholders})", confirmed_codes_list)
+                await _conn.execute(f"DELETE FROM master_stocks_table WHERE code NOT IN ({placeholders})", keep_codes_list)
                 insert_values = [(r.code, r.name, r.market_code, 1 if r.nxt_enable else 0) for r in records if r.code in confirmed_codes]
                 if insert_values:
                     await _conn.executemany("""INSERT INTO master_stocks_table (code, name, market, nxt_enable) VALUES (?, ?, ?, ?) ON CONFLICT(code) DO UPDATE SET name = excluded.name, market = excluded.market, nxt_enable = excluded.nxt_enable""", insert_values)
@@ -864,7 +868,7 @@ async def _step4_save_to_db_and_cache(
                 )
                 await _conn.commit()
 
-            keys_to_delete = [cd for cd in list(engine_state.state.master_stocks_cache.keys()) if cd not in confirmed_codes]
+            keys_to_delete = [cd for cd in list(engine_state.state.master_stocks_cache.keys()) if cd not in confirmed_codes and cd not in held_codes]
             for cd in keys_to_delete:
                 engine_state.state.master_stocks_cache.pop(cd, None)
             for r in records:

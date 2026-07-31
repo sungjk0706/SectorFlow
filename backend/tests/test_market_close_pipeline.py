@@ -27,6 +27,7 @@ from backend.app.services.market_close_pipeline import (
     fetch_5d_data_only,
     _update_layout_cache,
     _step5_download_daily_confirmed,
+    _step4_save_to_db_and_cache,
 )
 
 
@@ -1333,3 +1334,106 @@ class TestStep5DownloadDailyConfirmedEmptyFallback:
         post_pipeline_mock.assert_awaited_once()
         unified_save_mock.assert_awaited_once()
         apply_memory_mock.assert_awaited_once()
+
+
+# ── _step4_save_to_db_and_cache — 보유종목 캐시 유지 (결정 3) ──────────────────
+
+class TestStep4SaveToDbAndCacheHeldCodesPreserved:
+    """2단계 필터 탈락 보유종목 master_stocks_cache 유지 검증 (결정 3).
+
+    보유종목은 매매부적격(관리종목·거래정지 등)이어도 시세 추적 대상이므로
+    confirmed_codes에 없어도 캐시/DB에서 삭제되지 않아야 한다 (P10·P16·P21).
+    """
+
+    @pytest.mark.asyncio
+    async def test_held_code_not_in_confirmed_preserved_in_cache(self):
+        """보유종목이 confirmed_codes에 없어도 master_stocks_cache에서 삭제되지 않음."""
+        mock_state = _mock_state()
+        # 캐시: 005930(적격) + 052690(보유·2단계 필터 탈락) + 999999(비보유·탈락)
+        mock_state.master_stocks_cache = {
+            "005930": {"name": "삼성전자", "market": "0", "nxt_enable": True, "cur_price": 50000, "sector": "반도체", "status": "active"},
+            "052690": {"name": "보유종목A", "market": "0", "nxt_enable": True, "cur_price": 10000, "sector": "미분류", "status": "active"},
+            "999999": {"name": "비보유탈락", "market": "0", "nxt_enable": True, "cur_price": 5000, "sector": "미분류", "status": "active"},
+        }
+        records = [_make_record("005930", "삼성전자"), _make_record("052690", "보유종목A"), _make_record("999999", "비보유탈락")]
+        confirmed_codes = {"005930"}  # 052690·999999는 2단계 필터 탈락
+        held_codes = {"052690"}  # 052690만 보유
+
+        mock_conn = _mock_conn()
+        with patch("backend.app.services.engine_state.state", mock_state), \
+             patch("backend.app.db.database.get_db_connection", new_callable=AsyncMock, return_value=mock_conn), \
+             patch("backend.app.db.database.get_db_lock", return_value=MagicMock()), \
+             patch("backend.app.services.market_close_pipeline._broadcast_confirmed_progress"), \
+             patch("backend.app.services.engine_account.get_held_codes", new_callable=AsyncMock, return_value=held_codes), \
+             patch("backend.app.core.stock_classification_data.sync_sector_from_custom_sectors", new_callable=AsyncMock), \
+             patch("backend.app.services.market_close_pipeline._set_latest_filter_summary_meta"):
+            result = await _step4_save_to_db_and_cache(
+                "[test]", records, confirmed_codes, "{}", {"005930": "삼성전자"},
+            )
+
+        # 보유종목 052690은 캐시에 유지
+        assert "052690" in mock_state.master_stocks_cache
+        # 비보유 탈락 종목 999999는 캐시에서 삭제
+        assert "999999" not in mock_state.master_stocks_cache
+        # 적격 종목 005930은 캐시에 유지
+        assert "005930" in mock_state.master_stocks_cache
+        assert result is not None
+
+    @pytest.mark.asyncio
+    async def test_non_held_filter_rejected_code_deleted_from_cache(self):
+        """비보유 2단계 필터 탈락 종목은 여전히 캐시에서 삭제됨 (회귀 보호)."""
+        mock_state = _mock_state()
+        mock_state.master_stocks_cache = {
+            "005930": {"name": "삼성전자", "market": "0", "nxt_enable": True, "cur_price": 50000, "sector": "반도체", "status": "active"},
+            "034590": {"name": "관리종목B", "market": "0", "nxt_enable": True, "cur_price": 1000, "sector": "미분류", "status": "active"},
+        }
+        records = [_make_record("005930", "삼성전자"), _make_record("034590", "관리종목B")]
+        confirmed_codes = {"005930"}  # 034590는 2단계 필터 탈락 (관리종목)
+        held_codes = set()  # 보유 없음
+
+        mock_conn = _mock_conn()
+        with patch("backend.app.services.engine_state.state", mock_state), \
+             patch("backend.app.db.database.get_db_connection", new_callable=AsyncMock, return_value=mock_conn), \
+             patch("backend.app.db.database.get_db_lock", return_value=MagicMock()), \
+             patch("backend.app.services.market_close_pipeline._broadcast_confirmed_progress"), \
+             patch("backend.app.services.engine_account.get_held_codes", new_callable=AsyncMock, return_value=held_codes), \
+             patch("backend.app.core.stock_classification_data.sync_sector_from_custom_sectors", new_callable=AsyncMock), \
+             patch("backend.app.services.market_close_pipeline._set_latest_filter_summary_meta"):
+            result = await _step4_save_to_db_and_cache(
+                "[test]", records, confirmed_codes, "{}", {"005930": "삼성전자"},
+            )
+
+        # 비보유 탈락 종목 034590는 캐시에서 삭제
+        assert "034590" not in mock_state.master_stocks_cache
+        assert "005930" in mock_state.master_stocks_cache
+        assert result is not None
+
+    @pytest.mark.asyncio
+    async def test_db_delete_uses_keep_codes_including_held(self):
+        """DB DELETE 쿼리가 confirmed_codes ∪ held_codes (keep_codes) 기반으로 실행됨."""
+        mock_state = _mock_state()
+        mock_state.master_stocks_cache = {}
+        records = [_make_record("005930", "삼성전자")]
+        confirmed_codes = {"005930"}
+        held_codes = {"052690"}  # 보유종목 (confirmed에 없음)
+
+        mock_conn = _mock_conn()
+        with patch("backend.app.services.engine_state.state", mock_state), \
+             patch("backend.app.db.database.get_db_connection", new_callable=AsyncMock, return_value=mock_conn), \
+             patch("backend.app.db.database.get_db_lock", return_value=MagicMock()), \
+             patch("backend.app.services.market_close_pipeline._broadcast_confirmed_progress"), \
+             patch("backend.app.services.engine_account.get_held_codes", new_callable=AsyncMock, return_value=held_codes), \
+             patch("backend.app.core.stock_classification_data.sync_sector_from_custom_sectors", new_callable=AsyncMock), \
+             patch("backend.app.services.market_close_pipeline._set_latest_filter_summary_meta"):
+            await _step4_save_to_db_and_cache(
+                "[test]", records, confirmed_codes, "{}", {"005930": "삼성전자"},
+            )
+
+        # 첫 번째 execute 호출 = DELETE FROM master_stocks_table WHERE code NOT IN (?,?)
+        # keep_codes = {"005930", "052690"} → 2개 placeholder
+        first_delete_call = mock_conn.execute.call_args_list[0]
+        sql = first_delete_call.args[0]
+        params = first_delete_call.args[1]
+        assert "DELETE FROM master_stocks_table WHERE code NOT IN" in sql
+        assert sql.count("?") == 2  # confirmed(1) + held(1)
+        assert set(params) == {"005930", "052690"}
