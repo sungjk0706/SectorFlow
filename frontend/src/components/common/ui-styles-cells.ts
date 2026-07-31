@@ -8,34 +8,57 @@ import { COLOR, FONT_SIZE, FONT_WEIGHT, rateColor, pnlColor, strengthColor, chan
 
 /* ── 종목명 셀 ── */
 
+/** 거래소 라벨 생성 — 둥근 사각 맥 아이콘 스타일 (em 단위로 셀 폰트 대비 자동 스케일) */
+function _createMarketLabel(text: 'K' | '통', bg: string, fg: string, title: string): HTMLElement {
+  const label = document.createElement('span')
+  Object.assign(label.style, {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '1.4em',
+    aspectRatio: '1',
+    borderRadius: '0.25em',
+    fontSize: '0.75em',
+    fontWeight: '600',
+    lineHeight: '1',
+    backgroundColor: bg,
+    color: fg,
+    flexShrink: '0',
+    marginLeft: '6px',
+    userSelect: 'none',
+  } as Partial<CSSStyleDeclaration>)
+  label.textContent = text
+  label.title = title
+  label.setAttribute('aria-label', title)
+  return label
+}
+
 export function createStockNameCell(
   name: string,
   marketType?: string,
   nxtEnable?: boolean,
 ): HTMLElement {
   const wrap = document.createElement('span')
-  wrap.style.position = 'relative'
-  wrap.style.display = 'inline-block'
-  wrap.style.width = '100%'
+  Object.assign(wrap.style, {
+    display: 'inline-flex',
+    alignItems: 'center',
+    width: '100%',
+  } as Partial<CSSStyleDeclaration>)
 
   const nameSpan = document.createElement('span')
   if (marketType === '10') nameSpan.style.color = COLOR.kosdaq
   nameSpan.textContent = name
+  nameSpan.style.flex = '1'
+  nameSpan.style.overflow = 'hidden'
+  nameSpan.style.textOverflow = 'ellipsis'
+  nameSpan.style.whiteSpace = 'nowrap'
   wrap.appendChild(nameSpan)
 
-  if (nxtEnable) {
-    const tri = document.createElement('span')
-    Object.assign(tri.style, {
-      position: 'absolute',
-      right: '1px',
-      bottom: '1px',
-      width: '0',
-      height: '0',
-      borderLeft: '6px solid transparent',
-      borderBottom: `6px solid ${COLOR.up}`,
-    })
-    wrap.appendChild(tri)
-  }
+  // 거래소 라벨 — KRX 전용 "K" / 통합 "통" (P21 투명성: 모든 종목 명시적 표시)
+  const label = nxtEnable
+    ? _createMarketLabel('통', COLOR.nxtLabelBg, COLOR.nxtLabel, 'KRX+NXT 통합 거래 종목')
+    : _createMarketLabel('K', COLOR.krxLabelBg, COLOR.krxLabel, 'KRX 전용 종목')
+  wrap.appendChild(label)
 
   return wrap
 }

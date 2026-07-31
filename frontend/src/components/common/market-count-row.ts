@@ -43,24 +43,25 @@ function _appendStandardSegment(
 }
 
 /**
- * NXT 세그먼트 추가 — 빨강 라벨 + ▲ 삼각 + 콜론 + 숫자 + '종목' (sector-stock.ts 기존 패턴 보존).
- * 첫 세그먼트 시 marginLeft 없음 (표준 세그먼트와 동일 — P23 일관성).
+ * NXT 세그먼트 추가 — 보라 라벨 + ▲ 삼각 + 콜론 + 숫자 + '종목'.
+ * 색상은 종목명 셀의 "통" 라벨(COLOR.nxtLabel)과 동일 — P23 일관성.
+ * 첫 세그먼트 시 marginLeft 없음 (표준 세그먼트와 동일).
  */
 function _appendNxtSegment(parent: HTMLElement, isFirst: boolean): HTMLSpanElement {
   const label = document.createElement('span')
-  Object.assign(label.style, { color: COLOR.up, marginLeft: isFirst ? '' : '14px' })
+  Object.assign(label.style, { color: COLOR.nxtLabel, marginLeft: isFirst ? '' : '14px' })
   label.textContent = 'NXT'
   parent.appendChild(label)
   const tri = document.createElement('span')
   Object.assign(tri.style, {
     display: 'inline-block', width: '0', height: '0',
     borderLeft: '5px solid transparent',
-    borderBottom: `5px solid ${COLOR.up}`,
+    borderBottom: `5px solid ${COLOR.nxtLabel}`,
     marginRight: '3px', verticalAlign: 'middle',
   })
   parent.appendChild(tri)
   const colon = document.createElement('span')
-  Object.assign(colon.style, { color: COLOR.up })
+  Object.assign(colon.style, { color: COLOR.nxtLabel })
   colon.textContent = ':'
   parent.appendChild(colon)
   const numSpan = document.createElement('span')
@@ -76,7 +77,7 @@ function _appendNxtSegment(parent: HTMLElement, isFirst: boolean): HTMLSpanEleme
 /**
  * 시장별 종목수 카운트 행 생성.
  * 구조: [합계: N종목] [KRX: N종목] [NXT▲: N종목] [코스피: N종목] [코스닥: N종목]
- * - NXT 라벨: 빨강(COLOR.up) + ▲ 삼각이모지
+ * - NXT 라벨: 보라(COLOR.nxtLabel) + ▲ 삼각 — 종목명 셀 "통" 라벨과 동일 색상 (P23)
  * - 코스닥 라벨: 자주색(COLOR.kosdaq)
  * - 숫자: 파랑(COLOR.down) + semibold, 단위 '종목': 회색(COLOR.neutral)
  * - 값 갱신: updateCounts()로 textContent만 교체 (innerHTML 파괴 금지)

@@ -137,6 +137,11 @@ export const COLOR = {
   periodMonthBg:  '#f3e5f5',
   periodTotal:    '#455a64', // 슬레이트 (누적)
   periodTotalBg:  '#eceff1',
+  // ── 종목 거래소 라벨 (createStockNameCell) ──
+  krxLabel:       '#0288d1', // K 라벨 글자 — 진한 하늘 (KRX 전용)
+  krxLabelBg:     '#e1f5fe', // K 라벨 배경 — 약한 하늘
+  nxtLabel:       '#7b1fa2', // 통 라벨 글자 — 진한 보라 (KRX+NXT 통합)
+  nxtLabelBg:     '#f3e5f5', // 통 라벨 배경 — 약한 보라
 } as const
 
 /* ── 공통 색상 함수 ── */
