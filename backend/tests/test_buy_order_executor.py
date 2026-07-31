@@ -1028,7 +1028,7 @@ class TestRejectReasonRecording:
 
     @pytest.mark.asyncio
     async def test_buy_amt_zero_sets_reason_on_all(self, fresh_state, reset_cash_gate):
-        """종목당 한도 0 → 모든 guard_pass 후보 bt.reject_reason = "종목당 한도 0"."""
+        """종목당 1회 매수금액 0 → 모든 guard_pass 후보 bt.reject_reason = "종목당 1회 매수금액 0"."""
         fresh_state.integrated_system_settings_cache = _default_settings(buy_amt=0)
         with patch("backend.app.services.engine_state.state", fresh_state), \
              patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \

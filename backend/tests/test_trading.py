@@ -342,7 +342,7 @@ class TestExecuteBuyReasonCodes:
 
     @pytest.mark.asyncio
     async def test_buy_amt_zero_returns_buy_amt_zero_reason(self):
-        """종목당 한도 설정값 0 시 사유코드 BUY_REJECT_BUY_AMT_ZERO 반환."""
+        """종목당 1회 매수금액 설정값 0 시 사유코드 BUY_REJECT_BUY_AMT_ZERO 반환."""
         mgr = _make_manager(_raw_settings(buy_amt=0))
         with patch("backend.app.services.trading.auto_buy_effective", return_value=True), \
              patch("backend.app.services.engine_state.state") as mock_state, \

@@ -35,7 +35,7 @@ BUY_REJECT_MASTER_OFF = "master_off"             # 자동매매 OFF (time_schedu
 BUY_REJECT_BUY_TIME_OUT = "buy_time_out"         # 자동매수 시간외 (buy_time 범위 외)
 BUY_REJECT_NON_TRADING_DAY = "non_trading_day"   # 휴일/주말 (비거래일)
 BUY_REJECT_MAX_HOLDING = "max_holding"           # 최대 보유 종목 수 초과
-BUY_REJECT_BUY_AMT_ZERO = "buy_amt_zero"         # 종목당 한도 설정값 0
+BUY_REJECT_BUY_AMT_ZERO = "buy_amt_zero"         # 종목당 1회 매수금액 설정값 0
 BUY_REJECT_DAILY_LIMIT = "daily_limit"           # 일일 매수 한도 초과
 BUY_REJECT_RISK_CIRCUIT = "risk_circuit"         # 서킷브레이커 차단
 BUY_REJECT_RISK_LOSS = "risk_loss"               # 일일 손실 한도 초과
@@ -83,7 +83,7 @@ BUY_GLOBAL_REJECT_REASONS: frozenset[str] = frozenset({
 BUY_REJECT_REASON_TEXT: dict[str, str] = {
     BUY_REJECT_MAX_HOLDING:       "최대 보유종목 초과",
     BUY_REJECT_DAILY_LIMIT:       "일일 매수한도 초과",
-    BUY_REJECT_BUY_AMT_ZERO:      "종목당 한도 0",
+    BUY_REJECT_BUY_AMT_ZERO:      "종목당 1회 매수금액 0",
     BUY_REJECT_RISK_CASH:         "예수금 부족",
     BUY_REJECT_DAILY_STATE:       "일일 상태 오류",
     BUY_REJECT_RISK_CIRCUIT:      "서킷브레이커",
@@ -390,7 +390,7 @@ class AutoTradeManager:
             if buy_amt <= 0:
                 return False, BUY_REJECT_BUY_AMT_ZERO
             # ── 종목당 1회 매수금액 (재매수 차단은 rebuy_block_on이 담당) ──
-            # 일일 한도 내에서 실제 사용 가능 금액 계산 (잔여 한도가 종목당 한도보다 적으면 잔여 한도만큼만 매수)
+            # 일일 한도 내에서 실제 사용 가능 금액 계산 (잔여 한도가 종목당 1회 매수금액보다 적으면 잔여 한도만큼만 매수)
             if max_daily_on and max_daily_total > 0:
                 daily_remain = max(0, max_daily_total - self._daily_buy_spent)
                 if daily_remain <= 0:
@@ -400,7 +400,7 @@ class AutoTradeManager:
             else:
                 effective_buy_amt = int(buy_amt)
         else:
-            # buy_amt_on=False → 종목당 한도 없음, 일일 한도만 적용
+            # buy_amt_on=False → 종목당 1회 매수금액 없음, 일일 한도만 적용
             if max_daily_on and max_daily_total > 0:
                 daily_remain = max(0, max_daily_total - self._daily_buy_spent)
                 if daily_remain <= 0:
@@ -442,7 +442,7 @@ class AutoTradeManager:
 
         # ── 주문가능 금액 내에서 최대한 매수 (buy_amt는 한도, 의무 지출액 아님) ──
         _orderable = get_risk_manager().get_withdrawable_deposit()
-        # effective_buy_amt=None → 종목당 한도 없음 → 주문가능 금액이 상한
+        # effective_buy_amt=None → 종목당 1회 매수금액 없음 → 주문가능 금액이 상한
         _max_available = min(effective_buy_amt, _orderable) if effective_buy_amt is not None else _orderable
         _est_buy_price = dry_run.estimate_fill_price(int(current_price), "BUY") if is_test_mode(raw_all) else int(current_price)
         # 수수료 여유분 확보 (P10 SSOT — reserve_buy_power의 cost 공식과 정합, P22 정합성)

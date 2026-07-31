@@ -157,7 +157,7 @@ async def evaluate_buy_candidates() -> None:
         else:
             _effective_buy_amt = _buy_amt
     else:
-        # buy_amt_on=False → 종목당 한도 없음, 일일 한도만 적용
+        # buy_amt_on=False → 종목당 1회 매수금액 없음, 일일 한도만 적용
         if _max_daily_on and _max_daily > 0 and _daily_remain is not None:
             _effective_buy_amt = _daily_remain
         else:
