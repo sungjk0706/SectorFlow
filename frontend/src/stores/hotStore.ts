@@ -154,6 +154,40 @@ function scheduleTickFlush(): void {
 
 /* ── 실시간 데이터 액션 함수 ── */
 
+/* ── HTTP 페이지 진입 스냅샷 적용 ── */
+export function applyAccountSnapshot(snapshot: AccountSnapshot, freshness: FreshnessMetadata): boolean {
+  if (!isFreshnessNewer(freshness)) return false
+  recordFreshness(freshness)
+  hotStore.setState({ account: snapshot, positionCount: snapshot.position_count ?? hotStore.getState().positionCount })
+  return true
+}
+
+export function applyPositionsSnapshot(positions: Position[], freshness: FreshnessMetadata): boolean {
+  if (!isFreshnessNewer(freshness)) return false
+  recordFreshness(freshness)
+  rebuildPositionIndex(positions)
+  hotStore.setState({ positions, positionCount: positions.length })
+  return true
+}
+
+export function applyBuyTargetsSnapshot(targets: StockScore[], freshness: FreshnessMetadata): boolean {
+  if (!isFreshnessNewer(freshness)) return false
+  applyBuyTargetsUpdate({ buy_targets: targets, freshness })
+  return true
+}
+
+export function applySectorScoresSnapshot(scores: SectorScoreRow[], freshness: FreshnessMetadata): boolean {
+  if (!isFreshnessNewer(freshness)) return false
+  applySectorScores({ scores, freshness, status: { total_stocks: scores.length } })
+  return true
+}
+
+export function applySectorStocksSnapshot(stocks: SectorStock[], freshness: FreshnessMetadata): boolean {
+  if (!isFreshnessNewer(freshness)) return false
+  applySectorStocksRefresh({ stocks, freshness })
+  return true
+}
+
 /* ── account-update: 계좌·보유종목 갱신 — 전체 payload (매도포지션/폴백) ── */
 export function applyAccountUpdate(data: AccountUpdateEvent): void {
   if (!isFreshnessNewer(data.freshness)) return

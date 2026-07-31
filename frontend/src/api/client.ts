@@ -1,5 +1,7 @@
 // frontend/src/api/client.ts
 
+import type { AccountSnapshot, FreshnessMetadata, Position, SectorScoreRow, SectorStock, StockScore } from '../types'
+
 const BASE_URL = '';
 
 function getToken(): string | null {
@@ -24,6 +26,16 @@ interface RequestOptions {
   headers?: Record<string, string>;
   body?: string;
   pageContext?: string;
+}
+
+export interface FreshnessResponse<T> {
+  data: T;
+  freshness: FreshnessMetadata;
+}
+
+export interface SectorScoresResponse {
+  scores: SectorScoreRow[];
+  ranked_count: number;
 }
 
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
@@ -122,6 +134,21 @@ export const api = {
 
   getTradingDay: () =>
     request<{ is_trading_day: boolean; today: string }>('/api/trading-day'),
+
+  getAccountSnapshot: (pageContext?: string) =>
+    request<FreshnessResponse<AccountSnapshot>>('/api/account/snapshot', { pageContext }),
+
+  getAccountPositions: (pageContext?: string) =>
+    request<FreshnessResponse<Position[]>>('/api/account/positions', { pageContext }),
+
+  getBuyTargets: (pageContext?: string) =>
+    request<FreshnessResponse<StockScore[]>>('/api/market/buy-targets', { pageContext }),
+
+  getSectorScores: (pageContext?: string) =>
+    request<FreshnessResponse<SectorScoresResponse>>('/api/market/sector-scores', { pageContext }),
+
+  getSectorStocks: (pageContext?: string) =>
+    request<FreshnessResponse<SectorStock[]>>('/api/market/sector-stocks', { pageContext }),
 
   // Health Check for modern stability pattern
   healthCheck: () =>

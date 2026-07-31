@@ -23,6 +23,31 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
+describe('페이지 진입 HTTP 조회 API', () => {
+  it('계좌 스냅샷 조회가 인증 헤더와 페이지 컨텍스트를 전달한다', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ data: {}, freshness: { group: 'account', revision: 1 } }) })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { api } = await import('../../src/api/client')
+    await api.getAccountSnapshot('profit-detail')
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/account/snapshot', expect.objectContaining({
+      headers: expect.objectContaining({ Authorization: 'Bearer test-token', 'X-Page-Context': 'profit-detail' }),
+    }))
+  })
+
+  it('5개 페이지 진입 API가 서버 응답 계약을 그대로 반환한다', async () => {
+    const payload = { data: [], freshness: { group: 'sector_stocks', revision: 3 } }
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => payload }))
+    const { api } = await import('../../src/api/client')
+
+    await expect(api.getAccountPositions()).resolves.toEqual(payload)
+    await expect(api.getBuyTargets()).resolves.toEqual(payload)
+    await expect(api.getSectorScores()).resolves.toEqual(payload)
+    await expect(api.getSectorStocks()).resolves.toEqual(payload)
+  })
+})
+
 describe('api.patchSettingField — 422 응답 detail 추출 (P21)', () => {
   it('422 응답 본문에 detail이 있으면 Error 메시지에 detail 포함', async () => {
     const detailMsg = '유효하지 않은 설정값: 타임테이블 시간 순서 오류: 실시간 초기화(08:59) ≤ 구독 시작(07:59) ≤ 정규장 사전 구독(08:59) < 09:00 이어야 합니다'

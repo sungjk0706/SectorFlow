@@ -12,6 +12,7 @@ import {
   applyProgramUpdate,
   applyAccountUpdate,
   applyAccountSummaryUpdate,
+  applyAccountSnapshot,
   flushTickBatch,
   rebuildBuyTargetIndex,
   normalizeStockCode,
@@ -1282,6 +1283,18 @@ describe('hotStore — account-update / account-summary-update 이벤트 분리 
         changed_positions: [],
         removed_codes: [],
       })
+      expect(hotStore.getState().account?.deposit).toBe(7000000)
+      expect(hotStore.getState().freshness.account.revision).toBe(2)
+    })
+
+    it('WS 최신 데이터가 HTTP 페이지 진입 응답으로 되돌아가지 않음', () => {
+      const latest = { total_buy_amount: 0, total_sell_amount: 0, total_eval_amount: 900000, total_pnl: 0, total_pnl_rate: 0, deposit: 7000000, trade_mode: 'test', position_count: 0 }
+      const older = { ...latest, total_eval_amount: 800000, deposit: 6000000 }
+      applyAccountUpdate({ freshness: { group: 'account', revision: 2 }, snapshot: latest, changed_positions: [], removed_codes: [] })
+
+      const applied = applyAccountSnapshot(older, { group: 'account', revision: 1 })
+
+      expect(applied).toBe(false)
       expect(hotStore.getState().account?.deposit).toBe(7000000)
       expect(hotStore.getState().freshness.account.revision).toBe(2)
     })
