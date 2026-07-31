@@ -29,6 +29,13 @@ import httpx
 
 from backend.app.core.constants import _KST
 from backend.app.services.auto_trading_effective import auto_trading_effective
+from backend.app.services.telegram_fmt import (
+    fmt_won,
+    fmt_rate,
+    fmt_score,
+    fmt_signed_won,
+    fmt_change,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -145,63 +152,17 @@ async def _build_account_brief_lines(snap: dict, is_test: bool) -> str:
     cum_denominator = realized_buy_total
     cum_rate = realized_pnl / cum_denominator * 100 if cum_denominator > 0 else 0.0
 
-    pnl_sign   = "+" if total_pnl >= 0 else ""
-    rate_sign  = "+" if total_rate >= 0 else ""
-    cum_sign   = "+" if realized_pnl >= 0 else ""
-    crate_sign = "+" if cum_rate >= 0 else ""
     return (
-        f"💰 {row0_label}: {row0_val:,}원\n"
-        f"💳 주문가능: {orderable:,}원\n"
-        f"📈 보유 종목 평가 금액: {total_eval:,}원\n"
-        f"� 보유 종목 평가 손익금: {pnl_sign}{total_pnl:,}원\n"
-        f"📊 보유 종목 평가 수익률: {rate_sign}{total_rate:.2f}%\n"
-        f"💵 누적 총 실현 손익금: {cum_sign}{realized_pnl:,}원\n"
-        f"📈 누적 총 실현 수익률: {crate_sign}{cum_rate:.2f}%\n"
+        f"💰 {row0_label}: {fmt_won(row0_val)}\n"
+        f"💳 주문가능: {fmt_won(orderable)}\n"
+        f"📈 보유 종목 평가 금액: {fmt_won(total_eval)}\n"
+        f"📉 보유 종목 평가 손익금: {fmt_signed_won(total_pnl)}\n"
+        f"📊 보유 종목 평가 수익률: {fmt_rate(total_rate)}\n"
+        f"💵 누적 총 실현 손익금: {fmt_signed_won(realized_pnl)}\n"
+        f"📈 누적 총 실현 수익률: {fmt_rate(cum_rate)}\n"
         f"🏷️ 보유종목: {pos_cnt}개\n"
         f"🕐 기준시각: {snap_at}"
     )
-
-
-def _fmt_money(v) -> str:
-    """금액 포맷 — 원화 정수 천 단위 콤마 (만/억 변환 제거 — 앱 데이터 그대로 전송, P23 프론트엔드 fmtWon과 동일)."""
-    try:
-        return f"{int(v or 0):,}"
-    except (ValueError, TypeError):
-        return "0"
-
-
-def _fmt_pct(v) -> str:
-    """백분율 포맷 — 부호 + 소수점 2자리 (프론트엔드 fmtRate와 동일 — 앱 데이터 그대로 전송, P23)."""
-    try:
-        f = float(v or 0)
-    except (ValueError, TypeError):
-        return "0.00%"
-    if f > 0:
-        return f"+{f:.2f}%"
-    if f < 0:
-        return f"{f:.2f}%"
-    return "0.00%"
-
-
-def _fmt_score(v) -> str:
-    """가산점 포맷 — 정수는 정수로, 실수는 소수점 1자리 (프론트엔드 _formatScore/String과 동일 — P23)."""
-    try:
-        f = float(v or 0)
-    except (ValueError, TypeError):
-        return "0"
-    if f == int(f):
-        return str(int(f))
-    return f"{f:.1f}"
-
-
-def _fmt_signed_money(v) -> str:
-    """부호 붙인 금액 포맷 — 손익금 표시용 (P23 일관성 — _fmt_money와 단위 규칙 동일)."""
-    try:
-        n = int(v or 0)
-    except (ValueError, TypeError):
-        return "0"
-    sign = "+" if n >= 0 else "-"
-    return sign + _fmt_money(abs(n)) + "원"
 
 
 async def _compute_period_pnl(label: str, *, today_only: bool = False, date_from: str = "", date_to: str = "", is_test: bool) -> str:
@@ -216,10 +177,10 @@ async def _compute_period_pnl(label: str, *, today_only: bool = False, date_from
     pnl, buy_total = await get_realized_pnl_summary(
         today_only=today_only, date_from=date_from, date_to=date_to, trade_mode=trade_mode,
     )
-    pnl_txt = _fmt_signed_money(pnl)
+    pnl_txt = fmt_signed_won(pnl)
     if is_test:
         rate = pnl / buy_total * 100 if buy_total > 0 else 0.0
-        rate_txt = f"  ({_fmt_pct(rate)})"
+        rate_txt = f"  ({fmt_rate(rate)})"
     else:
         # 실전모드: 증권사 서버가 수익률 SSOT — 앱에서 재계산 금지
         rate_txt = "  (수익률: 증권사 확인)"
@@ -252,26 +213,26 @@ def _build_settings_lines(flat: dict) -> str:
     if flat.get("max_stock_cnt_on"):
         buy_lines.append(f"최대 종목: {flat.get('max_stock_cnt', 0)}개")
     if flat.get("buy_amt_on"):
-        buy_lines.append(f"종목당 금액: {_fmt_money(flat.get('buy_amt'))}")
+        buy_lines.append(f"종목당 금액: {fmt_won(flat.get('buy_amt'))}")
     if flat.get("max_daily_total_buy_on"):
-        buy_lines.append(f"일일 총매수 한도: {_fmt_money(flat.get('max_daily_total_buy_amt'))}")
+        buy_lines.append(f"일일 총매수 한도: {fmt_won(flat.get('max_daily_total_buy_amt'))}")
     if flat.get("rebuy_block_on"):
         buy_lines.append(f"재매수 차단: {flat.get('rebuy_block_period', '?')}")
     if flat.get("buy_block_rise_on"):
-        buy_lines.append(f"상승 차단: {_fmt_pct(flat.get('buy_block_rise_pct'))}")
+        buy_lines.append(f"상승 차단: {fmt_rate(flat.get('buy_block_rise_pct'))}")
     if flat.get("buy_block_fall_on"):
-        buy_lines.append(f"하락 차단: {_fmt_pct(flat.get('buy_block_fall_pct'))}")
+        buy_lines.append(f"하락 차단: {fmt_rate(flat.get('buy_block_fall_pct'))}")
     buy_block = " · ".join(buy_lines) if buy_lines else "제한 없음"
 
     # 매도 조건
     sell_lines = []
     if flat.get("tp_apply"):
-        sell_lines.append(f"익절: {_fmt_pct(flat.get('tp_val'))}")
+        sell_lines.append(f"익절: {fmt_rate(flat.get('tp_val'))}")
     if flat.get("loss_apply"):
-        sell_lines.append(f"손절: {_fmt_pct(flat.get('loss_val'))}")
+        sell_lines.append(f"손절: {fmt_rate(flat.get('loss_val'))}")
     if flat.get("ts_apply"):
         sell_lines.append(
-            f"트레일링: 시작 {_fmt_pct(flat.get('ts_start_val'))} / 하락 {_fmt_pct(flat.get('ts_drop_val'))}"
+            f"트레일링: 시작 {fmt_rate(flat.get('ts_start_val'))} / 하락 {fmt_rate(flat.get('ts_drop_val'))}"
         )
     sell_block = " · ".join(sell_lines) if sell_lines else "조건 없음"
 
@@ -280,20 +241,20 @@ def _build_settings_lines(flat: dict) -> str:
     if flat.get("risk_manager_on"):
         risk_lines.append(f"리스크 매니저: {on_off('risk_manager_on')}")
         if flat.get("daily_loss_limit_on"):
-            risk_lines.append(f"일일 손실 한도: {_fmt_money(flat.get('daily_loss_limit'))}")
+            risk_lines.append(f"일일 손실 한도: {fmt_won(flat.get('daily_loss_limit'))}")
         if flat.get("daily_loss_rate_limit_on"):
-            risk_lines.append(f"일일 손실률: {_fmt_pct(flat.get('daily_loss_rate_limit'))}")
+            risk_lines.append(f"일일 손실률: {fmt_rate(flat.get('daily_loss_rate_limit'))}")
         if flat.get("consecutive_loss_limit_on"):
             risk_lines.append(f"연속 손실: {flat.get('consecutive_loss_limit', 0)}회")
-    risk_lines.append(f"종목 최대 노출: {_fmt_money(flat.get('max_single_stock_exposure'))}")
+    risk_lines.append(f"종목 최대 노출: {fmt_won(flat.get('max_single_stock_exposure'))}")
     risk_block = " · ".join(risk_lines)
 
     # 업종 필터 (업종 단위 — 개별 종목 단위 매수 차단은 매수 조건 섹션, P23 책임 분리)
     sector_lines = [
-        f"최소 상승 비율: {_fmt_pct(flat.get('sector_min_rise_ratio_pct'))}",
-        f"최소 거래대금: {_fmt_money(flat.get('sector_min_trade_amt'))}",
+        f"최소 상승 비율: {fmt_rate(flat.get('sector_min_rise_ratio_pct'))}",
+        f"최소 거래대금: {fmt_won(flat.get('sector_min_trade_amt'))}",
         f"최대 업종 수: {flat.get('sector_max_targets', 0)}개",
-        f"수신률 임계값: {_fmt_pct(flat.get('sector_start_threshold_pct'))}",
+        f"수신률 임계값: {fmt_rate(flat.get('sector_start_threshold_pct'))}",
     ]
     sector_block = " · ".join(sector_lines)
 
@@ -611,7 +572,7 @@ class TelegramBot:
                 rank = rec.get("buy_rank")
                 rank_txt = f"  #{rank}" if rank else ""
                 lines.append(
-                    f"  {dt}  {name}  {price:,}원 × {qty}주 = {total:,}원{sec_txt}{rank_txt}"
+                    f"  {dt}  {name}  {fmt_won(price)} × {qty}주 = {fmt_won(total)}{sec_txt}{rank_txt}"
                 )
 
             await self._send(token, chat_id, "\n".join(lines))
@@ -644,11 +605,10 @@ class TelegramBot:
                 pnl = int(rec.get("realized_pnl", 0) or 0)
                 pnl_rate = float(rec.get("pnl_rate", 0.0) or 0.0)
                 reason = rec.get("reason", "")
-                pnl_sign = "+" if pnl >= 0 else ""
                 reason_txt = f"  ({reason})" if reason else ""
                 lines.append(
-                    f"  {dt}  {name}  {price:,}원 × {qty}주 = {total:,}원"
-                    f"  손익 {pnl_sign}{pnl:,}원 ({pnl_rate:+.1f}%){reason_txt}"
+                    f"  {dt}  {name}  {fmt_won(price)} × {qty}주 = {fmt_won(total)}"
+                    f"  손익 {fmt_signed_won(pnl)} ({fmt_rate(pnl_rate)}){reason_txt}"
                 )
 
             await self._send(token, chat_id, "\n".join(lines))
@@ -779,7 +739,7 @@ class TelegramBot:
                 trade_amount_slider=int(cache.get("sector_bonus_trade_amount_slider", 0)),
             )
 
-            lines = [f"📊 <b>업종 상위 5</b> ({now_str})  만점 {_fmt_score(total_max)}\n"]
+            lines = [f"📊 <b>업종 상위 5</b> ({now_str})  만점 {fmt_score(total_max)}\n"]
 
             for s in sectors[:5]:
                 # 업종 내 종목 — boost_score 내림차순, 동점 시 등락률 내림차순, 최대 5개
@@ -790,7 +750,7 @@ class TelegramBot:
                 stock_names = "  ".join(st.name for st in top_stocks)
                 lines.append(
                     f"<b>{s.rank}. {s.sector}</b>  "
-                    f"가산점 {_fmt_score(s.final_score)}/{_fmt_score(total_max)}"
+                    f"가산점 {fmt_score(s.final_score)}/{fmt_score(total_max)}"
                 )
                 if stock_names:
                     lines.append(f"  종목: {stock_names}")
@@ -835,29 +795,27 @@ class TelegramBot:
                 boost_news_score=float(cache.get("boost_news_score", 1.0)),
             )
 
-            lines = [f"🎯 <b>매수 후보 TOP {len(targets)}</b> ({now_str})  가산점 만점 {boost_max:.1f}\n"]
+            lines = [f"🎯 <b>매수 후보 TOP {len(targets)}</b> ({now_str})  가산점 만점 {fmt_score(boost_max)}\n"]
             for t in targets:
-                # 대비(원) — None 시 "미수신" (P20 폴백 금지)
+                # 대비(원) — None 시 "미수신" (P20 폴백 금지). 프론트 createChangeCell과 동일 (▲/▼ + 콤마).
                 change_raw = t.get("change")
                 if change_raw is not None:
                     try:
                         ch = int(change_raw)
-                        ch_sign = "+" if ch > 0 else ("-" if ch < 0 else "")
-                        change_txt = f"{ch_sign}{abs(ch):,}원"
+                        change_txt = f"{fmt_change(ch)}원"
                     except (ValueError, TypeError):
                         change_txt = "미수신"
                 else:
                     change_txt = "미수신"
 
-                # 등락률 — None 시 "미수신"
+                # 등락률 — None 시 "미수신". 프론트 createRateCell과 동일 (fmtRate + %, +/- 부호).
                 rate_raw = t.get("change_rate")
                 if rate_raw is not None:
                     try:
                         rate = float(rate_raw)
+                        rate_txt = fmt_rate(rate)
                     except (ValueError, TypeError):
-                        rate = 0.0
-                    sign = "▲" if rate > 0 else ("▼" if rate < 0 else "━")
-                    rate_txt = f"{sign}{abs(rate):.2f}%"
+                        rate_txt = "미수신"
                 else:
                     rate_txt = "미수신"
 
@@ -868,7 +826,7 @@ class TelegramBot:
                 lines.append(
                     f"  {t['rank']}. {t['name']}  "
                     f"대비 {change_txt}  {rate_txt}  "
-                    f"가산점 {boost:.1f}/{boost_max:.1f}"
+                    f"가산점 {fmt_score(boost)}/{fmt_score(boost_max)}"
                     f"{sec_txt}"
                 )
 

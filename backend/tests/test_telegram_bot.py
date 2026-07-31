@@ -20,10 +20,15 @@ from backend.app.services.telegram_bot import (
     _normalize_chat_id,
     _build_risk_status_lines,
     _build_settings_lines,
-    _fmt_money,
-    _fmt_pct,
     apply_telegram_polling_change,
     TELEGRAM_POLLING_KEYS,
+)
+from backend.app.services.telegram_fmt import (
+    fmt_won,
+    fmt_rate,
+    fmt_score,
+    fmt_signed_won,
+    fmt_change,
 )
 from backend.app.core.encryption import SecretValueState, DecryptResult
 from backend.tests._mock_helpers import swallow_coro_returning
@@ -1832,47 +1837,113 @@ class TestCmdBuyCandidates:
              patch.object(bot, "_send", new_callable=AsyncMock) as mock_send:
             await bot._cmd_buy_candidates("tok", "123")
         text = mock_send.call_args[0][2]
-        assert "가산점 2.5/0.0" in text  # 만점 0 (모든 boost off)
+        assert "가산점 2.5/0" in text  # 만점 0 (모든 boost off) — fmt_score(0.0) = "0" (프론트 _formatScore와 동일)
 
 
-# ── _fmt_money / _fmt_pct ──────────────────────────────────────────────────────
+# ── fmt_won / fmt_rate / fmt_score / fmt_signed_won / fmt_change ──────────────
+# 프론트엔드 ui-styles.ts / ui-styles-cells.ts 포맷 규칙과 1:1 대응 (P10 SSOT, P23 일관성).
 
-class TestFmtMoney:
+class TestFmtWon:
+    """fmt_won — 프론트엔드 fmtWon과 동일 (천 단위 콤마 + '원')."""
+
     def test_zero(self):
-        assert _fmt_money(0) == "0"
+        assert fmt_won(0) == "0원"
 
     def test_none(self):
-        assert _fmt_money(None) == "0"
+        assert fmt_won(None) == "0원"
 
     def test_under_10k_uses_comma(self):
-        assert _fmt_money(5000) == "5,000"
+        assert fmt_won(5000) == "5,000원"
 
     def test_millions_uses_full_comma(self):
-        assert _fmt_money(1_000_000) == "1,000,000"
-        assert _fmt_money(50_000_000) == "50,000,000"
+        assert fmt_won(1_000_000) == "1,000,000원"
+        assert fmt_won(50_000_000) == "50,000,000원"
 
     def test_over_100m_uses_full_comma(self):
-        assert _fmt_money(200_000_000) == "200,000,000"
+        assert fmt_won(200_000_000) == "200,000,000원"
 
     def test_negative_over_100m(self):
-        assert _fmt_money(-500_000_000) == "-500,000,000"
+        assert fmt_won(-500_000_000) == "-500,000,000원"
 
     def test_invalid_returns_zero(self):
-        assert _fmt_money("abc") == "0"
+        assert fmt_won("abc") == "0원"
 
 
-class TestFmtPct:
+class TestFmtRate:
+    """fmt_rate — 프론트엔드 fmtRate + '%'와 동일 (부호 + 소수 2자리 + '%')."""
+
     def test_positive(self):
-        assert _fmt_pct(7.0) == "+7.00%"
+        assert fmt_rate(7.0) == "+7.00%"
 
     def test_negative(self):
-        assert _fmt_pct(-5.0) == "-5.00%"
+        assert fmt_rate(-5.0) == "-5.00%"
 
     def test_zero(self):
-        assert _fmt_pct(0) == "0.00%"
+        assert fmt_rate(0) == "0.00%"
+
+    def test_none_returns_dash(self):
+        assert fmt_rate(None) == "-"
+
+    def test_invalid_returns_dash(self):
+        assert fmt_rate("abc") == "-"
+
+
+class TestFmtScore:
+    """fmt_score — 프론트엔드 _formatScore와 동일 (정수면 정수, 실수면 소수 1자리)."""
+
+    def test_integer(self):
+        assert fmt_score(5) == "5"
+
+    def test_float(self):
+        assert fmt_score(2.5) == "2.5"
+
+    def test_zero_float_treated_as_integer(self):
+        assert fmt_score(0.0) == "0"
+
+    def test_none(self):
+        assert fmt_score(None) == "0"
 
     def test_invalid(self):
-        assert _fmt_pct("abc") == "0.00%"
+        assert fmt_score("abc") == "0"
+
+
+class TestFmtSignedWon:
+    """fmt_signed_won — 프론트엔드 sell-position.ts pnlText 패턴과 동일.
+    양수 '+콤마원', 음수 '-콤마원', 0 '콤마원' (부호 없음)."""
+
+    def test_positive(self):
+        assert fmt_signed_won(32000) == "+32,000원"
+
+    def test_negative(self):
+        assert fmt_signed_won(-5000) == "-5,000원"
+
+    def test_zero_no_sign(self):
+        assert fmt_signed_won(0) == "0원"
+
+    def test_none(self):
+        assert fmt_signed_won(None) == "0원"
+
+    def test_invalid(self):
+        assert fmt_signed_won("abc") == "0원"
+
+
+class TestFmtChange:
+    """fmt_change — 프론트엔드 createChangeCell 셀 조합과 동일 (▲/▼ + 콤마 절대값)."""
+
+    def test_positive(self):
+        assert fmt_change(1200) == "▲1,200"
+
+    def test_negative(self):
+        assert fmt_change(-800) == "▼800"
+
+    def test_zero(self):
+        assert fmt_change(0) == "0"
+
+    def test_none_returns_dash(self):
+        assert fmt_change(None) == "-"
+
+    def test_invalid_returns_dash(self):
+        assert fmt_change("abc") == "-"
 
 
 # ── _build_settings_lines ──────────────────────────────────────────────────────
