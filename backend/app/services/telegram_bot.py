@@ -595,8 +595,8 @@ class TelegramBot:
                 await self._send(token, chat_id, f"📤 <b>매도 체결 내역</b> ({now_str})\n내역 없음")
                 return
 
-            lines = [f"📤 <b>매도 체결 내역</b> (최근 {min(len(records), 10)}건, {now_str})\n"]
-            for rec in records[:10]:
+            lines = [f"📤 <b>매도 체결 내역</b> (최근 {min(len(records), 10)}건, {now_str})"]
+            for i, rec in enumerate(records[:10], 1):
                 dt = f"{rec.get('date', '')} {rec.get('time', '')}".strip()
                 name = rec.get("stk_nm", "?")
                 price = int(rec.get("price", 0) or 0)
@@ -605,10 +605,11 @@ class TelegramBot:
                 pnl = int(rec.get("realized_pnl", 0) or 0)
                 pnl_rate = float(rec.get("pnl_rate", 0.0) or 0.0)
                 reason = rec.get("reason", "")
-                reason_txt = f"  ({reason})" if reason else ""
+                reason_txt = f" ({reason})" if reason else ""
                 lines.append(
-                    f"  {dt}  {name}  {fmt_won(price)} × {qty}주 = {fmt_won(total)}"
-                    f"  손익 {fmt_signed_won(pnl)} ({fmt_rate(pnl_rate)}){reason_txt}"
+                    f"\n{i}. {dt}  {name}\n"
+                    f"   {fmt_won(price)} × {qty}주 = {fmt_won(total)}\n"
+                    f"   {fmt_signed_won(pnl)} ({fmt_rate(pnl_rate)}){reason_txt}"
                 )
 
             await self._send(token, chat_id, "\n".join(lines))
@@ -795,7 +796,7 @@ class TelegramBot:
                 boost_news_score=float(cache.get("boost_news_score", 1.0)),
             )
 
-            lines = [f"🎯 <b>매수 후보 TOP {len(targets)}</b> ({now_str})  가산점 만점 {fmt_score(boost_max)}\n"]
+            lines = [f"🎯 <b>매수 후보 TOP {len(targets)}</b> ({now_str})\n가산점 만점 {fmt_score(boost_max)}"]
             for t in targets:
                 # 대비(원) — None 시 "미수신" (P20 폴백 금지). 프론트 createChangeCell과 동일 (▲/▼ + 콤마).
                 change_raw = t.get("change")
@@ -822,12 +823,11 @@ class TelegramBot:
                 # 가산점 — boost_score (0.0 = 미부여, 명시적 값)
                 boost = float(t.get("boost_score") or 0.0)
                 sector = t.get("sector") or ""
-                sec_txt = f"  [{sector}]" if sector else ""
+                sec_txt = f" [{sector}]" if sector else ""
                 lines.append(
-                    f"  {t['rank']}. {t['name']}  "
-                    f"대비 {change_txt}  {rate_txt}  "
-                    f"가산점 {fmt_score(boost)}/{fmt_score(boost_max)}"
-                    f"{sec_txt}"
+                    f"\n{t['rank']}. {t['name']}{sec_txt}\n"
+                    f"   {change_txt}  {rate_txt}\n"
+                    f"   가산점 {fmt_score(boost)}/{fmt_score(boost_max)}"
                 )
 
             await self._send(token, chat_id, "\n".join(lines))

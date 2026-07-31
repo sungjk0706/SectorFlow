@@ -1024,7 +1024,6 @@ class TestCmdSellHistory:
         assert "매도 체결 내역" in text
         assert "삼성전자" in text
         assert "85,000원" in text
-        assert "손익" in text
         assert "+50,000원" in text
         assert "익절" in text
 
@@ -1744,7 +1743,6 @@ class TestCmdBuyCandidates:
         assert "SK하이닉스" in text
         assert "▲" in text  # 상승 등락률
         assert "▼" in text  # 하락 등락률
-        assert "대비" in text
         assert "가산점" in text
         assert "[반도체]" in text
 
