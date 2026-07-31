@@ -45,17 +45,17 @@ async function refreshBuyTargetPage(): Promise<void> {
     refreshPageData({
       key: 'buy-target:account', policy: 'always-fresh', isActive,
       fetcher: async () => api.getAccountSnapshot('buy-target'),
-      apply: (response) => applyAccountSnapshot(response.data, response.freshness),
+      apply: (response) => applyAccountSnapshot(response.data, response.freshness!),
     }),
     refreshPageData({
       key: 'buy-target:positions', policy: 'always-fresh', isActive,
       fetcher: async () => api.getAccountPositions('buy-target'),
-      apply: (response) => applyPositionsSnapshot(response.data, response.freshness),
+      apply: (response) => applyPositionsSnapshot(response.data, response.freshness!),
     }),
     refreshPageData({
       key: 'buy-target:targets', policy: 'always-fresh', isActive,
       fetcher: async () => api.getBuyTargets('buy-target'),
-      apply: (response) => applyBuyTargetsSnapshot(response.data, response.freshness),
+      apply: (response) => applyBuyTargetsSnapshot(response.data, response.freshness!),
     }),
   ])
   if (!_mounted) return

@@ -6,6 +6,9 @@ import { createDataTable, type DataTableApi } from '../components/common/data-ta
 import { hotStore } from '../stores/hotStore'
 import { uiStore, setSelectedSector } from '../stores/uiStore'
 import { notifyPageActive, notifyPageInactive } from '../api/ws'
+import { api } from '../api/client'
+import { applySectorScoresSnapshot, applySectorStocksSnapshot } from '../stores/hotStore'
+import { refreshPageData, createPageRefreshStatus } from '../utils/page-refresh'
 import { createCardTitle } from '../components/common/card-title'
 import { createActionButton } from '../components/common/button'
 import { createSearchInput } from '../components/common/search-input'
@@ -45,6 +48,7 @@ class SectorStockTable extends HTMLElement {
   private marketCountRow: MarketCountRowHandle | null = null
   private filterBadge: HTMLElement | null = null
   private nxtOnlyNoticeBadge: HTMLElement | null = null
+  private refreshStatus: ReturnType<typeof createPageRefreshStatus> | null = null
   private emptyDiv: HTMLElement | null = null
   private scrollContainer: HTMLElement | null = null
   private _mounted = false
@@ -406,6 +410,8 @@ class SectorStockTable extends HTMLElement {
     // 1. 카드 타이틀 — 좌측 정렬 (다른 패널과 동일)
     this.titleH3 = createCardTitle('업종별 종목 실시간 시세')
     this.rootEl.appendChild(this.titleH3)
+    this.refreshStatus = createPageRefreshStatus()
+    this.rootEl.appendChild(this.refreshStatus.el)
 
     // 1-1. 합계 정보 바 — 1행: 좌측 5거래일 평균 거래대금, 우측 종목수 요약
     this.rootEl.appendChild(this.buildSummaryBar())
@@ -441,6 +447,34 @@ class SectorStockTable extends HTMLElement {
 
     // O(1) 초저지연 DOM 갱신 이벤트 리스너
     this.setupTickListener()
+    this.refreshReferenceData()
+  }
+
+  /** 페이지 진입 시 참고성 업종 데이터를 캐시 우선으로 갱신한다. WS 시세 수신은 기존 경로를 유지한다. */
+  private refreshReferenceData(): void {
+    if (!this.refreshStatus) return
+    this.refreshStatus.set('업종 데이터 확인 중')
+    const refreshes = [
+      refreshPageData({
+        key: 'sector-stock:stocks',
+        policy: 'swr',
+        isActive: () => this._mounted,
+        fetcher: () => api.getSectorStocks('sector-ranking'),
+        apply: response => applySectorStocksSnapshot(response.data, response.freshness!),
+      }),
+      refreshPageData({
+        key: 'sector-stock:scores',
+        policy: 'swr',
+        isActive: () => this._mounted,
+        fetcher: () => api.getSectorScores('sector-ranking'),
+        apply: response => applySectorScoresSnapshot(response.data.scores, response.freshness!),
+      }),
+    ]
+    Promise.all(refreshes).then(results => {
+      if (!this._mounted || !this.refreshStatus) return
+      const failed = results.some(result => result.status === 'error')
+      this.refreshStatus.set(failed ? '업종 데이터를 갱신하지 못했습니다' : '', !failed)
+    })
   }
 
   /** O(1) 초저지연 DOM 갱신 이벤트 리스너 등록 */
@@ -476,6 +510,7 @@ class SectorStockTable extends HTMLElement {
     this.marketCountRow = null
     this.filterBadge = null
     this.nxtOnlyNoticeBadge = null
+    this.refreshStatus = null
     this.emptyDiv = null
     this.scrollContainer = null
     this.searchInput = null

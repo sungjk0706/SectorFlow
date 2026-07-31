@@ -143,12 +143,12 @@ async function refreshProfitOverviewPage(): Promise<void> {
     refreshPageData({
       key: 'profit-overview:account', policy: 'always-fresh', isActive,
       fetcher: async () => api.getAccountSnapshot('profit-overview'),
-      apply: (response) => applyAccountSnapshot(response.data, response.freshness),
+      apply: (response) => applyAccountSnapshot(response.data, response.freshness!),
     }),
     refreshPageData({
       key: 'profit-overview:positions', policy: 'always-fresh', isActive,
       fetcher: async () => api.getAccountPositions('profit-overview'),
-      apply: (response) => applyPositionsSnapshot(response.data, response.freshness),
+      apply: (response) => applyPositionsSnapshot(response.data, response.freshness!),
     }),
   ])
   if (!state.mounted) return

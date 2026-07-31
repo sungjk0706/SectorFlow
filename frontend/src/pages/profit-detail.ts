@@ -136,7 +136,7 @@ async function refreshProfitDetailPage(): Promise<void> {
       key: 'profit-detail:buy-history', policy: 'always-fresh', isActive,
       fetcher: async () => ({ data: await api.getBuyHistory(), freshness: hotStore.getState().freshness.trade_history }),
       apply: (response) => {
-        recordFreshness(response.freshness)
+        recordFreshness(response.freshness!)
         hotStore.setState({ buyHistory: response.data })
         return true
       },
@@ -145,7 +145,7 @@ async function refreshProfitDetailPage(): Promise<void> {
       key: 'profit-detail:sell-history', policy: 'always-fresh', isActive,
       fetcher: async () => ({ data: await api.getSellHistory(), freshness: hotStore.getState().freshness.trade_history }),
       apply: (response) => {
-        recordFreshness(response.freshness)
+        recordFreshness(response.freshness!)
         hotStore.setState({ sellHistory: response.data })
         return true
       },

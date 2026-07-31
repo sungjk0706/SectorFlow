@@ -22,6 +22,7 @@ import { createCardTitle } from '../components/common/card-title'
 import { createTabBar } from '../components/common/button'
 import { COLOR, FONT_SIZE, RADIUS } from '../components/common/ui-styles'
 import { api } from '../api/client'
+import { refreshPageData, createPageRefreshStatus } from '../utils/page-refresh'
 import type { AppSettings } from '../types'
 import {
   type TabId,
@@ -38,6 +39,8 @@ import { renderDisplaySettingsTab, syncDisplaySettingsTab } from './general-sett
 import { renderTelegramTab, syncTelegramEncryptionStatus } from './general-settings-telegram-tab'
 import { renderAccountTab, syncTradeMode } from './general-settings-account-tab'
 import { renderApiSettingsTab, syncBrokerRadios, syncApiEncryptionStatus } from './general-settings-api-settings-tab'
+
+let refreshStatus: ReturnType<typeof createPageRefreshStatus> | null = null
 
 /* ── B21-01 세션7: 암호화 상태 배너 (설계 7.1/9.2) ── */
 function renderEncryptionBanner(): HTMLElement {
@@ -206,6 +209,22 @@ function buildTabPanels(): void {
   }
 }
 
+function refreshSettings(): void {
+  refreshPageData({
+    key: 'general-settings:settings',
+    policy: 'swr',
+    isActive: () => state.rootEl !== null,
+    fetcher: async () => ({ data: await api.getSettings() }),
+    apply: response => {
+      uiStore.setState({ settings: response.data as AppSettings })
+      return true
+    },
+  }).then(result => {
+    if (!refreshStatus) return
+    refreshStatus.set(result.status === 'error' ? '설정을 갱신하지 못했습니다' : '', result.status === 'error')
+  })
+}
+
 function mount(container: HTMLElement): void {
   notifyPageActive('settings')
   state.settingsMgr = createSettingsManager(uiStore)
@@ -217,6 +236,8 @@ function mount(container: HTMLElement): void {
 
   state.rootEl = document.createElement('div')
   state.rootEl.appendChild(createCardTitle('일반설정'))
+  refreshStatus = createPageRefreshStatus()
+  state.rootEl.appendChild(refreshStatus.el)
 
   // B21-01 세션7: 암호화 상태 배너 (탭 바 상단 — 설계 7.1)
   state.rootEl.appendChild(renderEncryptionBanner())
@@ -242,6 +263,7 @@ function mount(container: HTMLElement): void {
 
   // 설정 동기화 + 구독 (표준 유틸 — settings-page.ts, P23 일관성)
   state.unsubSettings = startSettingsSubscription(state.settingsMgr as SettingsManager, syncFromSettings)
+  refreshSettings()
 
   // 거래일 확인
   api.getTradingDay()
@@ -251,6 +273,7 @@ function mount(container: HTMLElement): void {
 
 function unmount(): void {
   notifyPageInactive('settings')
+  refreshStatus = null
   destroySettingsPage(state.unsubSettings, null, state.settingsMgr as SettingsManager)
   resetState()
 }

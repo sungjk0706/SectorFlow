@@ -121,12 +121,12 @@ async function refreshSellPositionPage(): Promise<void> {
     refreshPageData({
       key: 'sell-position:account', policy: 'always-fresh', isActive,
       fetcher: async () => api.getAccountSnapshot('sell-position'),
-      apply: (response) => applyAccountSnapshot(response.data, response.freshness),
+      apply: (response) => applyAccountSnapshot(response.data, response.freshness!),
     }),
     refreshPageData({
       key: 'sell-position:positions', policy: 'always-fresh', isActive,
       fetcher: async () => api.getAccountPositions('sell-position'),
-      apply: (response) => applyPositionsSnapshot(response.data, response.freshness),
+      apply: (response) => applyPositionsSnapshot(response.data, response.freshness!),
     }),
   ])
   if (!_mounted) return

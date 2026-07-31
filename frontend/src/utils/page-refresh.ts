@@ -10,7 +10,7 @@ export const PAGE_REFRESH_TTL_MS = {
 
 export interface PageRefreshResponse<T> {
   data: T
-  freshness: FreshnessMetadata
+  freshness?: FreshnessMetadata
 }
 
 export interface PageRefreshResult<T> {
