@@ -3,7 +3,7 @@
 > **상태**: 태스크 작성 완료 — 구현 세션 대기
 > **작성일**: 2026-08-01
 > **설계서**: `docs/architecture_holdings_single_pipeline_design.md`
-> **다단계 진행**: 1세션(설계) ✅ / 2세션(태스크) ✅ / 3세션(결정3 캐시 유지) ✅ 커밋 `ac54231` / 3.5세션(보유종목 업종별 종목 테이블 제외) 대기 / 4세션(결정2 0D/PGM 구독) 대기 / 5세션(결정4 REST 머지 분리) 대기 / 6세션(결정1 문서정리+회귀) 대기 / 7세션(최종 검증) 대기
+> **다단계 진행**: 1세션(설계) ✅ / 2세션(태스크) ✅ / 3세션(결정3 캐시 유지) ✅ 커밋 `ac54231` / 3.5세션(매매부적격·거래대금 미통과 보유종목 업종별 종목 테이블 제외) 대기 / 4세션(결정2 0D/PGM 구독) 대기 / 5세션(결정4 REST 머지 분리) 대기 / 6세션(결정1 문서정리+회귀) 대기 / 7세션(최종 검증) 대기
 > **위험도**: 중간 (보유종목 시세 추적·구독·positions 머지 경로 변경. 주문 로직 미변경이나 계좌 상태 갱신 경로 수정 포함)
 > **관련 원칙**: P10(SSOT) · P16(살아있는 경로) · P20(폴백 금지) · P21(사용자 투명성) · P22(데이터 정합성) · P23(일관성) · P24(단순성) · P25(격리된 실패)
 > **필수 스킬**: 구현 세션 진입 시 `safe-trade` 스킬 필수 (positions/구독 경로 수정 — P15 단일 주문 경로 인접)
@@ -136,57 +136,63 @@
 
 ---
 
-### 세션 3.5 — 보유종목 업종별 종목 시세 테이블 제외 (사용자 추가 요구사항)
+### 세션 3.5 — 매매부적격·거래대금 미통과 보유종목 업종별 종목 시세 테이블 제외 (사용자 추가 요구사항)
 
-> **추가 배경**: 세션 3 구현 중 발견 — 보유종목을 `master_stocks_cache`에 유지(세션 3)하면, `get_sector_stocks()`가 이를 업종별 종목 실시간 시세 테이블(업종순위 페이지 우측 패널)에 노출할 수 있음. 사용자 결정: "보유종목은 보유 종목 화면에만 표시, 업종별 종목 시세 테이블에는 미노출. 매매부적격 또는 5거래일 평균 거래대금 미통과 종목이 업종 순위 데이터에 혼재되면 순위 정합성 왜곡 우려. 보유종목은 실시간 구독 유지하되 매도만 가능."
+> **추가 배경**: 세션 3 구현 중 발견 — 보유종목을 `master_stocks_cache`에 유지(세션 3)하면, 매매부적격이지만 1차 필터링(거래대금)은 통과한 보유종목이 `get_sector_stocks()`를 통해 업종별 종목 실시간 시세 테이블(업종순위 페이지 우측 패널)에 노출될 수 있음. 매매부적격 종목은 장마감 파이프라인 2단계에서 `confirmed_codes`에 제외되어 일봉 다운로드(5단계)·확정 데이터 캐시 반영(`_apply_confirmed_to_memory`)이 수행되지 않으나, 세션 3로 캐시 엔트리가 유지되고 0B 실시간 틱(`engine_ws_reg.py:86-96` 보유종목 최우선 구독)으로 `cur_price`가 갱신되어 `get_sector_stocks()` 필터를 통과할 수 있음.
+>
+> **사용자 결정**: "매매부적격이거나 5거래일 평균 거래대금 최소 금액을 통과하지 못한 종목이 보유종목일 경우에만" 업종별 종목 실시간 시세 테이블에서 제외. 정상적인 보유종목(매매적격 + 거래대금 통과)은 업종별 종목 시세 테이블에 표시됨. 매매부적격·거래대금 미통과 종목이 업종 순위 데이터에 혼재되면 순위 정합성 왜곡 우려. 보유종목은 실시간 구독 유지하되 매도만 가능.
 
-**목표**: 보유종목이 `master_stocks_cache`에 유지되더라도(세션 3), `get_sector_stocks()`(업종별 종목 실시간 시세 테이블용)에서는 제외되도록 수정. 업종 순위 왜곡 방지 + 보유종목은 보유 종목 화면에만 표시.
+**목표**: 매매부적격이거나 5거래일 평균 거래대금 미통과인 보유종목이 `master_stocks_cache`에 유지되더라도(세션 3), `get_sector_stocks()`(업종별 종목 실시간 시세 테이블용)에서는 제외되도록 수정. 정상 보유종목(매매적격 + 거래대금 통과)은 기존대로 표시.
 
 **수정 파일**:
 - `backend/app/services/sector_data_provider.py`
+
+**제외 조건 상세** (사용자 의도 정확 반영):
+
+| 보유종목 상태 | 업종별 종목 시세 테이블 표시 여부 | 이유 |
+|---------------|-----------------------------------|------|
+| 매매적격 + 거래대금 통과 | 표시 ✅ | 정상 종목 — 업종 순위 데이터에 포함되어야 함 |
+| 매매부적격 + 거래대금 통과 | **제외 ❌** | 매수 불가 종목이 업종 순위 데이터에 혼재 → 순위 왜곡 |
+| 매매적격 + 거래대금 미통과 | 제외 (기존 코드 93줄에서 자동 처리) | 1차 필터링 탈락 — 이미 `get_sector_stocks()`에서 제외됨 |
+| 매매부적격 + 거래대금 미통과 | 제외 (기존 코드 93줄에서 자동 처리) | 1차 필터링 탈락 — 이미 `get_sector_stocks()`에서 제외됨 |
+
+> **핵심**: 세션 3.5에서 추가로 처리해야 할 것은 **"매매부적격 + 거래대금 통과" 케이스만**. 나머지 3개 케이스는 기존 코드(93줄 거래대금 필터) 또는 정상 동작(매매적격+통과=표시)으로 이미 처리됨.
 
 **작업 체크리스트**:
 
 - [ ] `safe-trade` 스킬 invoke (업종별 종목 시세 테이블은 매수 후보 선정 기초 데이터 — P15 인접).
 - [ ] `get_sector_stocks()`(68줄) 함수 확인 — 이미 `async def`이므로 `await get_held_codes()` 직접 호출 가능 (P1).
-- [ ] 82줄 `for cd in engine_state.state.master_stocks_cache:` 루프 시작 전 `held_codes = await engine_account.get_held_codes()` 조회.
-- [ ] 루프 내 보유종목 제외 조건 추가:
-  ```python
-  # Before
-  for cd in engine_state.state.master_stocks_cache:
-      e = engine_state.state.master_stocks_cache.get(cd, {}).copy()
-      ...
-  # After
-  held_codes = await engine_account.get_held_codes()
-  for cd in engine_state.state.master_stocks_cache:
-      if cd in held_codes:
-          continue  # 보유종목은 업종별 종목 시세 테이블에서 제외 (업종 순위 왜곡 방지)
-      e = engine_state.state.master_stocks_cache.get(cd, {}).copy()
-      ...
-  ```
+- [ ] 매매부적격 여부 판단 데이터 소스 확인 — `confirmed_codes`는 파이프라인 종료 후 메모리에 유지되지 않을 수 있음. 대안: `master_stocks_cache` 엔트리의 상태 필드 또는 별도 플래그 확인. 사전 조사 필수:
+  - 옵션 A: `master_stocks_cache` 엔트리에 매매부적격 여부 플래그 추가 (4단계에서 confirmed_codes에 없는 보유종목에 마킹).
+  - 옵션 B: `get_sector_stocks()` 호출 시점에 `confirmed_codes`를 다른 소스에서 조회.
+  - 옵션 C: 보유종목 중 `master_stocks_cache` 엔트리의 `avg_5d_trade_amount`가 0이거나 `cur_price`가 None인 종목(=확정 데이터가 반영되지 않은 종목 = 매매부적격)을 제외.
+  - **사전 조사 후 가장 P10/P22 부합하는 방식 선택**.
+- [ ] 82줄 `for cd in engine_state.state.master_stocks_cache:` 루프에 매매부적격 보유종목 제외 조건 추가 (사전 조사 후 구체적 코드 확정).
 - [ ] `get_buy_targets_sector_stocks()`(118줄)는 `_sector_summary_cache.buy_targets` 기반이므로 영향 없음 확인 — 보유종목은 이미 `guard_pass=False`로 매수 후보에서 제외됨.
 - [ ] `get_sector_stocks()` 호출처 전수 조사 — 시그니처 변경 없음(async 유지), 호출처 수정 불필요. 단, 성능 영향 검토: `get_held_codes()` 호출 추가로 인한 오버헤드 (이미 다른 경로에서 빈번 호출되는 헬퍼이므로 미미 예상).
-- [ ] 업종 순위 계산 파이프라인(`sector_summary_cache` 생성 경로)이 `get_sector_stocks()` 기반인지 확인 — 만약 그렇다면 보유종목 제외가 업종 순위 계산에도 반영되는지 검증. 만약 업종 순위 계산이 별도 경로라면 `get_sector_stocks()`는 표시용만 수정.
+- [ ] 업종 순위 계산 파이프라인(`sector_summary_cache` 생성 경로)이 `get_sector_stocks()` 기반인지 확인 — 만약 그렇다면 매매부적격 보유종목 제외가 업종 순위 계산에도 반영되는지 검증. 만약 업종 순위 계산이 별도 경로라면 `get_sector_stocks()`는 표시용만 수정.
 - [ ] 단위 테스트 추가 — `test_sector_data_provider.py`에:
-  - "보유종목이 master_stocks_cache에 있어도 get_sector_stocks() 결과에서 제외됨"
+  - "매매부적격 보유종목(거래대금 통과)이 get_sector_stocks() 결과에서 제외됨"
+  - "정상 보유종목(매매적격 + 거래대금 통과)은 get_sector_stocks() 결과에 포함됨"
   - "비보유종목은 get_sector_stocks() 결과에 포함됨 (회귀 보호)"
-  - "보유종목 매도 후(get_held_codes에서 제외) get_sector_stocks()에 다시 포함됨"
+  - "매매부적격 보유종목 매도 후 get_sector_stocks()에 다시 포함됨 (거래대금 통과 시)"
 - [ ] `.venv/bin/python -m pytest backend/tests/test_sector_data_provider.py -q` 통과.
 - [ ] `.venv/bin/python -m pytest backend/tests -q` 전체 통과.
 - [ ] `.venv/bin/python -W error::RuntimeWarning main.py` — await 누락 없음.
 
 **세션 3.5 완료 조건**:
-- [ ] 보유종목이 업종별 종목 실시간 시세 테이블(업종순위 페이지 우측 패널)에 표시되지 않음.
-- [ ] 보유종목은 보유 종목 화면(positions 기반)에만 표시됨.
+- [ ] 매매부적격 보유종목(거래대금 통과)이 업종별 종목 실시간 시세 테이블(업종순위 페이지 우측 패널)에 표시되지 않음.
+- [ ] 정상 보유종목(매매적격 + 거래대금 통과)은 업종별 종목 시세 테이블에 표시됨.
 - [ ] 보유종목은 master_stocks_cache에 유지되어 실시간 틱 수신 정상 (세션 3 효과 유지).
 - [ ] 비보유종목은 기존대로 업종별 종목 시세 테이블에 표시됨 (회귀 없음).
 - [ ] pytest 전체 통과 + RuntimeWarning 없음.
 - [ ] 해당 세션 코드만 커밋하고 실제 커밋 해시를 `HANDOVER.md`에 기록.
 
 **위험/주의점**:
-1. `get_sector_stocks()` 호출 빈도 — 실시간 갱신 경로에서 빈번 호출 시 `get_held_codes()` 오버헤드. 단, `get_held_codes()`는 `state.positions` 순회(동기) 또는 `dry_run.position_codes()`(async)로 가벼운 헬퍼이므로 미미 예상.
-2. 업종 순위 계산 경로 확인 필수 — `get_sector_stocks()`가 업종 순위 계산의 원재료인지, 표시용인지에 따라 영향 범위 다름. 사전 조사 시 반드시 확인.
-3. 보유종목 매도 후 즉시 업종별 종목 테이블에 복귀 — `get_held_codes()`에서 제외되면 다음 `get_sector_stocks()` 호출 시 포함. 단, 매도 후에도 5거래일 평균 거래대금 기준은 유지되어야 포함됨.
+1. 매매부적격 여부 판단 데이터 소스 — `confirmed_codes`는 파이프라인 종료 후 유지되지 않을 수 있으므로, 사전 조사에서 매매부적격 보유종목을 식별할 수 있는 안정적인 방법 확인 필수.
+2. `get_sector_stocks()` 호출 빈도 — 실시간 갱신 경로에서 빈번 호출 시 오버헤드. 단, 가벼운 헬퍼이므로 미미 예상.
+3. 업종 순위 계산 경로 확인 필수 — `get_sector_stocks()`가 업종 순위 계산의 원재료인지, 표시용인지에 따라 영향 범위 다름. 사전 조사 시 반드시 확인.
+4. 매매부적격 보유종목 매도 후 업종별 종목 테이블에 복귀 — 보유종목에서 제외되면 다음 `get_sector_stocks()` 호출 시 포함. 단, 매도 후에도 5거래일 평균 거래대금 기준은 유지되어야 포함됨.
 
 ---
 
