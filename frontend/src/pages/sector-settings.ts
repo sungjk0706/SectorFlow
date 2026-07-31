@@ -10,7 +10,7 @@ import { createSettingRow, createNumInput, RIGHT_WRAP_GAP, RIGHT_WRAP_MARGIN } f
 import { createDualLabelSlider, type DualLabelSliderHandle } from '../components/common/create-slider'
 import { createProgressBar, type ProgressBarHandle } from '../components/common/progress-bar'
 import { createMarketCountRow, type MarketCountRowHandle } from '../components/common/market-count-row'
-import { createDescText, createStepLabel } from '../components/common/settings-common'
+import { createStepLabel } from '../components/common/settings-common'
 import { createInfoTooltip } from '../components/common/info-tooltip'
 import { FONT_SIZE, COLOR, RADIUS, ROW_PADDING } from '../components/common/ui-styles'
 import { createCardTitle } from '../components/common/card-title'
@@ -336,7 +336,6 @@ function buildBonusSection(root: HTMLElement): void {
 
   const bonusDescWrap = document.createElement('div')
   Object.assign(bonusDescWrap.style, { borderBottom: '1px solid ' + COLOR.borderLight, marginBottom: '12px' })
-  bonusDescWrap.appendChild(createDescText('1위가 만점, 순위당 1점씩 차감하여 0점까지', { marginTop: '8px' }))
   root.appendChild(bonusDescWrap)
 }
 
