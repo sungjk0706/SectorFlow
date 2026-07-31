@@ -29,6 +29,7 @@ export const COLUMNS: ColumnDef<StockScore>[] = [
         nxt_enable: t.nxt_enable
       })
     ),
+    minWidth: 140,
     maxWidth: 168,
   },
   {
@@ -50,7 +51,7 @@ export const COLUMNS: ColumnDef<StockScore>[] = [
   makeChangeColumn<StockScore>((t) => t.change != null ? Number(t.change) : null),
   makeRateColumn<StockScore>((t) => t.change_rate != null ? Number(t.change_rate) : null),
   {
-    key: 'order_ratio', label: '호가잔량비(%)', align: 'right', type: 'order_ratio', maxWidth: 110,
+    key: 'order_ratio', label: '호가잔량비(%)', align: 'right', type: 'order_ratio', maxWidth: 88,
     render: (t) => {
       if (!t.order_ratio) return ''
       const [bid, ask] = t.order_ratio
@@ -81,7 +82,7 @@ export const COLUMNS: ColumnDef<StockScore>[] = [
     },
   },
   {
-    key: 'program_net_buy', label: '프.순.매(백)', align: 'right', type: 'program_net', minWidth: 106, maxWidth: 106,
+    key: 'program_net_buy', label: '프.순.매(백)', align: 'right', type: 'program_net', minWidth: 76, maxWidth: 76,
     render: (t) => {
       if (t.program_net_buy === undefined || t.program_net_buy === null) return ''
       // tval이 금액(원)이라면 백만 원 단위로 환산, LS증권 대금 포맷을 고려하여 백만 단위로 나눈 후 1자리 소수점 표시
@@ -122,7 +123,7 @@ export const COLUMNS: ColumnDef<StockScore>[] = [
     },
   },
   {
-    key: 'high_5d', label: '5거래일 고가', align: 'right', type: 'high', maxWidth: 96,
+    key: 'high_5d', label: '5일고가', align: 'right', type: 'high', maxWidth: 98,
     render: (t) => {
       const cell = createNumberCell(Number(t.high_5d) || 0)
       if (t.high_5d && t.high_5d > 0 && t.cur_price != null && Number(t.cur_price) > t.high_5d) {
