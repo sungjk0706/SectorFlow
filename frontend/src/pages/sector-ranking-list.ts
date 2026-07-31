@@ -143,13 +143,13 @@ const COLUMNS: ColumnDef<SectorScoreRow>[] = [
     cellStyle: { ...NO_BORDER, color: COLOR.down },
   },
   {
-    key: 'final_score',
-    label: '가산점',
+    key: 'bonus_relative_strength',
+    label: '집중도',
     align: 'right',
     type: 'score',
     render: (row) => {
       const span = document.createElement('span')
-      span.textContent = String(row.final_score)
+      span.textContent = String(row.bonus_relative_strength)
       span.style.fontWeight = FONT_WEIGHT.bold
       return span
     },
