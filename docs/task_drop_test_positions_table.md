@@ -1,6 +1,6 @@
 # 태스크 파일: test_positions DB 테이블 제거 (2단계 접근)
 
-> **상태**: 조사 완료, 승인 대기
+> **상태**: 완료 (1단계 격리 + 2단계 DROP 전부 완료, 2026-08-01)
 > **작성일**: 2026-08-01
 > **위험도**: 낮음 (완전 고립된 레거시 테이블, 코드 참조 0건)
 > **관련 원칙**: P10(SSOT) · P16(살아있는 경로) · P22(데이터 정합성) · P24(단순성)
@@ -204,12 +204,22 @@ cp "${LATEST}-wal.backup" "backend/data/stocks.db-wal" 2>/dev/null || true
 
 ---
 
-## 6. 2단계 (참고 — 별도 세션)
+## 6. 2단계 (완료 — 2026-08-01)
 
-1단계 격리 후 런타임 정상 동작이 확인되면 (권장: 1거래일 경과 후):
+> **실행 결과**: 1단계 격리 후 런타임 정상 동작 확인됨. 사용자 승인하에 2단계 진행.
+> "1거래일 경과"는 권장 사항이나, 1단계 검증(런타임·pytest·typecheck) 전부 통과했으므로
+> 사용자 명시적 승인으로 같은 날 진행.
+
+실행 내역:
+1. 잔존 프로세스 0건 확인 (포트 8000)
+2. 신규 타임스탬프 백업 3종 생성 (20260801_152624) — db-backup 스킬 준수
+3. `DROP TABLE _test_positions_deprecated_20260801` 실행 — 테이블 완전 삭제 확인
+4. 검증: 런타임 기동 정상 (139ms, RuntimeWarning 0건, 기동 대조 일치 169,196원) + pytest 2997 passed
+5. 백업·덤프 파일 전부 삭제 (사용자 승인 후, db-backup 스킬 6절) — 1단계 백업(20260801_151155)은 런타임 기동 시 자동 정리됨, 2단계 백업(20260801_152624) + SQL 덤프 삭제 완료
+6. 원본 `stocks.db` 무사 (안전 규칙 1 준수)
 
 ```bash
-# 완전 삭제
+# 완전 삭제 (실행 완료)
 .venv/bin/python -c "
 import sqlite3
 conn = sqlite3.connect('backend/data/stocks.db')
@@ -218,7 +228,7 @@ conn.commit()
 conn.close()
 "
 
-# 백업 파일 + 덤프 파일 삭제 (사용자 승인 후)
+# 백업 파일 + 덤프 파일 삭제 (사용자 승인 후 — 실행 완료)
 rm backend/data/stocks.db.*.backup
 rm backend/data/stocks.db-shm.*.backup 2>/dev/null || true
 rm backend/data/stocks.db-wal.*.backup 2>/dev/null || true

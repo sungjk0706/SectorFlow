@@ -44,7 +44,7 @@
 | 항목 | 사유 |
 |---|---|
 | 실전 모드 `engine_account_rest.py` 수정 | 실전은 이미 `or avg` 폴백이 없음 (조사 확정). REST에서 증권사 값 직접 수신, 틱 핸들러도 price<=0이면 스킵. 수정 불필요 |
-| `test_positions` DB 테이블 DROP | 완료 (2026-08-01, 태스크 `docs/task_drop_test_positions_table.md` 1단계 — RENAME 격리) |
+| `test_positions` DB 테이블 DROP | 완료 (2026-08-01, 태스크 `docs/task_drop_test_positions_table.md` 1·2단계 — RENAME 격리 후 DROP 완전 삭제) |
 | 실전 모드 `pnl_amount`를 증권사 산출값으로 전환 | 현재 앱이 `eval_amt - buy_amount`로 계산. 증권사가 pnl_amount를 보내준다면 그걸 쓰는 게 맞으나, 별도 이슈. 본 태스크 범위 외 |
 | `priceStore` 통합 리팩토링 | 이전 태스크(9c737f9)에서 별도 태스크로 분리됨. 본 태스크 범위 외 |
 | 프론트엔드 수정 | `computePositionValuation`은 이미 `cur_price == null`일 때 `isNull=true` → '-' 표시로 안전하게 처리됨 (9c737f9에서 확인). 회귀 테스트만 수행 |
