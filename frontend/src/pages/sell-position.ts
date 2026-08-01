@@ -40,11 +40,17 @@ const COLUMNS: ColumnDef<Position>[] = [
     }
   ),
   {
+    // 표시 소스: sectorStocks(master_stocks_cache 기반) — 매수후보·업종별 종목과 동일 소스 (P23 일관성).
+    // 계산(pnl/rate/요약)은 computePositionValuation가 positions.cur_price를 계속 사용 (역할 분리 — 설계서 결정 1·2).
+    // sectorStocks에 종목이 없거나 cur_price가 null/undefined → '-' (P20 폴백 금지 — p.cur_price 참조 안 함).
     key: 'cur_price', label: '현재가', align: 'right', type: 'price', flash: true,
     render: (p) => {
-      const v = computePositionValuation(p)
-      if (v.isNull) return createPriceCell(null, null)
-      return createPriceCell(v.curPrice, v.rate)
+      const state = hotStore.getState()
+      const sectorStock = state.sectorStocks[normalizeStockCode(p.stk_cd)]
+      const curPrice = sectorStock?.cur_price
+      const changeRate = sectorStock?.change_rate
+      if (curPrice == null) return createPriceCell(null, null)
+      return createPriceCell(Number(curPrice), changeRate != null ? Number(changeRate) : null)
     },
   },
   {

@@ -34,7 +34,7 @@ export interface Position {
   stk_nm: string;
   qty: number;
   avg_price: number;
-  cur_price: number | null;  // null = 틱 미수신 (백엔드 _reset_realtime_fields None 설정과 일치, P22)
+  cur_price: number | null;  // 계산용 현재가 (손익·평가금액·매도조건·리스크 계산 입력값). 화면 표시 소스 아님 — 표시는 sectorStocks 기반 (역할 분리, P22). null = 틱 미수신 (백엔드 _reset_realtime_fields None 설정과 일치)
   buy_amt: number;
   pnl_rate: number;
   nxt_enable?: boolean;
