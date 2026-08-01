@@ -842,7 +842,6 @@ WSManager
 | 테이블 | 용도 |
 |--------|------|
 | `master_stocks_table` | 전 종목 기본 정보 (단일 소스) |
-| `test_positions` | 테스트 모드 가상 포지션 |
 | `trades` | 체결 이력 (매수/매도) |
 | `trading_days_cache` | 거래일 캐시 (연 1회 갱신) |
 | `sectors` | 업종 정의 (커스텀 업종명) |
