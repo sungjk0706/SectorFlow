@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { computeHoldingsSummary, computePositionValuation, computeCumulativePnl } from '../../src/pages/profit-math'
-import type { Position } from '../../src/types'
+import { computeHoldingsSummary, computePositionValuation, computeCumulativePnl, getPositionValuationPrice } from '../../src/pages/profit-math'
+import type { MasterStock, Position } from '../../src/types'
 
 /**
  * computePositionValuation — 개별 보유종목 평가 계산 SSOT 함수 회귀 테스트.
@@ -8,8 +8,8 @@ import type { Position } from '../../src/types'
  * 공유하는 단일 공식 (P10 SSOT, P23 일관성).
  * P21/P23: cur_price null → isNull=true, 나머지 0 (개별 행 '-' 표시와 동일 패턴).
  *
- * 현재가 소스 (P10 SSOT 정정): p.cur_price (보유종목 자체의 실시간 갱신 값, 필터 무관).
- * 과거 sectorStocks 참조는 배선 실수(필터 탈락 종목 시세 누락)로 제거됨.
+ * 평가 가격 소스: masterStocks(백엔드 master_stocks_cache 프론트 사본)의 장중 실시간가 또는 장외 확정가.
+ * positions.cur_price는 거래 계산용 원재료이며 화면 평가값의 소스로 사용하지 않는다.
  *
  * computeHoldingsSummary — 보유 종목 요약 계산 회귀 테스트.
  * computePositionValuation 결과를 합산 (P10 SSOT 재사용).
@@ -24,10 +24,43 @@ function makePosition(code: string, qty: number, avgPrice: number, curPrice: num
   }
 }
 
-describe('computeHoldingsSummary — 정상 경로 (cur_price 존재)', () => {
+function makeValuationPrices(positions: Position[]): Record<string, MasterStock> {
+  return Object.fromEntries(positions.map(p => [p.stk_cd, {
+    code: p.stk_cd,
+    name: p.stk_nm,
+    cur_price: p.cur_price,
+    change_rate: 0,
+  }]))
+}
+
+describe('masterStocks 평가 가격 SSOT', () => {
+  it('positions.cur_price가 없어도 masterStocks 확정가로 평가한다', () => {
+    const position = makePosition('005930', 3, 58800, null)
+    const masterStocks = {
+      '005930': { code: '005930', name: '두산로보틱스', cur_price: 61600, change_rate: 0 },
+    }
+
+    expect(getPositionValuationPrice(position, masterStocks)).toBe(61600)
+    const result = computeHoldingsSummary([position], masterStocks)
+    expect(result.evalTotal).toBe(184800)
+    expect(result.evalPnl).toBe(8400)
+    expect(result.evalRate).toBeCloseTo(4.76, 1)
+    expect(result.hasNullPrice).toBe(false)
+  })
+
+  it('masterStocks에 가격이 없으면 계산하지 않고 누락 상태를 유지한다', () => {
+    const position = makePosition('005930', 3, 58800, null)
+    const result = computeHoldingsSummary([position], {})
+    expect(result.evalTotal).toBe(0)
+    expect(result.evalPnl).toBe(0)
+    expect(result.hasNullPrice).toBe(true)
+  })
+})
+
+describe('computeHoldingsSummary — 정상 경로 (평가 가격 존재)', () => {
   it('단일 종목 평가금액/평가손익/수익률 계산', () => {
     const positions = [makePosition('005930', 10, 70000, 80000)]
-    const result = computeHoldingsSummary(positions)
+    const result = computeHoldingsSummary(positions, makeValuationPrices(positions))
     expect(result.evalTotal).toBe(800000)  // 80000 * 10
     expect(result.buyTotal).toBe(700000)  // 70000 * 10
     expect(result.evalPnl).toBe(100000)
@@ -40,7 +73,7 @@ describe('computeHoldingsSummary — 정상 경로 (cur_price 존재)', () => {
       makePosition('005930', 10, 70000, 80000),
       makePosition('000660', 5, 120000, 130000),
     ]
-    const result = computeHoldingsSummary(positions)
+    const result = computeHoldingsSummary(positions, makeValuationPrices(positions))
     expect(result.evalTotal).toBe(1450000)  // 800000 + 650000
     expect(result.buyTotal).toBe(1300000)  // 700000 + 600000
     expect(result.evalPnl).toBe(150000)
@@ -52,14 +85,14 @@ describe('computeHoldingsSummary — 정상 경로 (cur_price 존재)', () => {
       makePosition('005930', 10, 70000, 80000),
       makePosition('000660', 0, 120000, 130000),
     ]
-    const result = computeHoldingsSummary(positions)
+    const result = computeHoldingsSummary(positions, makeValuationPrices(positions))
     expect(result.evalTotal).toBe(800000)
     expect(result.buyTotal).toBe(700000)
     expect(result.hasNullPrice).toBe(false)
   })
 
   it('빈 positions', () => {
-    const result = computeHoldingsSummary([])
+    const result = computeHoldingsSummary([], {})
     expect(result.evalTotal).toBe(0)
     expect(result.buyTotal).toBe(0)
     expect(result.evalPnl).toBe(0)
@@ -71,7 +104,7 @@ describe('computeHoldingsSummary — 정상 경로 (cur_price 존재)', () => {
 describe('computeHoldingsSummary — null 경로 (P21/P23 투명성)', () => {
   it('모든 종목 cur_price null → hasNullPrice=true, evalTotal=0', () => {
     const positions = [makePosition('005930', 10, 70000, null)]
-    const result = computeHoldingsSummary(positions)
+    const result = computeHoldingsSummary(positions, makeValuationPrices(positions))
     expect(result.evalTotal).toBe(0)
     expect(result.buyTotal).toBe(0)  // null 종목은 buyTotal에서도 제외
     expect(result.evalPnl).toBe(0)
@@ -80,7 +113,7 @@ describe('computeHoldingsSummary — null 경로 (P21/P23 투명성)', () => {
 
   it('cur_price null (시세 미수신 — 새로고침 직후/장 전) → hasNullPrice=true', () => {
     const positions = [makePosition('005930', 10, 70000, null)]
-    const result = computeHoldingsSummary(positions)
+    const result = computeHoldingsSummary(positions, makeValuationPrices(positions))
     expect(result.evalTotal).toBe(0)
     expect(result.buyTotal).toBe(0)
     expect(result.hasNullPrice).toBe(true)
@@ -91,7 +124,7 @@ describe('computeHoldingsSummary — null 경로 (P21/P23 투명성)', () => {
       makePosition('005930', 10, 70000, 80000),
       makePosition('000660', 5, 120000, null),
     ]
-    const result = computeHoldingsSummary(positions)
+    const result = computeHoldingsSummary(positions, makeValuationPrices(positions))
     // 005930만 계산에 포함
     expect(result.evalTotal).toBe(800000)
     expect(result.buyTotal).toBe(700000)
@@ -103,7 +136,7 @@ describe('computeHoldingsSummary — null 경로 (P21/P23 투명성)', () => {
 describe('computePositionValuation — 정상 경로 (cur_price 존재)', () => {
   it('단일 종목 diff/pnl/rate/evalAmt/buyAmt 계산', () => {
     const p = makePosition('005930', 10, 70000, 80000)
-    const v = computePositionValuation(p)
+    const v = computePositionValuation(p, p.cur_price)
     expect(v.isNull).toBe(false)
     expect(v.curPrice).toBe(80000)
     expect(v.buyPrice).toBe(70000)
@@ -117,7 +150,7 @@ describe('computePositionValuation — 정상 경로 (cur_price 존재)', () => 
 
   it('buyPrice 0 → rate 0 (분모 0 가드)', () => {
     const p = makePosition('005930', 10, 0, 80000)
-    const v = computePositionValuation(p)
+    const v = computePositionValuation(p, p.cur_price)
     expect(v.isNull).toBe(false)
     expect(v.rate).toBe(0)
     expect(v.pnl).toBe(800000)  // (80000 - 0) * 10
@@ -127,7 +160,7 @@ describe('computePositionValuation — 정상 경로 (cur_price 존재)', () => 
 describe('computePositionValuation — null 경로 (P21/P23 투명성)', () => {
   it('cur_price null → isNull=true, 모든 계산 0', () => {
     const p = makePosition('005930', 10, 70000, null)
-    const v = computePositionValuation(p)
+    const v = computePositionValuation(p, p.cur_price)
     expect(v.isNull).toBe(true)
     expect(v.curPrice).toBe(0)
     expect(v.pnl).toBe(0)
@@ -138,13 +171,13 @@ describe('computePositionValuation — null 경로 (P21/P23 투명성)', () => {
 
   it('cur_price null (시세 미수신 — 새로고침 직후/장 전) → isNull=true', () => {
     const p = makePosition('005930', 10, 70000, null)
-    const v = computePositionValuation(p)
+    const v = computePositionValuation(p, p.cur_price)
     expect(v.isNull).toBe(true)
   })
 
   it('qty 0 → isNull=false, evalAmt/buyAmt=0 (합산에 0 기여, hasNullPrice 영향 X)', () => {
     const p = makePosition('005930', 0, 70000, 80000)
-    const v = computePositionValuation(p)
+    const v = computePositionValuation(p, p.cur_price)
     expect(v.isNull).toBe(false)  // curPrice 존재하므로 null 아님
     expect(v.qty).toBe(0)
     expect(v.pnl).toBe(0)         // diff * 0
@@ -159,12 +192,12 @@ describe('computePositionValuation ↔ computeHoldingsSummary 일관성 (P10 SSO
       makePosition('005930', 10, 70000, 80000),
       makePosition('000660', 5, 120000, 130000),
     ]
-    const perRow = positions.map(p => computePositionValuation(p))
+    const perRow = positions.map(p => computePositionValuation(p, p.cur_price))
     const sumPnl = perRow.reduce((s, v) => s + (v.isNull ? 0 : v.pnl), 0)
     const sumEvalAmt = perRow.reduce((s, v) => s + (v.isNull ? 0 : v.evalAmt), 0)
     const sumBuyAmt = perRow.reduce((s, v) => s + (v.isNull ? 0 : v.buyAmt), 0)
 
-    const summary = computeHoldingsSummary(positions)
+    const summary = computeHoldingsSummary(positions, makeValuationPrices(positions))
     expect(summary.evalTotal).toBe(sumEvalAmt)
     expect(summary.buyTotal).toBe(sumBuyAmt)
     expect(summary.evalPnl).toBe(sumPnl)
@@ -177,11 +210,11 @@ describe('computePositionValuation ↔ computeHoldingsSummary 일관성 (P10 SSO
       makePosition('005930', 10, 70000, 80000),
       makePosition('000660', 5, 120000, null),
     ]
-    const perRow = positions.map(p => computePositionValuation(p))
+    const perRow = positions.map(p => computePositionValuation(p, p.cur_price))
     const nullCount = perRow.filter(v => v.isNull).length
     const sumPnl = perRow.reduce((s, v) => s + (v.isNull ? 0 : v.pnl), 0)
 
-    const summary = computeHoldingsSummary(positions)
+    const summary = computeHoldingsSummary(positions, makeValuationPrices(positions))
     expect(nullCount).toBe(1)
     expect(summary.hasNullPrice).toBe(true)
     expect(summary.evalPnl).toBe(sumPnl)  // null 종목 제외 합과 일치

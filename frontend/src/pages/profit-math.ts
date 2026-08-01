@@ -12,7 +12,8 @@
 // - SectorDonutRow, assignSectorColors (canvas-sector-donut) — 순수 함수/타입
 
 import { computeWeightedRate, COLOR } from '../components/common/ui-styles'
-import type { Position } from '../types'
+import { normalizeStockCode } from '../stores/hotStore'
+import type { MasterStock, Position } from '../types'
 import type { SectorDonutRow } from '../components/canvas-sector-donut'
 import { assignSectorColors } from '../components/canvas-sector-donut'
 
@@ -226,24 +227,18 @@ export function buildChartFromDailySummary(summary: Record<string, unknown>[]): 
 /* ── 보유 종목 평가 계산 (순수 함수 — P10 SSOT, P22 데이터 정합성, P23 일관성) ── */
 
 /**
- * 개별 보유종목 1건의 평가 계산 — 단일 진실 소스(SSOT).
- * sell-position.ts 개별 행(cur_price/pnl/rate 컬럼)과 computeHoldingsSummary(요약행)가
- * 동일한 공식·null 패턴을 공유하도록 추출 (P10/P23 — 공식 중복 제거).
- *
- * - 현재가: p.cur_price — 손익·평가금액·매도조건·리스크 계산의 입력값 (계산 SSOT).
- *   화면 표시 소스가 아님 — 표시는 sell-position.ts가 masterStocks(master_stocks_cache 기반)를 사용 (역할 분리 — 설계서 결정 1·2).
- *   틱 핸들러(applyRealData)가 masterStocks와 동일한 실시간 가격으로 갱신하며,
- *   비실시간 구간(장마감 후·비거래일)에는 None을 유지해 확정가가 계산에 유입되지 않음 (P22).
- * - 매입가: p.avg_price
- * - curPrice null → isNull=true, 나머지 필드 0 (P21 투명성 — 호출처에서 '-' 표시)
- *   isNull은 오직 curPrice null(시세 미수신)만 의미. qty<=0은 isNull=false이며
- *   evalAmt/buyAmt=0으로 합산에 0 기여 (요약 hasNullPrice 영향 X — 기존 동작 보존).
- * - diff = curPrice - buyPrice
- * - pnl = diff × qty
- * - rate = buyPrice > 0 ? diff / buyPrice × 100 : 0 (단일 종목 수익률)
- * - evalAmt = curPrice × qty (평가금액)
- * - buyAmt = buyPrice × qty (매입금액)
+ * 보유 종목의 평가 기준 가격 — masterStocks가 유일한 화면 평가 시세 SSOT.
+ * 장중에는 실시간 체결가, 장외·비거래일에는 마지막 확정가를 사용한다.
+ * 가격이 없으면 null을 반환하며 positions.cur_price로 대체하지 않는다 (P20).
  */
+export function getPositionValuationPrice(
+  p: Position,
+  masterStocks: Readonly<Record<string, MasterStock>>,
+): number | null {
+  return masterStocks[normalizeStockCode(p.stk_cd)]?.cur_price ?? null
+}
+
+/** 개별 보유종목 평가 계산 — 테이블 행과 요약이 공유하는 단일 공식 (P10/P23). */
 export interface PositionValuation {
   curPrice: number
   buyPrice: number
@@ -258,14 +253,14 @@ export interface PositionValuation {
 
 export function computePositionValuation(
   p: Position,
+  valuationPrice: number | null | undefined,
 ): PositionValuation {
   const qty = p.qty ?? 0
   const buyPrice = p.avg_price
-  const curPriceRaw = p.cur_price
-  if (curPriceRaw == null) {
+  if (valuationPrice == null) {
     return { curPrice: 0, buyPrice, qty, diff: 0, pnl: 0, rate: 0, evalAmt: 0, buyAmt: 0, isNull: true }
   }
-  const curPrice = Number(curPriceRaw)
+  const curPrice = Number(valuationPrice)
   const diff = curPrice - buyPrice
   const pnl = diff * qty
   const rate = buyPrice > 0 ? (diff / buyPrice) * 100 : 0
@@ -275,23 +270,18 @@ export function computePositionValuation(
 }
 
 /**
- * 보유 종목 positions 전체 요약 — computePositionValuation 결과를 합산 (P10 SSOT 재사용).
- * 개별 종목 행과 동일한 데이터 소스·공식 사용.
- *
- * - 평가금액 = sum(evalAmt) — cur_price null인 종목은 계산에서 제외 (P21 투명성)
- * - 매입금액 = sum(buyAmt)
- * - 평가손익 = sum(pnl) (= 평가금액 - 매입금액, 수학적 동일)
- * - 수익률 = 평가손익 / 매입금액 × 100 (가중 평균, 매입금액 0이면 0)
- * - hasNullPrice: cur_price null인 보유종목이 하나라도 있으면 true → 호출처에서 '-' 표시 (P21, P23 — 개별 행과 동일 null 패턴)
+ * 보유 종목 전체 요약 — 개별 행과 동일한 masterStocks 가격·공식을 합산한다 (P10/P22).
+ * 평가 가격이 없는 종목은 계산에서 제외하고 hasNullPrice로 명시한다 (P21).
  */
 export function computeHoldingsSummary(
   positions: Position[],
+  masterStocks: Readonly<Record<string, MasterStock>>,
 ): { evalTotal: number; evalPnl: number; evalRate: number; buyTotal: number; hasNullPrice: boolean } {
   let evalTotal = 0
   let buyTotal = 0
   let hasNullPrice = false
   for (const p of positions) {
-    const v = computePositionValuation(p)
+    const v = computePositionValuation(p, getPositionValuationPrice(p, masterStocks))
     if (v.isNull) {
       hasNullPrice = true
       continue

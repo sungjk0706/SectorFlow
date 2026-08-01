@@ -38,6 +38,7 @@ export function renderAccountVals(state: ProfitOverviewState): void {
   const params: AccountValsParams = {
     account: hotState.account,
     positions: hotState.positions,
+    masterStocks: hotState.masterStocks,
     positionCount: hotState.positionCount ?? 0,
     isTestMode: settings?.trade_mode === 'test',
     buyHistory: state.buyHistory,
@@ -403,10 +404,11 @@ export function subscribeProfitOverviewStore(state: ProfitOverviewState, initSta
   state.prevAccountRef = initState.account
   state.prevTradeMode = globalSettingsManager.getSettings()?.trade_mode
   state.prevPositionsRef = initState.positions
+  state.prevMasterStocksRef = initState.masterStocks
   state.mounted = true
 
   state.unsubStore = hotStore.subscribe((curr) => {
-    const accountChanged = curr.account !== state.prevAccountRef || curr.positions !== state.prevPositionsRef
+    const accountChanged = curr.account !== state.prevAccountRef || curr.positions !== state.prevPositionsRef || curr.masterStocks !== state.prevMasterStocksRef
     const historyChanged = curr.sellHistory !== state.prevSellRef || curr.buyHistory !== state.prevBuyRef
     const chartChanged = curr.dailySummary !== state.prevDailySummaryRef || globalSettingsManager.getSettings()?.trade_mode !== state.prevTradeMode
 
@@ -415,6 +417,7 @@ export function subscribeProfitOverviewStore(state: ProfitOverviewState, initSta
     if (accountChanged) {
       state.prevAccountRef = curr.account
       state.prevPositionsRef = curr.positions
+      state.prevMasterStocksRef = curr.masterStocks
       state.dirtyAccount = true
     }
     if (historyChanged) {

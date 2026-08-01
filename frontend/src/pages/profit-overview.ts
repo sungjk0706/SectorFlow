@@ -11,10 +11,9 @@
 import { createCardTitle } from '../components/common/card-title'
 import { COLOR } from '../components/common/ui-styles'
 import { globalSettingsManager } from '../settings'
-import { hotStore } from '../stores/hotStore'
+import { hotStore, applyAccountSnapshot, applyPositionsSnapshot, normalizeStockCode } from '../stores/hotStore'
 import { notifyPageActive, notifyPageInactive } from '../api/ws'
 import { api } from '../api/client'
-import { applyAccountSnapshot, applyPositionsSnapshot } from '../stores/hotStore'
 import { refreshPageData, createPageRefreshStatus } from '../utils/page-refresh'
 import type { ProfitChartApi } from '../components/canvas-profit-chart'
 import type { SectorDonutApi } from '../components/canvas-sector-donut'
@@ -85,6 +84,7 @@ export interface ProfitOverviewState {
   prevDailySummaryRef: Record<string, unknown>[]
   prevAccountRef: AccountSnapshot | null
   prevPositionsRef: unknown[]
+  prevMasterStocksRef: Record<string, unknown>
   prevTradeMode: string | undefined
   dataReady: boolean
 }
@@ -127,6 +127,7 @@ function createState(): ProfitOverviewState {
     prevDailySummaryRef: [],
     prevAccountRef: null,
     prevPositionsRef: [],
+    prevMasterStocksRef: {},
     prevTradeMode: undefined,
     dataReady: false,
   }
@@ -157,13 +158,16 @@ async function refreshProfitOverviewPage(): Promise<void> {
     return
   }
   state.dataReady = true
+  const positionCodes = hotStore.getState().positions.map(p => normalizeStockCode(p.stk_cd))
+  notifyPageActive('profit-overview', positionCodes)
   refreshStatus?.set('', false)
   renderAccountVals(state)
 }
 
 /* ── mount ── */
 function mount(container: HTMLElement): void {
-  notifyPageActive('profit-overview')
+  const initialPositions = hotStore.getState().positions
+  notifyPageActive('profit-overview', initialPositions.map(p => normalizeStockCode(p.stk_cd)))
   state.buyHistory = []
   state.sellHistory = []
   state.accountValRefs = []
