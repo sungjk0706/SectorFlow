@@ -231,8 +231,8 @@ export function buildChartFromDailySummary(summary: Record<string, unknown>[]): 
  * 동일한 공식·null 패턴을 공유하도록 추출 (P10/P23 — 공식 중복 제거).
  *
  * - 현재가: p.cur_price — 손익·평가금액·매도조건·리스크 계산의 입력값 (계산 SSOT).
- *   화면 표시 소스가 아님 — 표시는 sell-position.ts가 sectorStocks(master_stocks_cache 기반)를 사용 (역할 분리 — 설계서 결정 1·2).
- *   틱 핸들러(applyRealData)가 sectorStocks와 동일한 실시간 가격으로 갱신하며,
+ *   화면 표시 소스가 아님 — 표시는 sell-position.ts가 masterStocks(master_stocks_cache 기반)를 사용 (역할 분리 — 설계서 결정 1·2).
+ *   틱 핸들러(applyRealData)가 masterStocks와 동일한 실시간 가격으로 갱신하며,
  *   비실시간 구간(장마감 후·비거래일)에는 None을 유지해 확정가가 계산에 유입되지 않음 (P22).
  * - 매입가: p.avg_price
  * - curPrice null → isNull=true, 나머지 필드 0 (P21 투명성 — 호출처에서 '-' 표시)

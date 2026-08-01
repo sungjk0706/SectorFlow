@@ -2,7 +2,7 @@
 // 매수후보 페이지 — DataTable 적용
 
 import { createDataTable, type DataTableApi } from '../components/common/data-table'
-import { hotStore } from '../stores/hotStore'
+import { hotStore, normalizeStockCode } from '../stores/hotStore'
 import { uiStore } from '../stores/uiStore'
 import { notifyPageActive, notifyPageInactive } from '../api/ws'
 import { api } from '../api/client'
@@ -68,7 +68,11 @@ async function refreshBuyTargetPage(): Promise<void> {
   // sell-position.ts와 동일 패턴 — 성공 후 현재 store 값을 직접 렌더.
   // scheduleRender()만 호출하면 applyBuyTargetsUpdate의 same skip으로 참조가
   // 변경되지 않아 renderFrame의 targetsChanged=false가 되어 테이블이 빈 상태로 고정됨 (P16).
-  renderTableRows(hotStore.getState().buyTargets)
+  const buyTargets = hotStore.getState().buyTargets
+  renderTableRows(buyTargets)
+  // 페이지별 구독 Push 모델 — 매수후보 코드로 구독 신청 (백엔드가 해당 종목만 push)
+  const buyTargetCodes = buyTargets.map(t => normalizeStockCode(t.code))
+  notifyPageActive('buy-target', buyTargetCodes)
 }
 
 /* ── 렌더링 참조 상태 — scheduleRender 참조 비교용 (mount 시 초기화, unmount 시 reset)
@@ -124,6 +128,9 @@ function computeBadgeContext(): BadgeContext {
 
   // 1순위 통과 종목 — 주문가능금액 배지의 1위 종목 매수 가능 수량 계산용
   const topTarget = [...state.buyTargets].sort(compareBuyTargets).find(t => t.guard_pass && t.reject_reason === '')
+  // 1위 종목 현재가는 masterStocks(실시간 시세 SSOT)에서 조회 — buyTargets에 실시간 필드 없음 (P10).
+  const topCode = topTarget ? normalizeStockCode(topTarget.code) : ''
+  const topPrice = topCode ? state.masterStocks[topCode]?.cur_price : undefined
 
   // 백엔드 trading.py와 동일 — buy_amt_on=False 시 종목당 1회 매수금액 없음 (주문가능 금액이 상한)
   const dailyRemain = maxDaily > 0 ? Math.max(0, maxDaily - dailySpent) : Infinity
@@ -136,8 +143,8 @@ function computeBadgeContext(): BadgeContext {
     effectiveBuyAmt = Math.min(dailyRemain, orderable)  // 한도 없음
   }
   let qty = 0
-  if (topTarget && effectiveBuyAmt > 0 && topTarget.cur_price != null && topTarget.cur_price > 0) {
-    qty = Math.floor(effectiveBuyAmt / topTarget.cur_price)
+  if (topTarget && effectiveBuyAmt > 0 && topPrice != null && topPrice > 0) {
+    qty = Math.floor(effectiveBuyAmt / topPrice)
   }
   const topName = topTarget?.name ?? ''
 
@@ -395,6 +402,11 @@ function renderFrame(): void {
     _rsBuyTargets = latest.buyTargets
     _rsSearchTerm = searchTerm
     renderTableRows(latest.buyTargets)
+    // buyTargets 변경 시 재구독 — 신규 후보 구독 추가, 제거 후보 구독 해제
+    if (targetsChanged) {
+      const buyTargetCodes = latest.buyTargets.map(t => normalizeStockCode(t.code))
+      notifyPageActive('buy-target', buyTargetCodes)
+    }
   }
 
   // buyTargets / positions / account / settings / buyLimitStatus / 차단 상태 변경 시 배지 업데이트

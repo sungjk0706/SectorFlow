@@ -200,11 +200,11 @@ function buildSearchResultTable(state: StockClassificationPageState): HTMLElemen
     createStockNameColumn<SearchResultRow>(
       (row: SearchResultRow) => {
         const hotState = hotStore.getState()
-        const sectorStock = hotState.sectorStocks[normalizeStockCode(row.code)]
+        const masterStock = hotState.masterStocks[normalizeStockCode(row.code)]
         return {
           name: row.name,
-          market_type: sectorStock?.market_type ?? row.market_type,
-          nxt_enable: sectorStock?.nxt_enable ?? row.nxt_enable
+          market_type: masterStock?.market_type ?? row.market_type,
+          nxt_enable: masterStock?.nxt_enable ?? row.nxt_enable
         }
       }
     ),

@@ -1,6 +1,6 @@
 // frontend/src/api/client.ts
 
-import type { AccountSnapshot, FreshnessMetadata, Position, SectorScoreRow, SectorStock, StockScore } from '../types'
+import type { AccountSnapshot, FreshnessMetadata, Position, SectorScoreRow, MasterStock, StockScore } from '../types'
 
 const BASE_URL = '';
 
@@ -148,7 +148,7 @@ export const api = {
     request<FreshnessResponse<SectorScoresResponse>>('/api/market/sector-scores', { pageContext }),
 
   getSectorStocks: (pageContext?: string) =>
-    request<FreshnessResponse<SectorStock[]>>('/api/market/sector-stocks', { pageContext }),
+    request<FreshnessResponse<MasterStock[]>>('/api/market/sector-stocks', { pageContext }),
 
   // Health Check for modern stability pattern
   healthCheck: () =>

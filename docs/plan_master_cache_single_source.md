@@ -1,9 +1,10 @@
 # 태스크 파일: 마스터 종목 캐시 단일 시세 소스 + 페이지별 구독 Push 모델 구현
 
-> **상태**: 3세션 백엔드 구현 완료, 4세션 프론트 구현 대기
+> **상태**: 3세션 백엔드 구현 완료 + 4세션 프론트 사전 조사 완료 → 구현 대기 (코드 수정 전)
 > **작성일**: 2026-08-02
 > **설계서 경로**: `docs/architecture_master_cache_single_source_design.md`
-> **다단계 진행 상황**: 1세션(설계) ✅ · 2세션(태스크 파일) ✅ · 3세션(백엔드 구현) ✅ · 4세션(프론트 상태·binding) 예정 · 5세션(파생 캐시 제거·render 전환) 예정 · 6세션(독립 검증) 예정 · 모의 관찰 대기
+> **구현 참조 문서 (1순위)**: `docs/master-stocks-migration.md` — 새 세션에서 본 문서만 보고 구현 가능. 사전 조사 결과(영향 파일 16개 소스 + 3개 테스트, 백엔드 이벤트 계약, MasterStock 타입 정의, 파일별 구체적 변경 사항, 설계 결정 근거) 정리.
+> **다단계 진행 상황**: 1세션(설계) ✅ · 2세션(태스크 파일) ✅ · 3세션(백엔드 구현) ✅ · 4세션(프론트 사전 조사) ✅ · 4세션(프론트 구현 — 2+3단계 통합) 예정 · 5세션(잔여 dead code 정리로 축소) 예정 · 6세션(독립 검증) 예정 · 모의 관찰 대기
 > **관련 원칙**: P10(SSOT) · P16(살아있는 경로) · P20(폴백 금지) · P21(사용자 투명성) · P22(데이터 정합성) · P23(일관성) · P24(단순성) · P25(격리된 실패) · W3(단일 소스 진리) · W4(파생 데이터 모델) · W7(시뮬레이터/증권사 응답 동일 구조) · W11(표현 통일)
 > **위험도**: 중간 (프론트 구조 변경 범위 큼, 백엔드 WS 이벤트 신설·제거 동반. 단, 거래 로직·DB·주문 경로 변경 없음 → 실전 돈 위험 없음)
 
@@ -19,11 +20,17 @@
 
 > 설계서 결정 1·2·3은 사용자 완료. 태스크 파일에서 구현 수준 세부 선택 확정.
 
-### 결정 A: 프론트 상태 명칭 = `masterCache` (sectorStocks 재활용 아님)
+### 결정 A: 프론트 상태 명칭 = `masterStocks` (sectorStocks 재활용 아님, 4세션 사전 조사에서 `masterCache`에서 변경)
 
-**선택**: `sectorStocks`를 재활용하지 않고 `masterCache` 신규 명칭 사용.
+**선택**: `sectorStocks`를 재활용하지 않고 `masterStocks: Record<string, MasterStock>` 신규 명칭 사용.
 
-**사유**: sectorStocks는 "필터된 부분집합"이라는 역사적 의미가 남아 역할 혼동 유발. 전 종목 마스터 캐시로 역할이 변경되므로 P23 일관성을 위해 명칭 교체. 마이그레이션 비용보다 의미 명확성이 우선 (P24 단순성 — 중복 제거보다 역할 명확성이 근본).
+**사유**: 기존 `sectorStocks`↔`SectorStock` 패턴 계승 (`masterStocks`↔`MasterStock`). "마스터 종목" 의미 명확, 캐시 접미사 없음(기존 sectorStocks와 동일 기준). WS 이벤트명 `master-cache-*`와는 독립(백엔드 3세션 확정, 프론트 상태명과 무관). 4세션 사전 조사에서 `masterCache`는 "무엇의 캐시인지" 모호하다는 사용자 지적으로 변경.
+
+### 결정 D: 2단계+3단계 통합 진행 (4세션 사전 조사에서 추가)
+
+**선택**: 태스크 파일 2단계(sectorStocks/SectorStock/StockScore 실시간 필드 제거)와 3단계(render 전환)를 4세션에서 통합 수행. 5세션은 잔여 dead code 정리로 축소.
+
+**사유**: 2단계가 요구하는 타입/상태 제거 시, 그것을 참조하는 18개 파일의 render 코드가 동시에 `masterStocks`로 전환되지 않으면 `npm run typecheck`가 실패. 2단계 검증 게이트(typecheck 통과)와 3단계 render 전환 분할은 동시에 만족 불가능(강결합). 유일한 typecheck-만족 경로 = 통합 진행.
 
 ### 결정 B: 구독 신청 방식 = A (notifyPageActive 확장)
 
@@ -68,15 +75,15 @@
 | `frontend/src/pages/sector-stock.ts` | sectorStocks → masterCache에서 필터 파생 | 63-82행 buildRows | `state.sectorStocks` → `state.masterCache`. 필터 통과 종목 코드를 `notifyPageActive('sector-stock', codes)`로 전송 |
 | `frontend/src/pages/profit-detail-mount.ts` | 종목명 참조를 masterCache로 전환 | 종목명 참조부 | sectorStocks → masterCache 참조 |
 
-### 테스트 (5세션)
+### 테스트 (4세션 — 2+3단계 통합)
 
 | 파일 | 수정 목적 | 수정 포인트 |
 |---|---|---|
-| `frontend/tests/stores/hotStore.test.ts` | masterCache 갱신 회귀, 파생 캐시 제거 검증 | applyRealData, applyRealtimeReset, applyMasterCacheSnapshot/Delta 테스트. rebindBuyTargetsRealtime 제거 검증 |
-| `frontend/tests/pages/sell-position.test.ts` | 현재가 컬럼 masterCache 참조 회귀 | render가 masterCache[code] 참조, null 시 '-' |
-| `frontend/tests/pages/buy-target-columns.test.ts` | 매수후보 컬럼 masterCache 참조 회귀 | render가 masterCache[t.code] 참조 |
-| `backend/tests/test_engine_radar.py` | news_boost_cache 통합 회귀 | get_news_boost_cache가 master_stocks_cache 기반 동작 |
-| `backend/tests/test_ws_manager.py` | 구독 참조 카운트 맵 회귀 | subscribe_codes/unsubscribe_page, 0→1/1→0 전환 |
+| `frontend/tests/stores/hotStore.test.ts` (130매치) | masterStocks 갱신 회귀, 파생 캐시 제거 검증 | sectorStocks→masterStocks 치환, applyMasterStocksSnapshot/Delta 테스트 재작성, applyOrderbookUpdate/applyProgramUpdate/rebindBuyTargetsRealtime 테스트 삭제, applyRealData(masterStocks+positions 2곳)/applyRealtimeReset/applyBuyTargetsUpdate/Delta 테스트 갱신, applyNewsHit masterStocks news_boost 갱신 검증 |
+| `frontend/tests/pages/profit-shared.test.ts` (1매치) | sectorStocks 참조 갱신 | 12행 sectorStocks→masterStocks |
+| `frontend/tests/api/client.test.ts` (1매치) | getSectorStocks 반환 타입 갱신 | 47행 SectorStock→MasterStock |
+| `backend/tests/test_engine_radar.py` | news_boost_cache 통합 회귀 | 3세션 완료 — 변경 없음 |
+| `backend/tests/test_ws_manager.py` | 구독 참조 카운트 맵 회귀 | 3세션 완료 — 변경 없음 |
 
 ---
 
@@ -105,49 +112,58 @@
 - [x] 구독 참조 카운트 맵 정상 동작 (0→1 snapshot 전송, 1→0 중단 — test_web_ws_manager.py TestSubscribeCodes 8건 통과)
 - [x] 거래 로직 회귀 없음 (test_buy_filter.py 등 매수 관련 테스트 통과)
 
-### 2단계: 프론트 — masterCache 상태 + binding 교체 + 구독 신청 (4세션)
+### 2단계: 프론트 — masterStocks 상태 + binding 교체 + 구독 신청 + render 전환 (4세션 — 2+3단계 통합)
 
-- [ ] `types/index.ts` — `MasterStock` 타입 추가 (시세+호가+프로그램+뉴스 필드 통합). `SectorStock` 제거. `StockScore`에서 실시간 필드 제거 (정적 스코어만)
-- [ ] `hotStore.ts` — `masterCache: Record<string, MasterStock>` 상태 추가. `sectorStocks` 상태 제거. `applyMasterCacheSnapshot`·`applyMasterCacheDelta` 함수 추가 (기존 applySectorStocksRefresh/Delta 대체)
-- [ ] `ws.ts` — `notifyPageActive(page, codes)`로 확장. payload에 `codes` 배열 추가
-- [ ] `binding.ts` — `sector-stocks-refresh`/`sector-stocks-delta` 핸들러를 `master-cache-snapshot`/`master-cache-delta`로 교체. `orderbook-update`·`program-update` 핸들러 제거. `news-hit` 핸들러를 masterCache 필드 갱신으로 변경
-- [ ] `applyRealData` — 갱신 대상을 masterCache + positions 2곳으로 단순화 (기존 3곳). buyTargets 분기 제거
-- [ ] `applyRealtimeReset` — masterCache null화 + positions null화만. rebind 호출 제거
-- [ ] 각 페이지 mount 시 `notifyPageActive(page, codes)`로 종목 코드 전송, unmount 시 `notifyPageInactive(page)` 전송
-  - sell-position: 보유 종목 코드 (positions에서 추출)
-  - buy-target: 매수후보 종목 코드 (buyTargets에서 추출)
-  - sector-stock: 필터 통과 종목 코드 (masterCache에서 필터 후 추출)
-- [ ] `applyRealData`의 rAF 배칭(_tickDirty + scheduleTickFlush) 유지 — conflation으로 재해석 (설계서 결정 6)
+> **결정 D 적용**: 2단계(상태·타입 제거)와 3단계(render 전환)는 typecheck 게이트 강결합으로 분할 불가능. 4세션에서 통합 수행. 상세는 `docs/master-stocks-migration.md` §5 참조.
+
+#### 타입·상태·바인딩 계층 (4개 파일)
+- [ ] `types/index.ts` — `MasterStock` 타입 추가(15필드). `SectorStock` 제거. `StockScore` 실시간 필드 7개 제거(정적 스코어만). `Position.sectorStock?` 제거
+- [ ] `hotStore.ts` — `masterStocks: Record<string, MasterStock>` 상태 추가, `sectorStocks` 제거. `applyMasterStocksSnapshot`/`applyMasterStocksDelta` 추가. `applyOrderbookUpdate`/`applyProgramUpdate`/`rebindBuyTargetsRealtime`/`applySectorStocksRefresh/Delta/Snapshot` 제거. `applyRealData`(masterStocks+positions 2곳)/`applyRealtimeReset`(masterStocks null화)/`applyBuyTargetsUpdate/Delta`(재결합 분기 제거) 재작성. `applyNewsHit`(masterStocks news_boost도 갱신). `applyInitialSnapshotHot` 갱신
+- [ ] `ws.ts` — `notifyPageActive(page, codes)` 확장, `_currentPageCodes` 추적, `getCurrentPageCodes()` getter, 재연결 시 codes 재전송
+- [ ] `binding.ts` — `sector-stocks-refresh/delta`→`master-cache-snapshot/delta` 핸들러 교체, `orderbook-update`/`program-update` 핸들러 제거, 재연결 콜백 codes 포함
+
+#### 페이지 render 전환 + 구독 신청 (8개 파일)
+- [ ] `sell-position.ts` — render sectorStocks→masterStocks, mount 시 `notifyPageActive('sell-position', positionCodes)`, positions 변경 시 재구독
+- [ ] `buy-target.ts` — computeBadgeContext cur_price→masterStocks, mount 시 `notifyPageActive('buy-target', buyTargetCodes)`, buyTargets 변경 시 재구독
+- [ ] `buy-target-columns.ts` — 실시간 필드 `t.cur_price` 등 → `masterStocks[t.code]` 참조
+- [ ] `sector-stock.ts` — sectorStocks→masterStocks, `applySectorStocksSnapshot`→`applyMasterStocksSnapshot`, mount 시 `notifyPageActive('sector-stock', filteredCodes)`
+- [ ] `sector-stock-rows.ts` — `SectorStock`→`MasterStock` 타입, `filterSectorsByName`/`computeRows`/`DataRowItem.stock` 타입 변경
+- [ ] `profit-columns.ts` — `state.sectorStocks`→`state.masterStocks` (market_type/nxt_enable)
+- [ ] `profit-detail-mount.ts` + `profit-detail.ts` — `prevSectorStocksRef`→`prevMasterStocksRef`, `dirtySectorStocks`→`dirtyMasterStocks`
+- [ ] `stock-classification-center.ts` + `stock-classification-master.ts` — `hotState.sectorStocks`→`hotState.masterStocks`
+
+#### 기타 참조 전환 (2개 파일)
+- [ ] `api/client.ts` — `getSectorStocks` 반환 타입 `SectorStock`→`MasterStock`
+- [ ] `utils/stock-search.ts` — 주석 `SectorStock`→`MasterStock` 갱신 (선택)
+
+#### 공통
+- [ ] `applyRealData`의 rAF 배칭(_tickDirty + scheduleTickFlush) 유지 — conflation
+- [ ] positions.cur_price 계산용 유지 (computePositionValuation, computeHoldingsSummary) — 변경 없음 (W7)
 
 **2단계 검증 방법:**
 - [ ] `cd frontend && npm run typecheck` — 통과
-- [ ] `cd frontend && npm run test` — 통과 (기존 테스트 갱신 포함)
+- [ ] `cd frontend && npm run test` — 통과 (테스트 갱신 포함)
 - [ ] `cd frontend && npm run build` — 통과
-- [ ] masterCache 상태가 백엔드 push로 정상 갱신되는지 확인 (정적 코드 검증)
+- [ ] masterStocks 상태가 백엔드 push로 정상 갱신되는지 확인 (정적 코드 검증)
 - [ ] 구독 신청 payload에 종목 코드 포함 확인
+- [ ] `rebindBuyTargetsRealtime` 함수 및 호출 제거 확인 (grep 0건)
+- [ ] `applyOrderbookUpdate`/`applyProgramUpdate` 제거 확인 (grep 0건)
+- [ ] buyTargets에서 실시간 필드 참조 제거 확인 (grep — `t.cur_price` 등 직접 참조 0건)
+- [ ] positions.cur_price 계산용 사용 유지 확인 (computePositionValuation 변경 없음)
+- [ ] DataTable O(1) 갱신 보존 확인 — updateItemByKey 경로 유지
 
-### 3단계: 파생 캐시 제거 + 페이지 render 전환 (5세션)
+### 3단계: 잔여 dead code 정리 (5세션 — 축소)
 
-- [ ] `hotStore.ts` — `rebindBuyTargetsRealtime` 함수 제거 (808-824행)
-- [ ] `hotStore.ts` — `applyOrderbookUpdate`·`applyProgramUpdate` 함수 제거 (478-496, 507-524행)
-- [ ] `hotStore.ts` — `applyBuyTargetsUpdate`·`applyBuyTargetsDelta`의 sectorStocks 재결합 분기 제거 (620-634, 710-754행). buyTargets는 정적 스코어만 보관
-- [ ] `binding.ts` — `orderbook-update`·`program-update` 이벤트 핸들러 제거 완료 확인
-- [ ] `sell-position.ts` — 현재가 컬럼 render를 `state.masterCache[code]` 참조로 전환 (기존 sectorStocks → masterCache)
-- [ ] `buy-target-columns.ts` — 모든 실시간 필드 참조를 `masterCache[t.code]`로 전환. `t.cur_price` → `masterCache[t.code]?.cur_price` 등
-- [ ] `sector-stock.ts` — `state.sectorStocks` → `state.masterCache`에서 필터 파생
-- [ ] `profit-detail-mount.ts` — 종목명 참조를 masterCache로 전환
-- [ ] buyTargets에서 실시간 필드(cur_price, change, change_rate, strength, trade_amount, order_ratio, program_net_buy) 제거 — 정적 스코어(rank, guard_pass, reject_reason, boost_score)만 남김
-- [ ] positions.cur_price는 계산용 유지 (computePositionValuation, computeHoldingsSummary) — 변경 없음
+> 결정 D 적용: 2+3단계 통합으로 대부분 완료. 5세션은 잔여 정리만.
+
+- [ ] `hotStore.ts` — `stocksToMap` 헬퍼 타입 정리, 잔여 주석 갱신
+- [ ] `profit-math.ts` 주석(234-235행) sectorStocks→masterStocks 갱신 (선택, 정확성)
+- [ ] `engine_initial_data.py` — `build_sector_stocks_payload` DEPRECATED 제거 (백엔드, 별도 세션 검토)
 
 **3단계 검증 방법:**
 - [ ] `cd frontend && npm run typecheck` — 통과
-- [ ] `cd frontend && npm run test` — 통과 (파생 캐시 제거 회귀 테스트 포함)
+- [ ] `cd frontend && npm run test` — 통과
 - [ ] `cd frontend && npm run build` — 통과
-- [ ] `rebindBuyTargetsRealtime` 함수 및 호출 3곳 제거 확인 (grep)
-- [ ] `applyOrderbookUpdate`·`applyProgramUpdate` 제거 확인 (grep)
-- [ ] buyTargets에서 실시간 필드 참조 제거 확인 (grep — `t.cur_price` 등 직접 참조 없음)
-- [ ] positions.cur_price 계산용 사용 유지 확인 (computePositionValuation 변경 없음)
-- [ ] DataTable O(1) 갱신 보존 확인 — updateItemByKey 경로 유지
 
 ### 4단계: 독립 검증 (6세션)
 
@@ -214,15 +230,15 @@
 - [ ] 기존 `sector-stocks-refresh`/`sector-stocks-delta` 이벤트 전송 경로가 제거됨
 - [ ] `orderbook-update`/`program-update` 이벤트가 구독 페이지 전송으로 변경됨 (전체 전송 아님)
 - [ ] `types/index.ts`에 `MasterStock` 타입이 존재하고 `SectorStock`이 제거됨
-- [ ] `hotStore.ts`에 `masterCache` 상태가 존재하고 `sectorStocks`이 제거됨
+- [ ] `hotStore.ts`에 `masterStocks` 상태가 존재하고 `sectorStocks`이 제거됨
 - [ ] `rebindBuyTargetsRealtime` 함수가 제거됨 (grep 검색 0건)
 - [ ] `applyOrderbookUpdate`·`applyProgramUpdate` 함수가 제거됨 (grep 검색 0건)
-- [ ] `applyRealData`가 masterCache + positions 2곳만 갱신 (buyTargets 분기 제거)
-- [ ] `applyRealtimeReset`이 masterCache null화만 하고 rebind 호출 없음
+- [ ] `applyRealData`가 masterStocks + positions 2곳만 갱신 (buyTargets 분기 제거)
+- [ ] `applyRealtimeReset`이 masterStocks null화만 하고 rebind 호출 없음
 - [ ] `binding.ts`에 `orderbook-update`/`program-update` 핸들러가 없음
-- [ ] `sell-position.ts` 현재가 컬럼이 `state.masterCache[code]` 참조
-- [ ] `buy-target-columns.ts` 모든 실시간 필드가 `masterCache[t.code]` 참조 (t.cur_price 직접 참조 없음)
-- [ ] `sector-stock.ts`가 `state.masterCache`에서 필터 파생
+- [ ] `sell-position.ts` 현재가 컬럼이 `state.masterStocks[code]` 참조
+- [ ] `buy-target-columns.ts` 모든 실시간 필드가 `masterStocks[t.code]` 참조 (t.cur_price 직접 참조 없음)
+- [ ] `sector-stock.ts`가 `state.masterStocks`에서 필터 파생
 - [ ] `notifyPageActive`가 `(page, codes)` 시그니처로 종목 코드 전송
 - [ ] buyTargets에서 실시간 필드(cur_price, change, change_rate, strength, trade_amount, order_ratio, program_net_buy)가 제거됨
 - [ ] positions.cur_price가 computePositionValuation·computeHoldingsSummary에서 계속 사용됨
@@ -290,12 +306,15 @@
 - **결정 1 (사용자 완료)**: 백엔드 마스터 캐시를 프론트에 전달, sectorStocks 삭제
 - **결정 2 (사용자 완료)**: 프론트가 종목 코드 직접 전송, 백엔드 매핑 금지
 - **결정 3 (사용자 완료)**: 마스터 캐시는 공통 실시간 데이터만, 페이지별 계산은 자체
-- **결정 A (태스크 확정)**: 프론트 상태 명칭 = `masterCache` (sectorStocks 재활용 아님)
+- **결정 A (4세션 사전 조사에서 변경)**: 프론트 상태 명칭 = `masterStocks` (기존 `masterCache`에서 변경 — 기존 sectorStocks↔SectorStock 패턴 계승, "마스터 종목" 의미 명확)
 - **결정 B (태스크 확정)**: 구독 신청 방식 = notifyPageActive(page, codes) 확장 (A안)
 - **결정 C (태스크 확정)**: 마스터 캐시 snapshot + delta 전송 (master-cache-snapshot/delta 이벤트)
+- **결정 D (4세션 사전 조사에서 추가)**: 2단계+3단계 통합 진행 — typecheck 게이트 강결합으로 분할 불가능
 
 ---
 
 ## 바로잡음 로그
 
-- 없음.
+- **2026-08-02 (4세션 사전 조사)**: 결정 A 상태명 `masterCache`→`masterStocks` 변경. 사용자 지적("무엇의 캐시인지 모호") 반영 — 기존 sectorStocks↔SectorStock 패턴 계승.
+- **2026-08-02 (4세션 사전 조사)**: 결정 D 추가 — 2단계+3단계 통합 진행. typecheck 게이트 강결합(sectorStocks/SectorStock/StockScore 실시간 필드 제거 시 18개 파일 render 동시 전환 필요)으로 분할 불가능.
+- **2026-08-02 (4세션 사전 조사)**: 영향 파일 정량화 — 16개 소스 + 3개 테스트. 기존 태스크 파일의 10개 파일 목록은 불완전 (profit-columns, sector-stock-rows, profit-detail, stock-classification-center/master, api/client, utils/stock-search 누락). 구현 참조 문서 `docs/master-stocks-migration.md`에 전체 목록 정리.

@@ -254,8 +254,8 @@ function flushDirtyRender(state: ProfitDetailState): void {
     )
   }
 
-  if (state.dirtySectorStocks) {
-    state.dirtySectorStocks = false
+  if (state.dirtyMasterStocks) {
+    state.dirtyMasterStocks = false
     showTable(state)
   }
 }
@@ -265,15 +265,15 @@ export function subscribeProfitDetailStore(state: ProfitDetailState, initState: 
   let prevSellRef = initState.sellHistory
   let prevBuyRef = initState.buyHistory
   let prevDailySummaryRef = initState.dailySummary
-  let prevSectorStocksRef = initState.sectorStocks
+  let prevMasterStocksRef = initState.masterStocks
   state.mounted = true
 
   state.unsubStore = hotStore.subscribe((curr) => {
     const historyChanged = curr.sellHistory !== prevSellRef || curr.buyHistory !== prevBuyRef
     const summaryChanged = curr.dailySummary !== prevDailySummaryRef
-    const sectorStocksChanged = curr.sectorStocks !== prevSectorStocksRef
+    const masterStocksChanged = curr.masterStocks !== prevMasterStocksRef
 
-    if (!historyChanged && !summaryChanged && !sectorStocksChanged) return
+    if (!historyChanged && !summaryChanged && !masterStocksChanged) return
 
     if (historyChanged) {
       prevSellRef = curr.sellHistory
@@ -286,9 +286,9 @@ export function subscribeProfitDetailStore(state: ProfitDetailState, initState: 
       prevDailySummaryRef = curr.dailySummary
       state.dirtySummary = true
     }
-    if (sectorStocksChanged) {
-      prevSectorStocksRef = curr.sectorStocks
-      state.dirtySectorStocks = true
+    if (masterStocksChanged) {
+      prevMasterStocksRef = curr.masterStocks
+      state.dirtyMasterStocks = true
     }
 
     if (state.rafId !== null) return

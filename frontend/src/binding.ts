@@ -2,18 +2,16 @@
 // WS 채널 분리: prices(시세), settings(설정/진행률), orders(체결)
 
 import type { WSClient } from './api/ws'
-import { getCurrentPage } from './api/ws'
+import { getCurrentPage, getCurrentPageCodes } from './api/ws'
 import {
   applyAccountUpdate,
   applyAccountSummaryUpdate,
   applyRealData,
-  applyOrderbookUpdate,
-  applyProgramUpdate,
   applyBuyTargetsUpdate,
   applyBuyTargetsDelta,
   applyNewsHit,
-  applySectorStocksRefresh,
-  applySectorStocksDelta,
+  applyMasterStocksSnapshot,
+  applyMasterStocksDelta,
   applyRealtimeReset,
   applySellHistoryUpdate,
   applyBuyHistoryUpdate,
@@ -48,7 +46,7 @@ import type {
   AccountUpdateEvent,
   AccountSummaryUpdateEvent,
   SettingsChangedEvent,
-  SectorStock,
+  MasterStock,
   StockScore,
   StockClassificationChangedEvent,
   RealDataEvent,
@@ -75,7 +73,7 @@ export function bindWSToStore(
   pricesClient.setConnectionCallbacks(
     () => {
       const page = getCurrentPage()
-      if (page) pricesClient.send(JSON.stringify({ type: 'page-active', page }))
+      if (page) pricesClient.send(JSON.stringify({ type: 'page-active', page, codes: getCurrentPageCodes() }))
     },
     () => {},
   )
@@ -99,13 +97,13 @@ export function bindWSToStore(
     applyBuyTargetsUpdate(data as { buy_targets: StockScore[]; freshness?: import('./types').FreshnessMetadata })
   })
 
-  pricesClient.onEvent('sector-stocks-refresh', (data) => {
-    applySectorStocksRefresh(data as { stocks: SectorStock[]; freshness?: import('./types').FreshnessMetadata })
+  pricesClient.onEvent('master-cache-snapshot', (data) => {
+    applyMasterStocksSnapshot(data as { stocks: MasterStock[]; freshness?: import('./types').FreshnessMetadata })
   })
 
   /* ── prices 채널 델타 이벤트 핸들러 (Phase 2 — 증분 갱신) ── */
-  pricesClient.onEvent('sector-stocks-delta', (data) => {
-    applySectorStocksDelta(data as { added: SectorStock[]; removed: string[]; freshness?: import('./types').FreshnessMetadata })
+  pricesClient.onEvent('master-cache-delta', (data) => {
+    applyMasterStocksDelta(data as { code: string; fields: Partial<MasterStock> })
   })
 
   pricesClient.onEvent('buy-targets-delta', (data) => {
@@ -125,19 +123,11 @@ export function bindWSToStore(
     applyRealData(data as RealDataEvent)
   })
 
-  pricesClient.onEvent('orderbook-update', (data) => {
-    applyOrderbookUpdate(data as { code: string; bid: number; ask: number })
-  })
-
-  pricesClient.onEvent('program-update', (data) => {
-    applyProgramUpdate(data as { code: string; net_buy: number })
-  })
-
   /* ── settings 채널 연결 상태 콜백 ── */
   settingsClient.setConnectionCallbacks(
     () => {
       const page = getCurrentPage()
-      if (page) settingsClient.send(JSON.stringify({ type: 'page-active', page }))
+      if (page) settingsClient.send(JSON.stringify({ type: 'page-active', page, codes: getCurrentPageCodes() }))
     },
     () => {
     },

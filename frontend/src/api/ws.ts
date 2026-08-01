@@ -260,17 +260,21 @@ export const wsOrdersClient = new WSClient('orders')
 
 /** 현재 활성 페이지 추적 — WS (재)연결 시 재전송용 */
 let _currentPage: string | null = null
+/** 현재 활성 페이지의 구독 종목 코드 — 페이지별 구독 Push 모델 (백엔드가 해당 종목만 push) */
+let _currentPageCodes: string[] = []
 
-/** 현재 페이지 활성 알림 → 백엔드 per-client 필터링 */
-export function notifyPageActive(page: string): void {
+/** 현재 페이지 활성 알림 → 백엔드 per-client 필터링 + 종목별 구독 */
+export function notifyPageActive(page: string, codes: string[] = []): void {
   _currentPage = page
-  wsClient.send(JSON.stringify({ type: 'page-active', page }))
-  wsSettingsClient.send(JSON.stringify({ type: 'page-active', page }))
+  _currentPageCodes = codes
+  const payload = JSON.stringify({ type: 'page-active', page, codes })
+  wsClient.send(payload)
+  wsSettingsClient.send(payload)
 }
 
-/** 현재 페이지 비활성 알림 → 백엔드 per-client 필터링 해제 */
+/** 현재 페이지 비활성 알림 → 백엔드 per-client 필터링 해제 + 구독 해제 */
 export function notifyPageInactive(page: string): void {
-  if (_currentPage === page) _currentPage = null
+  if (_currentPage === page) { _currentPage = null; _currentPageCodes = [] }
   wsClient.send(JSON.stringify({ type: 'page-inactive', page }))
   wsSettingsClient.send(JSON.stringify({ type: 'page-inactive', page }))
 }
@@ -278,6 +282,11 @@ export function notifyPageInactive(page: string): void {
 /** 현재 활성 페이지 반환 — WS (재)연결 시 page-active 재전송용 */
 export function getCurrentPage(): string | null {
   return _currentPage
+}
+
+/** 현재 활성 페이지의 구독 종목 코드 반환 — WS (재)연결 시 page-active codes 재전송용 */
+export function getCurrentPageCodes(): string[] {
+  return _currentPageCodes
 }
 
 

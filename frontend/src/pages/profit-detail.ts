@@ -85,7 +85,7 @@ export interface ProfitDetailState {
   mounted: boolean
   dirtyHistory: boolean
   dirtySummary: boolean
-  dirtySectorStocks: boolean
+  dirtyMasterStocks: boolean
   // 1프레임 내 필터 결과 재사용 (filterTradeRows 중복 연산 방지 — P24 단순성)
   filterCache: FilterCache | null
 }
@@ -120,7 +120,7 @@ function createState(): ProfitDetailState {
     mounted: false,
     dirtyHistory: false,
     dirtySummary: false,
-    dirtySectorStocks: false,
+    dirtyMasterStocks: false,
     filterCache: null,
   }
 }
@@ -206,7 +206,7 @@ function unmount(): void {
   if (state.rafId !== null) { cancelAnimationFrame(state.rafId); state.rafId = null }
   state.dirtyHistory = false
   state.dirtySummary = false
-  state.dirtySectorStocks = false
+  state.dirtyMasterStocks = false
   if (state.unsubStore) { state.unsubStore(); state.unsubStore = null }
   if (state.unsubUiStore) { state.unsubUiStore(); state.unsubUiStore = null }
   if (state.sellTable) { state.sellTable.destroy(); state.sellTable = null }

@@ -3,7 +3,7 @@
 import { createStore } from './store'
 import type {
   Position,
-  SectorStock,
+  MasterStock,
   StockScore,
   SectorScoreRow,
   AccountSnapshot,
@@ -27,8 +27,8 @@ export function normalizeStockCode(code: string | undefined | null): string {
 }
 
 /** 배열 → Record 변환 헬퍼 */
-export function stocksToMap(stocks: SectorStock[]): Record<string, SectorStock> {
-  const m: Record<string, SectorStock> = {}
+export function stocksToMap(stocks: MasterStock[]): Record<string, MasterStock> {
+  const m: Record<string, MasterStock> = {}
   for (const s of stocks) {
     m[normalizeStockCode(s.code)] = s
   }
@@ -40,7 +40,7 @@ export interface HotState {
   account: AccountSnapshot | null
   positions: Position[]
   positionCount: number
-  sectorStocks: Record<string, SectorStock>
+  masterStocks: Record<string, MasterStock>
   sectorScores: SectorScoreRow[]
   buyTargets: StockScore[]
   sellHistory: Record<string, unknown>[]
@@ -54,7 +54,7 @@ const initialState: HotState = {
   account: null,
   positions: [],
   positionCount: 0,
-  sectorStocks: {},
+  masterStocks: {},
   sectorScores: [],
   buyTargets: [],
   sellHistory: [],
@@ -182,9 +182,15 @@ export function applySectorScoresSnapshot(scores: SectorScoreRow[], freshness: F
   return true
 }
 
-export function applySectorStocksSnapshot(stocks: SectorStock[], freshness: FreshnessMetadata): boolean {
-  if (!isFreshnessNewer(freshness)) return false
-  applySectorStocksRefresh({ stocks, freshness })
+export function applyMasterStocksSnapshot(data: { stocks: MasterStock[]; freshness?: FreshnessMetadata }): boolean {
+  if (data.freshness && !isFreshnessNewer(data.freshness)) return false
+  if (data.freshness) recordFreshness(data.freshness)
+  const stocks = data.stocks ?? []
+  if (stocks.length === 0) return false
+  const newRecord = stocksToMap(stocks)
+  hotStore.setState((state) => ({
+    masterStocks: { ...state.masterStocks, ...newRecord },
+  }))
   return true
 }
 
@@ -318,7 +324,8 @@ export function applyAccountSummaryUpdate(data: AccountSummaryUpdateEvent): void
  *
  * 갱신 계약 (세션 7 — 업계 표준 coalescing mutable store 패턴):
  * - handled types: '01'/'0B'/'0H' (주식체결). 미지원 type은 스킵 (디스패치 안 함, 상태 미변경).
- * - in-place mutation: sectorStocks(SSOT) + buyTargets(파생 캐시) + positions(cur_price만).
+ * - in-place mutation: masterStocks(표시 SSOT) + positions.cur_price(계산용) 2곳만.
+ *   buyTargets는 정적 스코어만 보관하므로 실시간 필드 갱신 불필요 (P10 SSOT 강화).
  *   `hotStore.setState()`를 호출하지 않음 → 일반 `hotStore.subscribe()` 리스너 미발화.
  *   사유: setState 시 scheduleRender가 배열 참조 비교로 전체 재렌더 트리거 → 초저지연 저해.
  *   화면 갱신은 `real-data-tick` window 이벤트를 addEventListener로 수신한 페이지만 수행 (row-level).
@@ -387,15 +394,15 @@ export function applyRealData(item: RealDataEvent): void {
   const parsedAmount = rawAmt !== undefined ? rawAmt : undefined;
 
   // 2. In-place Mutation (객체 직접 수정) 및 커스텀 이벤트 발생
-  // setState()를 호출하여 배열을 재생성하면 리액티브 구독 패턴에 의해 
+  // setState()를 호출하여 배열을 재생성하면 리액티브 구독 패턴에 의해
   // 전체 리스트 재정렬 및 VirtualScroller 전체 diff가 발생하여 초저지연을 저해함.
   // 객체 속성만 직접 변경하고, UI 컴포넌트는 커스텀 이벤트를 구독하여 해당 DOM 셀만 갱신.
 
   let changed = false;
 
   const state = hotStore.getState();
-  const sectorStocks = state.sectorStocks;
-  const old = sectorStocks[code];
+  const masterStocks = state.masterStocks;
+  const old = masterStocks[code];
   if (old) {
     const change = parsedChange !== undefined ? parsedChange : old.change;
     const rate = parsedRate !== undefined ? parsedRate : old.change_rate;
@@ -412,36 +419,6 @@ export function applyRealData(item: RealDataEvent): void {
       old.strength = strength;
       old.trade_amount = amount;
       changed = true;
-    }
-  }
-
-  // buyTargets 실시간 필드 — sectorStocks(SSOT)에서 파생된 캐시.
-  // P10: sectorStocks가 실시간 시세의 단일 진실 소스. buyTargets의 실시간 필드는
-  // DataTable의 O(1) updateItemByKey 갱신을 위해 in-place mutation으로 동기화하는
-  // 파생 캐시(객체 참조를 DataTable currentRows가 보관 중).
-  // P22: sectorStocks 교체/초기화 시 applySectorStocksRefresh/applyRealtimeReset에서
-  // rebindBuyTargetsRealtime으로 재동기화됨.
-  const bt = state.buyTargets;
-  const btIdx = getBuyTargetIndex(code);
-  if (btIdx !== undefined) {
-    const t = bt[btIdx];
-    const sectorStock = sectorStocks[code];
-    if (sectorStock) {
-      const change = sectorStock.change;
-      const rate = sectorStock.change_rate;
-      const strength = sectorStock.strength;
-      const amount = sectorStock.trade_amount;
-
-      if (!(t.cur_price === price && t.change === change && t.change_rate === rate &&
-            t.strength === strength && t.trade_amount === amount)) {
-        // In-place mutation — DataTable currentRows 객체 참조 유지
-        t.cur_price = price;
-        t.change = change;
-        t.change_rate = rate;
-        t.strength = strength;
-        t.trade_amount = amount;
-        changed = true;
-      }
     }
   }
 
@@ -466,60 +443,41 @@ export function applyRealData(item: RealDataEvent): void {
   }
 }
 
-/* ── orderbook-update: 매수후보 호가잔량비 실시간 갱신 ── */
+/* ── master-cache-delta: 마스터 캐시 부분 갱신 (호가·PGM) ── */
 /**
- * 호가잔량비 갱신 계약 (applyRealData와 동일 — in-place mutation + rAF 배칭):
- * - in-place mutation: buyTargets[idx].order_ratio만 갱신. setState ❌ → subscribe 미발화.
- * - buyTargets에 없는 종목은 스킵 (idx === undefined).
- * - no-change(동일 bid/ask) 시 디스패치 안 함.
+ * 마스터 캐시 delta 갱신 계약 (applyRealData와 동일 — in-place mutation + rAF 배칭):
+ * - in-place mutation: masterStocks[code]의 일부 필드만 갱신. setState ❌ → subscribe 미발화.
+ *   사유: applyRealData와 동일 — setState 시 scheduleRender가 배열 참조 비교로 전체 재렌더 트리거.
+ * - masterStocks에 없는 종목은 스킵 (old === undefined).
+ * - no-change 시 디스패치 안 함.
  * - rAF 배칭: dirty Set에 code 추가 후 다음 프레임에서 1회 디스패치 (last-write-wins).
+ *   호가 delta → orderbook-tick 이벤트, PGM delta → program-tick 이벤트 (기존 이벤트명 유지).
  * - payload: code 문자열. 수신 측은 `dataTable.updateItemByKey(code)`로 O(1) 갱신.
  */
-export function applyOrderbookUpdate(data: { code: string; bid: number; ask: number }): void {
+export function applyMasterStocksDelta(data: { code: string; fields: Partial<MasterStock> }): void {
   const code = normalizeStockCode(data.code);
-  const { bid, ask } = data;
   if (!code) return;
+  const fields = data.fields ?? {};
   const state = hotStore.getState();
-  const bt = state.buyTargets;
-  const idx = getBuyTargetIndex(code);
-  if (idx === undefined) return;
-  const t = bt[idx];
-  const prev = t.order_ratio;
-  if (prev && prev[0] === bid && prev[1] === ask) return;
+  const old = state.masterStocks[code];
+  if (!old) return;
 
-  // In-place mutation: 배열 복사 없이 직접 요소 수정
-  t.order_ratio = [bid, ask];
+  let changed = false;
+  let isOrderbook = false;
+  let isProgram = false;
+  const oldRecord = old as unknown as Record<string, unknown>;
+  for (const [key, value] of Object.entries(fields)) {
+    if (oldRecord[key] === value) continue
+    oldRecord[key] = value
+    changed = true
+    if (key === 'order_ratio') isOrderbook = true
+    else if (key === 'program_net_buy') isProgram = true
+  }
 
-  // rAF 배칭 — 프레임당 1회 coalescing 디스패치
-  _orderbookDirty.add(code)
-  scheduleTickFlush()
-}
-
-/* ── program-update: 매수후보 프로그램순매수 실시간 갱신 ── */
-/**
- * 프로그램순매수 갱신 계약 (applyRealData/applyOrderbookUpdate와 동일 — in-place mutation + rAF 배칭):
- * - in-place mutation: buyTargets[idx].program_net_buy만 갱신. setState ❌ → subscribe 미발화.
- * - buyTargets에 없는 종목은 스킵 (idx === undefined).
- * - no-change(동일 net_buy) 시 디스패치 안 함.
- * - rAF 배칭: dirty Set에 code 추가 후 다음 프레임에서 1회 디스패치 (last-write-wins).
- * - payload: code 문자열. 수신 측은 `dataTable.updateItemByKey(code)`로 O(1) 갱신.
- */
-export function applyProgramUpdate(data: { code: string; net_buy: number }): void {
-  const code = normalizeStockCode(data.code);
-  const { net_buy } = data;
-  if (!code) return;
-  const state = hotStore.getState();
-  const bt = state.buyTargets;
-  const idx = getBuyTargetIndex(code);
-  if (idx === undefined) return;
-  const t = bt[idx];
-  if (t.program_net_buy === net_buy) return;
-
-  // In-place mutation: 배열 복사 없이 직접 요소 수정
-  t.program_net_buy = net_buy;
-
-  // rAF 배칭 — 프레임당 1회 coalescing 디스패치
-  _programDirty.add(code)
+  if (!changed) return;
+  if (isOrderbook) _orderbookDirty.add(code)
+  if (isProgram) _programDirty.add(code)
+  if (!isOrderbook && !isProgram) _tickDirty.add(code)
   scheduleTickFlush()
 }
 
@@ -554,23 +512,15 @@ export function applyRealtimeReset(): void {
       updates.sectorScores = []
     }
 
-    // sectorStocks: 현재가/대비/등락률/거래대금/체결강도
-    const sectorStocks: Record<string, SectorStock> = {}
-    let sectorChanged = false
-    for (const [code, stock] of Object.entries(state.sectorStocks)) {
+    // masterStocks: 현재가/대비/등락률/거래대금/체결강도
+    const masterStocks: Record<string, MasterStock> = {}
+    let masterChanged = false
+    for (const [code, stock] of Object.entries(state.masterStocks)) {
       const n = nullifyFields(stock, ['cur_price', 'change', 'change_rate', 'trade_amount', 'strength'])
-      if (n !== stock) sectorChanged = true
-      sectorStocks[code] = n
+      if (n !== stock) masterChanged = true
+      masterStocks[code] = n
     }
-    if (sectorChanged) updates.sectorStocks = sectorStocks
-
-    // buyTargets: sectorStocks 실시간 필드가 null화되었으므로 파생 캐시도 동기화.
-    // (applyRealData가 buyTargets 실시간 필드도 in-place mutation하므로
-    //  reset 시 sectorStocks만 null화하면 buyTargets에 stale 값이 잔류 — P22 위반.
-    //  rebindBuyTargetsRealtime 재사용 — in-place mutation으로 DataTable 객체 참조 유지)
-    if (sectorChanged) {
-      rebindBuyTargetsRealtime(state.buyTargets, sectorStocks)
-    }
+    if (masterChanged) updates.masterStocks = masterStocks
 
     // positions: 현재가/대비/등락률
     let positionsChanged = false
@@ -589,18 +539,17 @@ export function applyRealtimeReset(): void {
 }
 
 /* ── buy-targets-update: 매수후보만 갱신 (내용 비교) ── */
-// P10(SSOT) + P22(데이터 정합성): 백엔드 초기 buy-targets-update에 포함된 실시간 필드는
-// sectorStocks와 불일치 가능 (조회 시점 차이). incoming 실시간 필드를 sectorStocks 기준으로
-// 재결합하여 단일 소스 일관성 유지. buy-targets-delta의 added/changed 결합 패턴과 동일 (P23).
+// P10(SSOT): buyTargets는 정적 스코어만 보관 (rank, guard_pass, reject_reason, boost_score,
+// high_5d, news_boost, news_boost_title). 실시간 시세는 masterStocks가 단일 진실 소스이므로
+// buyTargets에 실시간 필드를 재결합하지 않음 — 화면 표시는 masterStocks 참조.
 //
 // same 비교 키 (백엔드 _BUY_TARGET_CMP_KEYS와 일치, P23 일관성):
 //   식별자: code, name (백엔드는 code 기준 delta이므로 불필요, 프론트는 배열 순서 비교용)
-//   정적 필드: rank, boost_score, guard_pass, reject_reason, order_ratio, program_net_buy,
-//             high_5d
+//   정적 필드: rank, boost_score, guard_pass, reject_reason, high_5d
 //   실시간 필드(cur_price/change/change_rate/strength/trade_amount)는 제외 —
-//   틱 디스패치(real-data-tick)가 별도 갱신 담당, update same에서 비교하면 매 틱마다
-//   setState 트리거하여 비용 낭비. 백엔드 _BUY_TARGET_CMP_KEYS도 동일 제외.
-//   avg_amt_5d 제외 (T1 설계 수정 — avg_amt_5d 주인은 SectorStock, 매수후보에서 제거).
+//   buyTargets에 더 이상 실시간 필드가 없으므로 비교 불필요.
+//   order_ratio/program_net_buy 제외 — masterStocks로 이관, buyTargets에서 제거.
+//   avg_amt_5d 제외 (T1 설계 수정 — avg_amt_5d 주인은 MasterStock).
 //   news_boost 제외 (세션 3 — news-hit 이벤트가 단일 갱신 경로, P10 SSOT).
 //   news_boost_title 제외 (세션 4 — 동일 단일 경로, P10 SSOT).
 //   applyBuyTargetsUpdate는 초기 buy-targets-update 수신 시에만 news_boost 포함,
@@ -608,7 +557,6 @@ export function applyRealtimeReset(): void {
 export function applyBuyTargetsUpdate(data: { buy_targets: StockScore[]; freshness?: FreshnessMetadata }): void {
   if (data.freshness && !isFreshnessNewer(data.freshness)) return
   if (data.freshness) recordFreshness(data.freshness)
-  const sectorStocks = hotStore.getState().sectorStocks
   const prev = hotStore.getState().buyTargets
   // P22: news_boost_title은 백엔드 스냅샷에 없음 (news-hit 이벤트가 단일 소스, 세션 4).
   //      전체 새로고침(buy-targets-update) 시 prev에서 보존 — news_boost > 0일 때만
@@ -619,12 +567,7 @@ export function applyBuyTargetsUpdate(data: { buy_targets: StockScore[]; freshne
   }
   const incoming = (data.buy_targets ?? []).map(t => {
     const code = normalizeStockCode(t.code)
-    const ss = sectorStocks[code]
-    const base = ss ? {
-      ...t, code,
-      cur_price: ss.cur_price, change: ss.change, change_rate: ss.change_rate,
-      strength: ss.strength, trade_amount: ss.trade_amount,
-    } : { ...t, code }
+    const base: StockScore = { ...t, code }
     const newsBoost = Number(t.news_boost) || 0
     if (newsBoost > 0) {
       const preservedTitle = prevTitleByCode.get(code)
@@ -637,8 +580,6 @@ export function applyBuyTargetsUpdate(data: { buy_targets: StockScore[]; freshne
     return p.rank === n.rank && normalizeStockCode(p.code) === normalizeStockCode(n.code) && p.name === n.name
       && p.guard_pass === n.guard_pass && p.reject_reason === n.reject_reason
       && p.boost_score === n.boost_score
-      && p.order_ratio?.[0] === n.order_ratio?.[0] && p.order_ratio?.[1] === n.order_ratio?.[1]
-      && p.program_net_buy === n.program_net_buy
       && p.high_5d === n.high_5d
   })
   if (!same) {
@@ -667,8 +608,15 @@ export function applyNewsHit(data: { codes: string[]; scores: number[]; boost_sc
   hotStore.setState((state) => {
     let buyTargets = state.buyTargets
     let changed = false
+    // masterStocks news_boost 동기화 — 백엔드 master_stocks_cache["news_boost"]와 일치 (P10 SSOT).
+    // news_boost_title은 MasterStock에 없으므로 masterStocks에는 news_boost만 갱신.
+    const masterStocks = state.masterStocks
     for (let k = 0; k < codes.length; k++) {
       const code = normalizeStockCode(codes[k])
+      const ms = masterStocks[code]
+      if (ms && ms.news_boost !== (scores[k] ?? 0)) {
+        ms.news_boost = scores[k] ?? 0
+      }
       const idx = buyTargets.findIndex((t: StockScore) => normalizeStockCode(t.code) === code)
       if (idx >= 0) {
         if (!changed) { buyTargets = [...buyTargets]; changed = true }
@@ -682,8 +630,9 @@ export function applyNewsHit(data: { codes: string[]; scores: number[]; boost_sc
 }
 
 /* ── buy-targets-delta: 매수후보 증분 갱신 (added/removed/changed) ── */
-// P10(SSOT) + P22(데이터 정합성): added/changed 종목의 실시간 필드는 sectorStocks 기준으로
-// 재결합하여 단일 소스 일관성 유지. applyBuyTargetsUpdate의 결합 패턴과 동일 (P23 일관성).
+// P10(SSOT): buyTargets는 정적 스코어만 보관. 실시간 시세는 masterStocks가 단일 진실 소스이므로
+// added/changed 종목의 실시간 필드를 재결합하지 않음 — 화면 표시는 masterStocks 참조.
+// applyBuyTargetsUpdate와 동일 패턴 (P23 일관성).
 // binding.ts 인라인 45줄 → action 추출 (P23/P24, COUPLING-S8 후속).
 export function applyBuyTargetsDelta(data: {
   freshness?: FreshnessMetadata
@@ -705,53 +654,23 @@ export function applyBuyTargetsDelta(data: {
       for (const item of changed) {
         const idx = buyTargets.findIndex((t: StockScore) => normalizeStockCode(t.code) === normalizeStockCode(item.code))
         if (idx >= 0) {
-          // P10(SSOT) + P22(데이터 정합성): sectorStocks가 실시간 데이터 단일 소스.
-          // sectorStocks 누락 시 incoming 실시간 필드 유지 — applyBuyTargetsUpdate 결합 패턴과 동일 (P23 일관성).
-          const sectorStock = state.sectorStocks[normalizeStockCode(item.code)]
           // P10: news_boost/news_boost_title은 news-hit 이벤트가 단일 전달 경로.
           //   백엔드 changed delta는 _BUY_TARGET_REALTIME_KEYS에 의해 news_boost를 pop 제거하므로
           //   item에 해당 키가 없음. 객체 통째 교체 시 undefined로 소거되면 📰 표시가 사라짐 (P21 위반).
           //   applyBuyTargetsUpdate prevTitleByCode 보존 패턴과 대칭 — 기존 값 보존 (P23 일관성).
           const prev = buyTargets[idx]
-          if (sectorStock) {
-            buyTargets[idx] = {
-              ...item,
-              cur_price: sectorStock.cur_price,
-              change: sectorStock.change,
-              change_rate: sectorStock.change_rate,
-              strength: sectorStock.strength,
-              trade_amount: sectorStock.trade_amount,
-              news_boost: prev.news_boost,
-              news_boost_title: prev.news_boost_title,
-            }
-          } else {
-            buyTargets[idx] = {
-              ...item,
-              news_boost: prev.news_boost,
-              news_boost_title: prev.news_boost_title,
-            }
+          buyTargets[idx] = {
+            ...item,
+            news_boost: prev.news_boost,
+            news_boost_title: prev.news_boost_title,
           }
         }
       }
     }
     if (added && added.length > 0) {
-      // P10(SSOT) + P22(데이터 정합성): sectorStocks가 실시간 데이터 단일 소스.
-      // sectorStocks 누락 시 incoming 실시간 필드 유지 — applyBuyTargetsUpdate 결합 패턴과 동일 (P23 일관성).
-      const addedWithRealtime = added.map(item => {
-        const sectorStock = state.sectorStocks[normalizeStockCode(item.code)]
-        if (sectorStock) {
-          return {
-            ...item,
-            cur_price: sectorStock.cur_price,
-            change: sectorStock.change,
-            change_rate: sectorStock.change_rate,
-            strength: sectorStock.strength,
-            trade_amount: sectorStock.trade_amount,
-          }
-        }
-        return { ...item }
-      })
-      buyTargets = buyTargets === state.buyTargets ? [...buyTargets, ...addedWithRealtime] : [...buyTargets, ...addedWithRealtime]
+      // P10(SSOT): buyTargets는 정적 스코어만 보관 — incoming을 그대로 사용.
+      const addedItems = added.map(item => ({ ...item }))
+      buyTargets = buyTargets === state.buyTargets ? [...buyTargets, ...addedItems] : [...buyTargets, ...addedItems]
     }
     if (buyTargets === state.buyTargets) return state
     rebuildBuyTargetIndex(buyTargets)
@@ -797,74 +716,11 @@ export function applySectorScores(data: SectorScoresEvent): void {
   }
 }
 
-/* ── sector-stocks-refresh: 필터 변경 시 종목 목록 교체 ── */
-// P10(SSOT) + P22(데이터 정합성): sectorStocks가 실시간 시세의 단일 진실 소스.
-// buyTargets의 실시간 필드(cur_price/change/change_rate/strength/trade_amount)는
-// DataTable의 O(1) updateItemByKey 갱신을 위한 파생 캐시이므로, sectorStocks 교체 시
-// 새 기준점으로 재결합해야 다음 틱 전까지 stale 값이 남지 않는다.
-// (buy-targets-delta 이벤트가 이미 동일한 결합 패턴을 사용 — P23 일관성)
-
-/** buyTargets 요소의 실시간 필드를 sectorStocks 기준으로 in-place 재결합 */
-function rebindBuyTargetsRealtime(
-  buyTargets: StockScore[],
-  sectorStocks: Record<string, SectorStock>,
-): boolean {
-  let changed = false
-  for (let i = 0; i < buyTargets.length; i++) {
-    const t = buyTargets[i]
-    const ss = sectorStocks[normalizeStockCode(t.code)]
-    if (!ss) continue
-    if (t.cur_price !== ss.cur_price) { t.cur_price = ss.cur_price; changed = true }
-    if (t.change !== ss.change) { t.change = ss.change; changed = true }
-    if (t.change_rate !== ss.change_rate) { t.change_rate = ss.change_rate; changed = true }
-    if (t.strength !== ss.strength) { t.strength = ss.strength; changed = true }
-    if (t.trade_amount !== ss.trade_amount) { t.trade_amount = ss.trade_amount; changed = true }
-  }
-  return changed
-}
-
-export function applySectorStocksRefresh(data: { stocks: SectorStock[]; freshness?: FreshnessMetadata }): void {
-  if (data.freshness && !isFreshnessNewer(data.freshness)) return
-  if (data.freshness) recordFreshness(data.freshness)
-  const stocks = data.stocks ?? []
-  const newRecord = stocksToMap(stocks)
-  hotStore.setState((state) => {
-    // buyTargets 실시간 필드를 새 sectorStocks 기준으로 재결합
-    // (in-place mutation — DataTable currentRows 객체 참조 유지, O(1) 갱신 경로 보존)
-    rebindBuyTargetsRealtime(state.buyTargets, newRecord)
-    return { sectorStocks: newRecord }
-  })
-}
-
-/* ── sector-stocks-delta: 종목 목록 증분 갱신 (added/removed) ── */
-// P10(SSOT) + P22(데이터 정합성): sectorStocks 증분 교체 후 buyTargets 실시간 필드도
-// 새 기준으로 재결합. removed 종목이 buyTargets에 있으면 sectorStocks에서 사라져
-// 다음 틱에서도 갱신 불가 → stale 잔류 방지. applySectorStocksRefresh와 동일 계약.
-export function applySectorStocksDelta(data: { added: SectorStock[]; removed: string[]; freshness?: FreshnessMetadata }): void {
-  if (data.freshness && !isFreshnessNewer(data.freshness)) return
-  if (data.freshness) recordFreshness(data.freshness)
-  const added = data.added ?? []
-  const removed = data.removed ?? []
-  if (added.length === 0 && removed.length === 0) return
-  hotStore.setState((state) => {
-    let sectorStocks = state.sectorStocks
-    if (removed.length > 0) {
-      sectorStocks = { ...sectorStocks }
-      for (const code of removed) {
-        delete sectorStocks[normalizeStockCode(code)]
-      }
-    }
-    if (added.length > 0) {
-      sectorStocks = { ...sectorStocks, ...stocksToMap(added) }
-    }
-    if (sectorStocks === state.sectorStocks) return state
-    // buyTargets 실시간 필드를 갱신된 sectorStocks 기준으로 재결합
-    // (removed 종목은 sectorStocks에 없으므로 rebindBuyTargetsRealtime이 스킵 —
-    //  buyTargets에서의 제거는 buy-targets-delta 이벤트가 담당하므로 여기서 보존)
-    rebindBuyTargetsRealtime(state.buyTargets, sectorStocks)
-    return { sectorStocks }
-  })
-}
+/* ── master-cache-snapshot/delta: 마스터 종목 캐시 갱신 ── */
+// P10(SSOT): masterStocks가 실시간 시세의 단일 진실 소스 (백엔드 master_stocks_cache 프론트 사본).
+// buyTargets는 정적 스코어만 보관하므로 masterStocks 교체 시 재결합 불필요 — 동기화 로직 제거 (P22 강화).
+// applyMasterStocksSnapshot은 위(applyMasterStocksSnapshot 함수)에서 정의 — 페이지 구독 신청 시 호출.
+// applyMasterStocksDelta는 위(applyMasterStocksDelta 함수)에서 정의 — 호가·PGM 필드 부분 갱신.
 
 /* ── sell-history-update: 매도 내역 갱신 ── */
 export function applySellHistoryUpdate(data: { sell_history: Record<string, unknown>[]; freshness?: FreshnessMetadata }): void {
@@ -889,7 +745,10 @@ export function applyBuyHistoryUpdate(data: { buy_history: Record<string, unknow
 
 /* ── initial-snapshot (hotStore): 실시간 데이터 초기화 ── */
 export function applyInitialSnapshotHot(data: Record<string, unknown>): void {
-  const stocks = (data.sector_stocks as SectorStock[]) ?? []
+  // 백엔드 initial-snapshot의 sector_stocks 키는 빈 배열로 전송됨 (engine_initial_data.py:65).
+  // 키명은 백엔드가 아직 sector_stocks로 유지하므로 그대로 읽되 타입만 MasterStock[] 캐스팅.
+  // 실제 데이터는 master-cache-snapshot 이벤트(페이지 구독 신청 시)로 별도 수신.
+  const stocks = (data.sector_stocks as MasterStock[]) ?? []
   const scores = (data.sector_scores as SectorScoreRow[]) ?? []
   const newBuyTargets = ((data.buy_targets as StockScore[]) ?? []).map(t => ({
     ...t,
@@ -899,14 +758,12 @@ export function applyInitialSnapshotHot(data: Record<string, unknown>): void {
   const accountSnap = (data.account as AccountSnapshot) ?? null
   rebuildBuyTargetIndex(newBuyTargets)
   rebuildPositionIndex(newPositions)
-  // sector_stocks는 설계상 initial-snapshot에서 빈 배열로 전송됨 (engine_initial_data.py 참조).
-  // 실제 데이터는 sector-stocks-refresh 이벤트로 별도 수신.
   // 재연결 시 빈 배열로 기존 데이터를 리셋하지 않도록 기존 값을 보존한다.
   const prev = hotStore.getState()
-  const prevSectorStocks = prev.sectorStocks
-  const newSectorStocks = stocks.length > 0 ? stocksToMap(stocks) : prevSectorStocks
+  const prevMasterStocks = prev.masterStocks
+  const newMasterStocks = stocks.length > 0 ? stocksToMap(stocks) : prevMasterStocks
   // P22(데이터 정합성) + P23(일관성): sellHistory/buyHistory/dailySummary도
-  // sectorStocks와 동일하게, 재연결 시 빈 데이터로 기존 정상 값을 리셋하지 않도록 보존.
+  // masterStocks와 동일하게, 재연결 시 빈 데이터로 기존 정상 값을 리셋하지 않도록 보존.
   // 빈 배열은 "데이터 없음"이 아니라 "초기 데이터 미준비/일시적 조회 실패"일 수 있으므로
   // 기존 값을 권위 있는 값으로 유지하고 다음 거래 이벤트로 갱신.
   const newSellHistory = (data.sell_history as Record<string, unknown>[]) ?? []
@@ -917,7 +774,7 @@ export function applyInitialSnapshotHot(data: Record<string, unknown>): void {
     account: accountSnap,
     positionCount: accountSnap?.position_count || newPositions.length,
     positions: newPositions,
-    sectorStocks: newSectorStocks,
+    masterStocks: newMasterStocks,
     sectorScores: scores,
     buyTargets: newBuyTargets,
     sellHistory: newSellHistory.length > 0 ? newSellHistory : prev.sellHistory,

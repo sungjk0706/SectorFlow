@@ -16,6 +16,13 @@ import {
   COLOR,
 } from '../components/common/ui-styles'
 import type { StockScore } from '../types'
+import { hotStore, normalizeStockCode } from '../stores/hotStore'
+
+/** 매수후보 종목의 실시간 시세를 masterStocks(단일 진실 소스)에서 조회.
+ *  buyTargets는 정적 스코어만 보관 — 실시간 필드는 masterStocks 참조 (P10 SSOT). */
+function getMasterStock(code: string) {
+  return hotStore.getState().masterStocks[normalizeStockCode(code)]
+}
 
 /* ── ColumnDef 배열 (12개 컬럼) ── */
 export const COLUMNS: ColumnDef<StockScore>[] = [
@@ -35,8 +42,11 @@ export const COLUMNS: ColumnDef<StockScore>[] = [
   {
     key: 'cur_price', label: '현재가', align: 'right', type: 'price', flash: true,
     render: (t) => {
-      const cell = createPriceCell(t.cur_price != null ? Number(t.cur_price) : null, t.change_rate != null ? Number(t.change_rate) : null)
-      if (t.high_5d && t.high_5d > 0 && t.cur_price != null && Number(t.cur_price) > t.high_5d) {
+      const ms = getMasterStock(t.code)
+      const curPrice = ms?.cur_price
+      const changeRate = ms?.change_rate
+      const cell = createPriceCell(curPrice != null ? Number(curPrice) : null, changeRate != null ? Number(changeRate) : null)
+      if (t.high_5d && t.high_5d > 0 && curPrice != null && Number(curPrice) > t.high_5d) {
         cell.style.justifyContent = 'space-between'
         const icon = document.createElement('span')
         icon.textContent = '▲'
@@ -48,13 +58,21 @@ export const COLUMNS: ColumnDef<StockScore>[] = [
       return cell
     },
   },
-  makeChangeColumn<StockScore>((t) => t.change != null ? Number(t.change) : null),
-  makeRateColumn<StockScore>((t) => t.change_rate != null ? Number(t.change_rate) : null),
+  makeChangeColumn<StockScore>((t) => {
+    const ms = getMasterStock(t.code)
+    return ms?.change != null ? Number(ms.change) : null
+  }),
+  makeRateColumn<StockScore>((t) => {
+    const ms = getMasterStock(t.code)
+    return ms?.change_rate != null ? Number(ms.change_rate) : null
+  }),
   {
     key: 'order_ratio', label: '호가잔량비(%)', align: 'right', type: 'order_ratio', maxWidth: 88,
     render: (t) => {
-      if (!t.order_ratio) return ''
-      const [bid, ask] = t.order_ratio
+      const ms = getMasterStock(t.code)
+      const orderRatio = ms?.order_ratio
+      if (!orderRatio) return ''
+      const [bid, ask] = orderRatio
       if (bid <= 0 && ask <= 0) return ''
       const wrap = document.createElement('div')
       Object.assign(wrap.style, { display: 'flex', justifyContent: 'space-between', width: '100%' })
@@ -84,16 +102,18 @@ export const COLUMNS: ColumnDef<StockScore>[] = [
   {
     key: 'program_net_buy', label: '프.순.매(백)', align: 'right', type: 'program_net', minWidth: 76, maxWidth: 76,
     render: (t) => {
-      if (t.program_net_buy === undefined || t.program_net_buy === null) return ''
+      const ms = getMasterStock(t.code)
+      const programNetBuy = ms?.program_net_buy
+      if (programNetBuy === undefined || programNetBuy === null) return ''
       // tval이 금액(원)이라면 백만 원 단위로 환산, LS증권 대금 포맷을 고려하여 백만 단위로 나눈 후 1자리 소수점 표시
-      const valMillions = t.program_net_buy / 1000000;
+      const valMillions = programNetBuy / 1000000;
       const span = document.createElement('span')
       // 1자리 소수점 및 콤마 포맷 (Intl.NumberFormat 사용)
       const formatter = new Intl.NumberFormat('ko-KR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
       span.textContent = formatter.format(valMillions);
-      if (t.program_net_buy > 0) {
+      if (programNetBuy > 0) {
         span.style.color = COLOR.up
-      } else if (t.program_net_buy < 0) {
+      } else if (programNetBuy < 0) {
         span.style.color = COLOR.down
       } else {
         span.style.color = COLOR.tertiary
@@ -126,7 +146,9 @@ export const COLUMNS: ColumnDef<StockScore>[] = [
     key: 'high_5d', label: '5일고가', align: 'right', type: 'high', maxWidth: 98,
     render: (t) => {
       const cell = createNumberCell(Number(t.high_5d) || 0)
-      if (t.high_5d && t.high_5d > 0 && t.cur_price != null && Number(t.cur_price) > t.high_5d) {
+      const ms = getMasterStock(t.code)
+      const curPrice = ms?.cur_price
+      if (t.high_5d && t.high_5d > 0 && curPrice != null && Number(curPrice) > t.high_5d) {
         cell.style.backgroundColor = COLOR.successBg
       }
       return cell

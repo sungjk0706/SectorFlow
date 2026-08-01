@@ -4,7 +4,7 @@
 
 import { type ColumnDef, type GroupRow as DataTableGroupRow, type TableRow } from '../components/common/data-table'
 import { createStockNameColumn, makeSeqColumn, makeCodeColumn, makePriceColumn, makeChangeColumn, makeRateColumn, makeStrengthColumn, makeAmountColumn, makeAvgAmountColumn, COLOR } from '../components/common/ui-styles'
-import { type SectorStock, type SectorScoreRow } from '../types'
+import { type MasterStock, type SectorScoreRow } from '../types'
 // filterStocksBySearch는 범용 유틸 → utils/stock-search.ts로 이동 (F03-10, P23)
 
 /* ── ColumnDef 배열 (10개 컬럼) ── */
@@ -53,7 +53,7 @@ interface GroupRowItem {
 
 export interface DataRowItem {
   type: 'data'
-  stock: SectorStock
+  stock: MasterStock
   opacity: string
   eliminated: boolean
   seq: number
@@ -64,7 +64,7 @@ export type RowItem = GroupRowItem | DataRowItem
 /* ── 업종명 검색 필터링 ── */
 
 export function filterSectorsByName(
-  stocks: Record<string, SectorStock>,
+  stocks: Record<string, MasterStock>,
   query: string,
 ): Set<string> | null {
   const q = query.trim().toLowerCase()
@@ -99,13 +99,13 @@ export function mapRowsToTableRows(rows: RowItem[]): TableRow<DataRowItem>[] {
 /* ── rows 계산 ── */
 
 export function computeRows(
-  stockMap: Record<string, SectorStock>,
+  stockMap: Record<string, MasterStock>,
   sectorScores: SectorScoreRow[],
   maxTargets: number,
   selectedSector: string | null,
   matchedCodes: Set<string> | null,
   matchedSectors: Set<string> | null,
-  rowCache: Map<string, { stock: SectorStock; row: DataRowItem }>,
+  rowCache: Map<string, { stock: MasterStock; row: DataRowItem }>,
   marketPhase: { krx: string; nxt: string; is_nxt_only?: boolean },
 ): RowItem[] {
   // 업종별 종목 그룹핑

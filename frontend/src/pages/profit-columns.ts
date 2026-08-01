@@ -14,11 +14,11 @@ export const BUY_COLS: ColumnDef<Record<string, unknown>>[] = [
   createStockNameColumn<Record<string, unknown>>(
     (r: Record<string, unknown>) => {
       const state = hotStore.getState()
-      const sectorStock = state.sectorStocks[normalizeStockCode(String(r.stk_cd ?? ''))]
+      const masterStock = state.masterStocks[normalizeStockCode(String(r.stk_cd ?? ''))]
       return {
         name: String(r.stk_nm ?? ''),
-        market_type: sectorStock?.market_type,
-        nxt_enable: sectorStock?.nxt_enable
+        market_type: masterStock?.market_type,
+        nxt_enable: masterStock?.nxt_enable
       }
     }
   ),
@@ -38,11 +38,11 @@ export const SELL_COLS: ColumnDef<Record<string, unknown>>[] = [
   createStockNameColumn<Record<string, unknown>>(
     (r: Record<string, unknown>) => {
       const state = hotStore.getState()
-      const sectorStock = state.sectorStocks[normalizeStockCode(String(r.stk_cd ?? ''))]
+      const masterStock = state.masterStocks[normalizeStockCode(String(r.stk_cd ?? ''))]
       return {
         name: String(r.stk_nm ?? ''),
-        market_type: sectorStock?.market_type,
-        nxt_enable: sectorStock?.nxt_enable
+        market_type: masterStock?.market_type,
+        nxt_enable: masterStock?.nxt_enable
       }
     }
   ),

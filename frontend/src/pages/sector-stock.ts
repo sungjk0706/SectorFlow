@@ -3,18 +3,18 @@
 // 순수 로직(컬럼 정의, 행 계산, 검색 필터)은 sector-stock-rows.ts에 분리 (P24 단순성)
 
 import { createDataTable, type DataTableApi } from '../components/common/data-table'
-import { hotStore } from '../stores/hotStore'
+import { hotStore, normalizeStockCode } from '../stores/hotStore'
 import { uiStore, setSelectedSector } from '../stores/uiStore'
 import { notifyPageActive, notifyPageInactive } from '../api/ws'
 import { api } from '../api/client'
-import { applySectorScoresSnapshot, applySectorStocksSnapshot } from '../stores/hotStore'
+import { applySectorScoresSnapshot, applyMasterStocksSnapshot } from '../stores/hotStore'
 import { refreshPageData, createPageRefreshStatus } from '../utils/page-refresh'
 import { createCardTitle } from '../components/common/card-title'
 import { createActionButton } from '../components/common/button'
 import { createSearchInput } from '../components/common/search-input'
 import { createMarketCountRow, type MarketCountRowHandle } from '../components/common/market-count-row'
 import { FONT_SIZE, FONT_WEIGHT, COLOR, RADIUS } from '../components/common/ui-styles'
-import { type SectorStock, DEFAULT_SECTOR_MAX_TARGETS } from '../types'
+import { type MasterStock, DEFAULT_SECTOR_MAX_TARGETS } from '../types'
 import { filterStocksBySearch } from '../utils/stock-search'
 import {
   COLUMNS,
@@ -39,7 +39,7 @@ class SectorStockTable extends HTMLElement {
   private sectorSearchTerm = ''
   private currentMatchedCodes: Set<string> | null = null
   private currentMatchedSectors: Set<string> | null = null
-  private rowCache = new Map<string, { stock: SectorStock; row: DataRowItem }>()
+  private rowCache = new Map<string, { stock: MasterStock; row: DataRowItem }>()
   private onRealDataTick: ((e: Event) => void) | null = null
 
   // DOM 참조
@@ -63,14 +63,14 @@ class SectorStockTable extends HTMLElement {
   private buildRows(): RowItem[] {
     const state = hotStore.getState()
     const uiState = uiStore.getState()
-    this.currentMatchedCodes = filterStocksBySearch(Object.values(state.sectorStocks), this.searchTerm)
-    this.currentMatchedSectors = filterSectorsByName(state.sectorStocks, this.sectorSearchTerm)
+    this.currentMatchedCodes = filterStocksBySearch(Object.values(state.masterStocks), this.searchTerm)
+    this.currentMatchedSectors = filterSectorsByName(state.masterStocks, this.sectorSearchTerm)
     const rawTargets = uiState.settings?.sector_max_targets
     const maxTargets = typeof rawTargets === 'number' ? rawTargets : DEFAULT_SECTOR_MAX_TARGETS
     // 5거래일 평균 거래대금 필터링은 백엔드에서 수행 (단일 소스 진리)
 
     return computeRows(
-      state.sectorStocks,
+      state.masterStocks,
       state.sectorScores,
       maxTargets,
       uiState.selectedSector,
@@ -91,7 +91,7 @@ class SectorStockTable extends HTMLElement {
   private updateUI(rows: RowItem[]): void {
     const state = hotStore.getState()
     const uiState = uiStore.getState()
-    const stocks = Object.values(state.sectorStocks)
+    const stocks = Object.values(state.masterStocks)
     const stockCount = stocks.length
     const krxCount = stocks.filter(s => !s.nxt_enable).length
     const nxtCount = stocks.filter(s => s.nxt_enable).length
@@ -339,7 +339,7 @@ class SectorStockTable extends HTMLElement {
   private setupSubscriptions(): void {
     const initHot = hotStore.getState()
     const initUi = uiStore.getState()
-    let prevSectorStocks = initHot.sectorStocks
+    let prevMasterStocks = initHot.masterStocks
     let prevSectorScores = initHot.sectorScores
     let prevSelectedSector = initUi.selectedSector
     let prevWsSubscribeStatus = initUi.wsSubscribeStatus
@@ -351,7 +351,7 @@ class SectorStockTable extends HTMLElement {
       const state = hotStore.getState()
       const uiState = uiStore.getState()
       const changed =
-        state.sectorStocks !== prevSectorStocks ||
+        state.masterStocks !== prevMasterStocks ||
         state.sectorScores !== prevSectorScores ||
         uiState.selectedSector !== prevSelectedSector ||
         uiState.wsSubscribeStatus !== prevWsSubscribeStatus ||
@@ -367,7 +367,7 @@ class SectorStockTable extends HTMLElement {
         if (this.sectorSearchInput) { this.sectorSearchInput.clear(); this.sectorSearchTerm = '' }
       }
 
-      prevSectorStocks = state.sectorStocks
+      prevMasterStocks = state.masterStocks
       prevSectorScores = state.sectorScores
       prevSelectedSector = uiState.selectedSector
       prevWsSubscribeStatus = uiState.wsSubscribeStatus
@@ -463,7 +463,7 @@ class SectorStockTable extends HTMLElement {
         policy: 'swr',
         isActive: () => this._mounted,
         fetcher: () => api.getSectorStocks('sector-ranking'),
-        apply: response => applySectorStocksSnapshot(response.data, response.freshness!),
+        apply: response => applyMasterStocksSnapshot({ stocks: response.data, freshness: response.freshness }),
       }),
       refreshPageData({
         key: 'sector-stock:scores',
@@ -485,6 +485,11 @@ class SectorStockTable extends HTMLElement {
       if (!this._mounted || !this.refreshStatus) return
       const failed = results.some(result => result.status === 'error')
       this.refreshStatus.set(failed ? '업종 데이터를 갱신하지 못했습니다' : '', !failed)
+      // 페이지별 구독 Push 모델 — 필터 통과 종목 코드로 구독 신청 (백엔드가 해당 종목만 push)
+      if (!failed) {
+        const filteredCodes = Object.keys(hotStore.getState().masterStocks).map(c => normalizeStockCode(c))
+        notifyPageActive('sector-ranking', filteredCodes)
+      }
     })
   }
 

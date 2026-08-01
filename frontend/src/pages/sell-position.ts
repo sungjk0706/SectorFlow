@@ -31,24 +31,24 @@ const COLUMNS: ColumnDef<Position>[] = [
   createStockNameColumn<Position>(
     (p: Position) => {
       const state = hotStore.getState()
-      const sectorStock = state.sectorStocks[normalizeStockCode(p.stk_cd)]
+      const masterStock = state.masterStocks[normalizeStockCode(p.stk_cd)]
       return {
         name: p.stk_nm,
-        market_type: sectorStock?.market_type,
-        nxt_enable: sectorStock?.nxt_enable
+        market_type: masterStock?.market_type,
+        nxt_enable: masterStock?.nxt_enable
       }
     }
   ),
   {
-    // 표시 소스: sectorStocks(master_stocks_cache 기반) — 매수후보·업종별 종목과 동일 소스 (P23 일관성).
+    // 표시 소스: masterStocks(백엔드 master_stocks_cache 프론트 사본) — 매수후보·업종별 종목과 동일 소스 (P23 일관성).
     // 계산(pnl/rate/요약)은 computePositionValuation가 positions.cur_price를 계속 사용 (역할 분리 — 설계서 결정 1·2).
-    // sectorStocks에 종목이 없거나 cur_price가 null/undefined → '-' (P20 폴백 금지 — p.cur_price 참조 안 함).
+    // masterStocks에 종목이 없거나 cur_price가 null/undefined → '-' (P20 폴백 금지 — p.cur_price 참조 안 함).
     key: 'cur_price', label: '현재가', align: 'right', type: 'price', flash: true,
     render: (p) => {
       const state = hotStore.getState()
-      const sectorStock = state.sectorStocks[normalizeStockCode(p.stk_cd)]
-      const curPrice = sectorStock?.cur_price
-      const changeRate = sectorStock?.change_rate
+      const masterStock = state.masterStocks[normalizeStockCode(p.stk_cd)]
+      const curPrice = masterStock?.cur_price
+      const changeRate = masterStock?.change_rate
       if (curPrice == null) return createPriceCell(null, null)
       return createPriceCell(Number(curPrice), changeRate != null ? Number(changeRate) : null)
     },
@@ -143,12 +143,16 @@ async function refreshSellPositionPage(): Promise<void> {
   pageDataReady = true
   refreshStatus?.set('', false)
   renderSummary()
-  dataTable?.updateRows(hotStore.getState().positions)
+  const positions = hotStore.getState().positions
+  dataTable?.updateRows(positions)
+  // 페이지별 구독 Push 모델 — 보유종목 코드로 구독 신청 (백엔드가 해당 종목만 push)
+  const positionCodes = positions.map(p => normalizeStockCode(p.stk_cd))
+  notifyPageActive('sell-position', positionCodes)
 }
 
 /* ── hotStore 구독 참조 상태 — onHotStoreChange 참조 비교용 (mount 시 초기화, unmount 시 reset) ── */
 let _prevPositions: HotState['positions'] = []
-let _prevSectorStocks: HotState['sectorStocks'] = {}
+let _prevMasterStocks: HotState['masterStocks'] = {}
 let _prevAccount: HotState['account'] = null
 
 /* ── 보유 종목 요약 행 참조 ── */
@@ -157,7 +161,7 @@ let summaryPnlBadge: BadgeHandle | null = null
 let summaryRateBadge: BadgeHandle | null = null
 let summaryStatusBadge: BadgeHandle | null = null
 
-/** 보유 종목 요약 행 렌더 — positions + sectorStocks에서 직접 계산 (개별 종목 행과 동일 소스·공식)
+/** 보유 종목 요약 행 렌더 — positions + masterStocks에서 직접 계산 (개별 종목 행과 동일 소스·공식)
  *  P21/P23: cur_price null인 보유종목 있으면 평가금액/평가손익/수익률 '-' 표시 (개별 행과 동일 null 패턴) */
 function renderSummary(): void {
   if (!pageDataReady) {
@@ -253,27 +257,33 @@ function buildTableArea(root: HTMLElement): void {
 /* ── 구독 콜백 — mount에서 등록 (P24 책임 분할) ── */
 
 /** hotStore 구독 콜백 — reference equality guard + rAF 배칭
- *  account 변경 시 요약 행 즉시 갱신, positions/sectorStocks 변경 시 rAF로 updateRows */
+ *  account 변경 시 요약 행 즉시 갱신, positions/masterStocks 변경 시 rAF로 updateRows */
 function onHotStoreChange(state: HotState): void {
   if (!pageDataReady) return
   const positionsChanged = state.positions !== _prevPositions
-  const sectorStocksChanged = state.sectorStocks !== _prevSectorStocks
+  const masterStocksChanged = state.masterStocks !== _prevMasterStocks
   const accountChanged = state.account !== _prevAccount
 
   _prevPositions = state.positions
-  _prevSectorStocks = state.sectorStocks
+  _prevMasterStocks = state.masterStocks
   _prevAccount = state.account
 
-  // account 또는 sectorStocks 변경 시 요약 행 즉시 갱신 (rAF 배칭 불필요 — 텍스트 4개만 교체)
-  // sectorStocks 변경 시 갱신 필수 — cur_price null → 실시간 틱 도달 후 정상 값 표시 (P21 투명성)
-  if (accountChanged || sectorStocksChanged) {
+  // account 또는 masterStocks 변경 시 요약 행 즉시 갱신 (rAF 배칭 불필요 — 텍스트 4개만 교체)
+  // masterStocks 변경 시 갱신 필수 — cur_price null → 실시간 틱 도달 후 정상 값 표시 (P21 투명성)
+  if (accountChanged || masterStocksChanged) {
     renderSummary()
   }
 
-  // positions 또는 sectorStocks 변경 시 updateRows 실행
-  // sectorStocks 변경 시에도 createStockNameColumn의 market_type/nxt_enable 배지가 갱신되어야 함
-  if (!positionsChanged && !sectorStocksChanged) {
+  // positions 또는 masterStocks 변경 시 updateRows 실행
+  // masterStocks 변경 시에도 createStockNameColumn의 market_type/nxt_enable 배지가 갱신되어야 함
+  if (!positionsChanged && !masterStocksChanged) {
     return
+  }
+
+  // positions 변경 시 재구독 — 신규 보유종목(매수 체결) 구독 추가, 매도 종목 구독 해제
+  if (positionsChanged) {
+    const positionCodes = state.positions.map(p => normalizeStockCode(p.stk_cd))
+    notifyPageActive('sell-position', positionCodes)
   }
 
   // WS 상태 배지는 전역 싱글톤이 자동 업데이트하므로 수동 업데이트 제거
@@ -338,7 +348,7 @@ function mount(container: HTMLElement): void {
   // 초기 데이터
   const state = hotStore.getState()
   _prevPositions = state.positions
-  _prevSectorStocks = state.sectorStocks
+  _prevMasterStocks = state.masterStocks
   _prevAccount = state.account
   dataTable?.updateRows([])
   renderSummary()
@@ -378,7 +388,7 @@ function unmount(): void {
   summaryRateBadge = null
   summaryStatusBadge = null
   _prevPositions = []
-  _prevSectorStocks = {}
+  _prevMasterStocks = {}
   _prevAccount = null
   pageDataReady = false
   refreshStatus = null
