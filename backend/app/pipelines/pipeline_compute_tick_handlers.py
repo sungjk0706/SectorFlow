@@ -351,7 +351,7 @@ def _recompute_boost_scores_for_hits(ss, hit_codes: list[str], settings: dict) -
     """hit 종목의 boost_score 재계산 — news-hit payload용 (수정안 3, P10 SSOT).
 
     calculate_boost_score() 전체 재호출로 4개 가산점 정확 합산.
-    news_boost_cache 갱신 후 호출되므로 뉴스 가산점 포함.
+    master_stocks_cache[code]["news_boost"] 갱신 후 호출되므로 뉴스 가산점 포함.
     P7: hit_codes만 재계산 (단일 뉴스 매칭 수 = 소수), 매수후보 전체 순회 아님.
     P23: build_buy_targets_from_settings()와 동일한 캐시 조회·설정 매핑 패턴.
     """
@@ -394,12 +394,13 @@ def _recompute_boost_scores_for_hits(ss, hit_codes: list[str], settings: dict) -
 
 
 async def _handle_nws_news(item: dict) -> None:
-    """NWS 실시간 뉴스 처리 — 호재 키워드 매칭 시 news_boost_cache 갱신 (5분 TTL) + news-hit 브로드캐스트.
+    """NWS 실시간 뉴스 처리 — 호재 키워드 매칭 시 master_stocks_cache[code] 갱신 (5분 TTL) + news-hit 브로드캐스트.
 
     JIF와 동일하게 tick_queue를 우회하여 engine_ws_dispatch → 본 핸들러 직접 호출 (P23).
     P7: 매 뉴스마다 매수후보 전체 순회 금지 — buy_target_codes set O(1) 조회.
     P10: news_boost 단일 전달 경로 = news-hit 이벤트 (buy-targets-delta에서는 제외).
         boost_score도 본 이벤트로 즉시 갱신 (10초 재계산 루프 대기 없이 실시간 반영).
+        news_boost는 master_stocks_cache[code] 필드로 통합 (별도 캐시 제거).
     P13: 키워드 사전·boost_news_on 토글은 메모리 상주 (engine_state + integrated_system_settings_cache).
     P20: code 빈 뉴스는 폴백 없이 스킵 + debug 로깅. 종목명 부재 시 빈 문자열(명시적 값).
     P21: boost_news_on=False 시 감지 자체 수행 안 함 — 📰 안 뜸, 알림 안 옴, 가산점 안 더함 (3동작 완전 일치).
@@ -448,15 +449,20 @@ async def _handle_nws_news(item: dict) -> None:
         score = engine_state.state.news_boost_score
         now = time.monotonic()
         hit_codes = []
+        master_cache = engine_state.state.master_stocks_cache
         for code in codes:
             if code in buy_target_codes:  # O(1) 조회 (P7)
-                engine_state.state.news_boost_cache[code] = (score, now)
+                # P10 SSOT — news_boost를 master_stocks_cache 필드로 통합
+                entry = master_cache.get(code)
+                if entry is not None:
+                    entry["news_boost"] = score
+                    entry["news_boost_ts"] = now
                 hit_codes.append(code)
         if hit_codes:
             logger.info("[연산] 뉴스 가산점 부여 — 종목=%s 키워드 매칭: %s", hit_codes, title[:60])
             # 수정안 3: hit 종목의 boost_score 즉시 재계산 (10초 루프 대기 없이 실시간 반영, P10 SSOT).
-            # calculate_boost_score() 전체 재호출 — 4개 가산점 정확 합산, news_boost_cache 갱신 후이므로
-            # 뉴스 가산점 포함. hit 종목만 재계산 (P7 — hit_codes는 단일 뉴스 매칭 수, 소수).
+            # calculate_boost_score() 전체 재호출 — 4개 가산점 정확 합산, master_stocks_cache[code]["news_boost"]
+            # 갱신 후이므로 뉴스 가산점 포함. hit 종목만 재계산 (P7 — hit_codes는 단일 뉴스 매칭 수, 소수).
             boost_scores = _recompute_boost_scores_for_hits(ss, hit_codes, settings)
             # news-hit WS 이벤트 브로드캐스트 — news_boost + boost_score 단일 전달 경로 (P10 SSOT).
             # buy-targets-delta에서는 news_boost 제외(세션 1)하고 본 이벤트로만 전달.

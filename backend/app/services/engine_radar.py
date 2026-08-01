@@ -24,19 +24,30 @@ def get_program_net_buy_cache() -> dict[str, int]:
 
 
 def get_news_boost_cache() -> dict[str, float]:
-    """뉴스 가산점 캐시 반환 — 만료된 항목 제외 (5분 TTL).
+    """뉴스 가산점 반환 — master_stocks_cache[code]["news_boost"] 기반, 만료된 항목 제외 (5분 TTL).
 
+    P10 SSOT: news_boost는 master_stocks_cache 필드로 통합 (별도 캐시 제거).
     P7: 캐시 크기는 매수후보 종목 수(수십~수백)로 제한. 만료 항목은 lazy 제거.
-    P20: 만료된 항목은 폴백 없이 제거 후 유효 항목만 반환.
+    P20: 만료된 항목은 폴백 없이 필드 null화 후 유효 항목만 반환.
     """
     import time
     now = time.monotonic()
     ttl = engine_state.state.news_boost_ttl_sec
-    cache = engine_state.state.news_boost_cache
-    expired = [cd for cd, (_s, ts) in cache.items() if now - ts > ttl]
-    for cd in expired:
-        del cache[cd]
-    return {cd: s for cd, (s, _ts) in cache.items()}
+    cache = engine_state.state.master_stocks_cache
+    result: dict[str, float] = {}
+    for cd, entry in cache.items():
+        ts = entry.get("news_boost_ts")
+        if ts is None:
+            continue
+        if now - ts > ttl:
+            # 만료 — 필드 null화 (P20 폴백 금지, 명시적 제거)
+            entry["news_boost"] = None
+            entry["news_boost_ts"] = None
+            continue
+        score = entry.get("news_boost")
+        if score is not None:
+            result[cd] = score
+    return result
 
 
 def get_orderbook_cache() -> dict[str, tuple[int, int]]:

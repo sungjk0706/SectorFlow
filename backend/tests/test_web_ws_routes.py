@@ -487,7 +487,8 @@ class TestSendInitialSnapshotDelayed:
         assert "engine-ready" in sent_events
         assert "stock-classification-changed" in sent_events
         assert "initial-snapshot" in sent_events
-        assert "sector-stocks-refresh" in sent_events
+        # sector-stocks-refresh 제거 — 마스터 캐시 단일 시세 소스 전환 (page-active → master-cache-snapshot)
+        assert "sector-stocks-refresh" not in sent_events
         assert "engine-status" in sent_events
 
     async def test_threshold_not_passed_skips_sector_scores(self):

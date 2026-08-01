@@ -97,7 +97,11 @@ async def build_initial_snapshot() -> dict:
 
 
 async def build_sector_stocks_payload() -> dict:
-    """sector-stocks-refresh 이벤트용 종목 데이터 페이로드를 조립한다."""
+    """sector-stocks-refresh 이벤트용 종목 데이터 페이로드를 조립한다.
+
+    DEPRECATED: 마스터 캐시 단일 시세 소스 전환 후 build_master_cache_snapshot 사용.
+    호환성 유지 — ws.py 초기 연결 시 여전히 호출됨 (4세션 프론트 전환 후 제거 예정).
+    """
     from backend.app.services.sector_data_provider import get_sector_stocks
     from backend.app.services.engine_account import get_positions, get_account_snapshot
 
@@ -113,6 +117,66 @@ async def build_sector_stocks_payload() -> dict:
 
     from backend.app.services.engine_account_notify import get_freshness
     return {"_v": 1, "stocks": filtered, "freshness": get_freshness("sector_stocks")}
+
+
+# ── 마스터 캐시 snapshot 필드 — 프론트 MasterStock 타입과 동일 ──────────────
+_MASTER_CACHE_FIELDS = (
+    "code", "name", "cur_price", "change", "change_rate", "strength",
+    "trade_amount", "sector", "avg_amt_5d", "market_type", "nxt_enable",
+    "order_ratio", "program_net_buy", "news_boost", "high_5d",
+)
+
+
+async def build_master_cache_snapshot(codes: list[str]) -> dict:
+    """master-cache-snapshot 이벤트용 페이로드 — 요청된 codes의 마스터 캐시 데이터.
+
+    마스터 캐시 단일 시세 소스 (설계 결정 1·3):
+      - 전 종목이 아닌 요청된 codes만 전송 (페이지별 구독, P24 단순성)
+      - 필터 미달 종목도 포함 (보유종목 052690 결함 해결 — 설계 9.1)
+      - 공통 실시간 데이터만 (시세·호가·PGM·뉴스), 매수 순위·차단·가산점 제외 (사용자 결정 3)
+
+    Args:
+        codes: 구독 신청한 종목 코드 리스트
+    """
+    from backend.app.core.sector_mapping import get_merged_sectors_batch
+    from backend.app.services.engine_symbol_utils import (
+        get_stock_market as _get_mkt,
+        is_nxt_enabled as _is_nxt,
+    )
+
+    cache = engine_state.state.master_stocks_cache
+    valid_codes = [c for c in codes if c and c in cache]
+    if not valid_codes:
+        return {"_v": 1, "stocks": []}
+
+    # 업종 배치 조회
+    sectors_map = await get_merged_sectors_batch(valid_codes)
+
+    stocks: list[dict] = []
+    for cd in valid_codes:
+        entry = cache[cd]
+        avg5d_million = int(entry.get("avg_5d_trade_amount", 0) or 0)
+        high5d = int(entry.get("high_5d_price", 0) or 0)
+        item = {
+            "code": cd,
+            "name": entry.get("name", ""),
+            "cur_price": entry.get("cur_price"),
+            "change": entry.get("change"),
+            "change_rate": entry.get("change_rate"),
+            "strength": entry.get("strength"),
+            "trade_amount": entry.get("trade_amount"),
+            "sector": sectors_map.get(cd, "미분류"),
+            "avg_amt_5d": avg5d_million // 100,  # 백만원 → 억 단위 (P23 일관성)
+            "market_type": _get_mkt(cd) or "",
+            "nxt_enable": _is_nxt(cd),
+            "order_ratio": entry.get("order_ratio"),
+            "program_net_buy": entry.get("program_net_buy"),
+            "news_boost": entry.get("news_boost"),
+            "high_5d": high5d,
+        }
+        stocks.append(item)
+
+    return {"_v": 1, "stocks": stocks}
 
 
 # ── 데이터 필드 필터링 ─────────────────────────────────────────────

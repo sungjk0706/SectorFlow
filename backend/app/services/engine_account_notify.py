@@ -371,43 +371,49 @@ async def notify_desktop_sector_refresh(*, force: bool = False) -> None:
 
 
 async def notify_orderbook_update(code: str, bid: int, ask: int) -> None:
-    """매수 후보 종목의 호가잔량 변경 시 프론트에 즉시 전송 (이벤트 기반)."""
-    payload = {"code": code, "bid": bid, "ask": ask}
-    await _safe_broadcast("orderbook-update", payload)
+    """호가잔량 변경 시 구독 페이지에 master-cache-delta 전송 (마스터 캐시 단일 시세 소스).
+
+    기존 orderbook-update 이벤트를 master-cache-delta로 대체 (설계 결정 3).
+    백엔드 master_stocks_cache 갱신은 호출부에서 이미 수행 — 본 함수는 전송만 담당.
+    """
+    from backend.app.web.ws_manager import ws_manager
+    await ws_manager.broadcast_to_code_subscribers(
+        "master-cache-delta",
+        {"code": code, "fields": {"order_ratio": [bid, ask]}},
+        code,
+    )
 
 
 async def notify_desktop_sector_stocks_refresh(*, force: bool = False) -> None:
-    """종목 목록 또는 데이터가 변경되었을 때 delta 또는 전체 리스트를 WS로 전송.
+    """종목 목록 또는 데이터가 변경되었을 때 구독 클라이언트에 master-cache-snapshot 전송.
+
+    마스터 캐시 단일 시세 소스 (설계 결정 1·3):
+      - 각 클라이언트의 구독 종목에 대해 master-cache-snapshot 전송
+      - 구독자가 없으면 전송 생략 (페이지별 구독 push 모델)
+      - 기존 sector-stocks-refresh/sector-stocks-delta 이벤트를 master-cache-snapshot으로 대체
 
     Args:
-        force: True 시 delta 계산 없이 전체 데이터 전송 (확정시세/5거래일 일봉 다운로드 등 전 종목 데이터 변경 시).
+        force: True 시 전 종목 데이터 변경 (확정시세/5거래일 일봉 다운로드 등).
+               새 모델에서는 구독 종목 snapshot 전송으로 동일 효과.
     """
+    from backend.app.web.ws_manager import ws_manager
+    from backend.app.services.engine_initial_data import build_master_cache_snapshot
+
+    # 각 클라이언트의 구독 종목에 대해 snapshot 전송
+    for ws, codes in list(ws_manager._client_subscribed_codes.items()):
+        if not codes or ws not in ws_manager._clients:
+            continue
+        try:
+            snapshot = await build_master_cache_snapshot(list(codes))
+            await ws_manager.send_to(ws, "master-cache-snapshot", snapshot)
+        except Exception as e:
+            logger.warning("[시스템] master-cache-snapshot 전송 실패: %s", e, exc_info=True)
+
+    # notify_cache 갱신 (기존 호환성 — delta 기준점 유지)
     from backend.app.services.sector_data_provider import get_sector_stocks
     stocks = await get_sector_stocks()
     new_codes = {s.get("code", "") for s in stocks if s.get("code", "")}
-
-    if force or not notify_cache.prev_sector_stock_codes:
-        # 전체 리스트를 sector-stocks-refresh로 전송
-        await _safe_broadcast("sector-stocks-refresh", {"stocks": stocks}, group="sector_stocks")
-    else:
-        added_codes = new_codes - notify_cache.prev_sector_stock_codes
-        removed_codes = notify_cache.prev_sector_stock_codes - new_codes
-
-        if not added_codes and not removed_codes:
-            return  # 변경 없음 → 전송 생략
-
-        # added: 전체 상세 정보 포함
-        added_stocks = [s for s in stocks if s.get("code", "") in added_codes]
-        # removed: 코드 리스트만
-        await _safe_broadcast("sector-stocks-delta", {
-            "added": added_stocks,
-            "removed": list(removed_codes),
-        }, group="sector_stocks")
-
-    # notify_cache.prev_sector_stock_codes 갱신
     notify_cache.prev_sector_stock_codes = new_codes
-
-    # delta 캐시도 새 목록 기준으로 리셋 (sector-tick 제거로 빈 딕셔너리)
     notify_cache.prev_sent = {}
     for s in stocks:
         code = s.get("code", "")
@@ -500,6 +506,13 @@ async def broadcast_engine_status_ws(engine_status: dict) -> None:
 
 
 async def notify_program_update(code: str, net_buy: int) -> None:
-    """프로그램 순매수 변경 시 WS로 브로드캐스트."""
-    payload = {"code": code, "net_buy": net_buy}
-    await _safe_broadcast("program-update", payload)
+    """프로그램 순매수 변경 시 구독 페이지에 master-cache-delta 전송 (마스터 캐시 단일 시세 소스).
+
+    기존 program-update 이벤트를 master-cache-delta로 대체 (설계 결정 3).
+    """
+    from backend.app.web.ws_manager import ws_manager
+    await ws_manager.broadcast_to_code_subscribers(
+        "master-cache-delta",
+        {"code": code, "fields": {"program_net_buy": net_buy}},
+        code,
+    )

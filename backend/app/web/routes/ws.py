@@ -84,11 +84,8 @@ async def _send_initial_snapshot_delayed(websocket: WebSocket, ws_manager) -> No
         snapshot = await build_initial_snapshot()
         await ws_manager.send_to(websocket, "initial-snapshot", snapshot)
 
-        # sector-stocks-refresh 전송
-        from backend.app.services.engine_initial_data import build_sector_stocks_payload
-
-        stocks_payload = await build_sector_stocks_payload()
-        await ws_manager.send_to(websocket, "sector-stocks-refresh", stocks_payload)
+        # sector-stocks-refresh 제거 — 마스터 캐시 단일 시세 소스 전환 (설계 결정 1·C).
+        # 종목 데이터는 페이지 활성화 시 page-active(codes) → master-cache-snapshot으로 전송.
 
         # sector-scores 전송
         from backend.app.services.sector_data_provider import get_sector_scores_snapshot
@@ -206,8 +203,16 @@ async def ws_prices(websocket: WebSocket, token: str = Query(...)):
                 await websocket.send_text(dumps({"type": "pong"}))
             elif msg_type == "page-active":
                 page = msg.get("page", "")
+                codes = msg.get("codes", [])
                 if page:
                     ws_manager.set_active_page(websocket, page)
+                    if isinstance(codes, list) and codes:
+                        # 마스터 캐시 구독 신청 + 신규 구독 종목 snapshot 전송 (설계 결정 2·C)
+                        newly_subscribed = ws_manager.subscribe_codes(websocket, page, codes)
+                        if newly_subscribed:
+                            from backend.app.services.engine_initial_data import build_master_cache_snapshot
+                            snapshot_payload = await build_master_cache_snapshot(list(newly_subscribed))
+                            await ws_manager.send_to(websocket, "master-cache-snapshot", snapshot_payload)
             elif msg_type == "page-inactive":
                 ws_manager.clear_active_page(websocket)
             elif msg_type == "subscribe-fids":

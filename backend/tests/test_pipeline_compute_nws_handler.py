@@ -39,10 +39,10 @@ def _mock_engine_state():
     수정안 1: sector_summary_cache.buy_targets 기준 필터링 (005930, 000660 포함).
     """
     mock_state = MagicMock()
-    mock_state.news_boost_cache = {}
     mock_state.news_keywords_cache = ["수주", "특허", "MOU"]
     mock_state.news_boost_score = 1.0
     mock_state.news_boost_ttl_sec = 300
+    # P10 SSOT — news_boost는 master_stocks_cache[code] 필드로 통합 (별도 캐시 제거)
     mock_state.master_stocks_cache = {"005930": {}, "000660": {}}
     # A안: boost_news_on=True 기본 (토글 OFF 테스트는 개별 케이스에서 override)
     mock_state.integrated_system_settings_cache = {
@@ -68,30 +68,30 @@ class TestHandleNwsNews:
             _handle_nws_news,
         )
         await _handle_nws_news({"title": "삼성전자 대규모 수주 계약 체결", "code": "005930"})
-        assert "005930" in _mock_engine_state.news_boost_cache
-        score, _ts = _mock_engine_state.news_boost_cache["005930"]
-        assert score == 1.0
+        # P10 SSOT — news_boost는 master_stocks_cache[code] 필드
+        assert _mock_engine_state.master_stocks_cache["005930"]["news_boost"] == 1.0
+        assert _mock_engine_state.master_stocks_cache["005930"]["news_boost_ts"] is not None
 
     async def test_empty_title_skipped(self, _mock_engine_state):
         from backend.app.pipelines.pipeline_compute_tick_handlers import (
             _handle_nws_news,
         )
         await _handle_nws_news({"title": "", "code": "005930"})
-        assert _mock_engine_state.news_boost_cache == {}
+        assert all("news_boost" not in e for e in _mock_engine_state.master_stocks_cache.values())
 
     async def test_empty_code_skipped(self, _mock_engine_state):
         from backend.app.pipelines.pipeline_compute_tick_handlers import (
             _handle_nws_news,
         )
         await _handle_nws_news({"title": "삼성전자 수주", "code": ""})
-        assert _mock_engine_state.news_boost_cache == {}
+        assert all("news_boost" not in e for e in _mock_engine_state.master_stocks_cache.values())
 
     async def test_no_keyword_match_skipped(self, _mock_engine_state):
         from backend.app.pipelines.pipeline_compute_tick_handlers import (
             _handle_nws_news,
         )
         await _handle_nws_news({"title": "삼성전자 실적 발표", "code": "005930"})
-        assert _mock_engine_state.news_boost_cache == {}
+        assert all("news_boost" not in e for e in _mock_engine_state.master_stocks_cache.values())
 
     async def test_empty_keywords_skipped(self, _mock_engine_state):
         _mock_engine_state.news_keywords_cache = []
@@ -99,23 +99,23 @@ class TestHandleNwsNews:
             _handle_nws_news,
         )
         await _handle_nws_news({"title": "삼성전자 수주", "code": "005930"})
-        assert _mock_engine_state.news_boost_cache == {}
+        assert all("news_boost" not in e for e in _mock_engine_state.master_stocks_cache.values())
 
     async def test_multiple_codes_parsed(self, _mock_engine_state):
         from backend.app.pipelines.pipeline_compute_tick_handlers import (
             _handle_nws_news,
         )
         await _handle_nws_news({"title": "삼성전자 SK하이닉스 수주", "code": "005930 000660"})
-        assert "005930" in _mock_engine_state.news_boost_cache
-        assert "000660" in _mock_engine_state.news_boost_cache
+        assert _mock_engine_state.master_stocks_cache["005930"]["news_boost"] == 1.0
+        assert _mock_engine_state.master_stocks_cache["000660"]["news_boost"] == 1.0
 
     async def test_multiple_codes_comma_separated(self, _mock_engine_state):
         from backend.app.pipelines.pipeline_compute_tick_handlers import (
             _handle_nws_news,
         )
         await _handle_nws_news({"title": "삼성전자 SK하이닉스 수주", "code": "005930,000660"})
-        assert "005930" in _mock_engine_state.news_boost_cache
-        assert "000660" in _mock_engine_state.news_boost_cache
+        assert _mock_engine_state.master_stocks_cache["005930"]["news_boost"] == 1.0
+        assert _mock_engine_state.master_stocks_cache["000660"]["news_boost"] == 1.0
 
     async def test_stock_not_in_buy_targets_ignored(self, _mock_engine_state):
         """수정안 1 — 매수후보에 없는 종목(999999)은 가산점 미부여 (master_stocks_cache 무관)."""
@@ -123,8 +123,9 @@ class TestHandleNwsNews:
             _handle_nws_news,
         )
         await _handle_nws_news({"title": "미래에셋 수주", "code": "005930 999999"})
-        assert "005930" in _mock_engine_state.news_boost_cache
-        assert "999999" not in _mock_engine_state.news_boost_cache
+        assert _mock_engine_state.master_stocks_cache["005930"]["news_boost"] == 1.0
+        # 999999는 master_stocks_cache에 없음 (매수후보 외 종목)
+        assert "999999" not in _mock_engine_state.master_stocks_cache
 
     async def test_boost_news_on_off_skips_detection(self, _mock_engine_state):
         """A안 — boost_news_on=False 시 감지 자체 수행 안 함 (📰 안 뜸, 알림 안 옴, 가산점 안 더함)."""
@@ -133,7 +134,7 @@ class TestHandleNwsNews:
             _handle_nws_news,
         )
         await _handle_nws_news({"title": "삼성전자 대규모 수주", "code": "005930"})
-        assert _mock_engine_state.news_boost_cache == {}
+        assert all("news_boost" not in e for e in _mock_engine_state.master_stocks_cache.values())
         _mock_engine_state._safe_broadcast.assert_not_awaited()
 
     async def test_exception_does_not_propagate(self, _mock_engine_state):
@@ -203,7 +204,7 @@ class TestHandleNwsNews:
         # 실제 _safe_broadcast는 예외를 잡아 warning 로그 후 반환하므로 side_effect 설정 시
         # 핸들러가 예외를 잡아 처리(P25)하는지 검증.
         await _handle_nws_news({"title": "삼성전자 수주", "code": "005930"})
-        assert "005930" in _mock_engine_state.news_boost_cache
+        assert _mock_engine_state.master_stocks_cache["005930"]["news_boost"] == 1.0
 
     async def test_boost_scores_reflected_in_buy_target_stock(self, _mock_engine_state):
         """수정안 3 — _recompute_boost_scores_for_hits가 bt.stock.boost_score 갱신 (P10 SSOT)."""

@@ -12,8 +12,8 @@
                          quote_subscribed, index_subscribed, account_rest_bootstrapped, broker_rest_totals,
                          auto_trade, broker_rest_apis, account_rest_lock,
                          account_snapshot, positions
-  C. 업종 분석 (9)      — sector_summary_cache, master_stocks_cache, index_data_cache,
-                         market_phase, krx_circuit_breaker_active, news_boost_cache,
+  C. 업종 분석 (8)      — sector_summary_cache, master_stocks_cache, index_data_cache,
+                         market_phase, krx_circuit_breaker_active,
                          news_keywords_cache, news_boost_score, news_boost_ttl_sec
   D. 스케줄러 (13)      — last_reset_date, krx_remove_done, confirmed_done,
                          auto_trade_timer_handles, midnight_timer_handle,
@@ -147,11 +147,12 @@ class EngineState:
         }
         self.krx_circuit_breaker_active: bool = False
 
-        # ── 실시간 뉴스(NWS) 가산점 캐시 (그룹 C) ──────────────────────────────
-        # news_boost_cache: {종목코드: (가산점, monotonic 타임스탬프)} — 5분 TTL (P10 SSOT)
+        # ── 실시간 뉴스(NWS) 가산점 (그룹 C, P10 SSOT — master_stocks_cache 필드) ──
+        # news_boost / news_boost_ts: master_stocks_cache[code] 필드로 통합 (5분 TTL).
+        #   - news_boost: 가산점 (float)
+        #   - news_boost_ts: monotonic 타임스탬프 (만료 판정용)
         # news_keywords_cache: 호재 키워드 메모리 상주 (P13 — 틱 단계 DB 조회 금지)
         # news_boost_score / news_boost_ttl_sec: 설정 로더에서 갱신 (P13)
-        self.news_boost_cache: dict[str, tuple[float, float]] = {}
         self.news_keywords_cache: list[str] = []
         self.news_boost_score: float = 1.0
         self.news_boost_ttl_sec: int = 300

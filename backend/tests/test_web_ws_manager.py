@@ -433,9 +433,27 @@ class TestBroadcastToPages:
 # ── broadcast ──────────────────────────────────────────────────────────────────
 
 class TestBroadcast:
-    """WSManager.broadcast — real-data 분기 / 일반 이벤트."""
+    """WSManager.broadcast — real-data 분기 / 일반 이벤트.
+
+    마스터 캐시 구독 모델: real-data는 해당 종목을 구독 중인 클라이언트에게만 전송.
+    """
 
     async def test_real_data_routes_to_encoded(self):
+        from backend.app.web.ws_manager import WSManager
+        mgr = WSManager()
+        ws = _make_ws()
+        mgr._clients = {ws}
+        # 종목 구독 설정 (마스터 캐시 구독 모델)
+        mgr._symbol_subscribers["005930"] = {ws}
+        mgr._client_subscribed_codes[ws] = {"005930"}
+        data = {"type": "real", "item": "005930", "values": {"10": "70000"}}
+        with patch("backend.app.services.engine_symbol_utils._base_stk_cd", return_value="005930"):
+            with patch.object(mgr, "_send_realdata_encoded", AsyncMock()) as mock_enc:
+                await mgr.broadcast("real-data", data)
+        mock_enc.assert_awaited_once()
+
+    async def test_real_data_no_subscribers_skipped(self):
+        """구독자가 없으면 real-data 전송 생략 (페이지별 구독 push 모델)."""
         from backend.app.web.ws_manager import WSManager
         mgr = WSManager()
         ws = _make_ws()
@@ -444,7 +462,7 @@ class TestBroadcast:
         with patch("backend.app.services.engine_symbol_utils._base_stk_cd", return_value="005930"):
             with patch.object(mgr, "_send_realdata_encoded", AsyncMock()) as mock_enc:
                 await mgr.broadcast("real-data", data)
-        mock_enc.assert_awaited_once()
+        mock_enc.assert_not_awaited()
 
     async def test_real_data_empty_item(self):
         from backend.app.web.ws_manager import WSManager
@@ -454,7 +472,7 @@ class TestBroadcast:
         data = {"type": "real", "item": "", "values": {"10": "70000"}}
         with patch.object(mgr, "_send_realdata_encoded", AsyncMock()) as mock_enc:
             await mgr.broadcast("real-data", data)
-        mock_enc.assert_awaited_once()
+        mock_enc.assert_not_awaited()  # 빈 code → 구독자 없음 → 전송 생략
 
     async def test_non_real_data_routes_to_broadcast(self):
         from backend.app.web.ws_manager import WSManager
@@ -574,3 +592,124 @@ class TestClientCount:
         mgr = WSManager()
         mgr._clients = {_make_ws(), _make_ws(), _make_ws()}
         assert mgr.client_count == 3
+
+
+# ── 종목별 구독 관리 (마스터 캐시 단일 시세 소스 — 설계 결정 2) ──────────────────
+
+class TestSubscribeCodes:
+    """WSManager.subscribe_codes / _cleanup_subscribed_codes — 종목별 구독 참조 카운트 맵."""
+
+    def test_subscribe_codes_adds_subscriber(self):
+        """subscribe_codes — 클라이언트가 종목 구독 시 _symbol_subscribers에 추가."""
+        from backend.app.web.ws_manager import WSManager
+        mgr = WSManager()
+        ws = _make_ws()
+        mgr._clients = {ws}
+        mgr.subscribe_codes(ws, "sell-position", ["005930", "000660"])
+        assert mgr._symbol_subscribers["005930"] == {ws}
+        assert mgr._symbol_subscribers["000660"] == {ws}
+        assert mgr._client_subscribed_codes[ws] == {"005930", "000660"}
+
+    def test_subscribe_codes_returns_newly_subscribed(self):
+        """0→1 전환 종목 집합 반환 — snapshot 전송용."""
+        from backend.app.web.ws_manager import WSManager
+        mgr = WSManager()
+        ws = _make_ws()
+        mgr._clients = {ws}
+        newly = mgr.subscribe_codes(ws, "sell-position", ["005930", "000660"])
+        assert newly == {"005930", "000660"}
+
+    def test_subscribe_codes_second_client_no_newly_for_shared_code(self):
+        """두 번째 클라이언트가 같은 종목 구독 시 newly_subscribed에서 제외 (이미 0→1 전환됨)."""
+        from backend.app.web.ws_manager import WSManager
+        mgr = WSManager()
+        ws1 = _make_ws()
+        ws2 = _make_ws()
+        mgr._clients = {ws1, ws2}
+        mgr.subscribe_codes(ws1, "sell-position", ["005930"])
+        newly2 = mgr.subscribe_codes(ws2, "buy-target", ["005930"])
+        # 005930은 이미 ws1이 구독 중이므로 0→1 전환 아님
+        assert newly2 == set()
+        assert mgr._symbol_subscribers["005930"] == {ws1, ws2}
+
+    def test_subscribe_codes_replaces_previous_subscription(self):
+        """페이지 전환 시 기존 구독 해제 후 새 코드로 교체."""
+        from backend.app.web.ws_manager import WSManager
+        mgr = WSManager()
+        ws = _make_ws()
+        mgr._clients = {ws}
+        mgr.subscribe_codes(ws, "sell-position", ["005930", "000660"])
+        # 페이지 전환 — 000660 구독 해제, 035420 추가
+        mgr.subscribe_codes(ws, "buy-target", ["005930", "035420"])
+        assert mgr._symbol_subscribers["005930"] == {ws}
+        assert "000660" not in mgr._symbol_subscribers  # 1→0 전환으로 제거
+        assert mgr._symbol_subscribers["035420"] == {ws}
+        assert mgr._client_subscribed_codes[ws] == {"005930", "035420"}
+
+    def test_clear_active_page_unsubscribes_codes(self):
+        """page-inactive 시 클라이언트의 종목 구독 전부 해제."""
+        from backend.app.web.ws_manager import WSManager
+        mgr = WSManager()
+        ws = _make_ws()
+        mgr._clients = {ws}
+        mgr.subscribe_codes(ws, "sell-position", ["005930", "000660"])
+        mgr.clear_active_page(ws)
+        assert "005930" not in mgr._symbol_subscribers
+        assert "000660" not in mgr._symbol_subscribers
+        assert ws not in mgr._client_subscribed_codes
+
+    def test_unregister_cleans_up_subscriptions(self):
+        """연결 해제 시 종목 구독 정리."""
+        from backend.app.web.ws_manager import WSManager
+        mgr = WSManager()
+        ws = _make_ws()
+        mgr._clients = {ws}
+        mgr.subscribe_codes(ws, "sell-position", ["005930"])
+        mgr.unregister(ws)
+        assert "005930" not in mgr._symbol_subscribers
+        assert ws not in mgr._client_subscribed_codes
+
+    def test_get_subscribers_for_code(self):
+        """특정 종목을 구독 중인 클라이언트 집합 반환."""
+        from backend.app.web.ws_manager import WSManager
+        mgr = WSManager()
+        ws = _make_ws()
+        mgr._clients = {ws}
+        mgr.subscribe_codes(ws, "sell-position", ["005930"])
+        assert mgr.get_subscribers_for_code("005930") == {ws}
+        assert mgr.get_subscribers_for_code("999999") == set()  # 미구독 종목
+
+    def test_subscribe_codes_empty_codes_no_op(self):
+        """빈 codes 리스트 시 구독 변경 없음."""
+        from backend.app.web.ws_manager import WSManager
+        mgr = WSManager()
+        ws = _make_ws()
+        mgr._clients = {ws}
+        newly = mgr.subscribe_codes(ws, "sell-position", [])
+        assert newly == set()
+        assert mgr._client_subscribed_codes[ws] == set()
+
+
+class TestBroadcastToCodeSubscribers:
+    """WSManager.broadcast_to_code_subscribers — 구독자에게만 전송."""
+
+    async def test_sends_to_subscribers_only(self):
+        """구독 중인 클라이언트에게만 전송, 비구독 클라이언트 제외."""
+        from backend.app.web.ws_manager import WSManager
+        mgr = WSManager()
+        ws_sub = _make_ws()
+        ws_other = _make_ws()
+        mgr._clients = {ws_sub, ws_other}
+        mgr.subscribe_codes(ws_sub, "sell-position", ["005930"])
+        await mgr.broadcast_to_code_subscribers("master-cache-delta", {"code": "005930"}, "005930")
+        ws_sub.send_text.assert_awaited_once()
+        ws_other.send_text.assert_not_awaited()
+
+    async def test_no_subscribers_no_send(self):
+        """구독자가 없으면 전송 생략."""
+        from backend.app.web.ws_manager import WSManager
+        mgr = WSManager()
+        ws = _make_ws()
+        mgr._clients = {ws}
+        await mgr.broadcast_to_code_subscribers("master-cache-delta", {"code": "005930"}, "005930")
+        ws.send_text.assert_not_awaited()

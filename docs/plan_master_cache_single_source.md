@@ -1,9 +1,9 @@
 # 태스크 파일: 마스터 종목 캐시 단일 시세 소스 + 페이지별 구독 Push 모델 구현
 
-> **상태**: 태스크 파일 작성 완료, 3세션 구현 승인 대기
+> **상태**: 3세션 백엔드 구현 완료, 4세션 프론트 구현 대기
 > **작성일**: 2026-08-02
 > **설계서 경로**: `docs/architecture_master_cache_single_source_design.md`
-> **다단계 진행 상황**: 1세션(설계) ✅ · 2세션(태스크 파일) ✅ · 3세션(백엔드 구현) 예정 · 4세션(프론트 상태·binding) 예정 · 5세션(파생 캐시 제거·render 전환) 예정 · 6세션(독립 검증) 예정 · 모의 관찰 대기
+> **다단계 진행 상황**: 1세션(설계) ✅ · 2세션(태스크 파일) ✅ · 3세션(백엔드 구현) ✅ · 4세션(프론트 상태·binding) 예정 · 5세션(파생 캐시 제거·render 전환) 예정 · 6세션(독립 검증) 예정 · 모의 관찰 대기
 > **관련 원칙**: P10(SSOT) · P16(살아있는 경로) · P20(폴백 금지) · P21(사용자 투명성) · P22(데이터 정합성) · P23(일관성) · P24(단순성) · P25(격리된 실패) · W3(단일 소스 진리) · W4(파생 데이터 모델) · W7(시뮬레이터/증권사 응답 동일 구조) · W11(표현 통일)
 > **위험도**: 중간 (프론트 구조 변경 범위 큼, 백엔드 WS 이벤트 신설·제거 동반. 단, 거래 로직·DB·주문 경로 변경 없음 → 실전 돈 위험 없음)
 
@@ -86,24 +86,24 @@
 
 ### 1단계: 백엔드 — 마스터 캐시 통합 + 구독 관리자 + WS 이벤트 (3세션)
 
-- [ ] `engine_state.py` — `news_boost_cache`를 master_stocks_cache 필드로 통합. `news_boost_cache` dict 제거, master_stocks_cache[code]에 `news_boost`·`news_boost_ts` 필드 추가
-- [ ] `engine_radar.py` — `get_news_boost_cache()`를 master_stocks_cache 기반으로 갱신. 만료 시 필드 null화
-- [ ] `pipeline_compute_tick_handlers.py` — `_handle_nws_news`가 master_stocks_cache[code] 필드 갱신하도록 변경. news-hit 이벤트 payload 유지
-- [ ] `ws_manager.py` — `_symbol_subscribers: dict[str, dict[str, int]]` 추가. `subscribe_codes(ws, page, codes)`·`unsubscribe_page(ws, page)` 메서드 구현. 0→1 전환 시 snapshot 전송 트리거, 1→0 시 전송 중단
-- [ ] `ws.py` — page-active 처리에서 `codes` 배열 수신 → `ws_manager.subscribe_codes(websocket, page, codes)`. 구독 신청 종목 snapshot 전송 (`master-cache-snapshot` 이벤트)
-- [ ] `engine_initial_data.py` — `build_master_cache_snapshot(codes)` 함수 추가. 기존 `build_sector_stocks_payload`는 제거 또는 snapshot 함수로 대체
-- [ ] `sector_data_provider.py` — `get_all_sector_stocks()`에 실시간 필드 포함 옵션 추가 (snapshot 생성용)
-- [ ] `engine_ws_dispatch.py`·`engine_ws_reg.py` — 틱/호가/PGM 이벤트 시 구독 페이지 라우팅. 기존 `notify_orderbook_update`/`notify_program_update` 전체 전송을 구독 페이지 전송으로 변경
-- [ ] 기존 `sector-stocks-refresh`/`sector-stocks-delta` 이벤트 전송 경로 제거 (master-cache-snapshot/delta로 대체)
-- [ ] 거래 로직(execute_buy/execute_sell)·리스크 매니저·서킷브레이커 변경 없음 확인
-- [ ] DB 스키마 변경 없음 확인 (메모리 전용 필드)
+- [x] `engine_state.py` — `news_boost_cache`를 master_stocks_cache 필드로 통합. `news_boost_cache` dict 제거, master_stocks_cache[code]에 `news_boost`·`news_boost_ts` 필드 추가
+- [x] `engine_radar.py` — `get_news_boost_cache()`를 master_stocks_cache 기반으로 갱신. 만료 시 필드 null화
+- [x] `pipeline_compute_tick_handlers.py` — `_handle_nws_news`가 master_stocks_cache[code] 필드 갱신하도록 변경. news-hit 이벤트 payload 유지
+- [x] `ws_manager.py` — `_symbol_subscribers: dict[str, set[WebSocket]]` 추가. `subscribe_codes(ws, page, codes)`·`_cleanup_subscribed_codes(ws)` 메서드 구현. 0→1 전환 시 snapshot 전송 트리거, 1→0 시 전송 중단
+- [x] `ws.py` — page-active 처리에서 `codes` 배열 수신 → `ws_manager.subscribe_codes(websocket, page, codes)`. 구독 신청 종목 snapshot 전송 (`master-cache-snapshot` 이벤트)
+- [x] `engine_initial_data.py` — `build_master_cache_snapshot(codes)` 함수 추가. 기존 `build_sector_stocks_payload`는 DEPRECATED 표시 (4세션 프론트 전환 후 제거 예정)
+- [x] `sector_data_provider.py` — `get_all_sector_stocks()`에 실시간 필드 포함 옵션 추가 (`include_realtime=True`)
+- [x] `engine_account_notify.py` — `notify_orderbook_update`/`notify_program_update`를 `master-cache-delta` 구독 페이지 전송으로 변경. `notify_desktop_sector_stocks_refresh`를 `master-cache-snapshot` 전송으로 변경
+- [x] 기존 `sector-stocks-refresh`/`sector-stocks-delta` 이벤트 전송 경로 제거 (master-cache-snapshot/delta로 대체)
+- [x] 거래 로직(execute_buy/execute_sell)·리스크 매니저·서킷브레이커 변경 없음 확인
+- [x] DB 스키마 변경 없음 확인 (메모리 전용 필드)
 
 **1단계 검증 방법:**
-- [ ] `.venv/bin/python -m pytest backend/tests -q` — 전체 백엔드 테스트 통과
-- [ ] `.venv/bin/python -W error::RuntimeWarning main.py` — RuntimeWarning 0건, 정상 기동
-- [ ] news_boost_cache 통합 후 뉴스 가산점 정상 동작 (테스트 모드)
-- [ ] 구독 참조 카운트 맵 정상 동작 (0→1 snapshot 전송, 1→0 중단)
-- [ ] 거래 로직 회귀 없음 (test_buy_filter.py 등 매수 관련 테스트 통과)
+- [x] `.venv/bin/python -m pytest backend/tests -q` — 전체 백엔드 테스트 통과 (3008 passed)
+- [x] `.venv/bin/python -W error::RuntimeWarning main.py` — RuntimeWarning 0건, 정상 기동
+- [x] news_boost_cache 통합 후 뉴스 가산점 정상 동작 (테스트 모드 — test_pipeline_compute_nws_handler.py 통과)
+- [x] 구독 참조 카운트 맵 정상 동작 (0→1 snapshot 전송, 1→0 중단 — test_web_ws_manager.py TestSubscribeCodes 8건 통과)
+- [x] 거래 로직 회귀 없음 (test_buy_filter.py 등 매수 관련 테스트 통과)
 
 ### 2단계: 프론트 — masterCache 상태 + binding 교체 + 구독 신청 (4세션)
 

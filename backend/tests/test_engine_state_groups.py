@@ -53,7 +53,6 @@ GROUP_C_SECTOR = {
     "index_data_cache",
     "market_phase",
     "krx_circuit_breaker_active",
-    "news_boost_cache",
     "news_keywords_cache",
     "news_boost_score",
     "news_boost_ttl_sec",
@@ -122,18 +121,18 @@ class TestGroupClassification:
 
     def test_group_sizes_match_docstring(self):
         """docstring에 명시된 그룹별 속성 수와 일치."""
-        expected_sizes = {"A": 5, "B": 12, "C": 9, "D": 13, "E": 17, "F": 11}
+        expected_sizes = {"A": 5, "B": 12, "C": 8, "D": 13, "E": 17, "F": 11}
         for name, group in ALL_GROUPS.items():
             assert len(group) == expected_sizes[name], (
                 f"그룹 {name} 속성 수 불일치: 예상 {expected_sizes[name]}, 실제 {len(group)}"
             )
 
-    def test_total_attribute_count_is_67(self):
-        """6개 그룹 합계 = 67 (누락/중복 없음)."""
+    def test_total_attribute_count_is_66(self):
+        """6개 그룹 합계 = 66 (누락/중복 없음). news_boost_cache 제거로 67→66."""
         all_attrs = set()
         for group in ALL_GROUPS.values():
             all_attrs |= group
-        assert len(all_attrs) == 67, f"전체 속성 수: {len(all_attrs)} (예상 67)"
+        assert len(all_attrs) == 66, f"전체 속성 수: {len(all_attrs)} (예상 66)"
 
     def test_no_overlap_between_groups(self):
         """어떤 속성도 두 그룹에 중복 분류되지 않음."""

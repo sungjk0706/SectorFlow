@@ -83,6 +83,12 @@ class WSManager:
         self._client_active_page: dict[WebSocket, str] = {}
         # per-client 구독 FID 추적 (미설정 시 ALLOWED_FIDS 사용)
         self._client_subscribed_fids: dict[WebSocket, frozenset[str]] = {}
+        # ── 종목별 구독 페이지 추적 (마스터 캐시 단일 시세 소스 — 설계 결정 2) ──
+        # _symbol_subscribers: {종목코드: set[WebSocket]} — 해당 종목을 구독 중인 클라이언트 집합.
+        # _client_subscribed_codes: {WebSocket: set[str]} — 클라이언트가 구독 중인 종목 코드 (해제·정리용).
+        # 0→1 전환 시 해당 종목 실시간 전송 시작, 1→0 시 중단 (설계 결정 2, P10 SSOT).
+        self._symbol_subscribers: dict[str, set[WebSocket]] = {}
+        self._client_subscribed_codes: dict[WebSocket, set[str]] = {}
 
     # ------------------------------------------------------------------
     # 클라이언트 등록 / 해제
@@ -96,10 +102,12 @@ class WSManager:
         await self._send_initial_data_on_connect(ws)
 
     def unregister(self, ws: WebSocket) -> None:
-        """클라이언트를 _clients set에서 제거."""
+        """클라이언트를 _clients set에서 제거 + 구독 코드 정리."""
         self._clients.discard(ws)
         self._client_active_page.pop(ws, None)
         self._client_subscribed_fids.pop(ws, None)
+        # 종목 구독 정리 (마스터 캐시 구독 — 설계 결정 2)
+        self._cleanup_subscribed_codes(ws)
         logger.debug("[연결] 클라이언트 해제 (총 %d)", len(self._clients))
 
     # ------------------------------------------------------------------
@@ -111,12 +119,68 @@ class WSManager:
         self._client_active_page[ws] = page
 
     def clear_active_page(self, ws: WebSocket) -> None:
-        """클라이언트의 활성 페이지 해제."""
+        """클라이언트의 활성 페이지 해제 + 종목 구독 해제."""
         self._client_active_page.pop(ws, None)
+        # 페이지 비활성화 시 해당 클라이언트의 종목 구독도 해제 (설계 결정 2)
+        self._cleanup_subscribed_codes(ws)
 
     def get_active_pages(self) -> set[str]:
         """현재 활성화된 페이지 집합 반환."""
         return set(self._client_active_page.values())
+
+    # ------------------------------------------------------------------
+    # 종목별 구독 관리 (마스터 캐시 단일 시세 소스 — 설계 결정 2)
+    # ------------------------------------------------------------------
+
+    def subscribe_codes(self, ws: WebSocket, page: str, codes: list[str]) -> set[str]:
+        """클라이언트가 페이지에서 구독할 종목 코드 등록.
+
+        기존 구독 코드를 해제하고 새 코드 집합으로 교체 (페이지 전환 시 자연스러운 동작).
+        0→1 전환 종목(새로 구독 시작) 집합을 반환 — 호출부에서 snapshot 전송용.
+
+        Returns:
+            newly_subscribed: 이 클라이언트가 새로 구독하기 시작한 종목 코드 집합
+            (다른 클라이언트가 이미 구독 중이어도 이 클라이언트 기준으로 신규).
+        """
+        # 기존 구독 코드 해제
+        self._cleanup_subscribed_codes(ws)
+
+        new_codes = {c for c in codes if c}
+        self._client_subscribed_codes[ws] = new_codes.copy()
+
+        newly_subscribed: set[str] = set()
+        for code in new_codes:
+            subscribers = self._symbol_subscribers.get(code)
+            if subscribers is None:
+                subscribers = set()
+                self._symbol_subscribers[code] = subscribers
+            if not subscribers:
+                # 0→1 전환 — 이 종목의 실시간 전송 시작
+                newly_subscribed.add(code)
+            subscribers.add(ws)
+
+        logger.debug(
+            "[구독] 페이지=%s 종목 %d건 구독 (신규 전송 시작 %d건)",
+            page, len(new_codes), len(newly_subscribed),
+        )
+        return newly_subscribed
+
+    def _cleanup_subscribed_codes(self, ws: WebSocket) -> None:
+        """클라이언트의 종목 구독 전부 해제 (페이지 전환·연결 해제 시)."""
+        codes = self._client_subscribed_codes.pop(ws, None)
+        if not codes:
+            return
+        for code in codes:
+            subscribers = self._symbol_subscribers.get(code)
+            if subscribers is not None:
+                subscribers.discard(ws)
+                if not subscribers:
+                    # 1→0 전환 — 이 종목의 실시간 전송 중단
+                    del self._symbol_subscribers[code]
+
+    def get_subscribers_for_code(self, code: str) -> set[WebSocket]:
+        """특정 종목을 구독 중인 클라이언트 집합 반환 (틱/호가/PGM 이벤트 라우팅용)."""
+        return self._symbol_subscribers.get(code, set())
 
     # ------------------------------------------------------------------
     # Per-client subscribed FID 관리
@@ -150,17 +214,24 @@ class WSManager:
         for ws in dead:
             self.unregister(ws)
 
-    async def _send_realdata_encoded(self, data: dict, code: str) -> None:
+    async def _send_realdata_encoded(self, data: dict, code: str, subscribers: set[WebSocket] | None = None) -> None:
         """real-data 전송 — 클라이언트별 FID 구독 반영.
 
         동일한 subscribed_fids를 가진 클라이언트 그룹별로 인코딩을 한 번만 수행하여
-        CPU 부하를 방지한다. 페이지 필터링은 프론트엔드에서 처리한다 (SSOT 원칙).
+        CPU 부하를 방지한다. subscribers가 지정되면 해당 클라이언트 집합에게만 전송 (마스터 캐시 구독 모델).
         """
+        # 전송 대상 클라이언트: subscribers가 지정되면 해당 집합, 아니면 전체
+        target_clients = subscribers if subscribers is not None else set(self._clients)
+        if not target_clients:
+            return
+
         # 클라이언트를 subscribed_fids별로 그룹화
         fids_to_clients: dict[frozenset[str], list[WebSocket]] = {}
         dead: set[WebSocket] = set()
 
-        for ws in set(self._clients):
+        for ws in target_clients:
+            if ws not in self._clients:
+                continue
             # subscribed_fids 그룹화 — None이면 ALLOWED_FIDS(기본값) 그룹에 포함
             subscribed_fids = self._client_subscribed_fids.get(ws) or ALLOWED_FIDS
             if subscribed_fids not in fids_to_clients:
@@ -214,7 +285,7 @@ class WSManager:
     async def broadcast(self, event_type: str, data: dict) -> None:
         """모든 클라이언트에 즉시 전송.
 
-        real-data: FID 필터 + key shorten 후 클라이언트별 구독 FID 반영하여 즉시 전송
+        real-data: 종목 구독자에게만 FID 필터 + key shorten 후 전송 (마스터 캐시 구독 모델)
         기타 이벤트: _send_broadcast 즉시 전송
         """
         if not self._clients:
@@ -223,7 +294,11 @@ class WSManager:
             from backend.app.services.engine_symbol_utils import _base_stk_cd
             raw_code = str(data.get("item") or "").strip()
             code = _base_stk_cd(raw_code) if raw_code else ""
-            await self._send_realdata_encoded(data, code)
+            # 구독자가 없으면 전송 생략 (페이지별 구독 push 모델 — 설계 결정 2)
+            subscribers = self.get_subscribers_for_code(code) if code else set()
+            if not subscribers:
+                return
+            await self._send_realdata_encoded(data, code, subscribers)
             return
         await self._send_broadcast(event_type, data)
 
@@ -235,6 +310,27 @@ class WSManager:
             await ws.send_text(text)
         except Exception as e:
             logger.warning("[연결] %s 화면 전송 실패: %s", event_type, str(e), exc_info=True)
+            self.unregister(ws)
+
+    async def broadcast_to_code_subscribers(self, event_type: str, data: dict, code: str) -> None:
+        """특정 종목을 구독 중인 클라이언트에게만 전송 (master-cache-delta 라우팅용).
+
+        마스터 캐시 단일 시세 소스 — 틱/호가/PGM/뉴스 이벤트 시 해당 종목 구독 페이지에만 push.
+        """
+        subscribers = self.get_subscribers_for_code(code)
+        if not subscribers:
+            return
+        message = dumps({"event": event_type, "data": self._stamp(data)})
+        dead: set[WebSocket] = set()
+        for ws in subscribers:
+            if ws not in self._clients:
+                continue
+            try:
+                await ws.send_text(message)
+            except Exception:
+                dead.add(ws)
+                logger.debug("[연결] 종목 구독자 전송 실패 — 클라이언트 제거", exc_info=True)
+        for ws in dead:
             self.unregister(ws)
 
     # ------------------------------------------------------------------

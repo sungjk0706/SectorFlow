@@ -449,12 +449,17 @@ class TestNotifyIndexData:
 class TestNotifyProgramUpdate:
     @pytest.mark.asyncio
     async def test_basic(self):
-        with patch("backend.app.services.engine_account_notify._safe_broadcast", new_callable=AsyncMock) as mock_bc:
+        """프로그램 순매수 변경 시 구독 페이지에 master-cache-delta 전송 (마스터 캐시 단일 시세 소스)."""
+        with patch("backend.app.web.ws_manager.ws_manager") as mock_wsm:
+            mock_wsm.broadcast_to_code_subscribers = AsyncMock()
             await notify_program_update("005930", 100000)
-            mock_bc.assert_awaited_once()
-            payload = mock_bc.call_args.args[1]
+            mock_wsm.broadcast_to_code_subscribers.assert_awaited_once()
+            call = mock_wsm.broadcast_to_code_subscribers.call_args
+            assert call.args[0] == "master-cache-delta"
+            payload = call.args[1]
             assert payload["code"] == "005930"
-            assert payload["net_buy"] == 100000
+            assert payload["fields"]["program_net_buy"] == 100000
+            assert call.args[2] == "005930"
 
 
 # ── notify_cache 경쟁 조건 시나리오 (세션 6 — _initialized 가드로 결함 해소) ────────

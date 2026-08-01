@@ -180,11 +180,13 @@ def _build_target_entry(bt, news_boost_cache: dict[str, float] | None = None) ->
     }
 
 
-async def get_all_sector_stocks() -> list[dict]:
+async def get_all_sector_stocks(*, include_realtime: bool = False) -> list[dict]:
     """전체 종목(매매부적격 제외) — 업종분류 커스텀 페이지 전용.
 
     각 종목: { code, name, sector(get_merged_sectors_batch 기반), market_type, nxt_enable,
               avg_amt_5d(5거래일 평균 거래대금 — 우측 패널 표시용, 억 단위) }
+    include_realtime=True 시 추가: cur_price, change, change_rate, strength, trade_amount,
+              order_ratio, program_net_buy, news_boost, high_5d (마스터 캐시 snapshot 생성용).
 
     avg_amt_5d (T1 설계 수정 — SectorStock 주인, P10 SSOT):
       - 데이터 소스: master_stocks_cache[cd]["avg_5d_trade_amount"] (백만원 단위)
@@ -210,14 +212,25 @@ async def get_all_sector_stocks() -> list[dict]:
         entry = engine_state.state.master_stocks_cache[cd]
         avg5d_million = int(entry.get("avg_5d_trade_amount", 0) or 0)
         avg5d_eok = avg5d_million // 100  # 백만원 → 억 단위 변환 (sector_calculator.py:89와 동일)
-        result.append({
+        item = {
             "code": cd,
             "name": entry.get("name", ""),
             "sector": sectors_map.get(cd, "미분류"),
             "market_type": _get_mkt(cd) or "",
             "nxt_enable": _is_nxt(cd),
             "avg_amt_5d": avg5d_eok,
-        })
+        }
+        if include_realtime:
+            item["cur_price"] = entry.get("cur_price")
+            item["change"] = entry.get("change")
+            item["change_rate"] = entry.get("change_rate")
+            item["strength"] = entry.get("strength")
+            item["trade_amount"] = entry.get("trade_amount")
+            item["order_ratio"] = entry.get("order_ratio")
+            item["program_net_buy"] = entry.get("program_net_buy")
+            item["news_boost"] = entry.get("news_boost")
+            item["high_5d"] = int(entry.get("high_5d_price", 0) or 0)
+        result.append(item)
     return result
 
 
