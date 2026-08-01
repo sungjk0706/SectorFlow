@@ -229,14 +229,24 @@ async def _apply_sell(code: str, qty: int, price: int) -> None:
     await settlement_engine.on_sell_fill(price, qty, norm_code, stk_nm)
 
 def _recalc_pnl(pos: dict) -> None:
-    """현재가 기준 손익 재계산 (순수 차익: 수수료/세금 제외)."""
+    """현재가 기준 손익 재계산 (순수 차익: 수수료/세금 제외).
+
+    cur_price가 None(시세 미수신)인 경우 eval_amt/pnl_amount/pnl_rate를 None으로 설정하여
+    avg_price 폴백 위장을 제거 (P20). 하위 소비자는 None을 명시적으로 처리 (P21/P25).
+    """
     avg = int(pos.get("avg_price", 0))
-    cur = int(pos.get("cur_price") or avg)
+    cur_raw = pos.get("cur_price")
     qty = int(pos.get("qty", 0))
     total_fee = int(pos.get("total_fee", 0))
     buy_amount = avg * qty
     pos["buy_amount"] = buy_amount
     pos["buy_amt"] = buy_amount + total_fee
+    if cur_raw is None:
+        pos["eval_amt"] = None
+        pos["pnl_amount"] = None
+        pos["pnl_rate"] = None
+        return
+    cur = int(cur_raw)
     pos["eval_amt"] = cur * qty
     pos["pnl_amount"] = pos["eval_amt"] - buy_amount
     pos["pnl_rate"] = round((pos["pnl_amount"] / buy_amount) * 100, 2) if buy_amount > 0 else 0.0

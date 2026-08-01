@@ -287,7 +287,8 @@ async def _refresh_account_snapshot_meta() -> None:
         accumulated_investment = settlement_engine.get_accumulated_investment()
         orderable = settlement_engine.get_orderable()
         total_buy = sum(int(p.get("buy_amt", 0) or 0) for p in pos)
-        total_eval = sum(int(p.get("eval_amt", 0) or 0) for p in pos)
+        # eval_amt가 None(시세 미수신)인 종목은 합산에서 제외 (P20 폴백 금지, P25 격리)
+        total_eval = sum(int(p["eval_amt"]) for p in pos if p.get("eval_amt") is not None)
         total_pnl = total_eval - total_buy
         total_rate = round((total_pnl / total_buy) * 100, 2) if total_buy > 0 else 0.0
 

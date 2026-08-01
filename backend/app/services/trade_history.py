@@ -808,10 +808,10 @@ def _position_from_lots(stk_cd: str, q: deque[dict]) -> dict | None:
         "buy_amt": buy_amt,
         "total_fee": total_fee,
         "tax": 0,
-        "cur_price": avg_price,
-        "eval_amt": buy_amount,
-        "pnl_amount": 0,
-        "pnl_rate": 0.0,
+        "cur_price": None,
+        "eval_amt": None,
+        "pnl_amount": None,
+        "pnl_rate": None,
         "buy_date": buy_date,
     }
 

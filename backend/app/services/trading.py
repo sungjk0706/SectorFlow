@@ -837,10 +837,22 @@ class AutoTradeManager:
             if stk_cd in self._recent_sells:
                 continue
 
-            cur_price = float(str(stock.get("cur_price", 0)).replace(",", ""))
+            cur_price_raw = stock.get("cur_price")
+            pnl_rate_raw = stock.get("pnl_rate")
+            # 시세 미수신(cur_price/pnl_rate None) — 평가 불가, 매도 조건 검사 스킵 (P25 격리된 실패)
+            if cur_price_raw is None or pnl_rate_raw is None:
+                logger.debug(
+                    "시세 미수신 — 매도 조건 평가 스킵 stk_cd=%s stk_nm=%s",
+                    stk_cd, stk_nm,
+                )
+                continue
+            cur_price = float(str(cur_price_raw).replace(",", ""))
             qty = int(str(stock.get("qty", 0)).replace(",", ""))
-            pnl_rate = float(stock.get("pnl_rate", 0))
+            pnl_rate = float(pnl_rate_raw)
             # 서버 손익값만 사용: 표준 키(pnl_amount) 우선, 하위 호환 키(pnl_amt) 보조.
+            # NOTE: 아래 `or 0`은 폴백이 아님 — pnl_rate is None인 종목은 위 가드에서 continue되어
+            # 이 줄에 도달 불가. 도달한 종목은 cur_price/pnl_rate가 모두 非-None이므로 pnl_amount도 非-None.
+            # 나중에 "여기도 폴백이 남아있다"고 오해하여 재수정하지 말 것 (P20 위반 아님).
             pnl_amt = float(stock.get("pnl_amount", stock.get("pnl_amt", 0)) or 0)
 
             override = self.ts_overrides.get(stk_cd, {}) if isinstance(self.ts_overrides, dict) else {}
