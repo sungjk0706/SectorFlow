@@ -764,4 +764,4 @@ config/init/broker registry/공통 컴포넌트/설정 페이지 등 비핫패�
 - **조사 스킬**: `.devin/skills/continuity-investigation/SKILL.md`
 - **아키텍처 원칙**: `ARCHITECTURE.md` 제1부 불변 원칙 25개 (P1~P25)
 - **프로젝트 규칙**: `AGENTS.md` 섹션2 아키텍처 원칙·코드 수정 시 점검 체크리스트
-- **유사 보고서 (프론트엔드 데드코드)**: `docs/investigation_report_frontend-src-dead-code-duplicate-functions_20260801.md`
+- **유사 보고서 (프론트엔드 데드코드)**: `docs/investigation_report_frontend-src-dead-code-duplicate-functions_20260801.md` — 후속 정리 완료(커밋 `7e4050e`) 후 규칙 10-(1)에 따라 삭제됨. 상세는 git history 참조.
