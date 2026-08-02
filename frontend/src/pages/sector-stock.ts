@@ -3,12 +3,10 @@
 // 순수 로직(컬럼 정의, 행 계산, 검색 필터)은 sector-stock-rows.ts에 분리 (P24 단순성)
 
 import { createDataTable, type DataTableApi } from '../components/common/data-table'
-import { hotStore, normalizeStockCode } from '../stores/hotStore'
+import { hotStore } from '../stores/hotStore'
 import { uiStore, setSelectedSector } from '../stores/uiStore'
 import { notifyPageActive, notifyPageInactive } from '../api/ws'
-import { api } from '../api/client'
-import { applySectorScoresSnapshot, applyMasterStocksSnapshot } from '../stores/hotStore'
-import { refreshPageData, createPageRefreshStatus } from '../utils/page-refresh'
+import { createPageRefreshStatus } from '../utils/page-refresh'
 import { createCardTitle } from '../components/common/card-title'
 import { createActionButton } from '../components/common/button'
 import { createSearchInput } from '../components/common/search-input'
@@ -361,6 +359,10 @@ class SectorStockTable extends HTMLElement {
 
       if (!changed) return
 
+      if (this.refreshStatus && Object.keys(state.masterStocks).length > 0) {
+        this.refreshStatus.set('', true)
+      }
+
       // selectedSector가 좌측 패널에서 변경된 경우: 양쪽 검색 입력란 초기화
       if (uiState.selectedSector !== prevSelectedSector) {
         if (this.searchInput) { this.searchInput.clear(); this.searchTerm = '' }
@@ -397,7 +399,6 @@ class SectorStockTable extends HTMLElement {
     this.currentMatchedCodes = null
     this.currentMatchedSectors = null
     this.rowCache = new Map()
-    notifyPageActive('sector-ranking')
 
     // 호스트 엘리먼트를 block + height:100%로 설정 (Custom Element 기본 display:inline 방지).
     // display:inline이면 Shadow DOM 내부 rootEl의 height:100%가 부모 높이를 참조하지 못해
@@ -415,6 +416,7 @@ class SectorStockTable extends HTMLElement {
     this.rootEl.appendChild(this.titleH3)
     this.refreshStatus = createPageRefreshStatus()
     this.rootEl.appendChild(this.refreshStatus.el)
+    this.refreshStatus.set('업종 데이터 수신 중')
 
     // 1-1. 합계 정보 바 — 1행: 좌측 5거래일 평균 거래대금, 우측 종목수 요약
     this.rootEl.appendChild(this.buildSummaryBar())
@@ -448,49 +450,11 @@ class SectorStockTable extends HTMLElement {
     // Store 구독
     this.setupSubscriptions()
 
+    // 구독 전에 store 갱신 리스너를 연결해 초기 스냅샷 수신과 화면 렌더 사이의 경주를 방지한다.
+    notifyPageActive('sector-ranking')
+
     // O(1) 초저지연 DOM 갱신 이벤트 리스너
     this.setupTickListener()
-    this.refreshReferenceData()
-  }
-
-  /** 페이지 진입 시 참고성 업종 데이터를 캐시 우선으로 갱신한다. WS 시세 수신은 기존 경로를 유지한다. */
-  private refreshReferenceData(): void {
-    if (!this.refreshStatus) return
-    this.refreshStatus.set('업종 데이터 확인 중')
-    const refreshes = [
-      refreshPageData({
-        key: 'sector-stock:stocks',
-        policy: 'swr',
-        isActive: () => this._mounted,
-        fetcher: () => api.getSectorStocks('sector-ranking'),
-        apply: response => applyMasterStocksSnapshot({ stocks: response.data, freshness: response.freshness }),
-      }),
-      refreshPageData({
-        key: 'sector-stock:scores',
-        policy: 'swr',
-        isActive: () => this._mounted,
-        fetcher: () => api.getSectorScores('sector-ranking'),
-        apply: response => {
-          // 비-WS 확정 데이터 스냅샷 — 컬럼 폭 계산 게이트 준비 완료 전환 (P10 SSOT).
-          // WS sector-scores가 없는 환경에서도 업종 테이블 폭이 1회 계산되도록 보장.
-          const applied = applySectorScoresSnapshot(response.data.scores, response.freshness!)
-          if (applied) {
-            uiStore.setState({ sectorDataReady: true })
-          }
-          return applied
-        },
-      }),
-    ]
-    Promise.all(refreshes).then(results => {
-      if (!this._mounted || !this.refreshStatus) return
-      const failed = results.some(result => result.status === 'error')
-      this.refreshStatus.set(failed ? '업종 데이터를 갱신하지 못했습니다' : '', !failed)
-      // 페이지별 구독 Push 모델 — 필터 통과 종목 코드로 구독 신청 (백엔드가 해당 종목만 push)
-      if (!failed) {
-        const filteredCodes = Object.keys(hotStore.getState().masterStocks).map(c => normalizeStockCode(c))
-        notifyPageActive('sector-ranking', filteredCodes)
-      }
-    })
   }
 
   /** O(1) 초저지연 DOM 갱신 이벤트 리스너 등록 */

@@ -206,7 +206,13 @@ async def ws_prices(websocket: WebSocket, token: str = Query(...)):
                 codes = msg.get("codes", [])
                 if page:
                     ws_manager.set_active_page(websocket, page)
-                    if isinstance(codes, list) and codes:
+                    if page == "sector-ranking" and isinstance(codes, list) and not codes:
+                        from backend.app.services.sector_data_provider import get_sector_summary_inputs
+                        sector_inputs = await get_sector_summary_inputs()
+                        codes = sector_inputs["all_filter_codes"]
+
+                    should_subscribe = isinstance(codes, list) and (bool(codes) or page == "sector-ranking")
+                    if should_subscribe:
                         # 마스터 캐시 구독 신청 + 신규 구독 종목 snapshot 전송 (설계 결정 2·C)
                         newly_subscribed = ws_manager.subscribe_codes(websocket, page, codes)
                         if newly_subscribed:

@@ -641,6 +641,43 @@ class TestWsPrices:
 
         mock_mgr.clear_active_page.assert_called_once_with(ws)
 
+    async def test_sector_ranking_without_codes_selects_filtered_codes(self):
+        from backend.app.web.routes.ws import ws_prices
+
+        ws = MagicMock()
+        ws.accept = AsyncMock()
+        ws.receive_text = AsyncMock(side_effect=[
+            json.dumps({"type": "page-active", "page": "sector-ranking"}),
+            Exception("disconnect"),
+        ])
+        ws.send_text = AsyncMock()
+
+        with patch("backend.app.web.routes.ws.ws_manager") as mock_mgr, \
+             patch("asyncio.create_task") as mock_create, \
+             patch(
+                 "backend.app.services.sector_data_provider.get_sector_summary_inputs",
+                 new=AsyncMock(return_value={"all_filter_codes": ["005930"]}),
+             ), \
+             patch(
+                 "backend.app.services.engine_initial_data.build_master_cache_snapshot",
+                 new=AsyncMock(return_value={"_v": 1, "stocks": []}),
+             ):
+            mock_mgr.register = AsyncMock()
+            mock_mgr.unregister = MagicMock()
+            mock_mgr.set_active_page = MagicMock()
+            mock_mgr.subscribe_codes = MagicMock(return_value={"005930"})
+            mock_mgr.send_to = AsyncMock()
+            mock_mgr.client_count = 1
+            mock_task = MagicMock()
+            mock_task.cancel = MagicMock()
+            mock_create.side_effect = lambda coro: (coro.close(), mock_task)[1]
+            await ws_prices(ws, token="test")
+
+        mock_mgr.subscribe_codes.assert_called_once_with(ws, "sector-ranking", ["005930"])
+        mock_mgr.send_to.assert_awaited_once_with(
+            ws, "master-cache-snapshot", {"_v": 1, "stocks": []}
+        )
+
     async def test_subscribe_fids_sets_subscribed_fids(self):
         from backend.app.web.routes.ws import ws_prices
 
