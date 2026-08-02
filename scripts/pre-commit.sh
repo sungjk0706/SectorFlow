@@ -16,6 +16,7 @@ if [ -f ".venv/bin/ruff" ]; then
     if ! .venv/bin/ruff check backend/app/; then
         echo "[pre-commit] ❌ Ruff 검사 실패 — 금지 패턴 또는 dead code 발견"
         echo "[pre-commit] 자동 수정 가능 항목: .venv/bin/ruff check backend/app/ --fix"
+        echo "[pre-commit] 더 자세한 내용: AGENTS.md 섹션2 '금지 패턴 5개' + ARCHITECTURE.md W1/W6/W8"
         exit 1
     fi
     echo "[pre-commit] ✅ Ruff 통과"
@@ -29,6 +30,7 @@ if [ -n "$frontend_changed" ]; then
     echo "[pre-commit] Frontend 타입체크..."
     if ! (cd frontend && npm run typecheck 2>&1); then
         echo "[pre-commit] ❌ Frontend 타입체크 실패"
+        echo "[pre-commit] 더 자세한 내용: AGENTS.md 섹션2 '코드 수정 시 점검 체크리스트 — 프론트엔드'"
         exit 1
     fi
     echo "[pre-commit] ✅ Frontend 타입체크 통과"
@@ -40,6 +42,7 @@ if [ -n "$db_files" ]; then
     echo "[pre-commit] ❌ DB 파일 커밋 시도 감지 — 안전 규칙 1 위반"
     echo "[pre-commit] 감지 파일: $db_files"
     echo "[pre-commit] DB 파일은 git 추적 대상이 아님 — 스테이징에서 제거하세요"
+    echo "[pre-commit] 더 자세한 내용: AGENTS.md 섹션2 '안전 규칙' 1번 + db-backup 스킬"
     exit 1
 fi
 
@@ -52,6 +55,7 @@ if [ -n "$broker_leak" ]; then
         echo "[pre-commit] ❌ P4 위반 — 신규 추가된 증권사별 모듈 직접 import 감지"
         echo "$broker_imports"
         echo "[pre-commit] 레지스트리 패턴(broker_factory/broker_registry) 경유 필수"
+        echo "[pre-commit] 더 자세한 내용: AGENTS.md 섹션2 P4 + ARCHITECTURE.md '불변 원칙 25개' P4"
         exit 1
     fi
 fi
@@ -67,6 +71,7 @@ if [ -n "$sync_io_new" ]; then
     echo "[pre-commit] ❌ P1-P3 위반 — 신규 동기 I/O 사용 감지"
     echo "$sync_io_new"
     echo "[pre-commit] async I/O(httpx, aiosqlite, asyncio.sleep) 사용 필수"
+    echo "[pre-commit] 더 자세한 내용: AGENTS.md 섹션2 P1-P3 + ARCHITECTURE.md '불변 원칙 25개' P1~P3"
     exit 1
 fi
 
@@ -79,6 +84,7 @@ fi
 if [ -n "$asyncio_run_new" ]; then
     echo "[pre-commit] ❌ 금지 패턴 1 — 신규 asyncio.run() 사용 감지"
     echo "$asyncio_run_new"
+    echo "[pre-commit] 더 자세한 내용: AGENTS.md 섹션2 '금지 패턴 5개' 1번째 + ARCHITECTURE.md W1"
     exit 1
 fi
 
@@ -92,6 +98,7 @@ if [ -n "$db_remove_new" ]; then
     echo "[pre-commit] ❌ 안전 규칙 1 위반 — 신규 DB 파일 삭제 코드 감지"
     echo "$db_remove_new"
     echo "[pre-commit] stocks.db 삭제/덮어쓰기 금지 — 백업은 db-backup 스킬 사용"
+    echo "[pre-commit] 더 자세한 내용: AGENTS.md 섹션2 '안전 규칙' 1번 + db-backup 스킬"
     exit 1
 fi
 
