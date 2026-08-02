@@ -75,8 +75,8 @@ async def get_sector_stocks() -> list:
     """업종별 종목 시세 테이블용 — master_stocks_cache 기반 필터링/정렬.
 
     작은 그릇 패턴 (길 B): 원본 캐시 엔트리를 통째로 복사하지 않고 화면에 필요한 필드만
-    새 dict에 담아 반환 (build_master_cache_snapshot과 동일 패턴, P23 일관성).
-    avg_amt_5d는 억 단위로 변환 (build_master_cache_snapshot과 동일, P23 일관성).
+    새 dict에 담아 반환. 단위는 원본(백만원) 그대로 유지 — 프론트 fmtMillionsToBillion이
+    백만원→억 변환을 담당하므로 백엔드에서 단위 변환 금지 (정수 나눗셈 정밀도 손실 방지).
     """
     from backend.app.services.engine_symbol_utils import get_stock_market as _get_mkt, is_nxt_enabled as _is_nxt
     from backend.app.core.sector_mapping import get_merged_sectors_batch
@@ -100,11 +100,10 @@ async def get_sector_stocks() -> list:
     # 업종 배치 조회: N회 개별 await → 1회 배치 호출
     sectors_map = await get_merged_sectors_batch(valid_codes)
 
-    # 작은 그릇: 화면에 필요한 필드만 담기 (build_master_cache_snapshot과 동일 패턴)
+    # 작은 그릇: 화면에 필요한 필드만 담기 (단위는 원본 그대로 — 백만원)
     result: list[dict] = []
     for cd in valid_codes:
         entry = cache[cd]
-        avg5d_million = int(entry.get("avg_5d_trade_amount", 0) or 0)
         result.append({
             "code": cd,
             "name": entry.get("name", ""),
@@ -114,7 +113,7 @@ async def get_sector_stocks() -> list:
             "strength": entry.get("strength"),
             "trade_amount": entry.get("trade_amount"),
             "sector": sectors_map.get(cd, "미분류"),
-            "avg_amt_5d": avg5d_million // 100,  # 백만원 → 억 단위 (build_master_cache_snapshot과 동일, P23 일관성)
+            "avg_amt_5d": int(entry.get("avg_5d_trade_amount", 0) or 0),  # 백만원 단위 유지 (프론트가 억 변환)
             "market_type": _get_mkt(cd) or "",
             "nxt_enable": _is_nxt(cd),
             "order_ratio": entry.get("order_ratio"),

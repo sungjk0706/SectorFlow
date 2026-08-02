@@ -291,6 +291,26 @@ class TestGetSectorStocks:
             result = await get_sector_stocks()
             assert len(result) == 0
 
+    @pytest.mark.asyncio
+    async def test_avg_amt_5d_preserves_million_unit(self):
+        """avg_amt_5d는 백만원 단위 유지 — 프론트 fmtMillionsToBillion이 억 변환 담당.
+        정수 나눗셈(// 100) 금지: 소액 종목 0 됨 + 프론트 이중 나눗셈 100x 왜곡 방지.
+        """
+        with patch("backend.app.services.engine_state.state") as mock_state, \
+             patch("backend.app.core.sector_mapping.get_merged_sectors_batch", new=AsyncMock(return_value={})), \
+             patch("backend.app.services.engine_symbol_utils.get_stock_market", return_value="코스피"), \
+             patch("backend.app.services.engine_symbol_utils.is_nxt_enabled", return_value=False):
+            mock_state.integrated_system_settings_cache = {"sector_min_trade_amt": 0.0}
+            mock_state.master_stocks_cache = {
+                # 50 백만원 = 5천만원 (소액 종목) — // 100 시 0 됨
+                "005930": {"name": "소액종목", "cur_price": 5000, "avg_5d_trade_amount": 50, "high_5d_price": 5100},
+            }
+            mock_state.sector_summary_cache = None
+            result = await get_sector_stocks()
+            assert len(result) == 1
+            # 백만원 단위 그대로 — 나눗셈 없음
+            assert result[0]["avg_amt_5d"] == 50
+
 
 # ── get_sector_summary_inputs ───────────────────────────────────────
 
