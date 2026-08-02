@@ -357,19 +357,34 @@ async def _apply_balance_realtime(item: dict, vals: dict) -> None:
         logger.warning("[계좌] 잔고 회복 후 매수 재평가 실패 — 사용자가 수동으로 매수 후보 확인 필요", exc_info=True)
 
 
-async def _on_fill_after_ws() -> None:
-    """주문체결(00) 완료 직후 — REST 없이 메모리·매도조건만 갱신."""
+async def _on_fill_after_ws(fill_code: str = "") -> None:
+    """주문체결(00) 완료 직후 — REST 없이 메모리·매도조건만 갱신.
+
+    fill_code: 주문 체결된 종목 코드. 빈 문자열이면(구 호출부 호환) 전체 보유 종목 검사.
+    체결된 종목만 매도 조건 점검 — 01 시세 체결 경로가 전체 보유 종목을 계속 커버하므로
+    주문 체결 경로는 체결 종목 한정으로 불필요한 전체 순회 회피 (P7/P24).
+    """
     from backend.app.services.auto_trading_effective import auto_sell_effective
     from backend.app.services import dry_run
+    from backend.app.services.engine_symbol_utils import _base_stk_cd
 
     # 1. 계좌 스냅샷 갱신
     await _refresh_account_snapshot_meta()
 
-    # 2. 매도 조건 검사
+    # 2. 매도 조건 검사 — 체결 종목 한정
+    norm_code = _base_stk_cd(fill_code) if fill_code else ""
     if is_test_mode(state.integrated_system_settings_cache):
-        pos = await dry_run.get_positions()
+        if norm_code:
+            _matched = await dry_run.get_position(norm_code)
+            pos = [_matched] if _matched else []
+        else:
+            pos = await dry_run.get_positions()
     else:
-        pos = state.positions
+        if norm_code:
+            pos = [p for p in state.positions if _base_stk_cd(str(p.get("stk_cd", "") or "")) == norm_code]
+        else:
+            pos = state.positions
+    # 체결 종목이 보유 목록에 없거나 전량 매도로 사라진 경우 → 빈 목록, 매도 검사 호출 안 함 (안전 종료)
     if pos and state.auto_trade and auto_sell_effective(state.integrated_system_settings_cache) and state.access_token:
         await state.auto_trade.check_sell_conditions(pos, state.integrated_system_settings_cache, state.access_token)
 

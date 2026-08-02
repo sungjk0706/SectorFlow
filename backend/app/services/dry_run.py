@@ -194,8 +194,8 @@ async def fake_fill_event(
     if state.auto_trade:
         await state.auto_trade.on_fill_update(code, ws_side, 0, state.access_token)
 
-    # 3. _on_fill_after_ws (실전 _handle_real_00과 동일)
-    await engine_account._on_fill_after_ws()
+    # 3. _on_fill_after_ws (실전 _handle_real_00과 동일) — 체결 종목 코드 전달
+    await engine_account._on_fill_after_ws(code)
 
 
 # ── 2. 인메모리 잔고 관리 ───────────────────────────────────────────────────

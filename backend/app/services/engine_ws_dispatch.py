@@ -141,7 +141,8 @@ async def _handle_real_00(item: dict, vals: dict) -> None:
             await engine_state.state.auto_trade.on_fill_update(raw_cd, side, unex, engine_state.state.access_token)
 
         # [근본해결] 부분 체결(unex > 0) 포함 모든 체결 발생 시 즉시 계좌 상태 반영
-        await engine_account._on_fill_after_ws()
+        # 체결 종목 코드 전달 — 주문 체결 경로는 체결 종목만 매도 조건 점검 (P7/P24)
+        await engine_account._on_fill_after_ws(raw_cd)
     except Exception as e:
         logger.warning("[매매] 체결 콜백/잔고 갱신 오류 (계속): %s", e, exc_info=True)
 
