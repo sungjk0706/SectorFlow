@@ -349,7 +349,7 @@ export interface SectorScoresEvent {
  *
  * 갱신 계약 (세션 7 — `applyRealData` 참조):
  * - `type`: 키움 TR 코드. `applyRealData`가 처리하는 handled types:
- *   - '01' / '0B' / '0H' — 주식체결 (현재가/대비/등락률/체결강도/거래대금).
+ *   - '01' / '0B' / '0H' — 종목체결 (현재가/대비/등락률/체결강도/거래대금).
  *   - 미지원 type(예: '0A' 등)은 `applyRealData`에서 스킵 — 상태 미변경, 디스패치 안 함.
  * - `item`: 종목코드 (정규화 전 raw — `applyRealData`가 `normalizeStockCode`로 정규화).
  * - `values`: 키움 FID 키 → 값 문자열 매핑. handled keys (01/0B/0H):

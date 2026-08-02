@@ -211,8 +211,7 @@ export function createSettingToggleRow(options: {
     right.appendChild(extras)
   }
 
-  let toggle: ReturnType<typeof createToggleBtn>
-  toggle = createToggleBtn({ on: options.toggleOn, onClick: () => {
+  const toggle = createToggleBtn({ on: options.toggleOn, onClick: () => {
     const next = !toggle.isOn()
     toggle.setOn(next)
     if (options.disableControlsOnToggle) {

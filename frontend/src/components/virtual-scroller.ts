@@ -155,7 +155,7 @@ export function createVirtualScroller<T>(
   const overscan = options.overscan ?? 5
 
   let items = options.items
-  let getRowHeight = options.getRowHeight
+  const getRowHeight = options.getRowHeight
   let offsets: number[] = []
   let totalHeight = 0
 

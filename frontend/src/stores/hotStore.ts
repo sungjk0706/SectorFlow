@@ -323,7 +323,7 @@ export function applyAccountSummaryUpdate(data: AccountSummaryUpdateEvent): void
  * 키움 실시간 Raw 체결 이벤트 → in-place mutation + rAF 배칭 디스패치.
  *
  * 갱신 계약 (세션 7 — 업계 표준 coalescing mutable store 패턴):
- * - handled types: '01'/'0B'/'0H' (주식체결). 미지원 type은 스킵 (디스패치 안 함, 상태 미변경).
+ * - handled types: '01'/'0B'/'0H' (종목체결). 미지원 type은 스킵 (디스패치 안 함, 상태 미변경).
  * - in-place mutation: masterStocks(표시 SSOT) + positions.cur_price(계산용) 2곳만.
  *   buyTargets는 정적 스코어만 보관하므로 실시간 필드 갱신 불필요 (P10 SSOT 강화).
  *   `hotStore.setState()`를 호출하지 않음 → 일반 `hotStore.subscribe()` 리스너 미발화.
@@ -344,7 +344,7 @@ export function applyRealData(item: RealDataEvent): void {
   // 종목코드 정규화
   const code = normalizeStockCode(rawCode);
 
-  // 1. 01/0B/0H (주식체결) 처리
+  // 1. 01/0B/0H (종목체결) 처리
   if (type === '01' || type === '0B' || type === '0H') {
     const rawPrice = vals['10'];
     const rawChange = vals['11'];
@@ -703,7 +703,7 @@ export function applySectorScores(data: SectorScoresEvent): void {
         merged.push(s)
       }
     }
-    // 기존에 없던 새 섹터 추가
+    // 기존에 없던 새 업종 추가
     for (const s of data.changed_scores) {
       if (!seen.has(s.sector)) {
         merged.push(s)

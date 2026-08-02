@@ -208,8 +208,8 @@ def _compute_holidays(year: int) -> set[date]:
             sub = _calc_substitute(buddha, year, holidays, substitutes)
             if sub is not None:
                 substitutes.add(sub)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("[거래일] 부처님오신날 대체공휴일 계산 실패: %s", exc)
 
     holidays.update(substitutes)
 

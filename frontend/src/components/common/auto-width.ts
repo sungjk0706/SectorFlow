@@ -101,7 +101,7 @@ export function clampColWidth(
 ): number {
   const rawWidth = textWidth + CELL_HORIZONTAL_PADDING
   let minW = minWidth !== undefined ? Math.max(ABSOLUTE_MIN_WIDTH, minWidth) : ABSOLUTE_MIN_WIDTH
-  let maxW = maxWidth !== undefined ? Math.min(ABSOLUTE_MAX_WIDTH, maxWidth) : ABSOLUTE_MAX_WIDTH
+  const maxW = maxWidth !== undefined ? Math.min(ABSOLUTE_MAX_WIDTH, maxWidth) : ABSOLUTE_MAX_WIDTH
   if (minW > maxW) {
     console.warn(
       `[auto-width] minWidth(${minW}) > maxWidth(${maxW}), clamping minWidth to maxWidth`,

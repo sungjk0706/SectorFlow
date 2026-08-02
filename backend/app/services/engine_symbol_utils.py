@@ -11,7 +11,7 @@ C-06 역참조 해소). 본 모듈에서 재수출하여 기존 호출부·테�
 """
 from backend.app.core.symbol_utils import (
     _base_stk_cd,
-    _real_item_stk_cd,
+    _real_item_stk_cd,  # noqa: F401 — re-export, 기존 호출부·테스트 patch 경로 유지 (P16 살아있는 경로)
 )
 
 
