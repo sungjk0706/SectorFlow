@@ -166,7 +166,7 @@ async def build_master_cache_snapshot(codes: list[str]) -> dict:
             "strength": entry.get("strength"),
             "trade_amount": entry.get("trade_amount"),
             "sector": sectors_map.get(cd, "미분류"),
-            "avg_amt_5d": avg5d_million // 100,  # 백만원 → 억 단위 (P23 일관성)
+            "avg_amt_5d": avg5d_million,  # 백만원 단위 유지 (get_sector_stocks와 동일 — 프론트 fmtMillionsToBillion이 억 변환 단일 담당, 이중 나눗셈 방지)
             "market_type": _get_mkt(cd) or "",
             "nxt_enable": _is_nxt(cd),
             "order_ratio": entry.get("order_ratio"),
