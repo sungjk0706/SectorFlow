@@ -297,10 +297,13 @@ class TestGetSectorStocks:
 class TestGetSectorSummaryInputs:
     @pytest.mark.asyncio
     async def test_returns_expected_structure(self):
-        with patch("backend.app.services.sector_data_provider.get_sector_stocks", new=AsyncMock(return_value=[
-            {"code": "005930", "avg_amt_5d": 50000},
-        ])), \
+        """캐시에서 직접 필터링 — get_sector_stocks 분리 (길 B)."""
+        with patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.services.daily_time_scheduler.is_nxt_only_window", return_value=False):
+            mock_state.integrated_system_settings_cache = {"sector_min_trade_amt": 0.0}
+            mock_state.master_stocks_cache = {
+                "005930": {"name": "삼성전자", "cur_price": 70000, "avg_5d_trade_amount": 50000},
+            }
             result = await get_sector_summary_inputs()
             assert "all_codes" in result
             assert "all_filter_codes" in result
@@ -309,21 +312,52 @@ class TestGetSectorSummaryInputs:
             assert "avg_amt_5d" in result
             assert result["all_codes"] == ["005930"]
             assert result["all_filter_codes"] == ["005930"]
+            # avg_amt_5d는 백만원 단위 (sector_calculator.py:89와 동일)
             assert result["avg_amt_5d"]["005930"] == 50000
 
     @pytest.mark.asyncio
     async def test_nxt_only_window_filters(self):
         """NXT-only 구간에서는 NXT-enabled 종목만 포함."""
-        with patch("backend.app.services.sector_data_provider.get_sector_stocks", new=AsyncMock(return_value=[
-            {"code": "005930", "avg_amt_5d": 50000},
-            {"code": "005931", "avg_amt_5d": 30000},
-        ])), \
+        with patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.services.daily_time_scheduler.is_nxt_only_window", return_value=True), \
              patch("backend.app.services.engine_symbol_utils.is_nxt_enabled", side_effect=lambda cd: cd == "005930"):
+            mock_state.integrated_system_settings_cache = {"sector_min_trade_amt": 0.0}
+            mock_state.master_stocks_cache = {
+                "005930": {"name": "삼성전자", "cur_price": 70000, "avg_5d_trade_amount": 50000},
+                "005931": {"name": "삼성전자우", "cur_price": 30000, "avg_5d_trade_amount": 30000},
+            }
             result = await get_sector_summary_inputs()
             assert result["all_codes"] == ["005930"]
             # all_filter_codes는 NXT 필터링 전 전체 종목 — KRX 단독 종목(005931)도 포함
             assert set(result["all_filter_codes"]) == {"005930", "005931"}
+
+    @pytest.mark.asyncio
+    async def test_filters_invalid_entries(self):
+        """시세/이름 없는 엔트리 제거 (get_sector_stocks와 동일 기준)."""
+        with patch("backend.app.services.engine_state.state") as mock_state, \
+             patch("backend.app.services.daily_time_scheduler.is_nxt_only_window", return_value=False):
+            mock_state.integrated_system_settings_cache = {"sector_min_trade_amt": 0.0}
+            mock_state.master_stocks_cache = {
+                "005930": {"name": "삼성전자", "cur_price": 70000, "avg_5d_trade_amount": 50000},
+                "000000": {"cur_price": 0, "name": ""},  # 무효 — cur_price=0, name 없음
+            }
+            result = await get_sector_summary_inputs()
+            assert result["all_codes"] == ["005930"]
+            assert result["all_filter_codes"] == ["005930"]
+
+    @pytest.mark.asyncio
+    async def test_filters_by_min_trade_amt(self):
+        """5거래일 평균 거래대금 필터링 (get_sector_stocks와 동일 기준)."""
+        with patch("backend.app.services.engine_state.state") as mock_state, \
+             patch("backend.app.services.daily_time_scheduler.is_nxt_only_window", return_value=False):
+            mock_state.integrated_system_settings_cache = {"sector_min_trade_amt": 1000.0}  # 1000억원
+            mock_state.master_stocks_cache = {
+                # avg_5d_trade_amount=50000 (백만원) → 500억원 → 1000억 미만 → 필터됨
+                "005930": {"name": "삼성전자", "cur_price": 70000, "avg_5d_trade_amount": 50000},
+            }
+            result = await get_sector_summary_inputs()
+            assert result["all_codes"] == []
+            assert result["all_filter_codes"] == []
 
 
 # ── recompute_sector_summary_now ────────────────────────────────────
