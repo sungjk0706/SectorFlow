@@ -261,19 +261,22 @@ export const wsOrdersClient = new WSClient('orders')
 /** 현재 활성 페이지 추적 — WS (재)연결 시 재전송용 */
 let _currentPage: string | null = null
 
+function sendPageActivity(type: 'page-active' | 'page-inactive', page: string): void {
+  const payload = JSON.stringify({ type, page })
+  wsClient.send(payload)
+  wsSettingsClient.send(payload)
+}
+
 /** 현재 페이지 활성 알림 → 백엔드가 페이지 이름으로 대상 조회 후 구독·스냅샷 전송 */
 export function notifyPageActive(page: string): void {
   _currentPage = page
-  const payload = JSON.stringify({ type: 'page-active', page })
-  wsClient.send(payload)
-  wsSettingsClient.send(payload)
+  sendPageActivity('page-active', page)
 }
 
 /** 현재 페이지 비활성 알림 → 백엔드 per-client 필터링 해제 + 구독 해제 */
 export function notifyPageInactive(page: string): void {
   if (_currentPage === page) { _currentPage = null }
-  wsClient.send(JSON.stringify({ type: 'page-inactive', page }))
-  wsSettingsClient.send(JSON.stringify({ type: 'page-inactive', page }))
+  sendPageActivity('page-inactive', page)
 }
 
 /** 현재 활성 페이지 반환 — WS (재)연결 시 page-active 재전송용 */

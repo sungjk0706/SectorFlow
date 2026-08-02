@@ -455,6 +455,7 @@ class TestDataPageSnapshotBuilder:
         mock_conn.close = AsyncMock()
         with patch("backend.app.db.database.get_db_connection", new=AsyncMock(return_value=mock_conn)):
             payload = await _build_data_page_snapshot(PAGE_STOCK_DETAIL)
+        mock_conn.close.assert_not_awaited()
         assert payload["date"] == "20260801"
         assert len(payload["items"]) == 2
         samsung = payload["items"][0]

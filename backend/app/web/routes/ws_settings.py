@@ -45,7 +45,8 @@ async def ws_settings(websocket: WebSocket, token: str = Query(...)):
                         ALLOWED_PAGE_KEYS, handle_page_active,
                     )
                     if page in ALLOWED_PAGE_KEYS:
-                        await handle_page_active(websocket, page, None)
+                        if page == "settings":
+                            await handle_page_active(websocket, page, None)
                     else:
                         ws_manager.set_active_page(websocket, page)
             elif msg_type == "page-inactive":

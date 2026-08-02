@@ -211,10 +211,11 @@ async def ws_prices(websocket: WebSocket, token: str = Query(...)):
                         ALLOWED_PAGE_KEYS, handle_page_active,
                     )
                     if page in ALLOWED_PAGE_KEYS:
-                        await handle_page_active(
-                            websocket, page,
-                            codes if isinstance(codes, list) and codes else None,
-                        )
+                        if page != "settings":
+                            await handle_page_active(
+                                websocket, page,
+                                codes if isinstance(codes, list) and codes else None,
+                            )
                     else:
                         # 지원하지 않는 페이지 이름 — 기존 처리 규칙 유지 (호환).
                         ws_manager.set_active_page(websocket, page)

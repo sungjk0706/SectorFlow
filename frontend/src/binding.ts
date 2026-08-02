@@ -73,7 +73,7 @@ export function bindWSToStore(
   pricesClient.setConnectionCallbacks(
     () => {
       const page = getCurrentPage()
-      if (page) pricesClient.send(JSON.stringify({ type: 'page-active', page }))
+      if (page && page !== 'settings') pricesClient.send(JSON.stringify({ type: 'page-active', page }))
     },
     () => {},
   )
@@ -127,7 +127,7 @@ export function bindWSToStore(
   settingsClient.setConnectionCallbacks(
     () => {
       const page = getCurrentPage()
-      if (page) settingsClient.send(JSON.stringify({ type: 'page-active', page }))
+      if (page === 'settings') settingsClient.send(JSON.stringify({ type: 'page-active', page }))
     },
     () => {
     },

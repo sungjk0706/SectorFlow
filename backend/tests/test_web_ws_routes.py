@@ -192,14 +192,14 @@ class TestWsSettings:
         sent = [json.loads(c.args[0]) for c in ws.send_text.call_args_list]
         assert {"type": "pong"} in sent
 
-    async def test_page_active_allowed_page_calls_handle_page_active(self):
-        """허용된 화면 키 — handle_page_active 호출 (저장소 대상 조회·스냅샷 전송)."""
+    async def test_page_active_settings_page_calls_handle_page_active(self):
+        """설정 채널은 설정 화면의 page-active만 처리한다."""
         from backend.app.web.routes.ws_settings import ws_settings
 
         ws = MagicMock()
         ws.accept = AsyncMock()
         ws.receive_text = AsyncMock(side_effect=[
-            json.dumps({"type": "page-active", "page": "buy-target"}),
+            json.dumps({"type": "page-active", "page": "settings"}),
             Exception("disconnect"),
         ])
         ws.send_text = AsyncMock()
@@ -212,7 +212,7 @@ class TestWsSettings:
             mock_mgr.client_count = 1
             await ws_settings(ws, token="test")
 
-        mock_handle.assert_called_once_with(ws, "buy-target", None)
+        mock_handle.assert_called_once_with(ws, "settings", None)
 
     async def test_page_active_unsupported_page_sets_active_page(self):
         """지원하지 않는 페이지 키 — 기존 set_active_page 처리 유지 (호환)."""

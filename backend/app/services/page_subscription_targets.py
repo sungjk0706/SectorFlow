@@ -493,19 +493,16 @@ async def _build_data_page_snapshot(page: str) -> dict | None:
         from collections import defaultdict
         from backend.app.db.database import get_db_connection
         conn = await get_db_connection()
-        try:
-            cursor = await conn.execute(
-                "SELECT code, name, market AS market_type, nxt_enable "
-                "FROM master_stocks_table ORDER BY code"
-            )
-            master_rows = await cursor.fetchall()
-            cursor = await conn.execute(
-                "SELECT code, dt, trade_amount, high_price "
-                "FROM stock_5d_bars ORDER BY code, dt DESC"
-            )
-            bar_rows = await cursor.fetchall()
-        finally:
-            await conn.close()
+        cursor = await conn.execute(
+            "SELECT code, name, market AS market_type, nxt_enable "
+            "FROM master_stocks_table ORDER BY code"
+        )
+        master_rows = await cursor.fetchall()
+        cursor = await conn.execute(
+            "SELECT code, dt, trade_amount, high_price "
+            "FROM stock_5d_bars ORDER BY code, dt DESC"
+        )
+        bar_rows = await cursor.fetchall()
         bars_by_code: dict[str, list] = defaultdict(list)
         latest_dt = ""
         for r in bar_rows:
