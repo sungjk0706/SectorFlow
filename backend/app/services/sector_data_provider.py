@@ -13,12 +13,16 @@ logger = logging.getLogger(__name__)
 # 업종 요약 계산 관련 함수
 # ──────────────────────────────────────────────────────────────────────────────
 
-async def get_sector_summary_inputs() -> dict:
+async def get_sector_summary_inputs(codes: list[str] | None = None) -> dict:
     """업종 요약 계산 입력 데이터 반환.
 
     단일 소스 진리: master_stocks_cache를 직접 참조하므로 스냅샷 제거.
     NXT-only 구간(08:00~08:50, 15:40~20:00) 거래일에는 NXT-enabled 종목만 포함.
     정규장(09:00~15:20)에는 전체 종목 포함.
+
+    ``codes``가 주어지면 해당 업종의 재계산 후보만 검사한다. 후보 자체에도
+    동일한 1차 필터를 적용하므로 필터 미통과 종목이 업종 점수에 들어가지 않는다.
+    전체 재계산에서만 master_stocks_cache 전체를 기준으로 후보를 만든다.
 
     KRX/NXT 분리 (P10 SSOT — nxt_enable 필드 기반, P23 일관성 — sector-stock.ts 카운트와 동일 기준):
     - krx_codes: KRX 단독 상장 종목 (nxt_enable=False)
@@ -26,9 +30,8 @@ async def get_sector_summary_inputs() -> dict:
     - all_codes: krx_codes + nxt_codes (업종 점수 계산용 — NXT-only 구간에는 NXT 종목만 포함)
     - all_filter_codes: NXT 필터링 전 전체 종목 (구독 대상 식별용 — NXT-only 구간에도 KRX 종목 포함)
 
-    캐시 직접 읽기 (길 B — get_sector_stocks 분리): 0.2초 루프에서 1337회 dict copy 제거.
-    종목 코드 목록과 avg_amt_5d(백만원)만 필요하므로 복사·필드명 변환·업종 조회·정렬 없이
-    캐시에서 직접 필터링 (P10 SSOT, P24 단순성).
+    캐시 직접 읽기: 종목 코드와 avg_amt_5d(백만원)만 필요하므로 복사·필드명 변환·업종
+    조회·정렬 없이 필터링한다. 증분 재계산은 전달받은 후보만 검사해 전체 종목 순회를 피한다.
     """
     from backend.app.services.engine_symbol_utils import is_nxt_enabled as _is_nxt
     from backend.app.services.daily_time_scheduler import is_nxt_only_window
@@ -38,7 +41,12 @@ async def get_sector_summary_inputs() -> dict:
     # 캐시에서 직접 필터링 — get_sector_stocks()와 동일 기준 (시세/이름 없는 엔트리 제거 + 거래대금 필터)
     all_filter_codes: list[str] = []
     avg_amt_5d: dict[str, int] = {}
-    for cd, entry in engine_state.state.master_stocks_cache.items():
+    cache = engine_state.state.master_stocks_cache
+    source_codes = codes if codes is not None else cache.keys()
+    for cd in source_codes:
+        entry = cache.get(cd)
+        if entry is None:
+            continue
         if int(entry.get("cur_price") or 0) <= 0 and (not entry.get("name") or entry.get("name") == cd):
             continue
         avg5d_million = int(entry.get("avg_5d_trade_amount", 0) or 0)

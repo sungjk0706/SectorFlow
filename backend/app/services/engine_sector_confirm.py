@@ -92,14 +92,14 @@ async def _flush_sector_recompute_impl() -> None:
             await _full_recompute(codes_snapshot)
             return
 
-        # __ALL__ 플래그 + 캐시 존재 → 전체 종목(all_codes)를 dirty로 취급하여 증분 경로 사용
-        # _master_stocks_cache의 "_subscribed" 대신 all_codes 사용: 업종 요약정보는 실시간 구독 상태와 무관하게 전체 종목 기준으로 계산
+        # __ALL__ 플래그는 설정 변경·기동 등 전체 갱신 신호이므로 전체 경로로 처리한다.
+        # 전체 경로도 get_sector_summary_inputs()가 1차 필터를 적용한 종목만 반환한다.
         if "__ALL__" in codes_snapshot:
-            inputs = await get_sector_summary_inputs()
-            codes_snapshot = set(inputs["all_codes"])
+            await _full_recompute(codes_snapshot)
+            return
 
         # ── 증분 갱신 ──
-        # 1. dirty 종목 → 해당 업종 추출 (배치 조회)
+        # 1. 변경 종목 → 해당 업종 추출 (배치 조회)
         codes_list = list(codes_snapshot)
         sectors_map = await sector_mapping.get_merged_sectors_batch(codes_list)
         dirty_sectors: set[str] = set()
@@ -111,17 +111,17 @@ async def _flush_sector_recompute_impl() -> None:
         if not dirty_sectors:
             return
 
-        # 2. 해당 업종의 종목만 재계산
-        inputs = await get_sector_summary_inputs()
-        all_codes = inputs["all_codes"]
-        min_avg_amt_eok = float(engine_state.state.integrated_system_settings_cache["sector_min_trade_amt"])
+        # 2. 기존 업종 점수에 들어간 종목과 변경 종목만 후보로 구성.
+        # 전체 master_stocks_cache를 다시 훑지 않고, 1차 필터를 통과했던
+        # 해당 업종 종목만 get_sector_summary_inputs()에 전달한다.
+        candidate_codes = set(codes_snapshot)
+        for sector_score in existing.sectors:
+            if sector_score.sector in dirty_sectors:
+                candidate_codes.update(stock.code for stock in sector_score.stocks)
 
-        # dirty 업종에 속한 종목코드만 필터 (배치 조회)
-        all_sectors_map = await sector_mapping.get_merged_sectors_batch(all_codes)
-        dirty_codes_for_calc = [
-            cd for cd in all_codes
-            if all_sectors_map.get(cd, "미분류") in dirty_sectors
-        ]
+        inputs = await get_sector_summary_inputs(codes=sorted(candidate_codes))
+        dirty_codes_for_calc = inputs["all_codes"]
+        min_avg_amt_eok = float(engine_state.state.integrated_system_settings_cache["sector_min_trade_amt"])
 
         if dirty_codes_for_calc:
             new_sector_scores = await compute_sector_scores(

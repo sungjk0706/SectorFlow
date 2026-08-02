@@ -379,6 +379,21 @@ class TestGetSectorSummaryInputs:
             assert result["all_codes"] == []
             assert result["all_filter_codes"] == []
 
+    @pytest.mark.asyncio
+    async def test_incremental_candidates_do_not_scan_unrelated_cache_entries(self):
+        """증분 갱신 후보를 전달하면 다른 캐시 종목은 업종 계산 입력에서 제외."""
+        with patch("backend.app.services.engine_state.state") as mock_state, \
+             patch("backend.app.services.daily_time_scheduler.is_nxt_only_window", return_value=False):
+            mock_state.integrated_system_settings_cache = {"sector_min_trade_amt": 200.0}
+            mock_state.master_stocks_cache = {
+                "005930": {"name": "삼성전자", "cur_price": 70000, "avg_5d_trade_amount": 30000},
+                "000660": {"name": "SK하이닉스", "cur_price": 200000, "avg_5d_trade_amount": 1000},
+            }
+            result = await get_sector_summary_inputs(codes=["005930"])
+            assert result["all_codes"] == ["005930"]
+            assert result["all_filter_codes"] == ["005930"]
+            assert result["avg_amt_5d"] == {"005930": 30000}
+
 
 # ── recompute_sector_summary_now ────────────────────────────────────
 
