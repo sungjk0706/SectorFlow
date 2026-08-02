@@ -211,13 +211,13 @@ async def get_all_sector_stocks(*, include_realtime: bool = False) -> list[dict]
     """전체 종목(매매부적격 제외) — 업종분류 커스텀 페이지 전용.
 
     각 종목: { code, name, sector(get_merged_sectors_batch 기반), market_type, nxt_enable,
-              avg_amt_5d(5거래일 평균 거래대금 — 우측 패널 표시용, 억 단위) }
+              avg_amt_5d(5거래일 평균 거래대금 — 백만원 단위, 프론트가 억 변환 담당) }
     include_realtime=True 시 추가: cur_price, change, change_rate, strength, trade_amount,
               order_ratio, program_net_buy, news_boost, high_5d (마스터 캐시 snapshot 생성용).
 
     avg_amt_5d (T1 설계 수정 — SectorStock 주인, P10 SSOT):
       - 데이터 소스: master_stocks_cache[cd]["avg_5d_trade_amount"] (백만원 단위)
-      - 변환: avg5d_eok = avg5d_million // 100 (sector_calculator.py:89와 동일 패턴, P23 일관성)
+      - 단위: 백만원 그대로 전송 (get_sector_stocks/build_master_cache_snapshot과 동일 — 프론트 fmtMillionsToBillion이 억 변환 단일 담당)
       - 0 = 원천 부재/미다운로드 (5거래일 일봉 전) 표시 규칙 유지 (P20 폴백 금지)
     """
     from backend.app.core.sector_mapping import get_merged_sectors_batch
@@ -238,14 +238,13 @@ async def get_all_sector_stocks(*, include_realtime: bool = False) -> list[dict]
     for cd in valid_codes:
         entry = engine_state.state.master_stocks_cache[cd]
         avg5d_million = int(entry.get("avg_5d_trade_amount", 0) or 0)
-        avg5d_eok = avg5d_million // 100  # 백만원 → 억 단위 변환 (sector_calculator.py:89와 동일)
         item = {
             "code": cd,
             "name": entry.get("name", ""),
             "sector": sectors_map.get(cd, "미분류"),
             "market_type": _get_mkt(cd) or "",
             "nxt_enable": _is_nxt(cd),
-            "avg_amt_5d": avg5d_eok,
+            "avg_amt_5d": avg5d_million,  # 백만원 단위 유지 (프론트 fmtMillionsToBillion이 억 변환 단일 담당)
         }
         if include_realtime:
             item["cur_price"] = entry.get("cur_price")

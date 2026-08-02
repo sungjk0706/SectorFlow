@@ -85,7 +85,7 @@ export interface MasterStock {
   strength?: number;
   trade_amount?: number;
   // ── 5거래일 통계 (2) ──
-  avg_amt_5d?: number;          // 백만원→억 단위 변환값 (백엔드)
+  avg_amt_5d?: number;          // 백만원 단위 (백엔드 전송 그대로 — 프론트 fmtMillionsToBillion이 억 변환)
   high_5d?: number;             // 0 = 원천 부재, >0 = 유효 고가
   // ── 호가·PGM·뉴스 (3) ──
   order_ratio?: [number, number] | null;
