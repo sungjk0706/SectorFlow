@@ -1030,6 +1030,14 @@ async def _post_recompute_notify(tag: str) -> None:
         await _send_receive_rate(get_current_receive_rate())
         await notify_desktop_sector_stocks_refresh(force=True)
         await recompute_sector_summary_now()
+        # 확정 데이터 반영 후 화면별 구독 대상 갱신 + 활성 연결 갱신 (태스크 2세션).
+        # recompute_sector_summary_now 내부에서 업종 순위·매수 후보 갱신이 이미 연결되어 있으나,
+        # 보유 종목·자료 화면도 확정 데이터 반영 후 최신화 필요.
+        from backend.app.services.page_subscription_targets import refresh_active_connections
+        await refresh_active_connections(
+            "장 마감 확정 데이터 반영",
+            {"sell-position", "profit-overview", "profit-detail", "stock-detail"},
+        )
         logger.info("%s 업종순위 재계산 + 실시간 화면 전송", tag)
     except Exception as _ws_err:
         logger.warning("%s 업종순위 재계산 실패: %s", tag, _ws_err, exc_info=True)

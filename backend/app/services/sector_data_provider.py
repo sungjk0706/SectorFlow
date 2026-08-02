@@ -346,6 +346,13 @@ async def recompute_sector_summary_now() -> None:
         await notify_desktop_sector_scores(force=True)
         await notify_desktop_sector_stocks_refresh(force=True)
         await notify_buy_targets_update()
+        # 화면별 구독 대상 갱신 + 활성 연결에 추가·제거·스냅샷 전달 (태스크 2세션).
+        # 업종 순위·매수 후보 대상이 바뀌면 활성 연결의 구독을 자동으로 최신화.
+        from backend.app.services.page_subscription_targets import refresh_active_connections
+        await refresh_active_connections(
+            "업종 재계산",
+            {"sector-ranking", "buy-target"},
+        )
         logger.info("[업종] 재계산 종료")
         engine_state.state.sector_summary_ready_event.set()
     except Exception as e:
@@ -396,6 +403,9 @@ async def recompute_buy_targets_only() -> None:
         )
         _set_sector_summary(_ss, "sector_data_provider.recompute_buy_targets_only")
         await notify_buy_targets_update()
+        # 매수 후보 대상 갱신 + 활성 연결 갱신 (태스크 2세션).
+        from backend.app.services.page_subscription_targets import refresh_active_connections
+        await refresh_active_connections("매수 후보 경량 재순위", {"buy-target"})
         logger.info("[매수후보] 경량 재순위 종료")
     except Exception as e:
         logger.warning("[매수후보] 경량 재순위 실패: %s", e, exc_info=True)

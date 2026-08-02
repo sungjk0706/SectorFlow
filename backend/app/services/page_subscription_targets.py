@@ -437,3 +437,226 @@ async def refresh_page_targets(
 ) -> dict[str, RefreshResult]:
     """원본 변경 시 화면별 대상 갱신 — 2세션에서 각 변경 지점에 연결할 공통 진입점."""
     return await page_targets.refresh(reason, pages)
+
+
+# ── 활성 연결 갱신·초기 스냅샷 전송 (2세션) ──────────────────────────────────
+
+async def _build_data_page_snapshot(page: str) -> dict | None:
+    """자료 중심 화면의 초기 스냅샷 페이로드 조립.
+
+    자료 전체는 원본이 단일 진실 소스이므로 여기서는 원본에서 조회하여 전송용 페이로드만 만든다.
+    반환 None — 원본 미준비 또는 조회 실패 (빈 스냅샷으로 성공 처리하지 않음).
+    """
+    if page == PAGE_PROFIT_DETAIL:
+        # 매수·매도 이력 + 일별 요약 — initial-snapshot과 동일 원본.
+        from backend.app.services.engine_initial_data import (
+            _get_trade_history_for_snapshot, _get_daily_summary_for_snapshot,
+        )
+        buy_history = await _get_trade_history_for_snapshot("buy")
+        sell_history = await _get_trade_history_for_snapshot("sell")
+        daily_summary = await _get_daily_summary_for_snapshot()
+        return {
+            "buy_history": buy_history,
+            "sell_history": sell_history,
+            "daily_summary": daily_summary,
+        }
+    if page == PAGE_STOCK_CLASSIFICATION:
+        # 분류 자료 — stock-classification-changed 페이로드와 동일.
+        from backend.app.core.stock_classification_data import load_custom_data
+        from backend.app.core.sector_mapping import get_merged_all_sectors
+        from backend.app.services.sector_data_provider import get_all_sector_stocks
+        from backend.app.core.sector_stock_cache import assemble_filter_summary
+        import backend.app.services.engine_state as _es
+
+        custom = load_custom_data()
+        merged = await get_merged_all_sectors()
+        stocks = await get_all_sector_stocks()
+        no_sector_count = sum(1 for s in stocks if s.get("sector") == "미분류")
+        filter_summary = assemble_filter_summary(
+            getattr(_es.state, "latest_filter_summary_meta", ""), len(stocks)
+        )
+        return {
+            "custom_data": {
+                "sectors": dict(custom.sectors),
+                "stock_moves": dict(custom.stock_moves),
+            },
+            "merged_sectors": merged,
+            "no_sector_count": no_sector_count,
+            "filter_summary": filter_summary,
+            "all_stocks": stocks,
+        }
+    if page == PAGE_STOCK_DETAIL:
+        # 5일 일봉 — HTTP /api/stock-detail/5d-array 원본과 동일.
+        # 2세션에서는 준비 상태·변경 번호만 전달 (실제 일봉 자료는 프론트엔드가 HTTP로 조회).
+        # 3세션에서 프론트엔드 전환 시 이 스냅샷을 사용할 수 있도록 자료 제공.
+        from backend.app.db.database import get_db_connection
+        conn = await get_db_connection()
+        try:
+            cursor = await conn.execute(
+                "SELECT code, dt, open, high, low, close, volume, trade_amount "
+                "FROM stock_5d_bars ORDER BY code, dt DESC"
+            )
+            rows = await cursor.fetchall()
+        finally:
+            await conn.close()
+        items: dict[str, list] = {}
+        for row in rows:
+            code = row["code"]
+            items.setdefault(code, []).append({
+                "dt": row["dt"],
+                "open": row["open"],
+                "high": row["high"],
+                "low": row["low"],
+                "close": row["close"],
+                "volume": row["volume"],
+                "trade_amount": row["trade_amount"],
+            })
+        return {"items": items}
+    if page == PAGE_SETTINGS:
+        # 마스킹된 설정 스냅샷 — settings-changed와 동일 원본.
+        from backend.app.services.engine_config import _mask_sensitive_settings
+        return _mask_sensitive_settings(engine_state.state.integrated_system_settings_cache)
+    return None
+
+
+async def _send_stock_subscription_snapshot(ws, page: str, codes: list[str]) -> None:
+    """종목 실시간 화면의 초기 스냅샷 전송 — 대상 종목 전체를 한 번에."""
+    from backend.app.web.ws_manager import ws_manager
+    from backend.app.services.engine_initial_data import build_master_cache_snapshot
+    try:
+        snapshot = await build_master_cache_snapshot(codes)
+        await ws_manager.send_to(ws, "master-cache-snapshot", snapshot)
+    except Exception as e:
+        logger.warning("[구독대상] %s 초기 스냅샷 전송 실패: %s", page, e, exc_info=True)
+
+
+async def _send_data_page_snapshot(ws, page: str) -> None:
+    """자료 중심 화면의 초기 스냅샷 전송."""
+    from backend.app.web.ws_manager import ws_manager
+    try:
+        payload = await _build_data_page_snapshot(page)
+        if payload is None:
+            logger.info("[구독대상] %s 자료 스냅샷 미전송 — 원본 미준비", page)
+            return
+        # 자료 화면별 전용 이벤트명으로 전송 (프론트엔드가 3세션에서 수신).
+        event_name = _DATA_PAGE_SNAPSHOT_EVENT.get(page, "page-data-snapshot")
+        await ws_manager.send_to(ws, event_name, {"page": page, "data": payload})
+    except Exception as e:
+        logger.warning("[구독대상] %s 자료 스냅샷 전송 실패: %s", page, e, exc_info=True)
+
+
+# 자료 중심 화면별 스냅샷 이벤트명 — 프론트엔드(3세션)가 수신하여 화면 갱신.
+_DATA_PAGE_SNAPSHOT_EVENT: dict[str, str] = {
+    PAGE_PROFIT_DETAIL: "profit-detail-snapshot",
+    PAGE_STOCK_CLASSIFICATION: "stock-classification-snapshot",
+    PAGE_STOCK_DETAIL: "stock-detail-snapshot",
+    PAGE_SETTINGS: "settings-snapshot",
+}
+
+
+async def handle_page_active(ws, page: str, codes: list[str] | None) -> None:
+    """페이지 활성화 처리 — 페이지 이름만으로 저장소 대상 조회 후 구독·스냅샷 전송.
+
+    Args:
+        ws: WebSocket 연결
+        page: 화면 키 (8개 허용 키 중 하나)
+        codes: 프론트엔드가 명시한 종목 코드 목록 (None 또는 빈 리스트 → 저장소에서 조회).
+               기존 codes 명시 메시지는 전환 기간 동안 호환 — 명시된 경우 그대로 사용.
+    """
+    from backend.app.web.ws_manager import ws_manager
+
+    if page not in ALLOWED_PAGE_KEYS:
+        # 지원하지 않는 페이지 이름 — 기존 처리 규칙 유지 (호환).
+        return
+
+    ws_manager.set_active_page(ws, page)
+
+    # 종목 실시간 구독 화면 — 저장소에서 대상 코드 조회.
+    if page in STOCK_SUBSCRIPTION_PAGES:
+        # codes 명시 시 호환 (전환 기간) — 명시되지 않았으면 저장소에서 조회.
+        if codes:
+            use_codes = codes
+        else:
+            st = page_targets.get(page)
+            if st is None or not st.ready:
+                # 저장소 미준비 — 빈 스냅샷을 정상 데이터처럼 보내지 않음.
+                logger.info("[구독대상] %s 활성화 — 저장소 미준비 (스냅샷 생략)", page)
+                return
+            use_codes = page_targets.get_codes(page)
+
+        newly_subscribed = ws_manager.subscribe_codes(ws, page, use_codes)
+        if newly_subscribed:
+            # 신규 구독 종목에만 초기 스냅샷 전송 (유지 종목은 이미 보고 있음).
+            await _send_stock_subscription_snapshot(ws, page, sorted(newly_subscribed))
+        elif use_codes:
+            # 같은 종목을 다른 연결이 이미 구독 중이어도 이 연결에는 초기 스냅샷 필요.
+            await _send_stock_subscription_snapshot(ws, page, use_codes)
+        return
+
+    # 자료 중심 화면 — 자료 스냅샷 전송 (종목 실시간 구독 없음).
+    await _send_data_page_snapshot(ws, page)
+
+
+async def refresh_active_connections(
+    reason: str, pages: set[str] | None = None,
+) -> dict[str, RefreshResult]:
+    """원본 변경 시 대상 갱신 + 활성 연결에 추가·제거·스냅샷 전달.
+
+    태스크 2세션 §6 — 원본 변경 시 갱신 진입점을 각 변경 지점에 연결.
+    갱신 결과의 added/removed를 활성 연결에 적용:
+      - 종목 실시간 화면: diff 기반 갱신 (추가 종목 스냅샷, 제거 종목 해지, 유지 종목 그대로)
+      - 자료 중심 화면: 변경 시 자료 스냅샷 재전송
+    대상 변경이 없으면 중복 전송 없음.
+    실패 시 다른 페이지·다른 연결 전송 중단 없음 (P25 격리된 실패).
+    """
+    results = await page_targets.refresh(reason, pages)
+    if not results:
+        return results
+
+    from backend.app.web.ws_manager import ws_manager
+
+    for page, result in results.items():
+        # 변경 없으면 구독 해지·재등록·스냅샷 반복 없음.
+        if not result.changed:
+            continue
+        # 원본 미준비 또는 실패 — 활성 연결 갱신 생략 (빈 스냅샷으로 덮지 않음).
+        if not result.ready or result.failed:
+            continue
+
+        active_clients = ws_manager.get_clients_for_page(page)
+        if not active_clients:
+            continue
+
+        if page in STOCK_SUBSCRIPTION_PAGES:
+            # 종목 실시간 화면 — diff 기반 갱신.
+            new_codes = page_targets.get_codes(page)
+            for ws in active_clients:
+                if ws not in ws_manager._clients:
+                    continue
+                try:
+                    newly_subscribed, _removed = ws_manager.update_subscription_diff(
+                        ws, page, new_codes,
+                    )
+                    if newly_subscribed:
+                        await _send_stock_subscription_snapshot(
+                            ws, page, sorted(newly_subscribed),
+                        )
+                except Exception as e:
+                    logger.warning(
+                        "[구독대상] %s 활성 연결 갱신 실패 — 다음 변경에서 재시도: %s",
+                        page, e, exc_info=True,
+                    )
+        else:
+            # 자료 중심 화면 — 자료 스냅샷 재전송.
+            for ws in active_clients:
+                if ws not in ws_manager._clients:
+                    continue
+                try:
+                    await _send_data_page_snapshot(ws, page)
+                except Exception as e:
+                    logger.warning(
+                        "[구독대상] %s 자료 스냅샷 재전송 실패: %s",
+                        page, e, exc_info=True,
+                    )
+
+    return results

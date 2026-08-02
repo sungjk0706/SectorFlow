@@ -603,18 +603,32 @@ class TestWsPrices:
         ws.send_text = AsyncMock()
 
         with patch("backend.app.web.routes.ws.ws_manager") as mock_mgr, \
+             patch("backend.app.web.ws_manager.ws_manager") as mock_mgr_real, \
+             patch("backend.app.services.page_subscription_targets.page_targets") as mock_targets, \
              patch("asyncio.create_task") as mock_create:
             mock_mgr.register = AsyncMock()
             mock_mgr.unregister = MagicMock()
             mock_mgr.set_active_page = MagicMock()
             mock_mgr.clear_active_page = MagicMock()
             mock_mgr.client_count = 1
+            # handle_page_active 내부에서 사용하는 실제 ws_manager mock.
+            mock_mgr_real.set_active_page = MagicMock()
+            mock_mgr_real.subscribe_codes = MagicMock(return_value=set())
+            mock_mgr_real.send_to = AsyncMock()
+            mock_mgr_real.get_clients_for_page = MagicMock(return_value=set())
+            mock_mgr_real._clients = set()
+            # 저장소 mock — buy-target은 종목 실시간 화면이므로 ready 상태 필요.
+            mock_state = MagicMock()
+            mock_state.ready = True
+            mock_state.codes = ["005930"]
+            mock_targets.get.return_value = mock_state
+            mock_targets.get_codes.return_value = ["005930"]
             mock_task = MagicMock()
             mock_task.cancel = MagicMock()
             mock_create.side_effect = lambda coro: (coro.close(), mock_task)[1]
             await ws_prices(ws, token="test")
 
-        mock_mgr.set_active_page.assert_called_once_with(ws, "buy-target")
+        mock_mgr_real.set_active_page.assert_called_once_with(ws, "buy-target")
 
     async def test_page_inactive_clears_active_page(self):
         from backend.app.web.routes.ws import ws_prices
@@ -653,11 +667,9 @@ class TestWsPrices:
         ws.send_text = AsyncMock()
 
         with patch("backend.app.web.routes.ws.ws_manager") as mock_mgr, \
+             patch("backend.app.web.ws_manager.ws_manager") as mock_mgr_real, \
+             patch("backend.app.services.page_subscription_targets.page_targets") as mock_targets, \
              patch("asyncio.create_task") as mock_create, \
-             patch(
-                 "backend.app.services.sector_data_provider.get_sector_summary_inputs",
-                 new=AsyncMock(return_value={"all_filter_codes": ["005930"]}),
-             ), \
              patch(
                  "backend.app.services.engine_initial_data.build_master_cache_snapshot",
                  new=AsyncMock(return_value={"_v": 1, "stocks": []}),
@@ -665,16 +677,27 @@ class TestWsPrices:
             mock_mgr.register = AsyncMock()
             mock_mgr.unregister = MagicMock()
             mock_mgr.set_active_page = MagicMock()
-            mock_mgr.subscribe_codes = MagicMock(return_value={"005930"})
-            mock_mgr.send_to = AsyncMock()
+            mock_mgr.clear_active_page = MagicMock()
             mock_mgr.client_count = 1
+            # handle_page_active 내부에서 사용하는 실제 ws_manager mock.
+            mock_mgr_real.set_active_page = MagicMock()
+            mock_mgr_real.subscribe_codes = MagicMock(return_value={"005930"})
+            mock_mgr_real.send_to = AsyncMock()
+            mock_mgr_real.get_clients_for_page = MagicMock(return_value=set())
+            mock_mgr_real._clients = set()
+            # 저장소 mock — sector-ranking 대상 코드 제공.
+            mock_state = MagicMock()
+            mock_state.ready = True
+            mock_state.codes = ["005930"]
+            mock_targets.get.return_value = mock_state
+            mock_targets.get_codes.return_value = ["005930"]
             mock_task = MagicMock()
             mock_task.cancel = MagicMock()
             mock_create.side_effect = lambda coro: (coro.close(), mock_task)[1]
             await ws_prices(ws, token="test")
 
-        mock_mgr.subscribe_codes.assert_called_once_with(ws, "sector-ranking", ["005930"])
-        mock_mgr.send_to.assert_awaited_once_with(
+        mock_mgr_real.subscribe_codes.assert_called_once_with(ws, "sector-ranking", ["005930"])
+        mock_mgr_real.send_to.assert_awaited_once_with(
             ws, "master-cache-snapshot", {"_v": 1, "stocks": []}
         )
 

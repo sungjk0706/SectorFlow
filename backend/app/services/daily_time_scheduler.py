@@ -812,6 +812,15 @@ def _apply_market_phase(phase: dict) -> None:
                 schedule_engine_task(_on_krx_closing_auction_start(), context="KRX 종가 동시호가 — 구독 해지")
             if new_nxt == "장마감" and prev_nxt != "장마감":
                 schedule_engine_task(_on_ws_subscribe_end(), context="WS 구독 종료")
+            # 시장 시간대 전환 시 화면별 구독 대상 갱신 + 활성 연결 갱신 (태스크 2세션).
+            # 페이즈 전환에 따라 실시간 대상 정책이 바뀌므로 업종 순위·매수 후보 대상 최신화.
+            from backend.app.services.page_subscription_targets import refresh_active_connections
+            schedule_engine_task(
+                refresh_active_connections(
+                    "시장 시간대 전환", {"sector-ranking", "buy-target"},
+                ),
+                context="시장 시간대 전환 — 구독 대상 갱신",
+            )
     except Exception as e:
         logger.warning("[스케줄] 장 상태 전환 트리거 오류: %s", e, exc_info=True)
 

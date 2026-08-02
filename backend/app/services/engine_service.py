@@ -80,6 +80,15 @@ async def apply_settings_change(changed_keys: set[str]) -> None:
     except Exception:
         logger.warning("[설정] 매수 재평가 무효화 실패 — 설정 변경 후 매수 후보가 갱신되지 않을 수 있음", exc_info=True)
 
+    # ── 설정 화면 구독 대상 갱신 + 활성 연결 갱신 (태스크 2세션) ──
+    # 설정 변경 시 마스킹 설정 스냅샷이 바뀌므로 설정 화면 활성 연결에 재전송.
+    # 업종·매수 후보 관련 설정 변경은 _apply_sector_ui_change → recompute 경로에서 이미 갱신됨.
+    try:
+        from backend.app.services.page_subscription_targets import refresh_active_connections
+        await refresh_active_connections("설정 변경", {"settings"})
+    except Exception:
+        logger.warning("[설정] 설정 화면 구독 대상 갱신 실패", exc_info=True)
+
 
 async def _handle_broker_change(changed_keys: set[str]) -> bool:
     """broker / confirmed_data_broker 변경 시 엔진 재기동. 처리했으면 True(조기 종료), 아니면 False.

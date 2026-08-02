@@ -128,6 +128,10 @@ class WSManager:
         """현재 활성화된 페이지 집합 반환."""
         return set(self._client_active_page.values())
 
+    def get_clients_for_page(self, page: str) -> set[WebSocket]:
+        """특정 페이지에 활성화된 클라이언트 집합 반환 (활성 연결 갱신용)."""
+        return {ws for ws, p in self._client_active_page.items() if p == page}
+
     # ------------------------------------------------------------------
     # 종목별 구독 관리 (마스터 캐시 단일 시세 소스 — 설계 결정 2)
     # ------------------------------------------------------------------
@@ -164,6 +168,52 @@ class WSManager:
             page, len(new_codes), len(newly_subscribed),
         )
         return newly_subscribed
+
+    def update_subscription_diff(
+        self, ws: WebSocket, page: str, new_codes: list[str],
+    ) -> tuple[set[str], set[str]]:
+        """같은 페이지에서 대상 변경 시 diff 기반 갱신 (페이지 전환 아님).
+
+        유지 종목은 그대로 두고, 추가 종목만 등록·스냅샷 전송, 제거 종목만 해지.
+        유지 종목에 불필요한 전체 스냅샷을 반복하지 않는다 (태스크 2세션 §6).
+
+        Returns:
+            (newly_subscribed, removed_codes):
+              newly_subscribed — 이 클라이언트가 새로 구독하기 시작한 종목 (스냅샷 전송용)
+              removed_codes — 이 클라이언트에서 해지된 종목 (더 이상 실시간 전송 안 함)
+        """
+        prev_codes = self._client_subscribed_codes.get(ws, set())
+        new_set = {c for c in new_codes if c}
+        added = new_set - prev_codes
+        removed = prev_codes - new_set
+
+        # 제거 종목 해지
+        for code in removed:
+            subscribers = self._symbol_subscribers.get(code)
+            if subscribers is not None:
+                subscribers.discard(ws)
+                if not subscribers:
+                    del self._symbol_subscribers[code]
+
+        # 추가 종목 등록
+        newly_subscribed: set[str] = set()
+        for code in added:
+            subscribers = self._symbol_subscribers.get(code)
+            if subscribers is None:
+                subscribers = set()
+                self._symbol_subscribers[code] = subscribers
+            if not subscribers:
+                newly_subscribed.add(code)
+            subscribers.add(ws)
+
+        # 클라이언트 구독 코드 갱신
+        self._client_subscribed_codes[ws] = new_set.copy()
+
+        logger.debug(
+            "[구독] 페이지=%s 대상 변경 (추가 %d, 제거 %d, 유지 %d)",
+            page, len(added), len(removed), len(prev_codes & new_set),
+        )
+        return newly_subscribed, removed
 
     def _cleanup_subscribed_codes(self, ws: WebSocket) -> None:
         """클라이언트의 종목 구독 전부 해제 (페이지 전환·연결 해제 시)."""

@@ -38,6 +38,18 @@ async def broadcast_account_update(positions: list[dict], snapshot: dict, reason
     _update_account_notify_cache(positions, snapshot)
     _log_account_broadcast(reason, snapshot, positions, changed_positions, removed_codes, active_pages)
 
+    # 보유 종목 변경 시 화면별 구독 대상 갱신 + 활성 연결 갱신 (태스크 2세션).
+    # 보유 종목·수익 현황 대상이 바뀌면 활성 연결의 구독을 자동으로 최신화.
+    # price_tick 사유는 빈번하므로 보유 종목 코드 집합이 실제로 바뀐 경우에만 갱신.
+    if reason and not reason.startswith("price_tick"):
+        try:
+            from backend.app.services.page_subscription_targets import refresh_active_connections
+            await refresh_active_connections(
+                reason, {"sell-position", "profit-overview"},
+            )
+        except Exception as e:
+            logger.warning("[시스템] 보유 종목 구독 대상 갱신 실패: %s", e, exc_info=True)
+
 
 async def _broadcast_account_to_pages(changed_positions, removed_codes, snapshot, active_pages, revision: int = 0) -> None:
     """활성 페이지에 맞춰 이벤트 분리 전송 (P23 — 각 이벤트 단일 payload 계약).

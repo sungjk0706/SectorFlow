@@ -205,20 +205,25 @@ async def ws_prices(websocket: WebSocket, token: str = Query(...)):
                 page = msg.get("page", "")
                 codes = msg.get("codes", [])
                 if page:
-                    ws_manager.set_active_page(websocket, page)
-                    if page == "sector-ranking" and isinstance(codes, list) and not codes:
-                        from backend.app.services.sector_data_provider import get_sector_summary_inputs
-                        sector_inputs = await get_sector_summary_inputs()
-                        codes = sector_inputs["all_filter_codes"]
-
-                    should_subscribe = isinstance(codes, list) and (bool(codes) or page == "sector-ranking")
-                    if should_subscribe:
-                        # 마스터 캐시 구독 신청 + 신규 구독 종목 snapshot 전송 (설계 결정 2·C)
-                        newly_subscribed = ws_manager.subscribe_codes(websocket, page, codes)
-                        if newly_subscribed:
-                            from backend.app.services.engine_initial_data import build_master_cache_snapshot
-                            snapshot_payload = await build_master_cache_snapshot(list(newly_subscribed))
-                            await ws_manager.send_to(websocket, "master-cache-snapshot", snapshot_payload)
+                    # 8개 허용 화면 — 페이지 이름만으로 저장소 대상 조회·구독·스냅샷 전송 (태스크 2세션).
+                    # codes 명시 시 전환 기간 호환 — 그대로 사용.
+                    from backend.app.services.page_subscription_targets import (
+                        ALLOWED_PAGE_KEYS, handle_page_active,
+                    )
+                    if page in ALLOWED_PAGE_KEYS:
+                        await handle_page_active(
+                            websocket, page,
+                            codes if isinstance(codes, list) and codes else None,
+                        )
+                    else:
+                        # 지원하지 않는 페이지 이름 — 기존 처리 규칙 유지 (호환).
+                        ws_manager.set_active_page(websocket, page)
+                        if isinstance(codes, list) and codes:
+                            newly_subscribed = ws_manager.subscribe_codes(websocket, page, codes)
+                            if newly_subscribed:
+                                from backend.app.services.engine_initial_data import build_master_cache_snapshot
+                                snapshot_payload = await build_master_cache_snapshot(list(newly_subscribed))
+                                await ws_manager.send_to(websocket, "master-cache-snapshot", snapshot_payload)
             elif msg_type == "page-inactive":
                 ws_manager.clear_active_page(websocket)
             elif msg_type == "subscribe-fids":
