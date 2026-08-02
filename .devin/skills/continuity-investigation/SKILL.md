@@ -33,7 +33,7 @@ allowed-tools:
 | `.devin/state/STOP` | 비상 정지 신호 파일 (존재 시 루프 즉시 종료) | 제외 |
 | `.devin/scripts/continuity-loop.sh` | SessionEnd 훅이 호출하는 자동 재실행 스크립트 | 추적 |
 | `.devin/hooks.v1.json` | SessionEnd 훅 설정 | 추적 |
-| `docs/investigation_report_<slug>_<date>.md` | 최종 보고서 (완료 시 1회 생성) | 추적 |
+| `docs/조사보고서_<주제>_<날짜>.md` | 최종 보고서 (완료 시 1회 생성) | 추적 |
 
 ## 상태 파일 구조 (investigation_status.json)
 
@@ -125,10 +125,14 @@ allowed-tools:
 3. 조사 기준(체크리스트) 적용:
    - 각 항목별로 파일 내 해당 여부 확인
    - 발견 시 `findings`에 누적 추가 (file/line/severity/desc/evidence)
-4. 심각도 분류 기준:
+4. 심각도 분류 기준 (영향도 1축 + 발생 확률 부가 고려):
    - `high`: 보안 위험 (하드코딩 비밀키, SQL 인젝션), 데이터 손실 위험
    - `mid`: 아키텍처 원칙 위반 (P10/P20/P22 위반), Deprecated API 사용
    - `low`: 스타일/네이밍/경미한 일관성 위반
+   - **발생 확률 부가 고려 (같은 영향도 내 우선순위 조정용)**:
+     - 보안 위험이나 실제 악용/발생 가능성 낮음 (예: 내부 전용 함수, 입력 검증 이미 존재) → 영향 high 유지하되 `findings`의 `desc`에 "발생 확률 낮음" 부기
+     - 보안 위험이고 실제 악용 가능 (예: 외부 입력 직접 노출, 검증 없음) → `desc`에 "발생 확률 높음" 부기
+     - 발생 확률은 보고서 정렬/후속 작업 우선순위 판단용 — 기존 high/mid/low 등급 자체는 유지 (P24 단순성 — 별도 점수 체계 도입 금지)
 
 #### 2-3. 배치 완료 처리
 1. 조사 완료한 파일들을 `in_progress`에서 `completed`로 이동.
@@ -153,7 +157,7 @@ allowed-tools:
 - 조기 보고서 작성 금지 (반드시 0 확인 후).
 
 #### 3-2. 최종 보고서 작성
-경로: `docs/investigation_report_<topic_slug>_<YYYYMMDD>.md`
+경로: `docs/조사보고서_<주제>_<YYYYMMDD>.md`
 
 구조:
 ```markdown
@@ -195,7 +199,7 @@ allowed-tools:
 - `status: "done"`으로 변경.
 - `.devin/state/STOP` 파일 생성 (훅 루프 종료 신호 — `continuity-loop.sh`가 감지하여 재실행 중단).
 - `updated_at` 갱신.
-- 사용자에게 보고: "조사 완료. 보고서: `docs/investigation_report_<slug>_<date>.md`. 발견 <N>건."
+- 사용자에게 보고: "조사 완료. 보고서: `docs/조사보고서_<주제>_<날짜>.md`. 발견 <N>건."
 
 ### 4. 세션 종료 시 자동 이어하기 (훅 연동)
 

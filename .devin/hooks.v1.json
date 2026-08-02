@@ -1,4 +1,16 @@
 {
+  "SessionStart": [
+    {
+      "matcher": "",
+      "hooks": [
+        {
+          "type": "command",
+          "command": ".devin/scripts/session-bootstrap.sh",
+          "timeout": 10
+        }
+      ]
+    }
+  ],
   "SessionEnd": [
     {
       "matcher": "",

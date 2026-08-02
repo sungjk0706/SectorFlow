@@ -497,7 +497,7 @@ class TestIsOrderBlockedByTime:
     def test_opening_auction_both_blocked(self):
         """08:50~09:00 시가 동시호가 + NXT 정규장 준비 — 양쪽 차단 (NXT도 체결 없음).
         NXT '정규장 준비'는 NXT_ACTIVE_PHASES(구독용)에 포함되나 NXT_TRADEABLE_PHASES(체결 가능)에는
-        없음 → KRX 단독·NXT 종목 모두 차단 (docs/krx_nxt_market_hours.md: 🚫 주문 중단)."""
+        없음 → KRX 단독·NXT 종목 모두 차단 (docs/참고_KRX_NXT_거래시간.md: 🚫 주문 중단)."""
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "시가 동시호가", "nxt": "정규장 준비"}
         with patch("backend.app.services.engine_state.state", mock_state), \
@@ -508,7 +508,7 @@ class TestIsOrderBlockedByTime:
     def test_single_price_auction_both_blocked(self):
         """15:30~15:40 체결 정산 + NXT 단일가 매매 — 양쪽 차단 (NXT 호가접수만, 체결 없음).
         NXT '단일가 매매'는 NXT_ACTIVE_PHASES(구독용)에 포함되나 NXT_TRADEABLE_PHASES(체결 가능)에는
-        없음 → KRX 단독·NXT 종목 모두 차단 (docs/krx_nxt_market_hours.md: 🚫 주문 중단)."""
+        없음 → KRX 단독·NXT 종목 모두 차단 (docs/참고_KRX_NXT_거래시간.md: 🚫 주문 중단)."""
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "체결 정산", "nxt": "단일가 매매"}
         with patch("backend.app.services.engine_state.state", mock_state), \
