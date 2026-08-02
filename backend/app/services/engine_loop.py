@@ -214,6 +214,14 @@ async def run_engine_loop() -> None:
         # 전송하지 않도록 보장 (token_ready_event.wait()에서 대기 중인 태스크가 깨어남)
         engine_state.state.token_ready_event.set()
 
+        # 화면별 구독 대상 초기 생성 — 업종 순위 요약 준비 후 원본에서 대상 구축.
+        # 백그라운드 실행: sector_summary_ready_event 대기 후 초기화하므로 기동 블로킹 없음.
+        from backend.app.services.page_subscription_targets import initialize_page_targets
+        _page_targets_task = asyncio.create_task(initialize_page_targets())
+        _page_targets_task.add_done_callback(
+            lambda t: logger.warning("[구독대상] 초기 생성 작업 실패: %s", t.exception()) if t.exception() else None
+        )
+
         # 가상 예수금 로드는 _cache_and_bootstrap(→ engine_cache)에서 load_state로 수행
 
         _t_parallel_end = time.perf_counter()
