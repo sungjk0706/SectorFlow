@@ -5,8 +5,7 @@ import { shell } from '../main'
 import { stockClassificationStore, computeEditWindowOpenByTime, type StockClassificationState } from '../stores/stockClassificationStore'
 import { uiStore } from '../stores/uiStore'
 import { notifyPageActive, notifyPageInactive } from '../api/ws'
-import { api } from '../api/client'
-import { refreshPageData, createPageRefreshStatus } from '../utils/page-refresh'
+import { createPageRefreshStatus } from '../utils/page-refresh'
 import { createSettingsManager, type SettingsManager } from '../settings'
 import { closeContextPopup } from '../components/common/context-popup'
 import { type DataTableApi } from '../components/common/data-table'
@@ -249,56 +248,6 @@ function handleStockClassificationChange(storeState: StockClassificationState, p
   }
 }
 
-interface StockClassificationSnapshot {
-  custom_data: { sectors: Record<string, string>; stock_moves: Record<string, string> }
-  merged_sectors: string[]
-  no_sector_count: number
-  filter_summary: string
-  edit_window_open: boolean
-}
-
-interface AllStocksSnapshot {
-  stocks: StockClassificationState['allStocks']
-}
-
-function refreshClassificationData(): void {
-  const active = () => state.mounted
-  if (state.refreshStatus) state.refreshStatus.set('분류 데이터 확인 중')
-  const classification = refreshPageData({
-    key: 'stock-classification:definition',
-    policy: 'swr',
-    isActive: active,
-    fetcher: async () => ({ data: await api.get<StockClassificationSnapshot>('/api/stock-classification') }),
-    apply: response => {
-      const snapshot = response.data
-      stockClassificationStore.setState({
-        sectors: snapshot.custom_data.sectors,
-        stockMoves: snapshot.custom_data.stock_moves,
-        mergedSectors: snapshot.merged_sectors,
-        noSectorCount: snapshot.no_sector_count,
-        filter_summary: snapshot.filter_summary,
-        editWindowOpen: snapshot.edit_window_open,
-      })
-      return true
-    },
-  })
-  const stocks = refreshPageData({
-    key: 'stock-classification:stocks',
-    policy: 'swr',
-    isActive: active,
-    fetcher: async () => ({ data: await api.get<AllStocksSnapshot>('/api/stock-classification/all-stocks') }),
-    apply: response => {
-      stockClassificationStore.setState({ allStocks: response.data.stocks })
-      return true
-    },
-  })
-  Promise.all([classification, stocks]).then(results => {
-    if (!state.mounted || !state.refreshStatus) return
-    const failed = results.some(result => result.status === 'error')
-    state.refreshStatus.set(failed ? '분류 데이터를 갱신하지 못했습니다' : '', failed)
-  })
-}
-
 /** uiStore 구독 콜백 — settings 변경 시 editWindowOpen 재계산 */
 function handleUiStoreChange(uiState: { settings: ReturnType<typeof uiStore.getState>['settings'] }, prevSettingsRef: { settings: ReturnType<typeof uiStore.getState>['settings'] }): void {
   if (uiState.settings !== prevSettingsRef.settings) {
@@ -355,7 +304,8 @@ function mount(_container: HTMLElement): void {
   updateMasterPanel(state)
   updateCenterPanel(state)
   updateRightPanel(state)
-  refreshClassificationData()
+  // 초기 자료는 서버가 stock-classification-snapshot 이벤트로 전송 — binding.ts가 store에 적용.
+  // 페이지 진입 시 별도 HTTP 조회를 하지 않고 store 구독으로 자동 갱신.
 }
 
 /* ── 8.8: unmount ── */

@@ -147,9 +147,6 @@ async function refreshSellPositionPage(): Promise<void> {
   renderSummary()
   const positions = hotStore.getState().positions
   dataTable?.updateRows(positions)
-  // 페이지별 구독 Push 모델 — 보유종목 코드로 구독 신청 (백엔드가 해당 종목만 push)
-  const positionCodes = positions.map(p => normalizeStockCode(p.stk_cd))
-  notifyPageActive('sell-position', positionCodes)
 }
 
 /* ── hotStore 구독 참조 상태 — onHotStoreChange 참조 비교용 (mount 시 초기화, unmount 시 reset) ── */
@@ -282,11 +279,7 @@ function onHotStoreChange(state: HotState): void {
     return
   }
 
-  // positions 변경 시 재구독 — 신규 보유종목(매수 체결) 구독 추가, 매도 종목 구독 해제
-  if (positionsChanged) {
-    const positionCodes = state.positions.map(p => normalizeStockCode(p.stk_cd))
-    notifyPageActive('sell-position', positionCodes)
-  }
+  // positions 변경 시 재구독은 백엔드가 자동 갱신 — 프론트엔드가 코드를 보내지 않음.
 
   // WS 상태 배지는 전역 싱글톤이 자동 업데이트하므로 수동 업데이트 제거
 

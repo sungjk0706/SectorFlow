@@ -22,7 +22,7 @@ import { createCardTitle } from '../components/common/card-title'
 import { createTabBar } from '../components/common/button'
 import { COLOR, FONT_SIZE, RADIUS } from '../components/common/ui-styles'
 import { api } from '../api/client'
-import { refreshPageData, createPageRefreshStatus } from '../utils/page-refresh'
+import { createPageRefreshStatus } from '../utils/page-refresh'
 import type { AppSettings } from '../types'
 import {
   type TabId,
@@ -209,22 +209,6 @@ function buildTabPanels(): void {
   }
 }
 
-function refreshSettings(): void {
-  refreshPageData({
-    key: 'general-settings:settings',
-    policy: 'swr',
-    isActive: () => state.rootEl !== null,
-    fetcher: async () => ({ data: await api.getSettings() }),
-    apply: response => {
-      uiStore.setState({ settings: response.data as AppSettings })
-      return true
-    },
-  }).then(result => {
-    if (!refreshStatus) return
-    refreshStatus.set(result.status === 'error' ? '설정을 갱신하지 못했습니다' : '', result.status === 'error')
-  })
-}
-
 function mount(container: HTMLElement): void {
   notifyPageActive('settings')
   state.settingsMgr = createSettingsManager(uiStore)
@@ -263,7 +247,8 @@ function mount(container: HTMLElement): void {
 
   // 설정 동기화 + 구독 (표준 유틸 — settings-page.ts, P23 일관성)
   state.unsubSettings = startSettingsSubscription(state.settingsMgr as SettingsManager, syncFromSettings)
-  refreshSettings()
+  // 초기 설정 자료는 서버가 settings-snapshot 이벤트로 전송 — binding.ts가 uiStore에 적용.
+  // 페이지 진입 시 별도 HTTP 조회를 하지 않고 설정 구독으로 자동 갱신.
 
   // 거래일 확인
   api.getTradingDay()

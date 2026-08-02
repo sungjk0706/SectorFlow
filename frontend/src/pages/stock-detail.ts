@@ -2,7 +2,8 @@
 // 종목상세 페이지 — 5거래일 일봉 거래대금/고가 배열 테이블
 
 import type { PageModule } from '../router'
-import { api } from '../api/client'
+import { wsClient } from '../api/ws'
+import { notifyPageActive, notifyPageInactive } from '../api/ws'
 import { createDataTable, type ColumnDef, type DataTableApi } from '../components/common/data-table'
 import { createSearchInput } from '../components/common/search-input'
 import { createCardTitle } from '../components/common/card-title'
@@ -34,6 +35,42 @@ let allItems: StockDetail5dItem[] = []
 let searchQuery = ''
 let summaryRow: MarketCountRowHandle | null = null
 let _mounted = false
+let dateLabelRef: HTMLSpanElement | null = null
+let tableSlotRef: HTMLDivElement | null = null
+
+/** stock-detail-snapshot 이벤트 수신 핸들러 — 서버가 페이지 활성화 시 전송. */
+function handleStockDetailSnapshot(data: unknown): void {
+  if (!_mounted) return
+  const payload = data as { page: string; data: StockDetail5dResponse }
+  const snapshot = payload.data
+  allItems = snapshot.items
+  if (dateLabelRef && snapshot.date) {
+    dateLabelRef.textContent = `기준일: ${snapshot.date}`
+  }
+  renderTable()
+}
+
+/** 자료로 테이블 생성·갱신 — 초기 snapshot과 재전송 시 공통 사용. */
+function renderTable(): void {
+  if (!tableSlotRef) return
+  const sampleBars = allItems[0]?.bars ?? []
+  const columns = buildColumns(sampleBars)
+  tableRef = createDataTable<StockDetail5dItem>({
+    columns,
+    virtualScroll: false,
+    keyFn: (row) => row.code,
+    stickyHeader: true,
+    emptyText: '데이터가 없습니다.',
+    zebraStriping: true,
+    rowStyle: (_row, _idx) => searchQuery
+      ? { background: COLOR.downBg }
+      : { background: '' },
+  })
+  Object.assign(tableRef.el.style, { flex: '1', minHeight: '0' })
+  tableSlotRef.appendChild(tableRef.el)
+  tableRef.updateRows(allItems)
+  updateSummary(allItems)
+}
 
 function fmtAmount(v: number | null): string {
   if (v === null || v === undefined) return '-'
@@ -134,6 +171,7 @@ function applySearchFilter(): void {
 
 function mount(container: HTMLElement): void {
   _mounted = true
+  notifyPageActive('stock-detail')
   const root = document.createElement('div')
   Object.assign(root.style, { display: 'flex', flexDirection: 'column', height: '100%' })
 
@@ -158,6 +196,7 @@ function mount(container: HTMLElement): void {
     whiteSpace: 'nowrap',
   })
   dateLabel.textContent = '기준일: -'
+  dateLabelRef = dateLabel
   headerBar.appendChild(dateLabel)
 
   const searchWrapper = document.createElement('div')
@@ -200,53 +239,22 @@ function mount(container: HTMLElement): void {
   })
   root.appendChild(summaryRow.el)
 
-  // 테이블 자리 (데이터 로드 후 실제 날짜 라벨 컬럼으로 생성)
+  // 테이블 자리 (snapshot 도착 후 실제 날짜 라벨 컬럼으로 생성)
   const tableSlot = document.createElement('div')
   Object.assign(tableSlot.style, { flex: '1', minHeight: '0' })
   root.appendChild(tableSlot)
+  tableSlotRef = tableSlot
 
   container.appendChild(root)
 
-  // 데이터 로드 → 날짜 라벨 컬럼 생성 → 테이블 생성
-  // _mounted 가드: 페이지 이탈 후 비동기 콜백 실행 시 DOM 조작/DataTable 생성 차단 (P19)
-  api.getStockDetail5d().then((data: StockDetail5dResponse) => {
-    if (!_mounted) return
-    allItems = data.items
-    if (data.date) {
-      dateLabel.textContent = `기준일: ${data.date}`
-    }
-    const sampleBars = allItems[0]?.bars ?? []
-    const columns = buildColumns(sampleBars)
-    tableRef = createDataTable<StockDetail5dItem>({
-      columns,
-      virtualScroll: false,
-      keyFn: (row) => row.code,
-      stickyHeader: true,
-      emptyText: '데이터가 없습니다.',
-      zebraStriping: true,
-      rowStyle: (_row, _idx) => searchQuery
-        ? { background: COLOR.downBg }
-        : { background: '' },
-    })
-    Object.assign(tableRef.el.style, { flex: '1', minHeight: '0' })
-    tableSlot.appendChild(tableRef.el)
-    tableRef.updateRows(allItems)
-    updateSummary(allItems)
-  }).catch((err) => {
-    if (!_mounted) return
-    console.error('[stock-detail] 데이터 로드 실패:', err)
-    const errEl = document.createElement('div')
-    Object.assign(errEl.style, {
-      flex: '1', minHeight: '0', display: 'flex', alignItems: 'center', justifyContent: 'center',
-      color: COLOR.down, fontSize: FONT_SIZE.label,
-    })
-    errEl.textContent = '데이터를 불러오지 못했습니다.'
-    tableSlot.appendChild(errEl)
-  })
+  // 초기 자료는 서버가 stock-detail-snapshot 이벤트로 전송 — 페이지가 직접 수신.
+  wsClient.onEvent('stock-detail-snapshot', handleStockDetailSnapshot)
 }
 
 function unmount(): void {
   _mounted = false
+  notifyPageInactive('stock-detail')
+  wsClient.offEvent('stock-detail-snapshot', handleStockDetailSnapshot)
   if (tableRef) {
     tableRef.destroy()
     tableRef = null
@@ -258,6 +266,8 @@ function unmount(): void {
   allItems = []
   searchQuery = ''
   summaryRow = null
+  dateLabelRef = null
+  tableSlotRef = null
 }
 
 export default { mount, unmount } satisfies PageModule

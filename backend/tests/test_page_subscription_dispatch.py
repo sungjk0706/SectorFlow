@@ -438,6 +438,38 @@ class TestDataPageSnapshotBuilder:
             payload = await _build_data_page_snapshot(PAGE_SETTINGS)
         assert payload["broker_app_key"] == "***"
 
+    async def test_stock_detail_snapshot_matches_http_shape(self):
+        """종목 상세 스냅샷 — HTTP /api/stock-detail/5d-array와 동일 형태 (종목명·시장·NXT·기준일 포함)."""
+        master_rows = [
+            {"code": "005930", "name": "삼성전자", "market_type": "0", "nxt_enable": 0},
+            {"code": "377300", "name": "카카오페이", "market_type": "10", "nxt_enable": 1},
+        ]
+        bar_rows = [
+            {"code": "005930", "dt": "20260801", "trade_amount": 100, "high_price": 70000},
+            {"code": "005930", "dt": "20260731", "trade_amount": 90, "high_price": 69000},
+        ]
+        mock_cursor = MagicMock()
+        mock_cursor.fetchall = AsyncMock(side_effect=[master_rows, bar_rows])
+        mock_conn = MagicMock()
+        mock_conn.execute = AsyncMock(return_value=mock_cursor)
+        mock_conn.close = AsyncMock()
+        with patch("backend.app.db.database.get_db_connection", new=AsyncMock(return_value=mock_conn)):
+            payload = await _build_data_page_snapshot(PAGE_STOCK_DETAIL)
+        assert payload["date"] == "20260801"
+        assert len(payload["items"]) == 2
+        samsung = payload["items"][0]
+        assert samsung["code"] == "005930"
+        assert samsung["name"] == "삼성전자"
+        assert samsung["market_type"] == "0"
+        assert samsung["nxt_enable"] is False
+        assert len(samsung["bars"]) == 2
+        assert samsung["bars"][0]["dt"] == "20260801"
+        assert samsung["bars"][0]["trade_amount"] == 100
+        assert samsung["bars"][0]["high_price"] == 70000
+        kakao = payload["items"][1]
+        assert kakao["nxt_enable"] is True
+        assert kakao["bars"] == []
+
     async def test_unsupported_page_returns_none(self):
         """지원하지 않는 페이지 키 — None 반환."""
         result = await _build_data_page_snapshot("unknown-page")

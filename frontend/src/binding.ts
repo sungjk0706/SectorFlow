@@ -2,7 +2,7 @@
 // WS 채널 분리: prices(시세), settings(설정/진행률), orders(체결)
 
 import type { WSClient } from './api/ws'
-import { getCurrentPage, getCurrentPageCodes } from './api/ws'
+import { getCurrentPage } from './api/ws'
 import {
   applyAccountUpdate,
   applyAccountSummaryUpdate,
@@ -73,7 +73,7 @@ export function bindWSToStore(
   pricesClient.setConnectionCallbacks(
     () => {
       const page = getCurrentPage()
-      if (page) pricesClient.send(JSON.stringify({ type: 'page-active', page, codes: getCurrentPageCodes() }))
+      if (page) pricesClient.send(JSON.stringify({ type: 'page-active', page }))
     },
     () => {},
   )
@@ -127,7 +127,7 @@ export function bindWSToStore(
   settingsClient.setConnectionCallbacks(
     () => {
       const page = getCurrentPage()
-      if (page) settingsClient.send(JSON.stringify({ type: 'page-active', page, codes: getCurrentPageCodes() }))
+      if (page) settingsClient.send(JSON.stringify({ type: 'page-active', page }))
     },
     () => {
     },
@@ -159,6 +159,26 @@ export function bindWSToStore(
   /* ── stock-classification-changed는 모든 채널에서 수신 가능하도록 prices 채널에 유지 ── */
   pricesClient.onEvent('stock-classification-changed', (data) => {
     applyStockClassificationChanged(data as StockClassificationChangedEvent)
+  })
+
+  /* ── 자료 중심 화면 초기 스냅샷 — 페이지 활성화 시 백엔드가 전송 (3세션).
+   *    payload: { page, data: {...} } — data를 풀어 기존 변경 이벤트 apply 함수에 전달.
+   *    stock-detail-snapshot은 종목 상세 페이지가 직접 수신 (페이지 로컬 자료). ── */
+  pricesClient.onEvent('profit-detail-snapshot', (data) => {
+    const payload = data as { page: string; data: { buy_history: Record<string, unknown>[]; sell_history: Record<string, unknown>[]; daily_summary: Record<string, unknown>[] } }
+    applyBuyHistoryUpdate({ buy_history: payload.data.buy_history })
+    applySellHistoryUpdate({ sell_history: payload.data.sell_history })
+    applyDailySummaryUpdate({ daily_summary: payload.data.daily_summary })
+  })
+
+  pricesClient.onEvent('stock-classification-snapshot', (data) => {
+    const payload = data as { page: string; data: StockClassificationChangedEvent }
+    applyStockClassificationChanged(payload.data)
+  })
+
+  settingsClient.onEvent('settings-snapshot', (data) => {
+    const payload = data as { page: string; data: SettingsChangedEvent }
+    applySettingsChanged(payload.data)
   })
 
   pricesClient.onEvent('sell-history-append', (data) => {

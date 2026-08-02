@@ -486,32 +486,46 @@ async def _build_data_page_snapshot(page: str) -> dict | None:
             "all_stocks": stocks,
         }
     if page == PAGE_STOCK_DETAIL:
-        # 5일 일봉 — HTTP /api/stock-detail/5d-array 원본과 동일.
-        # 2세션에서는 준비 상태·변경 번호만 전달 (실제 일봉 자료는 프론트엔드가 HTTP로 조회).
-        # 3세션에서 프론트엔드 전환 시 이 스냅샷을 사용할 수 있도록 자료 제공.
+        # 5일 일봉 — HTTP /api/stock-detail/5d-array 원본과 동일 형태.
+        # master_stocks_table에서 종목명/시장구분/NXT여부를 JOIN하고
+        # stock_5d_bars에서 각 종목 최근 5행을 날짜 내림차순으로 조회.
+        # 거래대금은 백만원 단위, 고가는 원 단위 (DB 저장 단위 그대로).
+        from collections import defaultdict
         from backend.app.db.database import get_db_connection
         conn = await get_db_connection()
         try:
             cursor = await conn.execute(
-                "SELECT code, dt, open, high, low, close, volume, trade_amount "
+                "SELECT code, name, market AS market_type, nxt_enable "
+                "FROM master_stocks_table ORDER BY code"
+            )
+            master_rows = await cursor.fetchall()
+            cursor = await conn.execute(
+                "SELECT code, dt, trade_amount, high_price "
                 "FROM stock_5d_bars ORDER BY code, dt DESC"
             )
-            rows = await cursor.fetchall()
+            bar_rows = await cursor.fetchall()
         finally:
             await conn.close()
-        items: dict[str, list] = {}
-        for row in rows:
-            code = row["code"]
-            items.setdefault(code, []).append({
-                "dt": row["dt"],
-                "open": row["open"],
-                "high": row["high"],
-                "low": row["low"],
-                "close": row["close"],
-                "volume": row["volume"],
-                "trade_amount": row["trade_amount"],
+        bars_by_code: dict[str, list] = defaultdict(list)
+        latest_dt = ""
+        for r in bar_rows:
+            bars_by_code[r["code"]].append({
+                "dt": r["dt"],
+                "trade_amount": r["trade_amount"],
+                "high_price": r["high_price"],
             })
-        return {"items": items}
+            if not latest_dt or r["dt"] > latest_dt:
+                latest_dt = r["dt"]
+        items = []
+        for row in master_rows:
+            items.append({
+                "code": row["code"],
+                "name": row["name"] or "",
+                "market_type": row["market_type"] if row["market_type"] is not None else "",
+                "nxt_enable": bool(row["nxt_enable"] or 0),
+                "bars": bars_by_code.get(row["code"], [])[:5],
+            })
+        return {"date": latest_dt, "items": items}
     if page == PAGE_SETTINGS:
         # 마스킹된 설정 스냅샷 — settings-changed와 동일 원본.
         from backend.app.services.engine_config import _mask_sensitive_settings

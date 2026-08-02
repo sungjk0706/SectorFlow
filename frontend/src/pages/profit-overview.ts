@@ -11,7 +11,7 @@
 import { createCardTitle } from '../components/common/card-title'
 import { COLOR } from '../components/common/ui-styles'
 import { globalSettingsManager } from '../settings'
-import { hotStore, applyAccountSnapshot, applyPositionsSnapshot, normalizeStockCode } from '../stores/hotStore'
+import { hotStore, applyAccountSnapshot, applyPositionsSnapshot } from '../stores/hotStore'
 import { notifyPageActive, notifyPageInactive } from '../api/ws'
 import { api } from '../api/client'
 import { refreshPageData, createPageRefreshStatus } from '../utils/page-refresh'
@@ -158,16 +158,14 @@ async function refreshProfitOverviewPage(): Promise<void> {
     return
   }
   state.dataReady = true
-  const positionCodes = hotStore.getState().positions.map(p => normalizeStockCode(p.stk_cd))
-  notifyPageActive('profit-overview', positionCodes)
+  notifyPageActive('profit-overview')
   refreshStatus?.set('', false)
   renderAccountVals(state)
 }
 
 /* ── mount ── */
 function mount(container: HTMLElement): void {
-  const initialPositions = hotStore.getState().positions
-  notifyPageActive('profit-overview', initialPositions.map(p => normalizeStockCode(p.stk_cd)))
+  notifyPageActive('profit-overview')
   state.buyHistory = []
   state.sellHistory = []
   state.accountValRefs = []

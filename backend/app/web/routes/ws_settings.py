@@ -40,7 +40,14 @@ async def ws_settings(websocket: WebSocket, token: str = Query(...)):
             elif msg_type == "page-active":
                 page = msg.get("page", "")
                 if page:
-                    ws_manager.set_active_page(websocket, page)
+                    # 8개 허용 화면 — 페이지 이름만으로 저장소 대상 조회·스냅샷 전송 (태스크 2세션).
+                    from backend.app.services.page_subscription_targets import (
+                        ALLOWED_PAGE_KEYS, handle_page_active,
+                    )
+                    if page in ALLOWED_PAGE_KEYS:
+                        await handle_page_active(websocket, page, None)
+                    else:
+                        ws_manager.set_active_page(websocket, page)
             elif msg_type == "page-inactive":
                 ws_manager.clear_active_page(websocket)
     except WebSocketDisconnect:

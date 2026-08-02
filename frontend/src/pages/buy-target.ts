@@ -70,9 +70,6 @@ async function refreshBuyTargetPage(): Promise<void> {
   // 변경되지 않아 renderFrame의 targetsChanged=false가 되어 테이블이 빈 상태로 고정됨 (P16).
   const buyTargets = hotStore.getState().buyTargets
   renderTableRows(buyTargets)
-  // 페이지별 구독 Push 모델 — 매수후보 코드로 구독 신청 (백엔드가 해당 종목만 push)
-  const buyTargetCodes = buyTargets.map(t => normalizeStockCode(t.code))
-  notifyPageActive('buy-target', buyTargetCodes)
 }
 
 /* ── 렌더링 참조 상태 — scheduleRender 참조 비교용 (mount 시 초기화, unmount 시 reset)
@@ -402,11 +399,6 @@ function renderFrame(): void {
     _rsBuyTargets = latest.buyTargets
     _rsSearchTerm = searchTerm
     renderTableRows(latest.buyTargets)
-    // buyTargets 변경 시 재구독 — 신규 후보 구독 추가, 제거 후보 구독 해제
-    if (targetsChanged) {
-      const buyTargetCodes = latest.buyTargets.map(t => normalizeStockCode(t.code))
-      notifyPageActive('buy-target', buyTargetCodes)
-    }
   }
 
   // buyTargets / positions / account / settings / buyLimitStatus / 차단 상태 변경 시 배지 업데이트
