@@ -209,10 +209,11 @@ export function fmtWon(v: number): string {
   return `${v.toLocaleString()}원`
 }
 
-/** 백만원 단위 → 억 단위 문자열 (ko-KR, 소수점 1자리, 콤마).
+/** 백만원 단위 → 억 단위 문자열 (ko-KR, 소수점 2자리, 콤마).
+ *  소수점 2자리까지 표시하여 백엔드 백만원 단위 값을 온전히 표시 (1자리 시 손실 방지).
  *  순수 변환만 담당 — null/0/음수 등 빈 값 처리는 호출부에서 담당 (P20 폴백 금지). */
 export function fmtMillionsToBillion(v: number): string {
-  return (v / 100).toLocaleString('ko-KR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+  return (v / 100).toLocaleString('ko-KR', { minimumFractionDigits: 1, maximumFractionDigits: 2 })
 }
 
 /**

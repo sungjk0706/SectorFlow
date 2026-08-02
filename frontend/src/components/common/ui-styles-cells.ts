@@ -191,7 +191,7 @@ export function createRateCell(rate: number | null | undefined): HTMLElement {
 export function createAmountCell(amount: number | null | undefined): HTMLElement {
   const cell = document.createElement('div')
   applyCell(cell, 'right')
-  cell.textContent = amount && amount > 0 ? fmtMillionsToBillion(amount) : '-'  // 백만원 → 억단위 (소수점 1자리, 콤마)
+  cell.textContent = amount && amount > 0 ? fmtMillionsToBillion(amount) : '-'  // 백만원 → 억단위 (소수점 2자리, 콤마)
   return cell
 }
 
