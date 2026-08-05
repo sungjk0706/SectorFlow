@@ -104,6 +104,21 @@ export function createSectorDonut(options: SectorDonutOptions): SectorDonutApi {
   ].join('')
   canvasWrap.appendChild(tooltip)
 
+  // 툴팁 내부 요소 — 미리 생성해두고 마우스 이동 시 글자만 갱신 (M-05: innerHTML 매번 조립 제거)
+  const ttSector = document.createElement('div')
+  Object.assign(ttSector.style, { fontWeight: '600', marginBottom: '6px', borderBottom: `1px solid ${COLOR.borderLight}`, paddingBottom: '4px' })
+  tooltip.appendChild(ttSector)
+  const ttPnlRow = document.createElement('div')
+  Object.assign(ttPnlRow.style, { display: 'flex', justifyContent: 'space-between', gap: '12px' })
+  const ttPnlLabel = document.createElement('span')
+  Object.assign(ttPnlLabel.style, { color: COLOR.tertiary })
+  ttPnlLabel.textContent = '실현손익'
+  const ttPnlValue = document.createElement('span')
+  Object.assign(ttPnlValue.style, { fontWeight: '600' })
+  ttPnlRow.appendChild(ttPnlLabel)
+  ttPnlRow.appendChild(ttPnlValue)
+  tooltip.appendChild(ttPnlRow)
+
   const overlay = document.createElement('div')
   overlay.style.cssText = 'position:absolute;top:55%;left:50%;transform:translate(-50%,-50%);color:rgba(0,0,0,0.2);font-size:12px;pointer-events:none;'
   overlay.textContent = '매도 체결 내역이 없습니다'
@@ -115,6 +130,10 @@ export function createSectorDonut(options: SectorDonutOptions): SectorDonutApi {
   let cw = 0, ch = 0
   let segmentRects: { startAngle: number; endAngle: number; row: SectorDonutRow; color: string }[] = []
   let currentSegments: { row: SectorDonutRow; color: string }[] = []
+  // H-02: 마우스 이동 시 rAF 배칭 — 1프레임에 1회만 재그리기 (중복 예약 방지)
+  let rafId: number | null = null
+  // M-03: 범례 key diff — 업종명 키로 기존 범례 항목 요소 맵 유지 (전체 재생성 방지)
+  const legendItemMap = new Map<string, HTMLDivElement>()
 
   // ── 데이터 처리 ──────────────────────────────────────────
   function processData(rows: SectorDonutRow[]): SectorDonutRow[] {
@@ -225,41 +244,81 @@ export function createSectorDonut(options: SectorDonutOptions): SectorDonutApi {
   }
 
   // ── DOM 범례 렌더 ────────────────────────────────────────
+  // M-03: key 기반 diff — 업종명 키로 기존 항목 재사용, 변경된 텍스트만 갱신.
+  // 사라진 업종은 제거, 새 업종은 추가, 순서는 currentSegments 순서대로 재배치.
   function renderLegend() {
-    legendWrap.innerHTML = ''
-    if (currentSegments.length === 0) return
+    if (currentSegments.length === 0) {
+      // 전체 비움 — 기존 항목 모두 제거
+      for (const [, item] of legendItemMap) item.remove()
+      legendItemMap.clear()
+      return
+    }
+
+    // 새 키 맵 — 현재 세그먼트 기준
+    const newKeyMap = new Map<string, { seg: { row: SectorDonutRow; color: string }, index: number }>()
+    for (let i = 0; i < currentSegments.length; i++) {
+      newKeyMap.set(currentSegments[i].row.sector, { seg: currentSegments[i], index: i })
+    }
+
+    // 제거된 업종 항목 삭제
+    for (const [sector, item] of legendItemMap) {
+      if (!newKeyMap.has(sector)) {
+        item.remove()
+        legendItemMap.delete(sector)
+      }
+    }
+
+    // 새 업종 항목 추가 + 기존 항목 갱신 + 순서 재배치
     for (let i = 0; i < currentSegments.length; i++) {
       const seg = currentSegments[i]
       const isProfit = seg.row.pnl >= 0
-      const item = document.createElement('div')
-      item.style.cssText = `display:flex;align-items:center;gap:6px;padding:4px 6px;cursor:pointer;border-radius:${RADIUS.xs};${hoveredIdx === i ? `background:${COLOR.hoverBg};` : ''}`
-      const dot = document.createElement('span')
-      dot.style.cssText = `flex:none;width:8px;height:8px;border-radius:50%;background:${seg.color};`
-      const label = document.createElement('span')
-      label.style.cssText = 'flex:1;min-width:0;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'
-      label.textContent = seg.row.sector
-      const val = document.createElement('span')
-      val.style.cssText = `flex:none;font-size:11px;font-weight:600;color:${isProfit ? COLOR.up : COLOR.down};`
-      val.textContent = `${seg.row.pnl >= 0 ? '+' : ''}${fmtWon(seg.row.pnl)}`
-      item.appendChild(dot)
-      item.appendChild(label)
-      item.appendChild(val)
-      item.addEventListener('mouseenter', () => {
-        hoveredIdx = i
-        render()
-        renderLegendHighlight()
-      })
-      item.addEventListener('mouseleave', () => {
-        hoveredIdx = null
-        render()
-        renderLegendHighlight()
-      })
-      if (onSectorClick) {
-        item.addEventListener('click', () => {
-          onSectorClick(seg.row.sector)
+      let item = legendItemMap.get(seg.row.sector)
+      if (!item) {
+        // 신규 항목 생성
+        item = document.createElement('div')
+        const dot = document.createElement('span')
+        dot.style.cssText = 'flex:none;width:8px;height:8px;border-radius:50%;'
+        const label = document.createElement('span')
+        label.style.cssText = 'flex:1;min-width:0;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'
+        const val = document.createElement('span')
+        val.style.cssText = 'flex:none;font-size:11px;font-weight:600;'
+        item.appendChild(dot)
+        item.appendChild(label)
+        item.appendChild(val)
+        const idxCapture = i
+        item.addEventListener('mouseenter', () => {
+          hoveredIdx = idxCapture
+          scheduleRender()
         })
+        item.addEventListener('mouseleave', () => {
+          hoveredIdx = null
+          scheduleRender()
+        })
+        if (onSectorClick) {
+          item.addEventListener('click', () => {
+            onSectorClick(seg.row.sector)
+          })
+        }
+        legendItemMap.set(seg.row.sector, item)
       }
-      legendWrap.appendChild(item)
+      // 공통 스타일 + 내용 갱신 (기존·신규 모두)
+      item.style.cssText = `display:flex;align-items:center;gap:6px;padding:4px 6px;cursor:pointer;border-radius:${RADIUS.xs};${hoveredIdx === i ? `background:${COLOR.hoverBg};` : ''}`
+      const dot = item.children[0] as HTMLElement
+      dot.style.background = seg.color
+      const label = item.children[1] as HTMLElement
+      if (label.textContent !== seg.row.sector) label.textContent = seg.row.sector
+      const val = item.children[2] as HTMLElement
+      const newVal = `${seg.row.pnl >= 0 ? '+' : ''}${fmtWon(seg.row.pnl)}`
+      if (val.textContent !== newVal) {
+        val.textContent = newVal
+        val.style.color = isProfit ? COLOR.up : COLOR.down
+      }
+      // 순서 재배치 — 현재 인덱스 순서대로 appendChild (이미 있으면 이동만)
+      const refChild = legendWrap.children[i] as HTMLElement | undefined
+      if (refChild !== item) {
+        if (refChild) legendWrap.insertBefore(item, refChild)
+        else legendWrap.appendChild(item)
+      }
     }
   }
 
@@ -268,6 +327,16 @@ export function createSectorDonut(options: SectorDonutOptions): SectorDonutApi {
     for (let i = 0; i < items.length; i++) {
       ;(items[i] as HTMLElement).style.background = hoveredIdx === i ? COLOR.hoverBg : ''
     }
+  }
+
+  // H-02: rAF 배칭 — 도넛 재그리기 + 범례 하이라이트 갱신을 1프레임에 1회로 통합 (중복 예약 방지)
+  function scheduleRender() {
+    if (rafId !== null) return
+    rafId = requestAnimationFrame(() => {
+      rafId = null
+      render()
+      renderLegendHighlight()
+    })
   }
 
   // ── 호버 처리 ──────────────────────────────────────────────
@@ -301,19 +370,15 @@ export function createSectorDonut(options: SectorDonutOptions): SectorDonutApi {
 
     if (newHit !== hoveredIdx) {
       hoveredIdx = newHit
-      render()
-      renderLegendHighlight()
+      scheduleRender()
       if (hoveredIdx !== null) {
         const seg = segmentRects[hoveredIdx]
         const isProfit = seg.row.pnl >= 0
         tooltip.style.display = 'block'
-        tooltip.innerHTML = `
-          <div style="font-weight:600;margin-bottom:6px;border-bottom:1px solid ${COLOR.borderLight};padding-bottom:4px;">${seg.row.sector}</div>
-          <div style="display:flex;justify-content:space-between;gap:12px;">
-            <span style="color:${COLOR.tertiary}">실현손익</span>
-            <span style="color:${isProfit ? COLOR.up : COLOR.down};font-weight:600">${seg.row.pnl >= 0 ? '+' : ''}${fmtWon(seg.row.pnl)}</span>
-          </div>
-        `
+        // M-05: 미리 만들어둔 툴팁 요소의 글자만 갱신 (innerHTML 조립 제거)
+        ttSector.textContent = seg.row.sector
+        ttPnlValue.textContent = `${seg.row.pnl >= 0 ? '+' : ''}${fmtWon(seg.row.pnl)}`
+        ttPnlValue.style.color = isProfit ? COLOR.up : COLOR.down
         positionTooltip(tooltip, mx, my, cw, ch)
       } else {
         tooltip.style.display = 'none'
@@ -322,7 +387,11 @@ export function createSectorDonut(options: SectorDonutOptions): SectorDonutApi {
   }
 
   canvas.addEventListener('mousemove', onMove)
-  canvas.addEventListener('mouseleave', () => { hoveredIdx = null; render(); renderLegendHighlight(); tooltip.style.display = 'none' })
+  canvas.addEventListener('mouseleave', () => {
+    hoveredIdx = null
+    scheduleRender()
+    tooltip.style.display = 'none'
+  })
 
   const RO = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => render()) : null
   if (RO) RO.observe(canvasWrap)
@@ -343,6 +412,8 @@ export function createSectorDonut(options: SectorDonutOptions): SectorDonutApi {
     },
     resize() { render() },
     destroy() {
+      if (rafId !== null) cancelAnimationFrame(rafId)
+      rafId = null
       if (RO) RO.disconnect()
       canvas.removeEventListener('mousemove', onMove)
       wrapper.remove()

@@ -220,6 +220,39 @@ export function createProfitChart(options: ProfitChartOptions): ProfitChartApi {
   ].join('')
   canvasWrap.appendChild(tooltip)
 
+  // 툴팁 내부 요소 — 미리 생성해두고 마우스 이동 시 글자만 갱신 (M-04: innerHTML 매번 조립 제거)
+  const ttDate = document.createElement('div')
+  Object.assign(ttDate.style, { fontWeight: '600', marginBottom: '6px', borderBottom: `1px solid ${COLOR.borderLight}`, paddingBottom: '4px' })
+  tooltip.appendChild(ttDate)
+  const ttBarRow = document.createElement('div')
+  Object.assign(ttBarRow.style, { display: 'flex', justifyContent: 'space-between', gap: '12px' })
+  const ttBarLabel = document.createElement('span')
+  Object.assign(ttBarLabel.style, { color: COLOR.tertiary })
+  const ttBarValue = document.createElement('span')
+  Object.assign(ttBarValue.style, { fontWeight: '600' })
+  ttBarRow.appendChild(ttBarLabel)
+  ttBarRow.appendChild(ttBarValue)
+  tooltip.appendChild(ttBarRow)
+  const ttLineRow = document.createElement('div')
+  Object.assign(ttLineRow.style, { display: 'flex', justifyContent: 'space-between', gap: '12px' })
+  const ttLineLabel = document.createElement('span')
+  Object.assign(ttLineLabel.style, { color: COLOR.tertiary })
+  const ttLineValue = document.createElement('span')
+  Object.assign(ttLineValue.style, { fontWeight: '600' })
+  ttLineRow.appendChild(ttLineLabel)
+  ttLineRow.appendChild(ttLineValue)
+  tooltip.appendChild(ttLineRow)
+  const ttFeeRow = document.createElement('div')
+  Object.assign(ttFeeRow.style, { display: 'flex', justifyContent: 'space-between', gap: '12px', borderTop: `1px solid ${COLOR.borderLight}`, marginTop: '4px', paddingTop: '4px' })
+  const ttFeeLabel = document.createElement('span')
+  Object.assign(ttFeeLabel.style, { color: COLOR.tertiary })
+  ttFeeLabel.textContent = '수수료/세금'
+  const ttFeeValue = document.createElement('span')
+  Object.assign(ttFeeValue.style, { color: COLOR.neutral, fontWeight: '600' })
+  ttFeeRow.appendChild(ttFeeLabel)
+  ttFeeRow.appendChild(ttFeeValue)
+  tooltip.appendChild(ttFeeRow)
+
   const overlay = document.createElement('div')
   overlay.style.cssText = 'position:absolute;top:55%;left:50%;transform:translate(-50%,-50%);color:rgba(0,0,0,0.2);font-size:12px;pointer-events:none;'
   overlay.textContent = '거래 내역이 없습니다'
@@ -231,6 +264,8 @@ export function createProfitChart(options: ProfitChartOptions): ProfitChartApi {
   let hitIdx: number | null = null
   let barRects: { x: number; w: number; row: DisplayRow }[] = []
   let cw = 0, ch = 0
+  // H-01: 마우스 이동 시 rAF 배칭 — 1프레임에 1회만 재그리기 (중복 예약 방지)
+  let rafId: number | null = null
 
   refreshInternal(options.data)
 
@@ -435,7 +470,7 @@ export function createProfitChart(options: ProfitChartOptions): ProfitChartApi {
     const r = canvas.getBoundingClientRect()
     const mx = e.clientX - r.left
     const my = e.clientY - r.top
-    
+
     let newHit: number | null = null
     for (let i = 0; i < barRects.length; i++) {
       const br = barRects[i]
@@ -447,7 +482,13 @@ export function createProfitChart(options: ProfitChartOptions): ProfitChartApi {
 
     if (newHit !== hitIdx) {
       hitIdx = newHit
-      render()
+      // H-01: rAF 배칭 — 다음 화면 주기에 1회만 재그리기 (중복 예약 방지)
+      if (rafId === null) {
+        rafId = requestAnimationFrame(() => {
+          rafId = null
+          render()
+        })
+      }
       if (hitIdx !== null) {
         const d = displayData[hitIdx]
         const pColor = pnlColor(d.pnl || 0)
@@ -460,18 +501,20 @@ export function createProfitChart(options: ProfitChartOptions): ProfitChartApi {
         const lineLabel = mode === 'volume' ? '수익률:' : '일별 수익률:'
         const lineValue = `${d.rate.toFixed(2)}%`
         const feeTotal = (d.buyFee ?? 0) + (d.sellFee ?? 0) + (d.tax ?? 0)
-        tooltip.innerHTML = `
-          <div style="font-weight:600;margin-bottom:6px;border-bottom:1px solid ${COLOR.borderLight};padding-bottom:4px;">${formatDate(d.date)}</div>
-          <div style="display:flex;justify-content:space-between;gap:12px;">
-            <span style="color:${COLOR.tertiary}">${barLabel}</span>
-            <span style="color:${pColor};font-weight:600">${barValue}</span>
-          </div>
-          <div style="display:flex;justify-content:space-between;gap:12px;">
-            <span style="color:${COLOR.tertiary}">${lineLabel}</span>
-            <span style="color:${rColor};font-weight:600">${lineValue}</span>
-          </div>
-          ${feeTotal > 0 ? `<div style="display:flex;justify-content:space-between;gap:12px;border-top:1px solid ${COLOR.borderLight};margin-top:4px;padding-top:4px;"><span style="color:${COLOR.tertiary}">수수료/세금</span><span style="color:${COLOR.neutral};font-weight:600">${fmtWon(feeTotal)}</span></div>` : ''}
-        `
+        // M-04: 미리 만들어둔 툴팁 요소의 글자만 갱신 (innerHTML 조립 제거)
+        ttDate.textContent = formatDate(d.date)
+        ttBarLabel.textContent = barLabel
+        ttBarValue.textContent = barValue
+        ttBarValue.style.color = pColor
+        ttLineLabel.textContent = lineLabel
+        ttLineValue.textContent = lineValue
+        ttLineValue.style.color = rColor
+        if (feeTotal > 0) {
+          ttFeeRow.style.display = ''
+          ttFeeValue.textContent = fmtWon(feeTotal)
+        } else {
+          ttFeeRow.style.display = 'none'
+        }
         positionTooltip(tooltip, mx, my, cw, ch)
       } else {
         tooltip.style.display = 'none'
@@ -480,7 +523,17 @@ export function createProfitChart(options: ProfitChartOptions): ProfitChartApi {
   }
 
   canvas.addEventListener('mousemove', onMove)
-  canvas.addEventListener('mouseleave', () => { hitIdx = null; render(); tooltip.style.display = 'none' })
+  canvas.addEventListener('mouseleave', () => {
+    hitIdx = null
+    // H-01: rAF 배칭 — 마우스 벗김도 다음 화면 주기에 1회
+    if (rafId === null) {
+      rafId = requestAnimationFrame(() => {
+        rafId = null
+        render()
+      })
+    }
+    tooltip.style.display = 'none'
+  })
 
   const RO = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => render()) : null
   if (RO) RO.observe(canvasWrap)
@@ -495,6 +548,8 @@ export function createProfitChart(options: ProfitChartOptions): ProfitChartApi {
     },
     resize() { render() },
     destroy: () => {
+      if (rafId !== null) cancelAnimationFrame(rafId)
+      rafId = null
       if (RO) RO.disconnect()
       canvas.removeEventListener('mousemove', onMove)
       wrapper.remove()
