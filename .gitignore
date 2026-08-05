@@ -90,3 +90,11 @@ HANDOVER.md
 
 # Continuity Loop state — 연속성 루프 조사 상태 (git 추적 제외, 런타임 생성물)
 .devin/state/
+
+# 작업용 임시 문서 — 설계서·태스크·조사보고서 (완료 시 삭제 원칙, 로컬에서만 관리)
+docs/설계서/
+docs/태스크/
+docs/조사보고서/
+
+# IDE 로컬 설정
+.vscode/
