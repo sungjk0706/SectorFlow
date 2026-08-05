@@ -82,7 +82,6 @@ GROUP_E_EVENT_LOCK = {
     "server_ready_event",
     "preboot_ready_event",
     "engine_stop_event",
-    "ws_window_changed_event",
     "reg_seq_lock",
     "reg_ack_event",
     "reg_ack_return_code",
@@ -125,18 +124,18 @@ class TestGroupClassification:
 
     def test_group_sizes_match_docstring(self):
         """docstring에 명시된 그룹별 속성 수와 일치."""
-        expected_sizes = {"A": 5, "B": 12, "C": 8, "D": 13, "E": 17, "F": 15}
+        expected_sizes = {"A": 5, "B": 12, "C": 8, "D": 13, "E": 16, "F": 15}
         for name, group in ALL_GROUPS.items():
             assert len(group) == expected_sizes[name], (
                 f"그룹 {name} 속성 수 불일치: 예상 {expected_sizes[name]}, 실제 {len(group)}"
             )
 
     def test_total_attribute_count_is_68(self):
-        """6개 그룹 합계 = 68 (누락/중복 없음). 종료 수명 관리 상태 포함."""
+        """6개 그룹 합계 = 69 (누락/중복 없음). 종료 수명 관리 상태 포함."""
         all_attrs = set()
         for group in ALL_GROUPS.values():
             all_attrs |= group
-        assert len(all_attrs) == 70, f"전체 속성 수: {len(all_attrs)} (예상 70)"
+        assert len(all_attrs) == 69, f"전체 속성 수: {len(all_attrs)} (예상 69)"
 
     def test_no_overlap_between_groups(self):
         """어떤 속성도 두 그룹에 중복 분류되지 않음."""
@@ -325,7 +324,8 @@ class TestAGroupOwnershipContract:
         )
 
     def test_connector_manager_write_only_in_engine_loop(self):
-        """connector_manager 쓰기는 engine_loop.py에서만 발생 (단일 소유자)."""
+        """connector_manager 쓰기는 engine_loop.py(생성·해제)와
+        daily_time_scheduler.py(장마감 해제)에서만 발생."""
         repo_root = Path(__file__).resolve().parents[2]
         app_dir = repo_root / "backend" / "app"
         write_pattern = re.compile(
@@ -341,9 +341,9 @@ class TestAGroupOwnershipContract:
                 continue
             if write_pattern.search(text):
                 write_files.add(str(py_file.relative_to(repo_root)))
-        assert write_files == {"backend/app/services/engine_loop.py"}, (
+        assert write_files == {"backend/app/services/engine_loop.py", "backend/app/services/daily_time_scheduler.py"}, (
             f"connector_manager 쓰기 파일 불일치: {write_files} "
-            f"(예상: engine_loop.py만)"
+            f"(예상: engine_loop.py + daily_time_scheduler.py)"
         )
 
 

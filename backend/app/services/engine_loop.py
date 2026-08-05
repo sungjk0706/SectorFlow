@@ -21,6 +21,41 @@ from backend.app.services import engine_state
 logger = logging.getLogger(__name__)
 
 
+async def _establish_realtime_connection() -> None:
+    """실시간 연결을 1회 시도한다 (자의적 시간대 판정 제거 — 항상 연결 시도).
+
+    access_token이 있으면 ConnectorManager를 생성·연결. 없으면 연결 안됨 상태 유지.
+    연결 성공 여부와 무관하게 반환 — 이후 엔진 루프는 종료 신호만 대기 (P16 살아있는 경로).
+    토큰 회복 루프에서도 호출 — 토큰 회복 성공 시 즉시 연결 맺기 (빈틈 없음).
+    """
+    if not engine_state.state.access_token:
+        return
+    if engine_state.state.connector_manager is not None:
+        return  # 이미 연결됨 — 중복 연결 방지
+    try:
+        from backend.app.core.connector_manager import ConnectorManager
+        from backend.app.services.engine_ws import _broker_message_handler
+        from backend.app.services.core_queues import get_tick_queue
+        from backend.app.services.engine_lifecycle import broadcast_engine_status as _broadcast_engine_ws
+        _mgr = ConnectorManager()
+        _mgr.set_message_callback(_broker_message_handler)
+        tick_queue = get_tick_queue()
+        for connector in _mgr._connectors.values():
+            if hasattr(connector, 'set_queue_callback'):
+                connector.set_queue_callback(tick_queue)
+        logger.info("[연결] 커넥터 큐 콜백 설정 (틱 큐)")
+        engine_state.state.connector_manager = _mgr
+        await _mgr.connect_all()
+        if _mgr.is_connected():
+            logger.info("[연결] 실시간 연결")
+        else:
+            logger.warning("[연결] 실시간 연결 실패 — 재연결 루프 기동 중")
+        await _broadcast_engine_ws()
+    except Exception as e:
+        logger.error("[연결] 실시간 연결 초기화 실패: %s", e, exc_info=True)
+        engine_state.state.connector_manager = None
+
+
 async def _cache_and_bootstrap(settings: dict) -> None:
     """캐시 선행 로드 → engine-ready WS 전송 → 부트스트랩 순차 실행.
 
@@ -190,10 +225,10 @@ async def _token_recovery_loop(router, broker_nm: str) -> None:
                     except Exception:
                         logger.warning("[연결] 토큰 회복 후 매수 한도 브로드캐스트 실패", exc_info=True)
                 log_message(f" [연결] {broker_display} 토큰 회복 성공. 정상 모드 전환.")
-                # WS 연결 루프 각성 — access_token이 설정되었으므로 루프가 재평가하여
-                # 장중 구간이면 실시간 연결을 맺는다 (P16 살아있는 경로, P21 사용자 투명성).
-                # 장외 구간이면 is_ws_subscribe_window 게이트가 False를 반환하므로 불필요한 연결 시도 없음.
-                engine_state.state.ws_window_changed_event.set()
+                # 토큰 회복 성공 시 즉시 실시간 연결 시도 (자의적 시간대 판정 제거 — 항상 연결).
+                # 엔진 루프의 구간 감지 루프가 제거되었으므로, 여기서 직접 연결을 맺어야
+                # 회복 후 데이터 흐름이 끊기지 않는다 (P16 살아있는 경로).
+                await _establish_realtime_connection()
                 await broadcast_engine_status()
                 return
 
@@ -441,63 +476,15 @@ async def run_engine_loop() -> None:
 
         await start_compute_loop()
 
-        # ── WS 구간 변화 감지 루프 (WS 연결/해제 단일 책임) ──
+        # ── 실시간 연결 (자의적 시간대 판정 제거 — 기동 시 1회 연결 시도) ──
+        # access_token이 있으면 즉시 증권사 실시간 연결 시도.
+        # 연결 해제는 장마감(20:00) 이벤트(_on_ws_subscribe_end)가 직접 수행.
+        # 토큰 회복 루프 성공 시에도 _establish_realtime_connection()이 직접 연결 맺음.
         engine_state.state.engine_stop_event.clear()
-        from backend.app.services.daily_time_scheduler import is_ws_subscribe_window
+        await _establish_realtime_connection()
 
-        while not engine_state.state.engine_stop_event.is_set():
-            try:
-                _settings = engine_state.state.integrated_system_settings_cache
-                _should_connect_ws = await is_ws_subscribe_window(_settings) if engine_state.state.access_token else False
-
-                if _should_connect_ws:
-                    if engine_state.state.connector_manager is None:
-                        try:
-                            from backend.app.core.connector_manager import ConnectorManager
-                            from backend.app.services.engine_ws import _broker_message_handler
-                            from backend.app.services.core_queues import get_tick_queue
-                            _mgr = ConnectorManager()
-                            _mgr.set_message_callback(_broker_message_handler)
-                            tick_queue = get_tick_queue()
-                            for connector in _mgr._connectors.values():
-                                if hasattr(connector, 'set_queue_callback'):
-                                    connector.set_queue_callback(tick_queue)
-                            logger.info("[연결] 커넥터 큐 콜백 설정 (틱 큐)")
-                            engine_state.state.connector_manager = _mgr
-                            await _mgr.connect_all()
-                            if _mgr.is_connected():
-                                logger.info("[연결] 실시간 연결")
-                            else:
-                                logger.warning("[연결] 실시간 연결 실패 — 재연결 루프 기동 중")
-                            await _broadcast_engine_ws()
-                        except Exception as e:
-                            logger.error("[연결] 실시간 연결 초기화 실패: %s", e, exc_info=True)
-                            engine_state.state.connector_manager = None
-                else:
-                    if engine_state.state.connector_manager is not None:
-                        try:
-                            if hasattr(engine_state.state.connector_manager, 'disconnect_all'):
-                                await engine_state.state.connector_manager.disconnect_all()
-                            engine_state.state.connector_manager = None
-                            logger.info("[연결] 실시간 연결 해제")
-                            await _broadcast_engine_ws()
-                        except Exception as e:
-                            logger.error("[연결] 실시간 연결 해제 실패: %s", e, exc_info=True)
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                logger.error("[연산] WS 구간 감지 루프 오류 (계속): %s", e, exc_info=True)
-                await asyncio.sleep(1)  # persistent 오류 시 hot-spin 방지
-
-            stop_wait = asyncio.create_task(engine_state.state.engine_stop_event.wait())
-            change_wait = asyncio.create_task(engine_state.state.ws_window_changed_event.wait())
-            done, pending = await asyncio.wait(
-                [stop_wait, change_wait],
-                return_when=asyncio.FIRST_COMPLETED,
-            )
-            for p in pending:
-                p.cancel()
-            engine_state.state.ws_window_changed_event.clear()
+        # 엔진 종료 신호만 대기 — 중간 시간대 재판정 루프 제거 (P24 단순성, P16 살아있는 경로).
+        await engine_state.state.engine_stop_event.wait()
 
     except asyncio.CancelledError:
         pass

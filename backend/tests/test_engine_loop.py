@@ -78,7 +78,6 @@ def _mock_state(
     mock.preboot_ready_event = MagicMock()
     mock.engine_stop_event = MagicMock()
     mock.engine_stop_event.is_set.return_value = True  # while 루프 즉시 종료
-    mock.ws_window_changed_event = MagicMock()
     mock.engine_loop_ref = None
     mock.account_rest_lock = None
     # 토큰 회복 루프 상태 (5세션) — 실제 bool/None 타입으로 설정 (MagicMock truthy 방지)
@@ -949,51 +948,10 @@ class TestRunEngineLoopInit:
         except에서 logger.error + asyncio.sleep(1) 후 continue → asyncio.wait 통과 →
         다음 iteration에서 engine_stop_event.is_set()=True → 루프 정상 종료.
         """
-        mock_state = _mock_state(access_token="valid_token")
-        # broker_tokens를 clear() 무시 + get()이 토큰 반환하는 Mock으로 설정
-        # (run_engine_loop가 broker_tokens.clear() 호출 후 _get_all_tokens_async 모킹으로
-        #  토큰이 채워지지 않으므로, clear를 no-op로 만들고 get이 항상 토큰 반환)
-        mock_bt = MagicMock()
-        mock_bt.clear = MagicMock()  # no-op
-        mock_bt.get = MagicMock(return_value="valid_token")
-        mock_state.broker_tokens = mock_bt
-        # 첫 호출 False (while 진입), 이후 True (루프 종료)
-        mock_state.engine_stop_event.is_set.side_effect = [False, True]
-        mock_state.ws_window_changed_event = MagicMock()
-
-        mock_router = _mock_router()
-
-        with (
-            patch.object(engine_state, "state", mock_state),
-            patch.object(engine_loop, "get_router", return_value=mock_router),
-            patch.object(engine_loop, "is_test_mode", return_value=True),
-            patch.object(engine_loop, "_load_caches_preboot", new_callable=AsyncMock),
-            patch.object(engine_loop, "_get_all_tokens_async", new_callable=AsyncMock),
-            patch.object(engine_loop, "_load_broker_spec_async", new_callable=AsyncMock, return_value=[]),
-            patch.object(engine_loop.asyncio, "gather", new_callable=AsyncMock, side_effect=swallow_gather_side_effect),
-            patch.object(engine_loop.asyncio, "create_task", side_effect=swallow_coro_side_effect),
-            patch.object(engine_loop.asyncio, "wait", new_callable=AsyncMock,
-                         return_value=(set(), set())),
-            patch.object(engine_loop.asyncio, "sleep", new_callable=AsyncMock),
-            patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window",
-                  new_callable=AsyncMock, side_effect=RuntimeError("subscribe window check failed")),
-            patch("backend.app.services.engine_state._notify_reg_ack"),
-            patch("backend.app.services.engine_account_notify._rebuild_layout_cache"),
-            patch("backend.app.services.engine_lifecycle.log_message"),
-            patch("backend.app.services.engine_lifecycle.broadcast_engine_status", new_callable=AsyncMock),
-            patch("backend.app.services.engine_lifecycle.sync_sell_overrides"),
-            patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock),
-            patch("backend.app.services.engine_config._get_settings"),
-            patch("backend.app.services.daily_time_scheduler._init_ws_subscribe_state", new_callable=AsyncMock),
-            patch.object(engine_loop, "logger") as mock_logger,
-        ):
-            await engine_loop.run_engine_loop()
-
-        # is_ws_subscribe_window 예외가 logger.error로 기록되었는지 확인
-        error_msgs = [str(c) for c in mock_logger.error.call_args_list]
-        assert any("WS 구간 감지 루프 오류" in m for m in error_msgs)
-        # 루프가 종료되지 않고 continue했음을 간접 확인: engine_stop_event.is_set()이 2회 이상 호출
-        assert mock_state.engine_stop_event.is_set.call_count >= 2
+        # NOTE: 구간 감지 루프 제거(자의적 시간대 판정 제거)로 이 테스트는 무의미.
+        # run_engine_loop는 기동 시 1회 연결 후 engine_stop_event.wait()만 수행.
+        # is_ws_subscribe_window 예외 경로 자체가 존재하지 않음.
+        pass
 
 
 # ── run_engine_loop — REST API / spec 처리 ─────────────────────────────────────

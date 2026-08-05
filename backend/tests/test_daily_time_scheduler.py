@@ -1420,7 +1420,6 @@ class TestOnWsSubscribeStart:
     async def test_trading_day_starts_subscription(self):
         mock_state = MagicMock()
         mock_state.integrated_system_settings_cache = {"timetable.confirmed_download": "20:40"}
-        mock_state.ws_window_changed_event = MagicMock()
         # 멱등성 가드 통과: 빈 문자열이어야 실행됨 (4단계)
         mock_state.last_ws_subscribe_start_date = ""
         mock_state.last_realtime_reset_date = ""
@@ -1432,7 +1431,7 @@ class TestOnWsSubscribeStart:
              patch("backend.app.services.engine_account_notify.notify_cache"), \
              patch("backend.app.services.daily_time_scheduler._broadcast_market_phase"):
             await _on_ws_subscribe_start()
-            mock_state.ws_window_changed_event.set.assert_called_once()
+            # 자의적 시간대 판정 제거 — 이벤트 통지 없음, 구독 신청 트리거 + 데이터 준비만 수행
 
 
 # ── _on_realtime_fields_reset (4단계 — 07:58 사전 트리거) ──────────────────────
@@ -1598,7 +1597,6 @@ class TestOnWsSubscribeStartIdempotency:
     async def test_skips_if_already_started_today(self):
         mock_state = MagicMock()
         mock_state.integrated_system_settings_cache = {"timetable.confirmed_download": "20:40"}
-        mock_state.ws_window_changed_event = MagicMock()
         mock_state.last_ws_subscribe_start_date = "20250106"  # 이미 오늘 실행됨
         with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(8, 0)), \
@@ -1607,13 +1605,11 @@ class TestOnWsSubscribeStartIdempotency:
             await _on_ws_subscribe_start()
             # 멱등성 가드로 스킵 — 필드 초기화 호출 없음
             mock_reset.assert_not_awaited()
-            mock_state.ws_window_changed_event.set.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_compensates_missing_fields_reset(self):
         mock_state = MagicMock()
         mock_state.integrated_system_settings_cache = {"timetable.confirmed_download": "20:40"}
-        mock_state.ws_window_changed_event = MagicMock()
         mock_state.last_ws_subscribe_start_date = ""        # WS 구독 미실행
         mock_state.last_realtime_reset_date = ""            # 데이터 준비도 미실행 → 보완 경로
         with patch("backend.app.services.engine_state.state", mock_state), \
@@ -1629,7 +1625,6 @@ class TestOnWsSubscribeStartIdempotency:
     async def test_skips_fields_reset_if_already_done(self):
         mock_state = MagicMock()
         mock_state.integrated_system_settings_cache = {"timetable.confirmed_download": "20:40"}
-        mock_state.ws_window_changed_event = MagicMock()
         mock_state.last_ws_subscribe_start_date = ""        # WS 구독 미실행
         mock_state.last_realtime_reset_date = "20250106"    # 데이터 준비 이미 실행 → 보완 스킵
         with patch("backend.app.services.engine_state.state", mock_state), \
@@ -1648,7 +1643,9 @@ class TestOnWsSubscribeEnd:
     @pytest.mark.asyncio
     async def test_end_sets_flags_and_triggers_unreg(self):
         mock_state = MagicMock()
-        mock_state.ws_window_changed_event = MagicMock()
+        mock_mgr = MagicMock()
+        mock_mgr.disconnect_all = AsyncMock()
+        mock_state.connector_manager = mock_mgr
         with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler.gc"), \
              patch("backend.app.core.memory_monitor.start_memory_monitor"), \
@@ -1656,10 +1653,13 @@ class TestOnWsSubscribeEnd:
              patch("backend.app.core.memory_monitor.stop_memory_monitor"), \
              patch("backend.app.services.daily_time_scheduler._trigger_unreg_all", new_callable=AsyncMock), \
              patch("backend.app.services.ws_subscribe_control._set_status"), \
-             patch("backend.app.services.daily_time_scheduler._broadcast_market_phase"):
+             patch("backend.app.services.daily_time_scheduler._broadcast_market_phase"), \
+             patch("backend.app.services.engine_lifecycle.broadcast_engine_status", new_callable=AsyncMock):
             await _on_ws_subscribe_end()
             assert mock_state.confirmed_done is False
-            mock_state.ws_window_changed_event.set.assert_called_once()
+            # 장마감 시 직접 연결 해제 (자의적 판정 아닌 이벤트 기반)
+            mock_mgr.disconnect_all.assert_awaited()
+            assert mock_state.connector_manager is None
 
 
 # ── _on_confirmed_download ────────────────────────────────────────────────────
@@ -1715,26 +1715,17 @@ class TestOnConfirmedDownload:
 
 class TestInitWsSubscribeState:
     @pytest.mark.asyncio
-    async def test_in_window_sets_active(self):
+    async def test_init_always_activates_realtime(self):
+        """자의적 시간대 판정 제거 — 항상 실시간 구간 처리 (GC 비활성화 + 필드 초기화)."""
         mock_state = MagicMock()
         mock_state.integrated_system_settings_cache = {"timetable.confirmed_download": "20:40"}
         mock_state.preboot_cache_loaded = True
-        mock_state.ws_window_changed_event = MagicMock()
         with patch("backend.app.services.engine_state.state", mock_state), \
-             patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock, return_value=True), \
              patch("backend.app.services.daily_time_scheduler.gc"), \
              patch("backend.app.services.engine_initial_data._reset_realtime_fields", new_callable=AsyncMock), \
              patch("backend.app.services.engine_account_notify.notify_cache"), \
-             patch("backend.app.services.daily_time_scheduler._broadcast_market_phase"):
-            await _init_ws_subscribe_state()
-
-    @pytest.mark.asyncio
-    async def test_outside_window_sets_inactive(self):
-        mock_state = MagicMock()
-        mock_state.integrated_system_settings_cache = {"timetable.confirmed_download": "20:40"}
-        with patch("backend.app.services.engine_state.state", mock_state), \
-             patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock, return_value=False), \
-             patch("backend.app.services.ws_subscribe_control._set_status"):
+             patch("backend.app.services.daily_time_scheduler._broadcast_market_phase"), \
+             patch("backend.app.pipelines.pipeline_compute.reset_sector_threshold"):
             await _init_ws_subscribe_state()
 
     @pytest.mark.asyncio
@@ -1746,19 +1737,17 @@ class TestInitWsSubscribeState:
                 await _init_ws_subscribe_state()
 
     @pytest.mark.asyncio
-    async def test_pre_subscribe_window_init(self):
-        """사전 구간(07:59~08:00) 재시작 시 — is_ws_subscribe_window()가 시간 기반으로
-        True 반환 → in_window=True 분기가 GC 비활성화 + 캐시 초기화 수행 (07:58 로직과 동일)."""
+    async def test_init_disables_gc_and_resets_fields(self):
+        """기동 시 항상 GC 비활성화 + 실시간 필드 초기화 수행 (자의적 판정 제거)."""
         mock_state = MagicMock()
         mock_state.integrated_system_settings_cache = {"timetable.confirmed_download": "20:40"}
         mock_state.preboot_cache_loaded = True
-        mock_state.ws_window_changed_event = MagicMock()
         with patch("backend.app.services.engine_state.state", mock_state), \
-             patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock, return_value=True), \
              patch("backend.app.services.daily_time_scheduler.gc") as mock_gc, \
              patch("backend.app.services.engine_initial_data._reset_realtime_fields", new_callable=AsyncMock) as mock_reset, \
              patch("backend.app.services.engine_account_notify.notify_cache") as mock_notify_cache, \
-             patch("backend.app.services.daily_time_scheduler._broadcast_market_phase"):
+             patch("backend.app.services.daily_time_scheduler._broadcast_market_phase"), \
+             patch("backend.app.pipelines.pipeline_compute.reset_sector_threshold"):
             await _init_ws_subscribe_state()
             mock_gc.disable.assert_called_once()
             mock_reset.assert_awaited_once()

@@ -21,10 +21,10 @@
                          krx_countdown_override, nxt_countdown_override,
                          last_realtime_reset_date, last_ws_subscribe_start_date,
                          last_krx_pre_subscribe_date, last_confirmed_download_date
-  E. 이벤트/락/상수 (17) — data_ready_event, token_ready_event, ws_reg_pipeline_done,
+  E. 이벤트/락/상수 (16) — data_ready_event, token_ready_event, ws_reg_pipeline_done,
                          bootstrap_event, sector_summary_ready_event, engine_ready_event,
                          server_ready_event, preboot_ready_event, engine_stop_event,
-                         ws_window_changed_event, reg_seq_lock, reg_ack_event,
+                         reg_seq_lock, reg_ack_event,
                          reg_ack_return_code, rest_api_thread_sem,
                          _last_global_buy_ts, _last_global_sell_ts,
                          REG_POST_ACK_GAP_SEC
@@ -73,7 +73,8 @@ D/E/F 소유권 계약 (세션 11 — CACHE-STATE-IMPL-11, 비거래 상태 단�
 
 A 그룹 소유권 계약 (세션 12 — CACHE-STATE-IMPL-12, active_connector 제거):
   단일 연결 소유자: connector_manager (ConnectorManager | None)
-    - engine_loop에서만 생성·해제·None 할당 (단일 소유자)
+    - engine_loop에서 생성·해제·None 할당 (기동 시 연결, 종료 시 해제)
+    - daily_time_scheduler에서 장마감(20:00) 시 None 할당 (이벤트 기반 연결 정리)
     - 모든 WS 송신·구독·상태 조회는 connector_manager 단독 사용
     - 다중 커넥터 관리 로직은 ConnectorManager 클래스 내부에 캡슐화 (P10 SSOT)
   제거됨: active_connector (파생 참조 — connector_manager.get_connector(broker_nm) 결과)
@@ -135,7 +136,6 @@ class EngineState:
         self.preboot_cache_loaded: bool = False
         self.preboot_ready_event = LazyEvent()
         self.engine_stop_event = LazyEvent()
-        self.ws_window_changed_event = LazyEvent()
         self.reg_seq_lock: asyncio.Lock | None = None
         self.reg_ack_event = LazyEvent()
         self.reg_ack_return_code: str = ""
