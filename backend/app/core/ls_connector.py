@@ -628,77 +628,34 @@ class LsConnector(BrokerConnector):
             logger.warning("[구독] %s 실시간뉴스 구독 실패", _BROKER_DISPLAY)
         return success
 
-    async def _reconnect_loop(self) -> None:
-        """지수 백오프 재연결 루프 (1→2→4→8→16→32초, 최대 20회)."""
-        delays = [1, 2, 4, 8, 16, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32]
-        for attempt, delay in enumerate(delays, start=1):
-            if self._stop_reconnect:
-                logger.info("[연결] %s 재연결 중단 (종료 신호)", _BROKER_DISPLAY)
-                return
-            logger.info("[연결] %s 재연결 시도 %d/20 — %d초 후", _BROKER_DISPLAY, attempt, delay)
-            await asyncio.sleep(delay)
-            if self._stop_reconnect:
-                return
-            try:
-                token = await self._get_token_async()
-                if not token:
-                    logger.warning("[연결] %s 재연결 %d회: 토큰 발급 실패", _BROKER_DISPLAY, attempt)
-                    continue
-                self._token = token
-                if self._lock is None:
-                    self._lock = asyncio.Lock()
-                async with self._lock:
-                    queue_callback = self._make_queue_callback()
+    async def _reconnect_socket(self, token: str) -> None:
+        """재연결 시 소켓만 다시 맺는다 (토큰은 이미 발급됨). 베이스 _reconnect_loop에서 호출."""
+        self._token = token
+        if self._lock is None:
+            self._lock = asyncio.Lock()
+        async with self._lock:
+            queue_callback = self._make_queue_callback()
+            self._socket = _LsSocket(
+                uri=self._ws_uri,
+                token=self._token,
+                on_message=self._on_ws_message,
+                on_disconnect=self._on_socket_disconnect,
+                queue_callback=queue_callback,
+            )
+            await self._socket.connect()
 
-                    self._socket = _LsSocket(
-                        uri=self._ws_uri,
-                        token=self._token,
-                        on_message=self._on_ws_message,
-                        on_disconnect=self._on_socket_disconnect,
-                        queue_callback=queue_callback,
-                    )
-                    await self._socket.connect()
-                    self._connected = True
-                    try:
-                        from backend.app.services.engine_state import state
-                        state.login_ok = True
-                    except Exception as e:
-                        logger.warning("[연결] %s 로그인 상태 설정 실패: %s", _BROKER_DISPLAY, e, exc_info=True)
-                logger.info("[연결] %s 재연결 성공 (시도 %d회)", _BROKER_DISPLAY, attempt)
-                # 재연결 성공 후 큐 클리어 (과거 데이터 제거)
-                if self._ws_queue is not None:
-                    cleared = 0
-                    while not self._ws_queue.empty():
-                        try:
-                            self._ws_queue.get_nowait()
-                            cleared += 1
-                        except asyncio.QueueEmpty:
-                            break
-                    if cleared > 0:
-                        logger.warning("[연결] %s 재연결 후 데이터 정리 — %d건 과거 데이터 폐기", _BROKER_DISPLAY, cleared)
-                try:
-                    from backend.app.services.ws_subscribe_control import broadcast_ws_connection_status
-                    broadcast_ws_connection_status(True)
-                except Exception:
-                    logger.warning("[연결] %s 재연결 상태 알림 실패", _BROKER_DISPLAY, exc_info=True)
-                # JIF 장운영정보 재구독
-                try:
-                    await self.subscribe_jif()
-                except Exception:
-                    logger.warning("[구독] %s 재연결 후 장운영정보 구독 실패", _BROKER_DISPLAY, exc_info=True)
-                # 실시간 뉴스(NWS) 재구독
-                try:
-                    await self.subscribe_news()
-                except Exception:
-                    logger.warning("[구독] %s 재연결 후 실시간뉴스 구독 실패", _BROKER_DISPLAY, exc_info=True)
-                # 업종지수(IJ_) 재구독은 ConnectorManager(_on_reconnect_success)에서 통합 관리
-                # 재연결 후 구독 복원은 ConnectorManager가 담당
-                if self._on_reconnect_success:
-                    await self._on_reconnect_success(self.broker_id)
-                return
-            except Exception as e:
-                logger.warning("[연결] %s 재연결 %d회 실패: %s", _BROKER_DISPLAY, attempt, e, exc_info=True)
-        logger.error("[연결] %s 최대 재연결 횟수(20회) 초과 — 중단", _BROKER_DISPLAY, exc_info=True)
+    async def _on_reconnect_resubscribe(self) -> None:
+        """재연결 후 JIF/NWS 재구독 (LS 전용 훅 오버라이드)."""
+        # JIF 장운영정보 재구독
+        try:
+            await self.subscribe_jif()
+        except Exception:
+            logger.warning("[구독] %s 재연결 후 장운영정보 구독 실패", _BROKER_DISPLAY, exc_info=True)
+        # 실시간 뉴스(NWS) 재구독
+        try:
+            await self.subscribe_news()
+        except Exception:
+            logger.warning("[구독] %s 재연결 후 실시간뉴스 구독 실패", _BROKER_DISPLAY, exc_info=True)
 
     def set_queue_callback(self, queue: asyncio.Queue) -> None:
         """Producer-Consumer Queue 설정 (누락 정책 적용)."""

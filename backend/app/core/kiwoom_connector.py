@@ -368,61 +368,21 @@ class KiwoomConnector(BrokerConnector):
             logger.warning("[연결] %s 업종지수(0J) 구독 응답 시간 초과", _BROKER_DISPLAY)
         return ok
 
-    async def _reconnect_loop(self) -> None:
-        """지수 백오프 재연결 루프 (1→2→4→8→16→32초, 최대 10회)."""
-        delays = [1, 2, 4, 8, 16, 32, 32, 32, 32, 32]
-        for attempt, delay in enumerate(delays, start=1):
-            if self._stop_reconnect:
-                logger.info("[연결] %s 재연결 중단 (중지 신호)", _BROKER_DISPLAY)
-                return
-            logger.info("[연결] %s 재연결 시도 %d/10 — %d초 후", _BROKER_DISPLAY, attempt, delay)
-            await asyncio.sleep(delay)
-            if self._stop_reconnect:
-                return
-            try:
-                token = await self._get_token_async()
-                if not token:
-                    logger.warning("[연결] %s 재연결 %d회: 토큰 발급 실패", _BROKER_DISPLAY, attempt)
-                    continue
-                self._token = token
-                if self._lock is None:
-                    self._lock = asyncio.Lock()
-                async with self._lock:
-                    queue_callback = self._make_queue_callback()
-
-                    self._socket = _KiwoomSocket(
-                        uri=self._ws_uri,
-                        token=self._token,
-                        on_message=self._on_ws_message,
-                        on_disconnect=self._on_socket_disconnect,
-                        queue_callback=queue_callback,
-                    )
-                    await self._socket.connect()
-                    self._connected = True
-                logger.info("[연결] %s 재연결 성공 (시도 %d회)", _BROKER_DISPLAY, attempt)
-                # 재연결 성공 후 큐 클리어 (과거 데이터 제거)
-                if self._ws_queue is not None:
-                    cleared = 0
-                    while not self._ws_queue.empty():
-                        try:
-                            self._ws_queue.get_nowait()
-                            cleared += 1
-                        except asyncio.QueueEmpty:
-                            break
-                    if cleared > 0:
-                        logger.warning("[연결] %s 재연결 후 큐 정리 — %d건 시세 폐기 (재연결 전 과거 데이터 제거)", _BROKER_DISPLAY, cleared)
-                try:
-                    from backend.app.services.ws_subscribe_control import broadcast_ws_connection_status
-                    broadcast_ws_connection_status(True)
-                except Exception:
-                    logger.warning("[연결] %s 재연결 상태 전송 실패", _BROKER_DISPLAY, exc_info=True)
-                # 재연결 후 구독 복원은 ConnectorManager가 담당
-                if self._on_reconnect_success:
-                    await self._on_reconnect_success(self.broker_id)
-                return
-            except Exception as e:
-                logger.warning("[연결] %s 재연결 %d회 실패: %s", _BROKER_DISPLAY, attempt, e)
-        logger.error("[연결] %s 최대 재연결 횟수(10회) 초과 — 중단", _BROKER_DISPLAY, exc_info=True)
+    async def _reconnect_socket(self, token: str) -> None:
+        """재연결 시 소켓만 다시 맺는다 (토큰은 이미 발급됨). 베이스 _reconnect_loop에서 호출."""
+        self._token = token
+        if self._lock is None:
+            self._lock = asyncio.Lock()
+        async with self._lock:
+            queue_callback = self._make_queue_callback()
+            self._socket = _KiwoomSocket(
+                uri=self._ws_uri,
+                token=self._token,
+                on_message=self._on_ws_message,
+                on_disconnect=self._on_socket_disconnect,
+                queue_callback=queue_callback,
+            )
+            await self._socket.connect()
 
     def set_queue_callback(self, queue: asyncio.Queue) -> None:
         """Producer-Consumer Queue 설정 (Step 2: 시세 큐 누락 정책 적용)."""

@@ -8,9 +8,10 @@ Broker Connector — 추상 브로커 커넥터 인터페이스
   - 콜백 방식: set_message_callback() 지원
 
 WS 콜백 인프라(_on_ws_message, set_message_callback, set_reconnect_success_callback,
-_on_socket_disconnect, _make_queue_callback)는 공통 구현을 제공 —
+_on_socket_disconnect, _make_queue_callback, _reconnect_loop)는 공통 구현을 제공 —
 서브클래스는 __init__에서 _receive_callback/_on_reconnect_success/_ws_queue/
-_reconnecting/_stop_reconnect/_connected 를 초기화하고 _reconnect_loop()를 구현.
+_reconnecting/_stop_reconnect/_connected/_token/_lock/_ws_uri 를 초기화하고
+_get_token_async()·_reconnect_socket()을 구현하며, 필요 시 _on_reconnect_resubscribe()를 오버라이드.
 """
 from __future__ import annotations
 import asyncio
@@ -21,6 +22,9 @@ from enum import Enum, auto
 from collections.abc import Callable
 
 logger = logging.getLogger(__name__)
+
+# 재연결 백오프 간격(초) — 양 증권사 공통(단순화). 최대 10회.
+_RECONNECT_DELAYS: tuple[int, ...] = (1, 2, 4, 8, 16, 32, 32, 32, 32, 32)
 
 
 class DataPriority(Enum):
@@ -128,8 +132,84 @@ class BrokerConnector(ABC):
             self._reconnecting = False
 
     async def _reconnect_loop(self) -> None:
-        """재연결 루프 — 서브클래스에서 구현 (지수 백오프, 구독 복원)."""
-        raise NotImplementedError("WS 커넥터는 _reconnect_loop()를 구현해야 합니다")
+        """통합 재연결 루프 — 지수 백오프(_RECONNECT_DELAYS)로 재시도.
+
+        공통 흐름: 토큰 발급 → 소켓 재연결(서브클래스) → 로그인 상태 복원 →
+        큐 클리어 → 연결 상태 전송 → 재구독 훅(서브클래스) → 구독 복원 콜백.
+        """
+        max_attempts = len(_RECONNECT_DELAYS)
+        for attempt, delay in enumerate(_RECONNECT_DELAYS, start=1):
+            if self._stop_reconnect:
+                logger.info("[연결] %s 재연결 중단 (중지 신호)", self._broker_display)
+                return
+            logger.info("[연결] %s 재연결 시도 %d/%d — %d초 후", self._broker_display, attempt, max_attempts, delay)
+            await asyncio.sleep(delay)
+            if self._stop_reconnect:
+                return
+            try:
+                token = await self._get_token_async()
+                if not token:
+                    logger.warning("[연결] %s 재연결 %d회: 토큰 발급 실패", self._broker_display, attempt)
+                    continue
+                await self._reconnect_socket(token)
+                self._connected = True
+                # 로그인 상태 복원 (양 증권사 공통)
+                try:
+                    from backend.app.services.engine_state import state
+                    state.login_ok = True
+                except Exception:
+                    logger.warning("[연결] %s 로그인 상태 복원 실패", self._broker_display, exc_info=True)
+                logger.info("[연결] %s 재연결 성공 (시도 %d회)", self._broker_display, attempt)
+                # 재연결 성공 후 큐 클리어 (과거 데이터 제거)
+                if self._ws_queue is not None:
+                    cleared = 0
+                    while not self._ws_queue.empty():
+                        try:
+                            self._ws_queue.get_nowait()
+                            cleared += 1
+                        except asyncio.QueueEmpty:
+                            break
+                    if cleared > 0:
+                        logger.warning("[연결] %s 재연결 후 큐 정리 — %d건 폐기", self._broker_display, cleared)
+                # 연결 상태 전송
+                try:
+                    from backend.app.services.ws_subscribe_control import broadcast_ws_connection_status
+                    broadcast_ws_connection_status(True)
+                except Exception:
+                    logger.warning("[연결] %s 재연결 상태 전송 실패", self._broker_display, exc_info=True)
+                # 서브클래스별 재구독 훅 (LS: JIF/NWS)
+                try:
+                    await self._on_reconnect_resubscribe()
+                except Exception:
+                    logger.warning("[연결] %s 재연결 후 재구독 훅 실패", self._broker_display, exc_info=True)
+                # 구독 복원 콜백 (ConnectorManager가 REG 재전송)
+                if self._on_reconnect_success:
+                    await self._on_reconnect_success(self.broker_id)
+                return
+            except Exception as e:
+                logger.warning("[연결] %s 재연결 %d회 실패: %s", self._broker_display, attempt, e, exc_info=True)
+        logger.error("[연결] %s 최대 재연결 횟수(%d회) 초과 — 중단", self._broker_display, max_attempts, exc_info=True)
+
+    @abstractmethod
+    async def _get_token_async(self) -> str | None:
+        """토큰 확보 (비동기) — 서브클래스에서 구현 (기존 REST API 인스턴스 재사용)."""
+        ...
+
+    @abstractmethod
+    async def _reconnect_socket(self, token: str) -> None:
+        """재연결 시 소켓만 다시 맺는다 (토큰은 이미 발급됨).
+
+        서브클래스에서 self._token 설정 + 소켓 생성 + connect() 수행.
+        실패 시 예외 발생 (호출자가 catch).
+        """
+        ...
+
+    async def _on_reconnect_resubscribe(self) -> None:
+        """재연결 성공 후 서브클래스별 재구독 훅 (기본 no-op).
+
+        LS 커넥터는 JIF/NWS 재구독을 위해 오버라이드.
+        """
+        pass
 
     def _make_queue_callback(self) -> Callable[[dict], None] | None:
         """시세 큐 누락 정책 콜백 생성 — 큐 가득 시 가장 오래된 데이터 버리고 최신 유지.
