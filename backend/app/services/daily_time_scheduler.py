@@ -747,8 +747,6 @@ async def retry_pipeline_catchup_after_bootstrap() -> None:
     모든 종목의 기준일·자료 상태를 개별 확인한다. 한 종목이라도 오래되거나 불완전하면
     전체 자료를 최신 완료로 표시하지 않고 갱신을 트리거한다.
     """
-    t = _kst_now().hour * 60 + _kst_now().minute
-
     _settings = engine_state.state.integrated_system_settings_cache
 
     # 기준일 = 가장 최근 확정된 거래일 (소속 거래일의 직전 거래일).
@@ -779,42 +777,34 @@ async def retry_pipeline_catchup_after_bootstrap() -> None:
     # 전체 종목이 최신일 때만 캐시를 최신으로 인정 (한 종목이라도 오래됨이면 갱신).
     _cache_is_fresh = (_total > 0 and _stale_date == 0)
 
-    # ── 판단: 단절 구간 (market_phase 비활성) — is_ws_subscribe_window() 기반 (P10) ──
-    in_ws_window = await is_ws_subscribe_window(_settings)
+    # ── 판단: 실시간 필드 초기화 구간(07:58~20:40) — is_realtime_reset_window() 기반 (P10 SSOT).
+    # 사용자 설정(timetable.realtime_reset ~ timetable.confirmed_download)을 직접 참조하므로
+    # 거래소 고정 상수(08:00~20:00) 기반의 is_ws_subscribe_window()와 구간이 일치하지 않는
+    # 문제(00:00~07:58 단절 구간에서 다운로드 미발동)를 해결.
+    # 초기화 구간 = 실시간 데이터가 살아있는 시간대 → 자동 다운로드 금지, 사용자 수동만 허용.
+    # 초기화 구간 외(20:40 ~ 다음 거래일 07:58) = 실시간 데이터가 닫힌 시간대 → 데이터 불완정 시 자동 다운로드.
+    in_reset_window = await is_realtime_reset_window(_settings)
 
-    if not in_ws_window:
-        confirmed_dl_str = str(_settings["timetable.confirmed_download"])[:5]
-        cdl_h, cdl_m = _parse_hm(confirmed_dl_str)
-        confirmed_dl_minutes = cdl_h * 60 + cdl_m
+    if in_reset_window:
+        # 실시간 데이터가 살아있는 구간 (07:58~20:40) — 자동 다운로드 금지
+        logger.debug("[스케줄] 실시간 필드 초기화 구간 기동 — 실시간 데이터 살아있음, 다운로드 대기/생략")
+        return
 
-        if t < confirmed_dl_minutes:
-            logger.info(
-                "[스케줄] 단절 구간 기동 — 확정 다운로드 시각(%s) 이전 — 타이머 대기 (정상 %d/오래됨 %d, 최근 확정 거래일=%s)",
-                confirmed_dl_str, _fresh, _stale_date, _latest_confirmed_day
-            )
-            return
-
-        if not _cache_is_fresh and not engine_state.state.confirmed_done:
-            logger.info(
-                "[스케줄] 단절 구간 기동 — 전체 종목 최신성 미충족 (정상 %d/오래됨 %d, 기준일=%s) → 확정 데이터 자동 다운로드 트리거",
-                _fresh, _stale_date, _latest_confirmed_day
-            )
-            _fire_unified_confirmed_fetch()
-            return
-
+    # 실시간 데이터가 닫힌 구간 (20:40 ~ 다음 거래일 07:58) — 데이터 완전성 기반 자동 다운로드
+    if not _cache_is_fresh and not engine_state.state.confirmed_done:
         logger.info(
-            "[스케줄] 단절 구간 기동 — 전체 종목 최신 (%d종목 정상, 기준일=%s) 확정 다운로드 시각 경과 (스킵)",
-            _fresh, _representative_date or _latest_confirmed_day
+            "[스케줄] 단절 구간 기동 — 전체 종목 최신성 미충족 (정상 %d/오래됨 %d, 기준일=%s) → 확정 데이터 자동 다운로드 트리거",
+            _fresh, _stale_date, _latest_confirmed_day
         )
-        engine_state.state.confirmed_done = True
-        return
-    else:
-        # 실시간 연결 구간 (market_phase 활성)
-        # 이 구간에서는 실시간 틱 데이터가 캐시를 채우므로 확정 다운로드를 하지 않음
-        logger.debug("[스케줄] 실시간 연결 구간 기동 — 실시간 틱 수신 중이므로 다운로드 대기/생략")
+        _fire_unified_confirmed_fetch()
         return
 
-
+    logger.info(
+        "[스케줄] 단절 구간 기동 — 전체 종목 최신 (%d종목 정상, 기준일=%s) 확정 다운로드 시각 경과 (스킵)",
+        _fresh, _representative_date or _latest_confirmed_day
+    )
+    engine_state.state.confirmed_done = True
+    return
 
 
 def _apply_market_phase(phase: dict) -> None:

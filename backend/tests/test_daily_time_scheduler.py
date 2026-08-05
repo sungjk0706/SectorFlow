@@ -2051,22 +2051,24 @@ class TestScheduleAutoTradeTimers:
 
 class TestRetryPipelineCatchup:
     @pytest.mark.asyncio
-    async def test_in_ws_window_returns(self):
+    async def test_in_reset_window_returns(self):
+        """07:58~20:40 실시간 필드 초기화 구간 기동 — 자동 다운로드 금지 (사용자 수동만 허용)."""
         mock_state = MagicMock()
         mock_state.integrated_system_settings_cache = {"timetable.confirmed_download": "20:40"}
         with patch("backend.app.services.engine_state.state", mock_state), \
-             patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock, return_value=True), \
+             patch("backend.app.services.daily_time_scheduler.is_realtime_reset_window", new_callable=AsyncMock, return_value=True), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(10, 0)), \
              patch("backend.app.core.trading_calendar.is_trading_day", return_value=True):
             await retry_pipeline_catchup_after_bootstrap()
 
     @pytest.mark.asyncio
-    async def test_disconnected_before_download_time_returns(self):
+    async def test_in_reset_window_just_before_download_time_returns(self):
+        """20:10 = 초기화 구간(07:58~20:40) 내 — 자동 다운로드 금지 (20:40 이전이더라도 초기화 구간 판정으로 대기)."""
         mock_state = MagicMock()
         mock_state.integrated_system_settings_cache = {"timetable.confirmed_download": "20:40"}
         mock_state.master_stocks_cache = {}
         with patch("backend.app.services.engine_state.state", mock_state), \
-             patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock, return_value=False), \
+             patch("backend.app.services.daily_time_scheduler.is_realtime_reset_window", new_callable=AsyncMock, return_value=True), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(20, 10)), \
              patch("backend.app.core.trading_calendar.get_current_trading_day_str", return_value="20250106"), \
              patch("backend.app.core.trading_calendar.is_trading_day", return_value=True):
@@ -2080,7 +2082,7 @@ class TestRetryPipelineCatchup:
         mock_state.master_stocks_cache = {"005930": {"date": "20250104"}}
         mock_state.confirmed_done = False
         with patch("backend.app.services.engine_state.state", mock_state), \
-             patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock, return_value=False), \
+             patch("backend.app.services.daily_time_scheduler.is_realtime_reset_window", new_callable=AsyncMock, return_value=False), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(21, 0)), \
              patch("backend.app.core.trading_calendar.get_current_trading_day_str", return_value="20250106"), \
              patch("backend.app.core.trading_calendar.is_trading_day", return_value=True), \
@@ -2096,7 +2098,7 @@ class TestRetryPipelineCatchup:
         mock_state.master_stocks_cache = {"005930": {"date": "20250105"}}
         mock_state.confirmed_done = False
         with patch("backend.app.services.engine_state.state", mock_state), \
-             patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock, return_value=False), \
+             patch("backend.app.services.daily_time_scheduler.is_realtime_reset_window", new_callable=AsyncMock, return_value=False), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(21, 0)), \
              patch("backend.app.core.trading_calendar.get_current_trading_day_str", return_value="20250106"), \
              patch("backend.app.core.trading_calendar.is_trading_day", return_value=True):
@@ -2115,7 +2117,7 @@ class TestRetryPipelineCatchup:
         }
         mock_state.confirmed_done = False
         with patch("backend.app.services.engine_state.state", mock_state), \
-             patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock, return_value=False), \
+             patch("backend.app.services.daily_time_scheduler.is_realtime_reset_window", new_callable=AsyncMock, return_value=False), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(21, 0)), \
              patch("backend.app.core.trading_calendar.get_current_trading_day_str", return_value="20250106"), \
              patch("backend.app.core.trading_calendar.is_trading_day", return_value=True), \
@@ -2134,7 +2136,7 @@ class TestRetryPipelineCatchup:
         }
         mock_state.confirmed_done = False
         with patch("backend.app.services.engine_state.state", mock_state), \
-             patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock, return_value=False), \
+             patch("backend.app.services.daily_time_scheduler.is_realtime_reset_window", new_callable=AsyncMock, return_value=False), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(21, 0)), \
              patch("backend.app.core.trading_calendar.get_current_trading_day_str", return_value="20250106"), \
              patch("backend.app.core.trading_calendar.is_trading_day", return_value=True):
@@ -2157,13 +2159,52 @@ class TestRetryPipelineCatchup:
         }
         mock_state.confirmed_done = False
         with patch("backend.app.services.engine_state.state", mock_state), \
-             patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock, return_value=False), \
+             patch("backend.app.services.daily_time_scheduler.is_realtime_reset_window", new_callable=AsyncMock, return_value=False), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(21, 0)), \
              patch("backend.app.core.trading_calendar.get_current_trading_day_str", return_value="20250106"), \
              patch("backend.app.core.trading_calendar.is_trading_day", return_value=True), \
              patch("backend.app.services.daily_time_scheduler._fire_unified_confirmed_fetch") as mock_fire:
             await retry_pipeline_catchup_after_bootstrap()
             mock_fire.assert_not_called()
+            assert mock_state.confirmed_done is True
+
+    @pytest.mark.asyncio
+    async def test_early_morning_outdated_triggers_fetch(self):
+        """새벽 기동(02:00) + 데이터 불완정 → 자동 다운로드 트리거.
+
+        핵심 시나리오: 20:40 ~ 다음 거래일 07:58 허용 구간 내에서 데이터 불완정 시 즉시 다운로드.
+        이전에는 is_ws_subscribe_window(08:00~20:00 하드코딩) + t < 20:40 조건으로 인해
+        00:00~07:58 구간에서 다운로드가 발동하지 않던 버그.
+        """
+        mock_state = MagicMock()
+        mock_state.integrated_system_settings_cache = {"timetable.confirmed_download": "20:40"}
+        mock_state.master_stocks_cache = {"005930": {"date": "20250104"}}
+        mock_state.confirmed_done = False
+        with patch("backend.app.services.engine_state.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler.is_realtime_reset_window", new_callable=AsyncMock, return_value=False), \
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(2, 0)), \
+             patch("backend.app.core.trading_calendar.get_current_trading_day_str", return_value="20250106"), \
+             patch("backend.app.core.trading_calendar.is_trading_day", return_value=True), \
+             patch("backend.app.services.daily_time_scheduler._fire_unified_confirmed_fetch") as mock_fire:
+            await retry_pipeline_catchup_after_bootstrap()
+            mock_fire.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_early_morning_fresh_sets_done(self):
+        """새벽 기동(02:00) + 데이터 최신 → 스킵 (확정 완료 표시).
+
+        허용 구간 내에서도 데이터가 이미 최신이면 다운로드하지 않고 확정 완료로 표시.
+        """
+        mock_state = MagicMock()
+        mock_state.integrated_system_settings_cache = {"timetable.confirmed_download": "20:40"}
+        mock_state.master_stocks_cache = {"005930": {"date": "20250105"}}
+        mock_state.confirmed_done = False
+        with patch("backend.app.services.engine_state.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler.is_realtime_reset_window", new_callable=AsyncMock, return_value=False), \
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(2, 0)), \
+             patch("backend.app.core.trading_calendar.get_current_trading_day_str", return_value="20250106"), \
+             patch("backend.app.core.trading_calendar.is_trading_day", return_value=True):
+            await retry_pipeline_catchup_after_bootstrap()
             assert mock_state.confirmed_done is True
 
 
