@@ -1,7 +1,7 @@
 // frontend/src/main.ts — 앱 진입점 (순수 TS, React 없음)
 // 기존 main.tsx + App.tsx의 초기화 로직을 통합
 
-import { uiStore } from './stores/uiStore'
+import { uiStore, destroyUiTimers } from './stores/uiStore'
 import { wsClient, wsSettingsClient, wsOrdersClient } from './api/ws'
 import { bindWSToStore } from './binding'
 import { createLayoutShell } from './layout/shell'
@@ -268,6 +268,7 @@ function main(): void {
     try { wsClient.disconnect() } catch (e) { console.error('[Main] wsClient disconnect error', e) }
     try { wsSettingsClient.disconnect() } catch (e) { console.error('[Main] wsSettingsClient disconnect error', e) }
     try { wsOrdersClient.disconnect() } catch (e) { console.error('[Main] wsOrdersClient disconnect error', e) }
+    try { destroyUiTimers() } catch (e) { console.error('[Main] uiTimers destroy error', e) }
   })
 
   // FPS 모니터링 시작

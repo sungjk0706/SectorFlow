@@ -16,7 +16,7 @@ import { FONT_SIZE, COLOR } from '../components/common/ui-styles'
 import { createBadgeRow, createBadge, updateBadge, type BadgeHandle, type BadgeStatus } from '../components/common/badge'
 import { computeOrderBlockStatus } from '../utils/order-block-status'
 import { filterStocksBySearch } from '../utils/stock-search'
-import { COLUMNS } from './buy-target-columns'
+import { COLUMNS, destroyOrderRatioCells } from './buy-target-columns'
 import type { StockScore, AppSettings } from '../types'
 import type { UIState } from '../stores/uiStore'
 import type { HotState } from '../stores/hotStore'
@@ -526,6 +526,7 @@ function unmount(): void {
   if (unsubTargets) { unsubTargets(); unsubTargets = null }
   if (unsubUiStore) { unsubUiStore(); unsubUiStore = null }
   if (dataTable) { dataTable.destroy(); dataTable = null }
+  destroyOrderRatioCells()
   badgeEls = null
   emptyEl = null
   searchInput = null

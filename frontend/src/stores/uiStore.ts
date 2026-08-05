@@ -130,23 +130,46 @@ const initialState: UIState = {
 
 export const uiStore = createStore<UIState>(initialState)
 
+/* ── L-20: 완료 알림 타이머 누적 방지 ──
+ *  완료 알림 3초 자동 숨김 타이머 ID를 모듈 변수에 저장.
+ *  새 타이머 예약 시 기존 타이머 해제 → 타이머 누적 방지.
+ *  destroyUiTimers()로 앱 종료 시 남은 타이머 정리. */
+let avgAmtProgressTimerId: ReturnType<typeof setTimeout> | null = null
+
+export function destroyUiTimers(): void {
+  if (avgAmtProgressTimerId !== null) {
+    clearTimeout(avgAmtProgressTimerId)
+    avgAmtProgressTimerId = null
+  }
+}
+
 /* ── UI 상태 액션 함수 ── */
 
 export function applyAvgAmtProgress(data: { current: number; total: number; done: boolean; message?: string; eta_sec?: number; status?: string; step?: number; failed_count?: number }): void {
   if (data.done && (data.status === 'completed' || data.status === 'confirmed')) {
-    // 완료: 3초 후 자동 숨김
+    // 완료: 3초 후 자동 숨김 — 기존 타이머 해제 후 새 예약 (L-20 누적 방지)
     uiStore.setState({ avgAmtProgress: data })
-    setTimeout(() => {
+    if (avgAmtProgressTimerId !== null) clearTimeout(avgAmtProgressTimerId)
+    avgAmtProgressTimerId = setTimeout(() => {
+      avgAmtProgressTimerId = null
       const cur = uiStore.getState().avgAmtProgress
       if (cur && (cur.status === 'completed' || cur.status === 'confirmed')) {
         uiStore.setState({ avgAmtProgress: null })
       }
     }, 3000)
   } else if (data.done && (data.status === 'failed' || data.status === 'partial')) {
-    // 실패/부분성공: 숨기지 않음
+    // 실패/부분성공: 숨기지 않음 — 진행 중인 자동 숨김 타이머가 있으면 해제
+    if (avgAmtProgressTimerId !== null) {
+      clearTimeout(avgAmtProgressTimerId)
+      avgAmtProgressTimerId = null
+    }
     uiStore.setState({ avgAmtProgress: data })
   } else if (data.done && !data.status) {
     // 하위 호환: status 없이 done=true → 즉시 숨김
+    if (avgAmtProgressTimerId !== null) {
+      clearTimeout(avgAmtProgressTimerId)
+      avgAmtProgressTimerId = null
+    }
     uiStore.setState({ avgAmtProgress: null })
   } else {
     uiStore.setState({ avgAmtProgress: data })

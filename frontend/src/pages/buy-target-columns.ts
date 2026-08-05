@@ -24,6 +24,61 @@ function getMasterStock(code: string) {
   return hotStore.getState().masterStocks[normalizeStockCode(code)]
 }
 
+/* ── M-08: 호가잔량비 칸 요소 재사용 ──
+ *  매번 새 요소를 만들지 않고 종목코드별로 한 번 만든 요소를 재사용.
+ *  텍스트·색상만 갱신 (양호 패턴 OK-16 셀 diff와 동일 방식).
+ *  페이지 이탈 시 destroyOrderRatioCells()로 정리. */
+interface OrderRatioCell {
+  el: HTMLDivElement
+  label: HTMLSpanElement
+  num: HTMLSpanElement
+}
+const orderRatioCellMap = new Map<string, OrderRatioCell>()
+
+function getOrderRatioCell(code: string): OrderRatioCell {
+  let cell = orderRatioCellMap.get(code)
+  if (!cell) {
+    const el = document.createElement('div')
+    Object.assign(el.style, { display: 'flex', justifyContent: 'space-between', width: '100%' })
+    const label = document.createElement('span')
+    const num = document.createElement('span')
+    el.appendChild(label)
+    el.appendChild(num)
+    cell = { el, label, num }
+    orderRatioCellMap.set(code, cell)
+  }
+  return cell
+}
+
+/* ── M-08: 5일고가 칸 요소 재사용 ──
+ *  createNumberCell 매번 새 요소 생성을 종목코드별 재사용으로 전환.
+ *  고가 돌파 배경색만 조건부 갱신. */
+interface High5dCell {
+  el: HTMLElement
+  lastValue: number
+  lastBreakthrough: boolean
+}
+const high5dCellMap = new Map<string, High5dCell>()
+
+function getHigh5dCell(code: string, value: number): HTMLElement {
+  let cell = high5dCellMap.get(code)
+  if (!cell) {
+    cell = { el: createNumberCell(value), lastValue: value, lastBreakthrough: false }
+    high5dCellMap.set(code, cell)
+  } else if (cell.lastValue !== value) {
+    cell.el.textContent = (function fmtCommaLocal(v: number): string {
+      return v.toLocaleString('ko-KR')
+    })(value)
+    cell.lastValue = value
+  }
+  return cell.el
+}
+
+export function destroyOrderRatioCells(): void {
+  orderRatioCellMap.clear()
+  high5dCellMap.clear()
+}
+
 /* ── ColumnDef 배열 (12개 컬럼) ── */
 export const COLUMNS: ColumnDef<StockScore>[] = [
   { key: 'seq', label: '순번', align: 'center', type: 'seq', render: (_t, idx) => createSeqCell(idx + 1) },
@@ -70,28 +125,26 @@ export const COLUMNS: ColumnDef<StockScore>[] = [
       if (!orderRatio) return ''
       const [bid, ask] = orderRatio
       if (bid <= 0 && ask <= 0) return ''
-      const wrap = document.createElement('div')
-      Object.assign(wrap.style, { display: 'flex', justifyContent: 'space-between', width: '100%' })
-      const labelSpan = document.createElement('span')
-      const numSpan = document.createElement('span')
+      // M-08: 종목코드별 요소 재사용 — 텍스트·색상만 갱신
+      const { el: wrap, label: labelSpan, num: numSpan } = getOrderRatioCell(t.code)
       if (bid === ask) {
-        labelSpan.textContent = '보합'
-        labelSpan.style.color = COLOR.tertiary
-        numSpan.textContent = '100.0'
-        numSpan.style.color = COLOR.tertiary
+        if (labelSpan.textContent !== '보합') labelSpan.textContent = '보합'
+        if (labelSpan.style.color !== COLOR.tertiary) labelSpan.style.color = COLOR.tertiary
+        if (numSpan.textContent !== '100.0') numSpan.textContent = '100.0'
+        if (numSpan.style.color !== COLOR.tertiary) numSpan.style.color = COLOR.tertiary
       } else if (bid > ask) {
-        labelSpan.textContent = '[매수]'
-        labelSpan.style.color = COLOR.up
-        numSpan.textContent = ((bid / ask) * 100).toFixed(1)
-        numSpan.style.color = COLOR.up
+        if (labelSpan.textContent !== '[매수]') labelSpan.textContent = '[매수]'
+        if (labelSpan.style.color !== COLOR.up) labelSpan.style.color = COLOR.up
+        const numText = ((bid / ask) * 100).toFixed(1)
+        if (numSpan.textContent !== numText) numSpan.textContent = numText
+        if (numSpan.style.color !== COLOR.up) numSpan.style.color = COLOR.up
       } else {
-        labelSpan.textContent = '[매도]'
-        labelSpan.style.color = COLOR.down
-        numSpan.textContent = ((ask / bid) * 100).toFixed(1)
-        numSpan.style.color = COLOR.down
+        if (labelSpan.textContent !== '[매도]') labelSpan.textContent = '[매도]'
+        if (labelSpan.style.color !== COLOR.down) labelSpan.style.color = COLOR.down
+        const numText = ((ask / bid) * 100).toFixed(1)
+        if (numSpan.textContent !== numText) numSpan.textContent = numText
+        if (numSpan.style.color !== COLOR.down) numSpan.style.color = COLOR.down
       }
-      wrap.appendChild(labelSpan)
-      wrap.appendChild(numSpan)
       return wrap
     },
   },
@@ -141,11 +194,16 @@ export const COLUMNS: ColumnDef<StockScore>[] = [
   {
     key: 'high_5d', label: '5일고가', align: 'right', type: 'high', maxWidth: 98,
     render: (t) => {
-      const cell = createNumberCell(Number(t.high_5d) || 0)
+      const value = Number(t.high_5d) || 0
+      // M-08: 종목코드별 요소 재사용 — 값 변경 시에만 textContent 갱신
+      const cell = getHigh5dCell(t.code, value)
       const ms = getMasterStock(t.code)
       const curPrice = ms?.cur_price
-      if (t.high_5d && t.high_5d > 0 && curPrice != null && Number(curPrice) > t.high_5d) {
-        cell.style.backgroundColor = COLOR.successBg
+      const breakthrough = !!(t.high_5d && t.high_5d > 0 && curPrice != null && Number(curPrice) > t.high_5d)
+      const cached = high5dCellMap.get(t.code)
+      if (cached && cached.lastBreakthrough !== breakthrough) {
+        cell.style.backgroundColor = breakthrough ? COLOR.successBg : ''
+        cached.lastBreakthrough = breakthrough
       }
       return cell
     },
