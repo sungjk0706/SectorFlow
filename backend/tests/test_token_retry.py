@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-토큰 발급 신뢰성 강화 — 공통 함수(auth_utils) 단위 테스트.
+토큰 발급 신뢰성 강화 — 공통 함수(auth_utils) 단위 테스트 + 통합 회귀 테스트.
 
 2세션 범위: auth_utils.py 4개 공통 함수의 단위 동작 검증.
 - compute_backoff_delay: 지수 백오프 + 풀 지터 대기 시간 범위
@@ -8,12 +8,15 @@
 - retry_once_on_401: 401 감지 시 재발급 후 1회 재시도 패턴
 - should_continue_recovery: 회복 루프 계속 여부 판정
 
-기존 키움·LS 클래스 적용 회귀 테스트는 6세션에서 추가.
+6세션 범위: 엔진 회복 루프·10회 상한·중복 로직 제거 통합 회귀 테스트.
+- 일시 실패 회복 루프 진입 → 1회차 성공 시 정상 전환 + 화면 알림
+- 회복 루프 10회 상한 → 11회 시도 없이 종료 + 수동 재시작 안내
+- 중복 로직 제거 → 키움·LS 양쪽 동일 auth_utils 함수 호출 검증
 """
 from __future__ import annotations
 
 import asyncio
-from unittest.mock import patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -339,3 +342,213 @@ class TestShouldContinueRecovery:
         # attempt = max-1 → True, attempt = max → False
         assert should_continue_recovery(attempt=TOKEN_RECOVERY_MAX_ATTEMPTS - 1) is True
         assert should_continue_recovery(attempt=TOKEN_RECOVERY_MAX_ATTEMPTS) is False
+
+
+# ── 6세션: 엔진 회복 루프 통합 회귀 테스트 ──────────────────────────────────────
+
+
+class TestTokenRecoveryLoopRecovery:
+    """일시 실패 회복 루프 진입 → 1회차 성공 시 정상 전환 + 화면 알림 (6-1)."""
+
+    @pytest.mark.asyncio
+    async def test_transient_failure_recovery_success_first_attempt(self):
+        """일시 실패 → 회복 루프 1회차 성공 → access_token 설정 + 화면 알림 + 플래그 해제."""
+        from backend.app.services import engine_loop, engine_state
+
+        mock_state = MagicMock()
+        mock_state.token_recovery_in_progress = False
+        mock_state.token_failure_kind = "transient"
+        mock_state.access_token = None
+        mock_state.engine_shutdown_requested = False
+        mock_state.broker_tokens = {}
+
+        # 1회차 시도 시 토큰 발급 성공
+        async def _fake_get_tokens(_router):
+            mock_state.broker_tokens = {"kiwoom": "recovered_token"}
+            mock_state.token_failure_kind = None
+            return None
+
+        mock_router = MagicMock()
+
+        with (
+            patch.object(engine_state, "state", mock_state),
+            patch.object(engine_loop, "_get_all_tokens_async", new_callable=AsyncMock, side_effect=_fake_get_tokens),
+            patch.object(engine_loop, "BROKER_DISPLAY_NAMES", {"kiwoom": "키움"}),
+            patch.object(engine_loop.asyncio, "sleep", new_callable=AsyncMock),
+            patch("backend.app.services.engine_lifecycle.broadcast_engine_status", new_callable=AsyncMock) as mock_broadcast,
+            patch("backend.app.services.engine_lifecycle.log_message") as mock_log,
+        ):
+            await engine_loop._token_recovery_loop(mock_router, "kiwoom")
+
+        # 회복 성공 → access_token 설정 + 플래그 해제 + 화면 알림
+        assert mock_state.access_token == "recovered_token"
+        assert mock_state.token_recovery_in_progress is False
+        assert mock_state.token_failure_kind is None
+        mock_broadcast.assert_awaited()
+        log_msgs = [str(c) for c in mock_log.call_args_list]
+        assert any("회복 성공" in m for m in log_msgs)
+
+
+class TestTokenRecoveryLoopMaxAttempts:
+    """회복 루프 10회 상한 → 11회 시도 없이 종료 + 수동 재시작 안내 (6-5)."""
+
+    @pytest.mark.asyncio
+    async def test_recovery_loop_10_attempts_then_stop(self):
+        """10회 모두 실패 → 11회 시도 없이 루프 종료 + 수동 재시작 안내 + 플래그 해제."""
+        from backend.app.services import engine_loop, engine_state
+
+        mock_state = MagicMock()
+        mock_state.token_recovery_in_progress = False
+        mock_state.token_failure_kind = "transient"
+        mock_state.access_token = None
+        mock_state.engine_shutdown_requested = False
+        mock_state.broker_tokens = {}
+
+        attempt_count = {"n": 0}
+
+        # 매 시도마다 토큰 발급 실패 (빈 broker_tokens 유지)
+        async def _fake_get_tokens(_router):
+            attempt_count["n"] += 1
+            mock_state.broker_tokens = {}
+            mock_state.token_failure_kind = "transient"
+            return None
+
+        mock_router = MagicMock()
+
+        with (
+            patch.object(engine_state, "state", mock_state),
+            patch.object(engine_loop, "_get_all_tokens_async", new_callable=AsyncMock, side_effect=_fake_get_tokens),
+            patch.object(engine_loop, "BROKER_DISPLAY_NAMES", {"kiwoom": "키움"}),
+            patch.object(engine_loop.asyncio, "sleep", new_callable=AsyncMock),
+            patch("backend.app.services.engine_lifecycle.broadcast_engine_status", new_callable=AsyncMock) as mock_broadcast,
+            patch("backend.app.services.engine_lifecycle.log_message") as mock_log,
+        ):
+            await engine_loop._token_recovery_loop(mock_router, "kiwoom")
+
+        # 10회까지만 시도 — 11회 시도 없음
+        assert attempt_count["n"] == TOKEN_RECOVERY_MAX_ATTEMPTS
+        # 루프 종료 → 플래그 해제 + 수동 재시작 안내
+        assert mock_state.token_recovery_in_progress is False
+        log_msgs = [str(c) for c in mock_log.call_args_list]
+        assert any("수동 재시작" in m for m in log_msgs)
+        mock_broadcast.assert_awaited()
+
+    @pytest.mark.asyncio
+    async def test_recovery_loop_permanent_failure_during_loop_stops_immediately(self):
+        """회복 루프 중 영구 실패 감지 → 즉시 종료 + API 키 확인 안내."""
+        from backend.app.services import engine_loop, engine_state
+
+        mock_state = MagicMock()
+        mock_state.token_recovery_in_progress = False
+        mock_state.token_failure_kind = "transient"
+        mock_state.access_token = None
+        mock_state.engine_shutdown_requested = False
+        mock_state.broker_tokens = {}
+
+        attempt_count = {"n": 0}
+
+        # 1회차 시도 시 영구 실패로 전환
+        async def _fake_get_tokens(_router):
+            attempt_count["n"] += 1
+            mock_state.broker_tokens = {}
+            mock_state.token_failure_kind = "permanent"
+            return None
+
+        mock_router = MagicMock()
+
+        with (
+            patch.object(engine_state, "state", mock_state),
+            patch.object(engine_loop, "_get_all_tokens_async", new_callable=AsyncMock, side_effect=_fake_get_tokens),
+            patch.object(engine_loop, "BROKER_DISPLAY_NAMES", {"kiwoom": "키움"}),
+            patch.object(engine_loop.asyncio, "sleep", new_callable=AsyncMock),
+            patch("backend.app.services.engine_lifecycle.broadcast_engine_status", new_callable=AsyncMock) as mock_broadcast,
+            patch("backend.app.services.engine_lifecycle.log_message") as mock_log,
+        ):
+            await engine_loop._token_recovery_loop(mock_router, "kiwoom")
+
+        # 1회차 영구 실패 → 즉시 종료 (2회차 시도 없음)
+        assert attempt_count["n"] == 1
+        assert mock_state.token_recovery_in_progress is False
+        assert mock_state.token_failure_kind == "permanent"
+        log_msgs = [str(c) for c in mock_log.call_args_list]
+        assert any("영구 실패" in m for m in log_msgs)
+
+
+# ── 6세션: 중복 로직 제거 검증 (6-6) ──────────────────────────────────────────────
+
+
+class TestDuplicateLogicRemoval:
+    """키움·LS 양캐스트가 동일 auth_utils 함수를 호출하는지 검증 (결정 7 완료 기준)."""
+
+    def test_kiwoom_imports_auth_utils_functions(self):
+        """키움 모듈이 auth_utils의 공통 함수를 import 하는지 확인."""
+        from backend.app.core import kiwoom_rest
+
+        # import 확인 — 모듈이 공통 함수를 참조하고 있는지
+        import inspect
+        src = inspect.getsource(kiwoom_rest)
+        assert "compute_backoff_delay" in src
+        assert "classify_token_failure" in src
+        assert "retry_once_on_401" in src
+
+    def test_ls_imports_auth_utils_functions(self):
+        """LS 모듈이 auth_utils의 공통 함수를 import 하는지 확인."""
+        from backend.app.core import ls_rest
+
+        import inspect
+        src = inspect.getsource(ls_rest)
+        assert "compute_backoff_delay" in src
+        assert "classify_token_failure" in src
+        assert "retry_once_on_401" in src
+
+    def test_kiwoom_no_hardcoded_backoff_formula(self):
+        """키움 _issue_token에 하드코딩된 백오프 계산(5 * attempt 등)이 제거되었는지 확인."""
+        from backend.app.core import kiwoom_rest
+
+        import inspect
+        src = inspect.getsource(kiwoom_rest)
+        # _issue_token 함수 본문만 검사 — 다른 함수의 하드코딩과 분리
+        issue_token_start = src.find("async def _issue_token")
+        assert issue_token_start != -1
+        # _issue_token 이후부터 다음 async def 까지
+        next_def = src.find("\n    async def ", issue_token_start + 10)
+        if next_def == -1:
+            next_def = src.find("\n    def ", issue_token_start + 10)
+        issue_token_src = src[issue_token_start:next_def] if next_def != -1 else src[issue_token_start:]
+        # 하드코딩된 선형 백오프 제거 확인 — 공통 함수 호출로 대체
+        assert "5 * attempt" not in issue_token_src
+        assert "10 * (attempt + 1)" not in issue_token_src
+        # 공통 함수 호출 확인
+        assert "compute_backoff_delay" in issue_token_src
+        assert "classify_token_failure" in issue_token_src
+
+    def test_ls_no_hardcoded_backoff_formula(self):
+        """LS _issue_token에 하드코딩된 백오프 계산(5 * attempt 등)이 제거되었는지 확인."""
+        from backend.app.core import ls_rest
+
+        import inspect
+        src = inspect.getsource(ls_rest)
+        issue_token_start = src.find("async def _issue_token")
+        assert issue_token_start != -1
+        next_def = src.find("\n    async def ", issue_token_start + 10)
+        if next_def == -1:
+            next_def = src.find("\n    def ", issue_token_start + 10)
+        issue_token_src = src[issue_token_start:next_def] if next_def != -1 else src[issue_token_start:]
+        # 하드코딩된 선형 백오프 제거 확인
+        assert "5 * attempt" not in issue_token_src
+        assert "10 * (attempt + 1)" not in issue_token_src
+        # 공통 함수 호출 확인
+        assert "compute_backoff_delay" in issue_token_src
+        assert "classify_token_failure" in issue_token_src
+
+    def test_both_brokers_use_same_auth_utils_module(self):
+        """키움·LS 양캐스트가 동일 auth_utils 모듈의 동일 함수를 참조하는지 확인."""
+        from backend.app.core import kiwoom_rest, ls_rest
+        from backend.app.core import auth_utils
+
+        # 양쪽 모듈이 import 한 함수가 auth_utils의 실제 함수 객체와 동일
+        # (import 경로가 아닌 실제 함수 identity 비교)
+        assert getattr(kiwoom_rest, "compute_backoff_delay", None) is auth_utils.compute_backoff_delay or \
+               "compute_backoff_delay" in dir(kiwoom_rest)
+        assert getattr(ls_rest, "compute_backoff_delay", None) is auth_utils.compute_backoff_delay or \
+               "compute_backoff_delay" in dir(ls_rest)

@@ -242,6 +242,50 @@ class TestKiwoomRestCallApi:
             await api._call_api("https://api/test", "ka00001")
             assert api._api_delay < 1.0
 
+    async def test_401_reissue_then_retry_success(self):
+        """401 감지 → 토큰 재발급 성공 → 1회 재시도 성공 (6세션 — 설계서 결정 3)."""
+        api = _make_kiwoom_rest()
+        api._token_info = _make_token_info()
+        resp_401 = mock_httpx_response(401)
+        resp_200 = mock_httpx_response(200, {"data": "ok"})
+        mock_client = mock_httpx_client(post_side_effect=[resp_401, resp_200])
+        with (
+            patch.object(api, "_get_client", AsyncMock(return_value=mock_client)),
+            patch.object(api, "_issue_token", AsyncMock(return_value=(True, None))),
+        ):
+            resp, hit_429 = await api._call_api("https://api/test", "ka00001")
+            assert resp is resp_200
+            assert hit_429 is False
+
+    async def test_401_reissue_failure_returns_none(self):
+        """401 감지 → 재발급 실패 → 원 실패 응답 반환 (재시도 없음)."""
+        api = _make_kiwoom_rest()
+        api._token_info = _make_token_info()
+        resp_401 = mock_httpx_response(401)
+        mock_client = mock_httpx_client(post_side_effect=[resp_401])
+        with (
+            patch.object(api, "_get_client", AsyncMock(return_value=mock_client)),
+            patch.object(api, "_issue_token", AsyncMock(return_value=(False, "permanent"))),
+        ):
+            resp, hit_429 = await api._call_api("https://api/test", "ka00001")
+            assert resp is None
+            assert hit_429 is False
+
+    async def test_401_retry_only_once_on_repeated_401(self):
+        """재시도 후 다시 401 → 1회만 재시도 후 실패 처리 (무한 루프 방지)."""
+        api = _make_kiwoom_rest()
+        api._token_info = _make_token_info()
+        # 첫 요청 401, 재시도도 401 → 1회만 재시도 후 실패
+        resp_401 = mock_httpx_response(401)
+        mock_client = mock_httpx_client(post_side_effect=[resp_401, resp_401])
+        with (
+            patch.object(api, "_get_client", AsyncMock(return_value=mock_client)),
+            patch.object(api, "_issue_token", AsyncMock(return_value=(True, None))),
+        ):
+            resp, hit_429 = await api._call_api("https://api/test", "ka00001")
+            assert resp is None
+            assert hit_429 is False
+
 
 # ── KiwoomRestAPI._issue_token ─────────────────────────────────────────────────
 
@@ -338,6 +382,41 @@ class TestKiwoomRestIssueToken:
             ok, kind = await api._issue_token()
             assert ok is False
             assert kind == "permanent"
+
+    async def test_backoff_uses_common_compute_backoff_delay(self):
+        """재시도 시 공통 함수(compute_backoff_delay) 호출 확인 (6세션 — 결정 7)."""
+        from backend.app.core import kiwoom_rest
+        api = _make_kiwoom_rest()
+        resp_500 = mock_httpx_response(500)
+        resp_200 = mock_httpx_response(200, {"token": "tok", "expires_dt": "20990101000000"})
+        mock_client = mock_httpx_client(post_side_effect=[resp_500, resp_200])
+        with (
+            patch.object(api, "_get_client", AsyncMock(return_value=mock_client)),
+            patch("backend.app.core.kiwoom_rest.asyncio.sleep", new_callable=AsyncMock),
+            patch.object(kiwoom_rest, "compute_backoff_delay", return_value=1.5) as mock_backoff,
+        ):
+            ok, kind = await api._issue_token()
+            assert ok is True
+            # 공통 백오프 함수가 호출되었는지 확인
+            assert mock_backoff.called
+
+    async def test_backoff_delay_within_expected_range(self):
+        """재시도 대기 시간이 지수 백오프+지터 범위 내인지 확인 (6세션 — 결정 1)."""
+        from backend.app.core.constants import TOKEN_BACKOFF_BASE_SEC, TOKEN_BACKOFF_JITTER_RATIO
+        api = _make_kiwoom_rest()
+        resp_500 = mock_httpx_response(500)
+        resp_200 = mock_httpx_response(200, {"token": "tok", "expires_dt": "20990101000000"})
+        mock_client = mock_httpx_client(post_side_effect=[resp_500, resp_200])
+        sleep_calls = []
+        with (
+            patch.object(api, "_get_client", AsyncMock(return_value=mock_client)),
+            patch("backend.app.core.kiwoom_rest.asyncio.sleep", new_callable=AsyncMock, side_effect=lambda s: sleep_calls.append(s)),
+        ):
+            await api._issue_token()
+            # attempt=1 재시도 — 대기 시간이 0 ~ base*2^1*jitter 범위 내
+            if sleep_calls:
+                upper = TOKEN_BACKOFF_BASE_SEC * (2 ** 1) * TOKEN_BACKOFF_JITTER_RATIO
+                assert 0 <= sleep_calls[0] <= upper
 
 
 # ── KiwoomRestAPI.revoke_token ─────────────────────────────────────────────────

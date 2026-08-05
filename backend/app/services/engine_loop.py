@@ -159,10 +159,14 @@ async def _token_recovery_loop(router, broker_nm: str) -> None:
                 return
 
             try:
-                _broker_id, token, failure_kind = await _get_all_tokens_async(router)
+                await _get_all_tokens_async(router)
             except Exception as e:
                 logger.warning("[연결] %s 토큰 회복 시도 %d 실패: %s", broker_display, attempt + 1, e, exc_info=True)
                 continue
+
+            # _get_all_tokens_async는 state에 토큰·실패 종류를 저장 (반환값 없음)
+            token = engine_state.state.broker_tokens.get(broker_nm)
+            failure_kind = engine_state.state.token_failure_kind
 
             if token:
                 # 회복 성공 — 정상 모드 전환
