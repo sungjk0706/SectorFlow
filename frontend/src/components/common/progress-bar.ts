@@ -76,7 +76,7 @@ export function createProgressBar(
     width: '0%',
     background: color,
     borderRadius: RADIUS.xs,
-    transition: 'width 0.3s ease, background 0.3s ease',
+    transition: 'width 0.15s ease, background 0.15s ease',
   })
   bar.appendChild(fill)
 
@@ -108,7 +108,7 @@ export function createProgressBar(
       fontSize: '12px',
       color: color,
       whiteSpace: 'nowrap',
-      transition: 'color 0.3s ease',
+      transition: 'color 0.15s ease',
     })
     pctTopSpan.textContent = '0%'
     pctTopRow.appendChild(pctTopSpan)
@@ -163,7 +163,7 @@ export function createProgressBar(
       whiteSpace: 'nowrap',
       minWidth: '42px',
       textAlign: 'right',
-      transition: 'color 0.3s ease',
+      transition: 'color 0.15s ease',
     })
     pctSpan.textContent = '0%'
     row.appendChild(pctSpan)
