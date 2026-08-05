@@ -137,7 +137,7 @@ async def _token_recovery_loop(router, broker_nm: str) -> None:
 
     시작 시 토큰 발급이 일시 실패한 경우에만 진입. 30초 간격 최대 10회(약 5분) 재시도.
     회복 성공 시 state.access_token 설정 + 화면에 정상 모드 전환 알림.
-    10회 후에도 실패 시 시세 전용 모드 유지 + "수동 재시작 필요" 안내.
+    10회 후에도 실패 시 연결 안됨 상태 유지 + "수동 재시작 필요" 안내.
     중복 루프 방지: state.token_recovery_in_progress 플래그로 단일 진입 보장 (P17).
     """
     from backend.app.services.engine_lifecycle import broadcast_engine_status, log_message
@@ -178,13 +178,13 @@ async def _token_recovery_loop(router, broker_nm: str) -> None:
                 engine_state.state.access_token = None
                 engine_state.state.token_failure_kind = "permanent"
                 engine_state.state.token_recovery_in_progress = False
-                log_message(f" [연결] {broker_display} 토큰 회복 중 영구 실패 감지. API 키 확인 필요. 시세 전용 모드 유지.")
+                log_message(f" [연결] {broker_display} 토큰 회복 중 영구 실패 감지. API 키 확인 필요. 연결 안됨 상태 유지.")
                 await broadcast_engine_status()
                 return
 
-        # 10회 후에도 실패 — 시세 전용 모드 유지
+        # 10회 후에도 실패 — 연결 안됨 상태 유지
         engine_state.state.token_recovery_in_progress = False
-        log_message(f" [연결] {broker_display} 토큰 회복 {TOKEN_RECOVERY_MAX_ATTEMPTS}회 실패. 수동 재시작 필요. 시세 전용 모드 유지.")
+        log_message(f" [연결] {broker_display} 토큰 회복 {TOKEN_RECOVERY_MAX_ATTEMPTS}회 실패. 수동 재시작 필요. 연결 안됨 상태 유지.")
         await broadcast_engine_status()
     except asyncio.CancelledError:
         engine_state.state.token_recovery_in_progress = False
@@ -287,7 +287,7 @@ async def run_engine_loop() -> None:
             from backend.app.services.engine_lifecycle import log_message, broadcast_engine_status
             log_message(f" [구동] 유효한 API 키가 없습니다 (대상: {', '.join(BROKER_DISPLAY_NAMES.get(b, b) for b in ws_brokers)}). 일반설정에서 증권사 API 키를 입력하세요.")
             await broadcast_engine_status()
-            # 엔진 중단하지 않고 계속 진행 (테스트모드/시세 전용 모드 허용)
+            # 엔진 중단하지 않고 계속 진행 (테스트모드/연결 안됨 상태 허용)
 
         # REST/토큰 발급은 기준 증권사(broker_nm) 기준 유지
 
@@ -340,11 +340,11 @@ async def run_engine_loop() -> None:
             engine_state.state.access_token = token
             engine_state.state.token_failure_kind = None
         elif _failure_kind == "permanent":
-            # 영구 실패 — 회복 루프 진입 없이 즉시 시세 전용 모드 (사용자 액션 유도)
+            # 영구 실패 — 회복 루프 진입 없이 즉시 연결 안됨 상태 (사용자 액션 유도)
             from backend.app.services.engine_lifecycle import log_message, broadcast_engine_status
             engine_state.state.access_token = None
             engine_state.state.token_failure_kind = "permanent"
-            log_message(f" [연결] {BROKER_DISPLAY_NAMES.get(broker_nm, broker_nm)} 토큰 발급 영구 실패. API 키 확인 필요. 시세 전용 모드로 기동.")
+            log_message(f" [연결] {BROKER_DISPLAY_NAMES.get(broker_nm, broker_nm)} 토큰 발급 영구 실패. API 키 확인 필요. 연결 안됨 상태로 기동.")
             await broadcast_engine_status()
         else:
             # 일시 실패 — 백그라운드 회복 루프 진입
@@ -354,7 +354,7 @@ async def run_engine_loop() -> None:
             # 중복 루프 방지 — 이미 회복 루프 진행 중이면 추가 생성 금지 (P17 단일 소스)
             if not engine_state.state.token_recovery_in_progress:
                 from backend.app.services.engine_lifecycle import schedule_engine_task
-                log_message(f" [연결] {BROKER_DISPLAY_NAMES.get(broker_nm, broker_nm)} 토큰 발급 일시 실패. 백그라운드 회복 루프 시작. 시세 전용 모드로 기동.")
+                log_message(f" [연결] {BROKER_DISPLAY_NAMES.get(broker_nm, broker_nm)} 토큰 발급 일시 실패. 백그라운드 회복 루프 시작. 연결 안됨 상태로 기동.")
                 schedule_engine_task(
                     _token_recovery_loop(router, broker_nm),
                     context="token-recovery-loop",
