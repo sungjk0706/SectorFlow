@@ -45,7 +45,9 @@ def assemble_filter_summary(meta_json: str, stock_count: int) -> str:
             f"(제외 {meta['excluded_count']}종목, {pct_int}%)"
         )
         if meta.get("top_reasons"):
-            reason_strs = [f"{r['k']} {r['v']}개" for r in meta["top_reasons"]]
+            # 상위 8개만 표시 — 우측 정렬 레이아웃에서 말줄임 방지 (P21 사용자 투명성).
+            # meta에는 전체 사유가 저장되므로 향후 표시 개수 조정 시 이 곳만 변경 (P10 SSOT).
+            reason_strs = [f"{r['k']} {r['v']}개" for r in meta["top_reasons"][:8]]
             result += " | 주요 제외: " + ", ".join(reason_strs)
         return result
     except Exception as e:

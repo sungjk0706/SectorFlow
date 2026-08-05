@@ -624,7 +624,7 @@ async def _step2_filter_eligible(
             tag, unique_codes, len(confirmed_codes), excluded_count, pct_int,
         )
         if filter_reasons:
-            top_reasons = sorted(filter_reasons.items(), key=lambda x: x[1], reverse=True)[:5]
+            top_reasons = sorted(filter_reasons.items(), key=lambda x: x[1], reverse=True)[:8]
             reason_strs = [f"{k} {v}개" for k, v in top_reasons]
             logger.info("%s 주요 제외 사유: %s", tag, ", ".join(reason_strs))
 
@@ -637,9 +637,11 @@ async def _step2_filter_eligible(
             logger.warning("%s 전종목 통합 조회(ka10099) 동일 종목코드 판정 충돌 — %d종목, 예시=%s", tag, len(conflict_codes), conflict_preview)
         _broadcast_confirmed_progress(0, 0, message=f"✅ 2단계 종료: 총 {unique_codes}종목 중 {len(confirmed_codes)}종목 적격 판정", step=2)
 
+        # 전체 사유 저장 — 표시층(sector_stock_cache.assemble_filter_summary)에서 8개로 자름.
+        # 저장은 전체로 하여 향후 표시 개수 조정 시 파이프라인 재수정 불필 (P10 SSOT).
         _meta_top = [
             {"k": k, "v": v}
-            for k, v in sorted(filter_reasons.items(), key=lambda x: x[1], reverse=True)[:5]
+            for k, v in sorted(filter_reasons.items(), key=lambda x: x[1], reverse=True)
         ] if filter_reasons else []
         filter_summary_meta = dumps({
             "raw_rows": raw_rows,

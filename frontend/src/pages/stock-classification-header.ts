@@ -79,7 +79,7 @@ function buildHeaderRight(state: StockClassificationPageState): HTMLElement {
 
   state.indicatorLabelSub = document.createElement('span')
   Object.assign(state.indicatorLabelSub.style, {
-    fontSize: FONT_SIZE.small, color: COLOR.tertiary, whiteSpace: 'nowrap',
+    fontSize: FONT_SIZE.label, color: COLOR.tertiary, whiteSpace: 'nowrap',
     overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%',
   })
 
