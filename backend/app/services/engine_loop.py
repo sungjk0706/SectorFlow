@@ -190,6 +190,10 @@ async def _token_recovery_loop(router, broker_nm: str) -> None:
                     except Exception:
                         logger.warning("[연결] 토큰 회복 후 매수 한도 브로드캐스트 실패", exc_info=True)
                 log_message(f" [연결] {broker_display} 토큰 회복 성공. 정상 모드 전환.")
+                # WS 연결 루프 각성 — access_token이 설정되었으므로 루프가 재평가하여
+                # 장중 구간이면 실시간 연결을 맺는다 (P16 살아있는 경로, P21 사용자 투명성).
+                # 장외 구간이면 is_ws_subscribe_window 게이트가 False를 반환하므로 불필요한 연결 시도 없음.
+                engine_state.state.ws_window_changed_event.set()
                 await broadcast_engine_status()
                 return
 

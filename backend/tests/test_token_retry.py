@@ -605,6 +605,8 @@ class TestTokenRecoveryCreatesAutoTradeManager:
         mock_ctor.assert_called_once()
         mock_sync.assert_called_once()
         mock_buy_broadcast.assert_awaited()
+        # WS 연결 루프 각성 — access_token 설정 후 ws_window_changed_event set
+        mock_state.ws_window_changed_event.set.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_recovery_success_skips_creation_when_already_exists(self):
@@ -646,3 +648,90 @@ class TestTokenRecoveryCreatesAutoTradeManager:
         mock_ctor.assert_not_called()
         mock_sync.assert_not_called()
         mock_buy_broadcast.assert_not_awaited()
+        # WS 연결 루프 각성 — 관리자 유무와 무관하게 회복 성공 시 항상 이벤트 set
+        mock_state.ws_window_changed_event.set.assert_called_once()
+
+
+# ── 토큰 회복 성공 시 WS 연결 루프 각성 검증 ──────────────────────────────────
+
+
+class TestTokenRecoveryWakesWsLoop:
+    """토큰 회복 루프 성공 시 WS 연결 루프가 깨어나는지 검증.
+
+    버그: 회복 성공 경로에 ws_window_changed_event.set() 호출이 없어
+    WS 연결 루프가 무한 대기 상태로 유지되고, 장중 회복 시 당일 실시간 데이터 전량 손실.
+    수정: 회복 성공 경로에 ws_window_changed_event.set() 추가.
+    """
+
+    @pytest.mark.asyncio
+    async def test_recovery_success_sets_ws_window_changed_event(self):
+        """회복 성공 시 ws_window_changed_event.set() 호출 — WS 루프 각성."""
+        from backend.app.services import engine_loop, engine_state
+
+        mock_state = MagicMock()
+        mock_state.token_recovery_in_progress = False
+        mock_state.token_failure_kind = "transient"
+        mock_state.access_token = None
+        mock_state.engine_shutdown_requested = False
+        mock_state.broker_tokens = {}
+        mock_state.auto_trade = MagicMock()  # 이미 관리자 존재
+
+        async def _fake_get_tokens(_router):
+            mock_state.broker_tokens = {"kiwoom": "recovered_token"}
+            mock_state.token_failure_kind = None
+            return None
+
+        mock_router = MagicMock()
+
+        with (
+            patch.object(engine_state, "state", mock_state),
+            patch.object(engine_loop, "_get_all_tokens_async", new_callable=AsyncMock, side_effect=_fake_get_tokens),
+            patch.object(engine_loop, "BROKER_DISPLAY_NAMES", {"kiwoom": "키움"}),
+            patch.object(engine_loop.asyncio, "sleep", new_callable=AsyncMock),
+            patch("backend.app.services.engine_lifecycle.broadcast_engine_status", new_callable=AsyncMock),
+            patch("backend.app.services.engine_lifecycle.log_message"),
+            patch("backend.app.services.engine_lifecycle.sync_sell_overrides"),
+            patch("backend.app.services.engine_config._get_settings", return_value={}),
+            patch.object(engine_loop, "AutoTradeManager"),
+            patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock),
+        ):
+            await engine_loop._token_recovery_loop(mock_router, "kiwoom")
+
+        # 회복 성공 → WS 연결 루프 각성 이벤트 set
+        mock_state.ws_window_changed_event.set.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_recovery_failure_does_not_set_ws_window_changed_event(self):
+        """회복 실패 시 ws_window_changed_event.set() 호출 없음 — 불필요한 WS 각성 방지."""
+        from backend.app.services import engine_loop, engine_state
+
+        mock_state = MagicMock()
+        mock_state.token_recovery_in_progress = False
+        mock_state.token_failure_kind = "transient"
+        mock_state.access_token = None
+        mock_state.engine_shutdown_requested = False
+        mock_state.broker_tokens = {}
+        mock_state.auto_trade = None
+
+        # 모든 시도 실패
+        async def _fake_get_tokens(_router):
+            mock_state.broker_tokens = {}
+            mock_state.token_failure_kind = "transient"
+            return None
+
+        mock_router = MagicMock()
+
+        with (
+            patch.object(engine_state, "state", mock_state),
+            patch.object(engine_loop, "_get_all_tokens_async", new_callable=AsyncMock, side_effect=_fake_get_tokens),
+            patch.object(engine_loop, "BROKER_DISPLAY_NAMES", {"kiwoom": "키움"}),
+            patch.object(engine_loop.asyncio, "sleep", new_callable=AsyncMock),
+            patch("backend.app.services.engine_lifecycle.broadcast_engine_status", new_callable=AsyncMock),
+            patch("backend.app.services.engine_lifecycle.log_message"),
+            patch("backend.app.services.engine_config._get_settings", return_value={}),
+            patch.object(engine_loop, "AutoTradeManager"),
+        ):
+            await engine_loop._token_recovery_loop(mock_router, "kiwoom")
+
+        # 회복 실패 → WS 연결 루프 각성 이벤트 set 호출 없음
+        mock_state.ws_window_changed_event.set.assert_not_called()
