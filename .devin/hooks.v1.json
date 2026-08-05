@@ -29,7 +29,7 @@
       "hooks": [
         {
           "type": "command",
-          "command": "bash scripts/pre-complete-check.sh all; if [ $? -ne 0 ]; then echo '{\"decision\": \"block\", \"reason\": \"완료 전 기계적 검증 실패 — 실패 항목 수정 후 재시도. 스크립트 출력을 확인하세요.\"}'; fi",
+          "command": "bash scripts/pre-complete-check.sh auto; if [ $? -ne 0 ]; then echo '{\"decision\": \"block\", \"reason\": \"완료 전 기계적 검증 실패 — 실패 항목 수정 후 재시도. 스크립트 출력을 확인하세요.\"}'; fi",
           "timeout": 600
         }
       ]

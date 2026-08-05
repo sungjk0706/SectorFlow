@@ -2,12 +2,16 @@
 # SectorFlow pre-complete-check — 완료 보고 전 기계적 검증 (하네스 엔지니어링 강화)
 # AGENTS.md "검증 게이트 원칙" + "작업 완료 시 점검 체크리스트" 1단계 구현
 # 완료 보고(사용자에게 "다 됐다"고 알리기) 전 반드시 실행 — 실패 시 완료 보고 금지
-# 사용법: bash scripts/pre-complete-check.sh [backend|frontend|docs|all]
-#   backend  — 백엔드 검증만 (이번 세션에서 백엔드를 수정했을 때만). 런타임 기동 검증을 위해
-#              기존 백엔드 프로세스를 종료 후 새 코드로 기동 검증.
-#   frontend — 프론트엔드 검증만 (프론트엔드 수정 시). 백엔드 프로세스를 건드리지 않음.
+# 사용법: bash scripts/pre-complete-check.sh [auto|backend|frontend|docs|all]
+#   auto     — 세션 시작 스냅샷과 비교하여 이번 세션에서 새로 바뀐 파일만 보고
+#              알맞은 모드를 자동 판단 (권장 — Stop 훅 기본값). 백엔드 수정 시
+#              런타임 기동 검증까지 자동 진입. 이전 세션 잔재는 이번 세션 수정으로
+#              잘못 인식되지 않음.
+#   backend  — 백엔드 검증만 (수동 지정). 런타임 기동 검증을 위해 기존 백엔드
+#              프로세스를 종료 후 새 코드로 기동 검증.
+#   frontend — 프론트엔드 검증만 (수동 지정). 백엔드 프로세스를 건드리지 않음.
 #   docs     — 문서 전용 세션 (코드 검증 전부 스킵). 백엔드 프로세스를 절대 건드리지 않음.
-#   all      — 백엔드 린트/테스트 + 프론트엔드 검증 (기본값, Stop 훅 자동 실행 포함).
+#   all      — 백엔드 린트/테스트 + 프론트엔드 검증 (수동 지정).
 #              백엔드 프로세스를 건드리지 않음 — 런타임 기동 검증이 필요하면 backend 모드로 별도 실행.
 # 핵심 원칙: 백엔드 프로세스 종료·재기동은 backend 모드에서만. 이전 세션 잔재가 작업 창에
 # 남아 있어도, 이번 세션에서 백엔드를 수정하지 않았으면 백엔드 프로세스를 절대 종료하지 않는다.
@@ -17,7 +21,7 @@ set -uo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
 
-TARGET="${1:-all}"
+TARGET="${1:-auto}"
 FAILED=0
 
 # ─── Stop 훅 무한 루프 방지 ───
@@ -121,6 +125,71 @@ run_backend() {
         done
         echo "[pre-complete]    더 자세한 내용: AGENTS.md 섹션3 규칙 0-1-3 '잔존 프로세스 완전 종료'"
         FAILED=$((FAILED + 1))
+    fi
+}
+
+# ─── auto 모드 — 이번 세션 변경 파일 기반 모드 자동 판단 ───
+# 세션 시작 훅(session-bootstrap.sh)이 기록한 스냅샷과 현재 변경 파일을 비교하여
+# "이번 세션에서 새로 바뀐 파일"만 추출. 이전 세션 잔재는 이번 세션 수정으로
+# 잘못 인식되지 않음 (사용자가 켜둔 백엔드 프로세스 보호 — 핵심 안전장치).
+#
+# 판정:
+#   - 백엔드 파일(backend/ 또는 main.py)이 새로 바뀌면 → backend 모드 (런타임 기동 검증 포함)
+#   - 프론트엔드 파일(frontend/)만 새로 바뀌면 → frontend 모드
+#   - 둘 다 → backend 런타임 검증 + frontend 검증 순차 실행
+#   - 코드 변경 없음 → docs 모드 (코드 검증 스킵, 백엔드 프로세스 보호)
+#
+# 스냅샷이 없으면(이전 버전 호환·세션 시작 훅 미실행) 현재 변경 전체를 이번 세션
+# 수정으로 간주하되 경고 출력 — 안전 측(검증 누락 방지).
+run_auto() {
+    local SNAPSHOT=".devin/state/session_changes_snapshot.txt"
+
+    # 현재 변경 파일 수집: tracked(HEAD 대비) + untracked(무시 제외)
+    local current
+    current=$({
+        git diff --name-only HEAD 2>/dev/null
+        git ls-files --others --exclude-standard 2>/dev/null
+    } | sort -u)
+
+    # 이번 세션에서 새로 바뀐 파일 = 현재 목록 - 스냅샷 목록 (차집합)
+    # comm은 정렬된 입력 필요 — 양쪽 모두 sort -u 보장.
+    local session_changes
+    if [ -f "$SNAPSHOT" ]; then
+        session_changes=$(comm -23 \
+            <(printf '%s\n' "$current" | sort -u) \
+            <(sort -u "$SNAPSHOT" 2>/dev/null) \
+            2>/dev/null)
+    else
+        echo "[pre-complete] ⚠️ 세션 시작 스냅샷 없음 — 현재 변경 전체를 이번 세션 수정으로 간주 (안전 측)"
+        echo "[pre-complete]    원인: 세션 시작 훅 미실행 또는 스냅샷 파일 삭제. 정상 작동 시 다음 세션부터 자동 판단."
+        session_changes="$current"
+    fi
+
+    # 코드 파일 분류 — 백엔드/프론트엔드
+    local backend_new frontend_new
+    backend_new=$(printf '%s\n' "$session_changes" | grep -E '^(backend/|main\.py$)' | head -1)
+    frontend_new=$(printf '%s\n' "$session_changes" | grep -E '^frontend/' | head -1)
+
+    echo "[pre-complete] [auto] 이번 세션 변경 파일 분석:"
+    if [ -n "$session_changes" ]; then
+        printf '%s\n' "$session_changes" | sed 's/^/  - /'
+    else
+        echo "  - (이번 세션 코드 변경 없음 — 이전 세션 잔재만 또는 변경 없음)"
+    fi
+
+    if [ -n "$backend_new" ]; then
+        echo "[pre-complete] [auto] 백엔드 수정 감지 → backend 모드 (런타임 기동 검증 포함)"
+        run_backend "backend"
+        if [ -n "$frontend_new" ]; then
+            echo "[pre-complete] [auto] 프론트엔드 수정도 감지 → frontend 검증 추가 실행"
+            run_frontend
+        fi
+    elif [ -n "$frontend_new" ]; then
+        echo "[pre-complete] [auto] 프론트엔드 수정만 감지 → frontend 모드 (백엔드 프로세스 보호)"
+        run_frontend
+    else
+        echo "[pre-complete] [auto] 코드 변경 없음 → docs 모드 (코드 검증 스킵, 백엔드 프로세스 보호)"
+        run_docs
     fi
 }
 
@@ -268,12 +337,13 @@ $(git diff --name-only HEAD~1 HEAD 2>/dev/null)"
 
 # ─── 실행 ───
 case "$TARGET" in
+    auto)     run_auto ;;
     backend)  run_backend "backend" ;;
     frontend) run_frontend ;;
     docs)     run_docs ;;
     all)      run_backend "all"; run_frontend ;;
     *)
-        echo "[pre-complete] ❌ 잘못된 대상: $TARGET (backend|frontend|docs|all 중 하나)"
+        echo "[pre-complete] ❌ 잘못된 대상: $TARGET (auto|backend|frontend|docs|all 중 하나)"
         exit 2
         ;;
 esac

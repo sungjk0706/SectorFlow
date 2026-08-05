@@ -8,6 +8,20 @@ set -u
 
 cd "$(dirname "$0")/../.." 2>/dev/null || exit 0
 
+DEVIN_DIR="$(cd "$(dirname "$0")/.." 2>/dev/null && pwd)"
+
+# 세션 시작 시점 변경 파일 스냅샷 기록 — pre-complete-check.sh auto 모드가
+# "이번 세션에서 새로 바뀐 파일"을 식별하기 위해 사용.
+# .devin/state/는 .gitignore에 등록되어 git status에 잡히지 않음.
+# tracked 변경(HEAD 대비) + untracked(무시 제외)를 합쳐 경로만 정렬·중복제거 저장.
+# 실패해도 세션 시작을 막지 않도록 종료코드 0 유지.
+SNAPSHOT_FILE="$DEVIN_DIR/state/session_changes_snapshot.txt"
+mkdir -p "$DEVIN_DIR/state" 2>/dev/null
+{
+  git diff --name-only HEAD 2>/dev/null
+  git ls-files --others --exclude-standard 2>/dev/null
+} | sort -u > "$SNAPSHOT_FILE" 2>/dev/null || true
+
 # python3가 없으면 no-op (훅 실패가 세션 시작을 블로킹하지 않도록).
 if ! command -v python3 >/dev/null 2>&1; then
   exit 0
