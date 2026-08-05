@@ -144,11 +144,7 @@ class SectorStockTable extends HTMLElement {
       if (isNxtOnly) {
         // hiddenCount === krxCount (!nxt_enable) — 캐시 재사용 (H-04)
         this.nxtOnlyNoticeBadge.textContent = `NXT 전용 시간대 — KRX 단독 종목 숨김 (${krxCount}종목)`
-        this.nxtOnlyNoticeBadge.style.opacity = '0'
         this.nxtOnlyNoticeBadge.style.display = 'flex'
-        requestAnimationFrame(() => {
-          if (this.nxtOnlyNoticeBadge) this.nxtOnlyNoticeBadge.style.opacity = '1'
-        })
       } else {
         this.nxtOnlyNoticeBadge.style.display = 'none'
       }
@@ -251,8 +247,6 @@ class SectorStockTable extends HTMLElement {
       border: '1px solid ' + COLOR.warning,
       fontSize: FONT_SIZE.badge,
       color: COLOR.warning,
-      transition: 'opacity 0.15s ease',
-      opacity: '0',
     })
     this.nxtOnlyNoticeBadge.textContent = ''
     return this.nxtOnlyNoticeBadge
