@@ -67,27 +67,33 @@ export function makePriceColumn<T>(
   }
 }
 
-/** 대비 컬럼 */
-export function makeChangeColumn<T>(get: (t: T) => number | null | undefined): ColumnDef<T> {
+/** 대비 컬럼 — getSign 제공 시 5단계 부호 원본 기준 표시 (상한/하한 구별, P21) */
+export function makeChangeColumn<T>(
+  get: (t: T) => number | null | undefined,
+  getSign?: (t: T) => string | undefined,
+): ColumnDef<T> {
   return {
     key: 'change',
     label: '대비',
     align: 'center',
     type: 'change',
     ...COLUMN_WIDTH.change,
-    render: (t) => createChangeCell(get(t)),
+    render: (t) => createChangeCell(get(t), getSign?.(t)),
   }
 }
 
-/** 등락률 컬럼 */
-export function makeRateColumn<T>(get: (t: T) => number | null | undefined): ColumnDef<T> {
+/** 등락률 컬럼 — getSign 제공 시 5단계 부호 원본 기준 색상 (상한/하한 구별, P21) */
+export function makeRateColumn<T>(
+  get: (t: T) => number | null | undefined,
+  getSign?: (t: T) => string | undefined,
+): ColumnDef<T> {
   return {
     key: 'change_rate',
     label: '등락률',
     align: 'right',
     type: 'rate',
     ...COLUMN_WIDTH.rate,
-    render: (t) => createRateCell(get(t)),
+    render: (t) => createRateCell(get(t), getSign?.(t)),
   }
 }
 

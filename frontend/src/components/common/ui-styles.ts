@@ -91,8 +91,10 @@ export const SURFACE_ALPHA = {
 export const COLOR = {
   up:           '#d64545',  // 상승/양수/매수/위험/에러 (빨강) — macOS 시스템 레드 톤
   upLight:      '#eba0a0',
+  upLimit:      '#a30b0b',  // 상한 (빨강 진하게) — 상승과 구별 (P21 투명성)
   down:         '#0a6cff',  // 하락/음수/매도/정보/활성 (파랑) — macOS 시스템 블루
   downLight:    '#a5c8ff',
+  downLimit:    '#033d99',  // 하한 (파랑 진하게) — 하락과 구별 (P21 투명성)
   neutral:      '#1d1d1f',  // 보합/기본 텍스트 — macOS 라벨 컬러
   success:      '#248a3d',  // 성공/통과/연결 (초록) — macOS 시스템 그린 톤
   successLight: '#a8d8b0',
@@ -152,8 +154,17 @@ export function computeWeightedRate(pnl: number, buyTotal: number): number {
   return buyTotal > 0 ? Math.round(pnl / buyTotal * 10000) / 100 : 0
 }
 
-/** 등락률 / 대비 / 현재가 색상: 양수 빨강, 음수 파랑, 0 기본 */
-export function rateColor(v: number | null | undefined): string {
+/** 등락률 / 대비 / 현재가 색상: 양수 빨강, 음수 파랑, 0 기본.
+ *  sign 제공 시 5단계 부호 원본 기준 — 상한(1)·하한(4)은 전용 진한 색상으로 구별 (P21 투명성). */
+export function rateColor(v: number | null | undefined, sign?: string): string {
+  if (sign) {
+    const s = String(sign)
+    if (s === '1') return COLOR.upLimit
+    if (s === '2') return COLOR.up
+    if (s === '4') return COLOR.downLimit
+    if (s === '5') return COLOR.down
+    return COLOR.neutral  // '3' 보합
+  }
   if (v === null || v === undefined) return COLOR.neutral
   return v > 0 ? COLOR.up : v < 0 ? COLOR.down : COLOR.neutral
 }
@@ -186,8 +197,16 @@ export function hexToRgba(hex: string, alpha: number): string {
 
 /* ── 기호 ── */
 
-/** 대비 화살표: 상승 ▲, 하락 ▼, 보합 빈 문자열 */
-export function changeArrow(v: number): string {
+/** 대비 화살표: 상승 ▲, 하락 ▼, 보합 빈 문자열.
+ *  sign 제공 시 5단계 부호 원본 기준 — 상한(1)·상승(2) ▲, 하한(4)·하락(5) ▼, 보합(3) 빈 문자열.
+ *  sign 미제공 시 기존 숫자 기준 로직 유지 (호환성). */
+export function changeArrow(v: number, sign?: string): string {
+  if (sign) {
+    const s = String(sign)
+    if (s === '1' || s === '2') return '▲'
+    if (s === '4' || s === '5') return '▼'
+    return ''
+  }
   return v > 0 ? '▲' : v < 0 ? '▼' : ''
 }
 

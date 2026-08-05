@@ -28,8 +28,14 @@ export const COLUMNS: ColumnDef<DataRowItem>[] = [
     (item) => item.stock.cur_price != null ? Number(item.stock.cur_price) : null,
     (item) => item.stock.change_rate != null ? Number(item.stock.change_rate) : null,
   ),
-  makeChangeColumn<DataRowItem>((item) => item.stock.change != null ? Number(item.stock.change) : null),
-  makeRateColumn<DataRowItem>((item) => item.stock.change_rate != null ? Number(item.stock.change_rate) : null),
+  makeChangeColumn<DataRowItem>(
+    (item) => item.stock.change != null ? Number(item.stock.change) : null,
+    (item) => item.stock.sign,
+  ),
+  makeRateColumn<DataRowItem>(
+    (item) => item.stock.change_rate != null ? Number(item.stock.change_rate) : null,
+    (item) => item.stock.sign,
+  ),
   makeStrengthColumn<DataRowItem>((item) => item.stock.strength != null ? parseFloat(String(item.stock.strength)) : null),
   {
     ...makeAmountColumn<DataRowItem>((item) => item.stock.trade_amount != null ? Number(item.stock.trade_amount) : null),

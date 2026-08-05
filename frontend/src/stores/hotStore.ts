@@ -351,6 +351,7 @@ export function applyRealData(item: RealDataEvent): void {
     const rawRate = vals['12'];
     const rawStrength = vals['228'];
     const rawAmount = vals['14'];
+    const rawSign = vals['25'];  // 전일대비 부호 원본 (1~5) — 증권사 서버 원본 그대로 (P10 SSOT)
 
     if (!rawPrice) return;
 
@@ -408,16 +409,21 @@ export function applyRealData(item: RealDataEvent): void {
     const rate = parsedRate !== undefined ? parsedRate : old.change_rate;
     const strength = parsedStrength !== undefined ? parsedStrength : old.strength;
     const amount = parsedAmount !== undefined ? parsedAmount : old.trade_amount;
+    // sign: vals['25']가 비어있지 않은 값으로 수신된 경우에만 갱신.
+    // 미수신(빈 값) 시 기존 old.sign 유지 — 새 폴백값 생성 금지 (P20).
+    const signStr = rawSign !== undefined && rawSign !== null ? String(rawSign).trim() : '';
+    const sign = signStr !== '' ? signStr : old.sign;
 
     if (!(old.cur_price === price && old.change === change &&
         old.change_rate === rate && old.strength === strength &&
-        old.trade_amount === amount)) {
+        old.trade_amount === amount && old.sign === sign)) {
       // In-place mutation
       old.cur_price = price;
       old.change = change;
       old.change_rate = rate;
       old.strength = strength;
       old.trade_amount = amount;
+      old.sign = sign;
       changed = true;
     }
   }

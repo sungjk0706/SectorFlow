@@ -84,6 +84,7 @@ export interface MasterStock {
   change_rate: number;
   strength?: number;
   trade_amount?: number;
+  sign?: string;                // 전일대비 부호 원본 (1:상한 2:상승 3:보합 4:하한 5:하락) — 증권사 서버 원본 그대로 (P10 SSOT, P22 정합성)
   // ── 5거래일 통계 (2) ──
   avg_amt_5d?: number;          // 백만원 단위 (백엔드 전송 그대로 — 프론트 fmtMillionsToBillion이 억 변환)
   high_5d?: number;             // 0 = 원천 부재, >0 = 유효 고가

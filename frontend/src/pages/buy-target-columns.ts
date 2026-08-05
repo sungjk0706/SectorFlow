@@ -48,14 +48,20 @@ export const COLUMNS: ColumnDef<StockScore>[] = [
       return createPriceCell(curPrice != null ? Number(curPrice) : null, changeRate != null ? Number(changeRate) : null)
     },
   },
-  makeChangeColumn<StockScore>((t) => {
-    const ms = getMasterStock(t.code)
-    return ms?.change != null ? Number(ms.change) : null
-  }),
-  makeRateColumn<StockScore>((t) => {
-    const ms = getMasterStock(t.code)
-    return ms?.change_rate != null ? Number(ms.change_rate) : null
-  }),
+  makeChangeColumn<StockScore>(
+    (t) => {
+      const ms = getMasterStock(t.code)
+      return ms?.change != null ? Number(ms.change) : null
+    },
+    (t) => getMasterStock(t.code)?.sign,
+  ),
+  makeRateColumn<StockScore>(
+    (t) => {
+      const ms = getMasterStock(t.code)
+      return ms?.change_rate != null ? Number(ms.change_rate) : null
+    },
+    (t) => getMasterStock(t.code)?.sign,
+  ),
   {
     key: 'order_ratio', label: '호가잔량비(%)', align: 'right', type: 'order_ratio', maxWidth: 88,
     render: (t) => {

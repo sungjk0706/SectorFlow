@@ -139,8 +139,9 @@ export function createPriceCell(price: number | null | undefined, rate: number |
   return cell
 }
 
-/** 대비 셀 (매수설정 페이지 스타일과 동일하게 통일) */
-export function createChangeCell(change: number | null | undefined): HTMLElement {
+/** 대비 셀 (매수설정 페이지 스타일과 동일하게 통일).
+ *  sign 제공 시 5단계 부호 원본 기준 색상·기호 적용 — 상한(1)·하한(4)은 진한 색상으로 구별 (P21). */
+export function createChangeCell(change: number | null | undefined, sign?: string): HTMLElement {
   if (change === null || change === undefined) {
     const cell = document.createElement('div')
     applyCell(cell, 'right')
@@ -158,29 +159,30 @@ export function createChangeCell(change: number | null | undefined): HTMLElement
   wrap.style.justifyContent = 'space-between'
   wrap.style.width = '100%'
   wrap.style.fontVariantNumeric = 'tabular-nums'
-  
+
   const arrow = document.createElement('span')
-  arrow.textContent = changeArrow(change)
-  arrow.style.color = rateColor(change)
-  
+  arrow.textContent = changeArrow(change, sign)
+  arrow.style.color = rateColor(change, sign)
+
   const abs = document.createElement('span')
   abs.textContent = fmtComma(Math.abs(change))
-  abs.style.color = rateColor(change)
-  
+  abs.style.color = rateColor(change, sign)
+
   wrap.appendChild(arrow)
   wrap.appendChild(abs)
   return wrap
 }
 
-/** 등락률 셀 (우측정렬, +/- 포맷, rateColor, null이면 "-", 0이면 "0.00%") */
-export function createRateCell(rate: number | null | undefined): HTMLElement {
+/** 등락률 셀 (우측정렬, +/- 포맷, rateColor, null이면 "-", 0이면 "0.00%").
+ *  sign 제공 시 5단계 부호 원본 기준 색상 적용 — 상한(1)·하한(4)은 진한 색상으로 구별 (P21). */
+export function createRateCell(rate: number | null | undefined, sign?: string): HTMLElement {
   const cell = document.createElement('div')
   applyCell(cell, 'right')
   if (rate === null || rate === undefined) {
     cell.textContent = '-'
   } else {
     const span = document.createElement('span')
-    span.style.color = rateColor(rate)
+    span.style.color = rateColor(rate, sign)
     span.textContent = fmtRate(rate)
     cell.appendChild(span)
   }
