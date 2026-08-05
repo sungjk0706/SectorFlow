@@ -158,7 +158,7 @@ class TestKiwoomRestEnsureToken:
     async def test_expired_token_triggers_issue(self):
         api = _make_kiwoom_rest()
         api._token_info = _make_token_info("20000101000000")
-        with patch.object(api, "_issue_token", AsyncMock(return_value=True)) as mock_issue:
+        with patch.object(api, "_issue_token", AsyncMock(return_value=(True, None))) as mock_issue:
             result = await api._ensure_token()
             assert result is True
             mock_issue.assert_called_once()
@@ -166,7 +166,7 @@ class TestKiwoomRestEnsureToken:
     async def test_no_token_triggers_issue(self):
         api = _make_kiwoom_rest()
         api._token_info = None
-        with patch.object(api, "_issue_token", AsyncMock(return_value=False)) as mock_issue:
+        with patch.object(api, "_issue_token", AsyncMock(return_value=(False, "permanent"))) as mock_issue:
             result = await api._ensure_token()
             assert result is False
             mock_issue.assert_called_once()
@@ -251,32 +251,48 @@ class TestKiwoomRestIssueToken:
         mock_resp = mock_httpx_response(200, {"token": "new_tok", "expires_dt": "20990101000000"})
         mock_client = mock_httpx_client(post_return=mock_resp)
         with patch.object(api, "_get_client", AsyncMock(return_value=mock_client)):
-            result = await api._issue_token()
-            assert result is True
+            ok, kind = await api._issue_token()
+            assert ok is True
+            assert kind is None
             assert api._token_info is not None
             assert api._token_info.token == "new_tok"
 
     async def test_no_credentials(self):
         api = _make_kiwoom_rest(app_key="", app_secret="")
-        result = await api._issue_token()
-        assert result is False
+        ok, kind = await api._issue_token()
+        assert ok is False
+        assert kind == "permanent"
 
     async def test_http_failure(self):
         api = _make_kiwoom_rest()
         mock_resp = mock_httpx_response(500)
         mock_client = mock_httpx_client(post_return=mock_resp)
-        with patch.object(api, "_get_client", AsyncMock(return_value=mock_client)):
-            result = await api._issue_token()
-            assert result is False
+        with (
+            patch.object(api, "_get_client", AsyncMock(return_value=mock_client)),
+            patch("backend.app.core.kiwoom_rest.asyncio.sleep", new_callable=AsyncMock),
+        ):
+            ok, kind = await api._issue_token()
+            assert ok is False
+            assert kind == "transient"
 
     async def test_token_field_missing(self):
         api = _make_kiwoom_rest()
-        mock_resp = mock_httpx_response(200, {"return_msg": "some error", "return_code": "8030"})
+        mock_resp = mock_httpx_response(200, {"return_msg": "8030 인증 거부", "return_code": "8030"})
         mock_client = mock_httpx_client(post_return=mock_resp)
         with patch.object(api, "_get_client", AsyncMock(return_value=mock_client)):
-            result = await api._issue_token()
-            assert result is False
+            ok, kind = await api._issue_token()
+            assert ok is False
+            assert kind == "permanent"
             assert api._token_info is None
+
+    async def test_token_field_missing_no_keyword_is_transient(self):
+        api = _make_kiwoom_rest()
+        mock_resp = mock_httpx_response(200, {"return_msg": "unknown", "return_code": "1"})
+        mock_client = mock_httpx_client(post_return=mock_resp)
+        with patch.object(api, "_get_client", AsyncMock(return_value=mock_client)):
+            ok, kind = await api._issue_token()
+            assert ok is False
+            assert kind == "transient"
 
     async def test_429_retry_then_success(self):
         api = _make_kiwoom_rest()
@@ -287,8 +303,9 @@ class TestKiwoomRestIssueToken:
             patch.object(api, "_get_client", AsyncMock(return_value=mock_client)),
             patch("backend.app.core.kiwoom_rest.asyncio.sleep", new_callable=AsyncMock),
         ):
-            result = await api._issue_token()
-            assert result is True
+            ok, kind = await api._issue_token()
+            assert ok is True
+            assert kind is None
             assert api._token_info.token == "tok"
 
     async def test_access_token_field(self):
@@ -296,8 +313,9 @@ class TestKiwoomRestIssueToken:
         mock_resp = mock_httpx_response(200, {"access_token": "alt_tok", "expires_dt": "20990101000000"})
         mock_client = mock_httpx_client(post_return=mock_resp)
         with patch.object(api, "_get_client", AsyncMock(return_value=mock_client)):
-            result = await api._issue_token()
-            assert result is True
+            ok, kind = await api._issue_token()
+            assert ok is True
+            assert kind is None
             assert api._token_info.token == "alt_tok"
 
     async def test_exception_continues_retry(self):
@@ -308,8 +326,18 @@ class TestKiwoomRestIssueToken:
             patch.object(api, "_reset_client", AsyncMock()),
             patch("backend.app.core.kiwoom_rest.asyncio.sleep", new_callable=AsyncMock),
         ):
-            result = await api._issue_token()
-            assert result is False
+            ok, kind = await api._issue_token()
+            assert ok is False
+            assert kind == "transient"
+
+    async def test_permanent_http_401_returns_immediately(self):
+        api = _make_kiwoom_rest()
+        mock_resp = mock_httpx_response(401)
+        mock_client = mock_httpx_client(post_return=mock_resp)
+        with patch.object(api, "_get_client", AsyncMock(return_value=mock_client)):
+            ok, kind = await api._issue_token()
+            assert ok is False
+            assert kind == "permanent"
 
 
 # ── KiwoomRestAPI.revoke_token ─────────────────────────────────────────────────

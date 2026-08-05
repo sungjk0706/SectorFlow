@@ -12,8 +12,13 @@ import time
 from dataclasses import dataclass
 from datetime import datetime
 import httpx
+from backend.app.core.auth_utils import (
+    classify_token_failure,
+    compute_backoff_delay,
+    retry_once_on_401,
+)
 from backend.app.core.broker_urls import BROKER_DISPLAY_NAMES, KIWOOM_REST_REAL
-from backend.app.core.constants import _KST
+from backend.app.core.constants import TOKEN_ISSUE_MAX_RETRIES, TOKEN_PERMANENT_HTTP_CODES, TOKEN_TRANSIENT_HTTP_CODES, _KST
 
 logger = logging.getLogger(__name__)
 
@@ -106,7 +111,8 @@ class KiwoomRestAPI:
         async with self._token_lock:
             if self._token_info and not self._token_info.is_expired_soon():
                 return True
-            return await self._issue_token()
+            ok, _ = await self._issue_token()
+            return ok
 
     # ── 공통 REST 호출 (429 adaptive backoff) ────────────────────────────────
     # 모든 키움 REST API 호출은 이 함수를 경유하여 일관된 429 처리를 보장한다.
@@ -174,6 +180,37 @@ class KiwoomRestAPI:
                     await asyncio.sleep(wait_sec)
                     continue
 
+                # 401 감지 — 공통 재발급 헬퍼로 토큰 재발급 후 1회 재시도 (설계서 결정 3)
+                if resp.status_code == 401:
+                    logger.info("[연결] %s %s 401 감지 — 토큰 재발급 후 1회 재시도", _BROKER_DISPLAY, tag)
+
+                    async def _do_post():
+                        client = await self._get_client()
+                        r = await client.post(url, headers=headers, json=payload, timeout=timeout)
+                        return r, r.status_code
+
+                    async def _reissue_token() -> bool:
+                        ok, _ = await self._issue_token()
+                        return ok
+
+                    async def _refresh_auth_header() -> None:
+                        if self._token_info:
+                            headers["authorization"] = f"Bearer {self._token_info.token}"
+
+                    result = await retry_once_on_401(
+                        _reissue_token, _do_post, on_reissue_success=_refresh_auth_header
+                    )
+                    if isinstance(result, tuple) and result[1] == 200:
+                        # 재시도 성공 — adaptive delay 축소
+                        self._api_delay = max(self._api_delay * 0.8, self._API_DELAY_MIN)
+                        return result[0], hit_429
+                    retry_status = result[1] if isinstance(result, tuple) else "?"
+                    logger.warning(
+                        "[연결] %s %s 401 재발급 후에도 실패 (응답코드=%s)",
+                        _BROKER_DISPLAY, tag, retry_status,
+                    )
+                    return None, hit_429
+
                 if resp.status_code != 200:
                     logger.info("[연결] %s %s 응답 코드 %s", _BROKER_DISPLAY, tag, resp.status_code)
                     return None, hit_429
@@ -193,11 +230,16 @@ class KiwoomRestAPI:
         logger.warning("[연결] %s %s %d번 재시도 모두 실패", _BROKER_DISPLAY, tag, retries)
         return None, hit_429
 
-    async def _issue_token(self) -> bool:
-        """OAuth2 접근 토큰 발급 (키움 REST API 명세 au10001). 429 시 최대 3회 재시도."""
+    async def _issue_token(self) -> tuple[bool, Optional[str]]:
+        """OAuth2 접근 토큰 발급 (키움 REST API 명세 au10001).
+
+        공통 백오프·실패 분류 함수 적용 (설계서 결정 1·6·7).
+        반환: (성공여부, 실패종류) — 실패종류: "transient"/"permanent"/None(성공).
+        영구 실패(키 없음·401/403·인증 거부 코드)는 즉시 반환하여 회복 루프 진입 차단.
+        """
         if not self.app_key or not self.app_secret:
             logger.warning("[연결] %s 토큰 발급 불가 — API 키 또는 시크릿 키 없음", _BROKER_DISPLAY)
-            return False
+            return False, "permanent"
         url = f"{self.base_url}{self.TOKEN_URL}"
         headers = {"Content-Type": "application/json;charset=UTF-8"}
         body = {
@@ -205,38 +247,55 @@ class KiwoomRestAPI:
             "appkey": self.app_key,
             "secretkey": self.app_secret,
         }
-        for attempt in range(3):
+        last_failure_kind: Optional[str] = None
+        for attempt in range(TOKEN_ISSUE_MAX_RETRIES):
             try:
                 if attempt > 0:
-                    wait_sec = 5 * attempt
+                    wait_sec = compute_backoff_delay(attempt)
                     logger.warning(
-                        "[연결] %s 토큰 발급 재시도 %d/3 — %d초 대기",
-                        _BROKER_DISPLAY, attempt + 1, wait_sec,
+                        "[연결] %s 토큰 발급 재시도 %d/%d — %.1f초 대기",
+                        _BROKER_DISPLAY, attempt + 1, TOKEN_ISSUE_MAX_RETRIES, wait_sec,
                     )
                     await asyncio.sleep(wait_sec)
                 client = await self._get_client()
                 resp = await client.post(url, headers=headers, json=body, timeout=15)
                 data = resp.json() if resp.text else {}
-                if resp.status_code == 429:
-                    wait_sec = 10 * (attempt + 1)
+                # 일시 실패 HTTP 코드(429/5xx) — 공통 백오프 후 재시도
+                if resp.status_code in TOKEN_TRANSIENT_HTTP_CODES:
+                    last_failure_kind = classify_token_failure(resp.status_code)
+                    wait_sec = compute_backoff_delay(attempt)
                     logger.warning(
-                        "[연결] %s 요청 과다 — %d초 대기 후 재시도 (%d/3)",
-                        _BROKER_DISPLAY, wait_sec, attempt + 1,
+                        "[연결] %s 토큰 발급 일시 실패 (응답코드=%s) — %.1f초 대기 후 재시도 (%d/%d)",
+                        _BROKER_DISPLAY, resp.status_code, wait_sec, attempt + 1, TOKEN_ISSUE_MAX_RETRIES,
                     )
                     await asyncio.sleep(wait_sec)
                     continue
+                # 영구 실패 HTTP 코드(401/403) — 즉시 반환 (회복 루프 진입 차단)
+                if resp.status_code in TOKEN_PERMANENT_HTTP_CODES:
+                    failure_kind = classify_token_failure(resp.status_code)
+                    logger.warning(
+                        "[연결] %s 토큰 발급 영구 실패 (응답코드=%s)",
+                        _BROKER_DISPLAY, resp.status_code,
+                    )
+                    return False, failure_kind
+                # 기타 != 200 — 분류 후 반환
                 if resp.status_code != 200:
+                    failure_kind = classify_token_failure(resp.status_code, response_text=resp.text)
                     logger.warning(
                         "[연결] %s 토큰 발급 실패 (응답코드=%s)",
                         _BROKER_DISPLAY, resp.status_code,
                     )
-                    return False
+                    return False, failure_kind
+                # 200 — 토큰 파싱
                 token = data.get("token") or data.get("access_token")
                 expires_dt = data.get("expires_dt", "")
                 if not token:
                     msg = str(data.get("return_msg") or "")
                     rc = data.get("return_code")
+                    # 키움 고유 인증 거부 키워드("8030"/"투자구분") 포함 시 영구 실패,
+                    # 그 외 토큰 없음은 응답 파싱 실패(일시)로 분류 (설계서 결정 6)
                     if "8030" in msg or "투자구분" in msg:
+                        failure_kind = "permanent"
                         logger.warning(
                             "[연결] %s 인증 거부(응답코드=%s) %s — "
                             "AppKey가 유효하지 않습니다. "
@@ -247,20 +306,22 @@ class KiwoomRestAPI:
                             self.base_url,
                         )
                     else:
+                        failure_kind = "transient"
                         logger.warning(
                             "[연결] %s 응답 성공이지만 토큰 없음",
                             _BROKER_DISPLAY,
                         )
-                    return False
+                    return False, failure_kind
                 self._token_info = TokenInfo(token=token, expires_dt=expires_dt)
                 logger.info("[연결] %s 토큰 발급", _BROKER_DISPLAY)
-                return True
+                return True, None
             except Exception as e:
                 logger.warning("[연결] %s 토큰 발급 오류 (시도=%d): %s: %s", _BROKER_DISPLAY, attempt + 1, type(e).__name__, e, exc_info=True)
                 await self._reset_client()
+                last_failure_kind = classify_token_failure(None, exception=e)
                 continue
-        logger.warning("[연결] %s 토큰 발급 3번 모두 실패 (요청 과다 초과)", _BROKER_DISPLAY)
-        return False
+        logger.warning("[연결] %s 토큰 발급 %d번 모두 실패", _BROKER_DISPLAY, TOKEN_ISSUE_MAX_RETRIES)
+        return False, last_failure_kind or "transient"
 
     async def revoke_token(self) -> bool:
         """OAuth2 접근 토큰 폐기 (키움 REST API 명세 au10002). 실패해도 예외 전파 안 함."""
