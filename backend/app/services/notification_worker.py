@@ -1,0 +1,100 @@
+# -*- coding: utf-8 -*-
+"""
+Notification Worker — asyncio.Queue 기반 알림/파일저장 워커 (싱글톤).
+
+REAL Consumer 경로에서 텔레그램 전송 + 파일 저장을 별도 작업으로 격리.
+모든 I/O는 비동기로 처리하며, 예외 발생 시 로깅 후 다음 항목 계속 처리.
+"""
+from __future__ import annotations
+import asyncio
+import logging
+from backend.app.services.engine_utils import TaskGuardMixin
+logger = logging.getLogger(__name__)
+
+
+class NotificationWorker(TaskGuardMixin):
+    """asyncio.Queue 기반 알림/파일저장 워커 (싱글톤)."""
+
+    _instance: NotificationWorker | None = None
+
+    _QUEUE_MAXSIZE = 100
+
+    def __init__(self) -> None:
+        self._queue: asyncio.Queue = asyncio.Queue(maxsize=self._QUEUE_MAXSIZE)
+        self._task: asyncio.Task | None = None
+        self._running: bool = False
+        self._dedup_in_flight: set[str] = set()
+
+    @classmethod
+    def get_instance(cls) -> NotificationWorker:
+        """싱글톤 인스턴스 반환."""
+        if cls._instance is None:
+            cls._instance = cls()
+        return cls._instance
+
+    def start(self) -> None:
+        """워커 작업 시작. 이미 실행 중이면 no-op."""
+        self._start_guarded(self._consume_loop, "[알림] 워커 작업 시작")
+
+    def enqueue(self, msg: dict) -> None:
+        """큐에 메시지 추가 (논블로킹). 워커 미시작이면 자동 시작."""
+        if not self._task or self._task.done():
+            try:
+                self.start()
+            except RuntimeError as e:
+                logger.warning("[알림] 자동 시작 실패 (이벤트 루프 없음): %s", e)
+        dedup_key = msg.get("dedup_key")
+        if dedup_key and dedup_key in self._dedup_in_flight:
+            logger.debug("[알림] 동일 상태 알림 중복 생략: %s", dedup_key)
+            return
+        try:
+            self._queue.put_nowait(msg)
+            if dedup_key:
+                self._dedup_in_flight.add(dedup_key)
+        except asyncio.QueueFull:
+            logger.warning("[알림] 큐 가득 참 — 메시지 누락: %s", msg.get("type"))
+
+    async def _consume_loop(self) -> None:
+        """큐 소비 반복. 예외 격리."""
+        while self._running:
+            try:
+                msg = await self._queue.get()
+            except asyncio.CancelledError:
+                break
+            dedup_key = msg.get("dedup_key")
+            try:
+                await self._handle(msg)
+            except Exception as e:
+                logger.warning("[알림] 알림 전송 실패 (계속): %s", e)
+            finally:
+                if dedup_key:
+                    self._dedup_in_flight.discard(dedup_key)
+                self._queue.task_done()
+
+    async def _handle(self, msg: dict) -> None:
+        """메시지 유형별 핸들러 라우팅."""
+        msg_type = msg.get("type")
+        if msg_type == "telegram":
+            from backend.app.services import telegram
+            await telegram.send_msg_async(
+                msg["message"], settings=msg.get("settings"),
+            )
+        else:
+            logger.warning("[알림] 알 수 없는 메시지 유형: %s", msg_type)
+
+    async def shutdown(self) -> None:
+        """큐 잔여 항목 처리 후 종료 (graceful shutdown)."""
+        self._running = False
+        if not self._queue.empty():
+            logger.info("[알림] 종료 대기 — 큐 잔량 %d건", self._queue.qsize())
+            try:
+                await asyncio.wait_for(self._queue.join(), timeout=10.0)
+            except asyncio.TimeoutError:
+                logger.warning("[알림] 종료 시간 초과 — 큐 잔량 %d건 누락", self._queue.qsize())
+        if self._task and not self._task.done():
+            self._task.cancel()
+            try:
+                await self._task
+            except asyncio.CancelledError:
+                pass
+        logger.info("[알림] 워커 종료")

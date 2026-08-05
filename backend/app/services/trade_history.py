@@ -1,0 +1,832 @@
+# -*- coding: utf-8 -*-
+"""
+체결 이력 저장 모듈 -- 매수/매도 체결 기록을 메모리+SQLite로 관리.
+
+책임:
+  1. record_buy()  -- 매수 체결 기록 (메모리 저장 + DB 비동기 저장)
+  2. record_sell() -- 매도 체결 기록 (실현손익 자동 계산 후 메모리+DB 저장)
+  3. get_buy_history() / get_sell_history() -- UI 조회용 (메모리 조회)
+  4. 일별 요약 (daily_summary) -- 수익현황 탭 좌측 그래프/요약용 (메모리 집계)
+  5. 승률 / MDD / 실현손익 집계
+
+영속성: 체결 시 db_writer queue 경유 SQLite 비동기 INSERT.
+        앱 기동 시 _ensure_loaded()에서 SQLite → 메모리 로드.
+"""
+from __future__ import annotations
+import logging
+from collections import deque
+from datetime import datetime, date
+from typing import Optional
+from dateutil.relativedelta import relativedelta
+from backend.app.core.constants import BUY_COMMISSION, SELL_COMMISSION, SECURITIES_TAX
+from backend.app.services.engine_utils import LazyLock
+logger = logging.getLogger(__name__)
+
+# ── 메모리 저장소 ─────────────────────────────────────────────────────────────
+_buy_history: list[dict] = []
+_sell_history: list[dict] = []
+_history_lock: LazyLock = LazyLock()
+_loaded: bool = False
+
+RETENTION_MONTHS_TEST: int = 6       # 테스트모드: 달력 기준 6개월 보관
+RETENTION_TRADING_DAYS_REAL: int = 90  # 실전모드: 거래일 90일 보관 (추후 논의 대상)
+
+
+# ── 메모리 초기화 ─────────────────────────────────────────────────────────────
+
+async def _ensure_loaded() -> None:
+    """앱 기동 시 SQLite → 메모리 로드. 최초 1회만 실행.
+
+    _loaded 체크와 설정을 _history_lock 내부에서 수행하여 TOCTOU 경쟁 상태 방지.
+    (두 코루틴이 동시에 진입하여 DB를 중복 로드하는 것을 원자적으로 차단.)
+    _trim_expired()는 lock 해제 후 호출 (LazyLock은 asyncio.Lock으로 재진입 불가).
+    """
+    global _loaded
+    async with _history_lock:
+        if _loaded:
+            return
+        try:
+            from backend.app.db.database import get_db_connection
+            conn = await get_db_connection()
+            async with conn.execute(
+                "SELECT t.ts, t.date, t.time, t.side, t.stk_cd, t.stk_nm, t.price, t.qty,"
+                " t.total_amt, t.fee, t.tax, t.avg_buy_price, t.buy_total_amt,"
+                " t.realized_pnl, t.pnl_rate, t.reason, t.trade_mode, t.buy_date,"
+                " t.sector, t.buy_rank"
+                " FROM trades t"
+                " ORDER BY t.ts DESC"
+            ) as cur:
+                rows = await cur.fetchall()
+            for row in rows:
+                rec = dict(row)
+                if rec.get("side") == "BUY":
+                    _buy_history.append(rec)
+                else:
+                    _sell_history.append(rec)
+            logger.info(
+                "[정산] 체결 이력 로드 완료 — 매수 %d건, 매도 %d건",
+                len(_buy_history), len(_sell_history),
+            )
+            _loaded = True
+        except Exception as e:
+            logger.error("[정산] 체결 이력 로드 실패: %s", e, exc_info=True)
+            return
+    await _trim_expired()
+    await _cleanup_legacy_buy_reason()
+    await _backfill_sell_sector()
+
+
+_TRADE_INSERT_SQL = (
+    "INSERT OR IGNORE INTO trades"
+    " (ts, date, time, side, stk_cd, stk_nm, price, qty,"
+    "  total_amt, fee, tax, avg_buy_price, buy_total_amt,"
+    "  realized_pnl, pnl_rate, reason, trade_mode, buy_date,"
+    "  sector, buy_rank)"
+    " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+)
+
+
+def _trade_params(rec: dict) -> tuple:
+    return (
+        rec["ts"], rec["date"], rec["time"], rec["side"],
+        rec["stk_cd"], rec["stk_nm"], rec["price"], rec["qty"],
+        rec["total_amt"], rec["fee"], rec["tax"],
+        rec["avg_buy_price"], rec["buy_total_amt"],
+        rec["realized_pnl"], rec["pnl_rate"],
+        rec["reason"], rec["trade_mode"],
+        rec.get("buy_date", ""),
+        rec.get("sector", ""),
+        rec.get("buy_rank"),
+    )
+
+
+async def _insert_trade(rec: dict) -> None:
+    """메모리에 체결 기록 추가 + DB에 비동기 저장 (db_writer queue 경유).
+
+    메모리 추가 후 dry_run._positions_dirty=True로 설정하여
+    _test_positions 캐시가 다음 조회 시 build_positions_from_trades로 재구축되도록 한다.
+    (SSOT: trade_history가 유일한 진실 원천, _test_positions는 파생 캐시)
+    """
+    async with _history_lock:
+        if rec["side"] == "BUY":
+            _buy_history.insert(0, rec)
+        else:
+            _sell_history.insert(0, rec)
+    # 모의투자 포지션 캐시 무효화 (순환 참조 방지: 지연 import)
+    try:
+        from backend.app.services import dry_run
+        dry_run._positions_dirty = True
+    except Exception as e:
+        logger.warning("[정산] 모의투자 포지션 캐시 무효화 실패 (오래된 데이터 가능): %s", e, exc_info=True)
+    try:
+        from backend.app.db.db_writer import execute_db_write, DBWriteOperation
+        await execute_db_write(DBWriteOperation(
+            table="trades", operation="INSERT", data=rec,
+            query=_TRADE_INSERT_SQL, params=_trade_params(rec),
+        ))
+    except Exception as e:
+        logger.warning("[정산] DB 저장 큐 실패 (메모리 저장은 성공): %s", e)
+
+
+async def _trim_expired() -> None:
+    """보관 기한 초과 레코드 제거. 모드별 독립 적용. 메모리 + DB 동시 정리.
+    실제 삭제 발생 시에만 로그 출력 (P21 사용자 투명성)."""
+    try:
+        from backend.app.core.trading_calendar import get_recent_trading_days, get_kst_today
+        test_cutoff = (get_kst_today() - relativedelta(months=RETENTION_MONTHS_TEST)).isoformat()
+        real_cutoff = get_recent_trading_days(RETENTION_TRADING_DAYS_REAL)[0].isoformat()
+
+        # DB 삭제 대상 건수 사전 조회 (불필요한 DELETE + 조용한 로그 방지)
+        from backend.app.db.database import get_db_connection
+        conn = await get_db_connection()
+        async with conn.execute(
+            "SELECT COUNT(*) FROM trades WHERE trade_mode = 'test' AND date < ?",
+            (test_cutoff,),
+        ) as cur:
+            test_db_count = (await cur.fetchone())[0]
+        async with conn.execute(
+            "SELECT COUNT(*) FROM trades WHERE trade_mode = 'real' AND date < ?",
+            (real_cutoff,),
+        ) as cur:
+            real_db_count = (await cur.fetchone())[0]
+
+        # 메모리 정리 — 항상 수행 (메모리에 오래된 데이터가 있을 수 있음)
+        async with _history_lock:
+            _buy_history[:] = [r for r in _buy_history if not (r["trade_mode"] == "test" and r["date"] < test_cutoff)]
+            _buy_history[:] = [r for r in _buy_history if not (r["trade_mode"] == "real" and r["date"] < real_cutoff)]
+            _sell_history[:] = [r for r in _sell_history if not (r["trade_mode"] == "test" and r["date"] < test_cutoff)]
+            _sell_history[:] = [r for r in _sell_history if not (r["trade_mode"] == "real" and r["date"] < real_cutoff)]
+
+        # DB 레벨 정리 — 삭제 대상이 있을 때만 DELETE 실행
+        from backend.app.db.db_writer import execute_db_write, DBWriteOperation
+        if test_db_count > 0:
+            await execute_db_write(DBWriteOperation(
+                table="trades", operation="DELETE", data={},
+                query="DELETE FROM trades WHERE trade_mode = 'test' AND date < ?",
+                params=(test_cutoff,),
+            ))
+            logger.info(
+                "[정산] 테스트모드 %d개월 이전 매매 기록 %d건 삭제 완료",
+                RETENTION_MONTHS_TEST, test_db_count,
+            )
+        if real_db_count > 0:
+            await execute_db_write(DBWriteOperation(
+                table="trades", operation="DELETE", data={},
+                query="DELETE FROM trades WHERE trade_mode = 'real' AND date < ?",
+                params=(real_cutoff,),
+            ))
+            logger.info(
+                "[정산] 실전모드 %d거래일 이전 매매 기록 %d건 삭제 완료",
+                RETENTION_TRADING_DAYS_REAL, real_db_count,
+            )
+    except Exception as e:
+        logger.error("[정산] 만료 기록 정리 실패: %s", e, exc_info=True)
+
+
+async def _cleanup_legacy_buy_reason() -> None:
+    """과거 매수 이력의 의미 없는 reason(업종자동매수/자동매수)을 빈 문자열로 정리.
+
+    BUY-REASON 시리즈 이전 포맷("업종자동매수 업종=X 순위=N", "자동매수")은
+    매수 근거 컬럼에서 가산점 4종(5거래일 고가/호가잔량비/📰뉴스/프.순.매)만
+    표시하는 현재 정책과 충돌하므로 빈 문자열로 정리 (P21 사용자 투명성).
+    idempotent: 이미 빈 문자열이거나 가산점 라벨 포맷이면 LIKE 조건으로 자동 제외.
+    메모리 + DB 동시 정리 (P22 데이터 정합성). 실패 시 기동 계속 (P25 격리된 실패).
+    """
+    try:
+        from backend.app.db.database import get_db_connection
+        conn = await get_db_connection()
+        # DB 정리 대상 건수 사전 조회
+        async with conn.execute(
+            "SELECT COUNT(*) FROM trades WHERE side='BUY' AND "
+            "(reason LIKE '업종자동매수%' OR reason = '자동매수')"
+        ) as cur:
+            db_count = (await cur.fetchone())[0]
+        if db_count == 0:
+            return
+        # DB UPDATE — 빈 문자열로 정리
+        from backend.app.db.db_writer import execute_db_write, DBWriteOperation
+        await execute_db_write(DBWriteOperation(
+            table="trades", operation="UPDATE", data={},
+            query="UPDATE trades SET reason='' WHERE side='BUY' AND "
+                  "(reason LIKE '업종자동매수%' OR reason = '자동매수')",
+            params=(),
+        ))
+        # 메모리 정리 — 동일 조건으로 reason 빈 문자열화
+        async with _history_lock:
+            for r in _buy_history:
+                reason = r.get("reason", "")
+                if reason.startswith("업종자동매수") or reason == "자동매수":
+                    r["reason"] = ""
+        logger.info("[정산] 과거 매수 이력 reason 정리 완료 — %d건 (업종자동매수/자동매수 → 빈 문자열)", db_count)
+    except Exception as e:
+        logger.warning("[정산] 과거 매수 이력 reason 정리 실패 (기동 계속): %s", e, exc_info=True)
+
+
+async def _backfill_sell_sector() -> None:
+    """과거 매도 이력의 sector=NULL을 _lookup_sector()로 채운다.
+
+    99dd661(2026-07-07)이 record_sell() rec에 sector 필드를 추가했으나
+    _TRADE_INSERT_SQL에 sector 컬럼이 누락되어(P16 위반) DB에 sector가 저장되지 않았고,
+    2b18602(2026-07-28 17:09)가 INSERT SQL에 sector를 추가하면서 비로소 영속화가 시작됨.
+    그 사이(2026-07-23~28 17:09) 저장된 매도 39건의 sector가 NULL로 방치된 것을 복구.
+    a9ccebb가 _ensure_loaded()의 LEFT JOIN custom_sectors를 제거했으므로,
+    DB sector=NULL은 더 이상 기동 시 보완되지 않아 backfill이 필요.
+
+    _cleanup_legacy_buy_reason()과 동일 패턴 (P23 일관성):
+      사전 COUNT 조회 → 0건 스킵 → DB UPDATE → 메모리 동시 갱신 → 로깅.
+    _lookup_sector() 재사용으로 custom_sectors 단일 진리 경로 유지 (P10).
+    idempotent: sector가 이미 있으면 스킵. 실패 시 기동 계속 (P25 격리된 실패).
+    """
+    try:
+        from backend.app.db.database import get_db_connection
+        conn = await get_db_connection()
+        # DB 대상 건수 사전 조회 (sector NULL 또는 빈 문자열)
+        async with conn.execute(
+            "SELECT COUNT(*) FROM trades WHERE side='SELL' AND (sector IS NULL OR sector='')"
+        ) as cur:
+            db_count = (await cur.fetchone())[0]
+        if db_count == 0:
+            return
+        # 대상 종목코드별 업종 조회 (중복 stk_cd 한 번에 해결)
+        async with conn.execute(
+            "SELECT DISTINCT stk_cd FROM trades WHERE side='SELL' AND (sector IS NULL OR sector='')"
+        ) as cur:
+            stk_codes = [row["stk_cd"] for row in await cur.fetchall()]
+        matched = 0
+        unclassified = 0
+        updates: list[tuple[str, str]] = []  # (stk_cd, sector)
+        for stk_cd in stk_codes:
+            sector = await _lookup_sector(stk_cd)
+            if sector == "미분류":
+                unclassified += 1
+            else:
+                matched += 1
+            updates.append((stk_cd, sector))
+        # DB UPDATE — 종목코드별 sector 채우기
+        from backend.app.db.db_writer import execute_db_write, DBWriteOperation
+        for stk_cd, sector in updates:
+            await execute_db_write(DBWriteOperation(
+                table="trades", operation="UPDATE", data={},
+                query="UPDATE trades SET sector=? WHERE side='SELL' AND stk_cd=? "
+                      "AND (sector IS NULL OR sector='')",
+                params=(sector, stk_cd),
+            ))
+        # 메모리 동시 갱신 (P22 데이터 정합성)
+        sector_map = dict(updates)
+        async with _history_lock:
+            for r in _sell_history:
+                if (r.get("sector") is None or r.get("sector") == "") and r.get("stk_cd") in sector_map:
+                    r["sector"] = sector_map[r["stk_cd"]]
+        logger.info(
+            "[정산] 과거 매도 이력 sector backfill 완료 — %d건 (업종 매칭 %d건, 미분류 %d건)",
+            db_count, matched, unclassified,
+        )
+    except Exception as e:
+        logger.warning("[정산] 과거 매도 이력 sector backfill 실패 (기동 계속): %s", e, exc_info=True)
+
+
+# ── 날짜 유틸 ──────────────────────────────────────────────────────────────
+
+async def _broadcast_sell_append(rec: dict) -> None:
+    """매도 체결 후 단건 + 최근 N거래일 요약을 브로드캐스트."""
+    try:
+        from backend.app.services.engine_account_notify import _safe_broadcast
+        from backend.app.services import engine_state
+        trade_mode = rec.get("trade_mode", "test")
+        days = int(engine_state.state.integrated_system_settings_cache.get("daily_summary_days", 20))
+        summary = await get_daily_summary(days=days, trade_mode=trade_mode)
+        await _safe_broadcast("sell-history-append", {"trade": rec, "daily_summary": summary}, group="trade_history")
+    except Exception as e:
+        logger.warning("[정산] 매도 단건 실시간 화면 전송 실패: %s", e)
+
+
+async def _broadcast_buy_append(rec: dict) -> None:
+    """매수 체결 후 단건 브로드캐스트."""
+    try:
+        from backend.app.services.engine_account_notify import _safe_broadcast
+        await _safe_broadcast("buy-history-append", {"trade": rec}, group="trade_history")
+    except Exception as e:
+        logger.warning("[정산] 매수 단건 실시간 화면 전송 실패: %s", e)
+
+
+async def _broadcast_full_sell_history(trade_mode: str) -> None:
+    """초기 데이터 전송용: 해당 trade_mode의 전체 매도 내역 + 최근 N거래일 요약을 브로드캐스트."""
+    try:
+        from backend.app.services.engine_account_notify import _safe_broadcast
+        from backend.app.services import engine_state
+        rows = await get_sell_history(trade_mode=trade_mode)
+        await _safe_broadcast("sell-history-update", {"sell_history": rows}, group="trade_history")
+        days = int(engine_state.state.integrated_system_settings_cache.get("daily_summary_days", 20))
+        summary = await get_daily_summary(days=days, trade_mode=trade_mode)
+        await _safe_broadcast("daily-summary-update", {"daily_summary": summary}, group="trade_history")
+    except Exception as e:
+        logger.warning("[정산] 매도 내역 실시간 화면 전송 실패: %s", e)
+
+
+async def _broadcast_full_buy_history(trade_mode: str) -> None:
+    """초기 데이터 전송용: 해당 trade_mode의 전체 매수 내역을 브로드캐스트."""
+    try:
+        from backend.app.services.engine_account_notify import _safe_broadcast
+        rows = await get_buy_history(trade_mode=trade_mode)
+        await _safe_broadcast("buy-history-update", {"buy_history": rows}, group="trade_history")
+    except Exception as e:
+        logger.warning("[정산] 매수 내역 실시간 화면 전송 실패: %s", e)
+
+
+# ── Lifecycle Management (No-op in SQLite architecture) ────────────────────────
+
+def _reset_global_state() -> None:
+    """전역 변수 초기화 (비정상 종료 후 재시작 시 잔존 상태 방지)."""
+    global _loaded
+    _loaded = False
+    _buy_history.clear()
+    _sell_history.clear()
+    # 모의투자 포지션 캐시 무효화
+    try:
+        from backend.app.services import dry_run
+        dry_run._positions_dirty = True
+    except Exception as e:
+        logger.warning("[정산] 모의투자 포지션 캐시 무효화 실패 (오래된 데이터 가능): %s", e, exc_info=True)
+
+
+# ── 기록 API ─────────────────────────────────────────────────────────────────
+
+async def record_buy(
+    *,
+    stk_cd: str,
+    stk_nm: str,
+    price: int,
+    qty: int,
+    reason: str = "",
+    trade_mode: str = "test",
+) -> dict:
+    """매수 체결 기록. 반환: 저장된 레코드.
+
+    메인 엔진에서 호출 - 메모리 저장 후 브로드캐스트.
+    """
+    await _ensure_loaded()
+    now = datetime.now()
+    total_amt = price * qty
+    # 테스트모드만 앱에서 수수료 계산 / 실전은 증권사 데이터 그대로 사용 (P18 — 실전은 증권사 SSOT)
+    fee = round(total_amt * BUY_COMMISSION) if trade_mode == "test" else 0
+    rec = {
+        "ts": now.isoformat(timespec="seconds"),
+        "date": now.strftime("%Y-%m-%d"),
+        "time": now.strftime("%H:%M:%S"),
+        "side": "BUY",
+        "stk_cd": stk_cd,
+        "stk_nm": stk_nm,
+        "price": price,
+        "qty": qty,
+        "total_amt": total_amt + fee,
+        "fee": fee,
+        "tax": 0,
+        "avg_buy_price": 0,
+        "buy_total_amt": 0,
+        "realized_pnl": 0,
+        "pnl_rate": 0.0,
+        "reason": reason,
+        "trade_mode": trade_mode,
+        "buy_date": "",
+    }
+    logger.info(
+        "[정산] 매수 기록 -- %s(%s) %d주 @%s 수수료=%s %s",
+        stk_nm, stk_cd, qty, f"{price:,}", f"{fee:,}", reason,
+    )
+    # 메모리에 저장
+    await _insert_trade(rec)
+    await _broadcast_buy_append(rec)
+    return rec
+
+
+async def record_sell(
+    *,
+    stk_cd: str,
+    stk_nm: str,
+    price: int,
+    qty: int,
+    avg_buy_price: int = 0,
+    reason: str = "",
+    pnl_rate: float = 0.0,  # Legacy field
+    trade_mode: str = "test",
+    buy_date: str = "",
+) -> dict:
+    """매도 체결 기록. 실현손익 자동 계산.
+
+    메인 엔진에서 호출 - 메모리 저장 후 브로드캐스트.
+    """
+    await _ensure_loaded()
+    now = datetime.now()
+    # sector 조회 (custom_sectors 테이블에서 단일 소스 진리)
+    try:
+        sector = await _lookup_sector(stk_cd)
+    except Exception as e:
+        logger.error("[정산] 섹터 조회 실패 — 매도 체결은 '미분류'로 진행 (%s): %s", stk_cd, e, exc_info=True)
+        sector = "미분류"
+    # 안전장치: avg_buy_price가 0이면 유령 데이터 혼입 방지를 위해 실현손익 계산 건너뜀
+    if avg_buy_price <= 0:
+        logger.warning("[정산] 외부에서 전달된 평균매입가가 0 이하입니다. 유령 데이터 혼입 방지를 위해 실현손익 계산을 건너뜁니다.")
+        # realized_pnl 및 pnl_rate를 0으로 처리 (이후 코드에서 avg_buy_price > 0 체크로 안전하게 처리됨)
+    total_amt = price * qty
+    # 테스트모드만 앱에서 수수료/세금 계산 / 실전은 증권사 데이터 그대로 사용 (P18 — 실전은 증권사 SSOT)
+    fee = round(total_amt * SELL_COMMISSION) if trade_mode == "test" else 0
+    tax = round(total_amt * SECURITIES_TAX) if trade_mode == "test" else 0
+    # 매도금액(실수령) = 매도가×수량 - 수수료 - 세금
+    sell_net = total_amt - fee - tax
+    # 매수금액(실지출) = 매수가×수량 + 매수수수료
+    buy_fee = round(avg_buy_price * qty * BUY_COMMISSION) if trade_mode == "test" and avg_buy_price > 0 else 0
+    buy_total = avg_buy_price * qty + buy_fee if avg_buy_price > 0 else 0
+    # 현금 기준 실현손익 = 매도 실수령 - 매수 실지출 (수수료/세금 포함)
+    realized_pnl = sell_net - buy_total if avg_buy_price > 0 else 0
+
+    rec = {
+        "ts": now.isoformat(timespec="seconds"),
+        "date": now.strftime("%Y-%m-%d"),
+        "time": now.strftime("%H:%M:%S"),
+        "side": "SELL",
+        "stk_cd": stk_cd,
+        "stk_nm": stk_nm,
+        "price": price,
+        "qty": qty,
+        "total_amt": sell_net,
+        "avg_buy_price": avg_buy_price,
+        "buy_total_amt": buy_total,
+        "realized_pnl": realized_pnl,
+        "pnl_rate": round(realized_pnl / buy_total * 100, 2) if buy_total > 0 else 0.0,
+        "fee": fee,
+        "tax": tax,
+        "reason": reason,
+        "trade_mode": trade_mode,
+        "sector": sector,
+        "buy_date": buy_date,
+    }
+    logger.info(
+        "[정산] 매도 기록 -- %s(%s) %d주 @%s 실현손익=%s 수수료=%s 세금=%s %s",
+        stk_nm, stk_cd, qty, f"{price:,}",
+        f"{realized_pnl:+,}", f"{fee:,}", f"{tax:,}", reason,
+    )
+    # 메모리에 저장 + DB 비동기 저장
+    await _insert_trade(rec)
+    await _broadcast_sell_append(rec)
+    return rec
+
+
+async def compute_expected_orderable(starting_balance: int, trade_mode: str = "test") -> int:
+    """거래 이력에서 주문가능금액(orderable)을 재계산하여 반환.
+
+    Settlement Engine 정합성 대조용 (P22 데이터 정합성).
+    starting_balance: 재구축 시작 잔고 — settlement_engine.accumulated_investment
+    (초기투자금 + 충전 누적). _initial_deposit을 넘기면 충전 후 재기동 시
+    거짓 불일치로 충전금이 삭제되는 결함 발생.
+
+    on_buy_fill/on_sell_fill 공식과 동일하게 적용:
+      - 매수 차감: price*qty + round(price*qty*BUY_COMMISSION)
+      - 매도 증가: price*qty - round(price*qty*SECURITIES_TAX) - round(price*qty*SELL_COMMISSION)
+
+    _buy_history/_sell_history는 최신순(INSERT 0) 저장이므로 ts 오름차순으로 병합 처리.
+    trade_mode 필터링 적용 (실전은 증권사 서버가 SSOT이므로 테스트모드만 대조).
+    """
+    await _ensure_loaded()
+    async with _history_lock:
+        # 시간순 병합을 위해 ts 기준 오름차순 정렬 (최신순 저장 → reverse)
+        buys = [r for r in _buy_history if r.get("trade_mode") == trade_mode]
+        sells = [r for r in _sell_history if r.get("trade_mode") == trade_mode]
+    merged = sorted(buys + sells, key=lambda r: r.get("ts", ""))
+    orderable = int(starting_balance)
+    for rec in merged:
+        price = int(rec.get("price", 0))
+        qty = int(rec.get("qty", 0))
+        if price <= 0 or qty <= 0:
+            continue
+        if rec["side"] == "BUY":
+            orderable -= price * qty + round(price * qty * BUY_COMMISSION)
+        else:  # SELL
+            gross = price * qty
+            orderable += gross - round(gross * SECURITIES_TAX) - round(gross * SELL_COMMISSION)
+    return orderable
+
+
+async def _lookup_sector(stk_cd: str) -> str:
+    """custom_sectors 테이블에서 종목코드로 업종명 조회. 매칭 안 되면 '미분류'."""
+    from backend.app.db.database import get_db_connection
+    conn = await get_db_connection()
+    async with conn.execute(
+        "SELECT name FROM custom_sectors WHERE stock_code = ?", (stk_cd,)
+    ) as cur:
+        row = await cur.fetchone()
+    if row:
+        return str(row["name"])
+    return "미분류"
+
+
+# ── 조회 API ─────────────────────────────────────────────────────────────────
+
+async def _query_history(side: str, today_only: bool, date_from: str, date_to: str, trade_mode: Optional[str]) -> list[dict]:
+    await _ensure_loaded()
+    async with _history_lock:
+        source = _buy_history if side == "BUY" else _sell_history
+        result = []
+        for rec in source:
+            if trade_mode is not None and rec["trade_mode"] != trade_mode:
+                continue
+            if today_only:
+                td = date.today().isoformat()
+                if rec["date"] != td:
+                    continue
+            else:
+                if date_from and rec["date"] < date_from:
+                    continue
+                if date_to and rec["date"] > date_to:
+                    continue
+            result.append(rec)
+        return result
+
+
+async def get_buy_history(*, today_only: bool = False, date_from: str = "", date_to: str = "", trade_mode: Optional[str] = None) -> list[dict]:
+    """매수 체결 이력 반환 (최신순)."""
+    return await _query_history("BUY", today_only, date_from, date_to, trade_mode)
+
+
+async def get_sell_history(*, today_only: bool = False, date_from: str = "", date_to: str = "", trade_mode: Optional[str] = None) -> list[dict]:
+    """매도 체결 이력 반환 (최신순)."""
+    return await _query_history("SELL", today_only, date_from, date_to, trade_mode)
+
+
+# ── 집계 API ─────────────────────────────────────────────────────────────────
+
+async def get_realized_pnl_summary(
+    *,
+    today_only: bool = False,
+    date_from: str = "",
+    date_to: str = "",
+    trade_mode: Optional[str] = None,
+) -> tuple[int, int]:
+    """실현손익 요약 — (pnl, buy_total) 반환 (P10 SSOT, P24 중복 제거).
+
+    pnl: 매도 실수령(total_amt) - 매수 실지출(buy_total_amt) 합계 (현금 기준).
+    buy_total: 매수 실지출(buy_total_amt) 합계 — 실현 수익률 분모.
+    프론트엔드 aggregatePnl(profit-shared.ts)과 동일 공식.
+    """
+    await _ensure_loaded()
+    async with _history_lock:
+        pnl = 0
+        buy_total = 0
+        for rec in _sell_history:
+            if trade_mode is not None and rec["trade_mode"] != trade_mode:
+                continue
+            if today_only:
+                td = date.today().isoformat()
+                if rec["date"] != td:
+                    continue
+            else:
+                if date_from and rec["date"] < date_from:
+                    continue
+                if date_to and rec["date"] > date_to:
+                    continue
+            pnl += (rec["total_amt"] or 0) - (rec["buy_total_amt"] or 0)
+            buy_total += (rec["buy_total_amt"] or 0)
+        return pnl, buy_total
+
+
+async def get_total_realized_pnl(*, today_only: bool = False, date_from: str = "", date_to: str = "", trade_mode: Optional[str] = None) -> int:
+    """실제 실현손익 합계 (현금 기준: 매도 실수령 - 매수 실지출). get_realized_pnl_summary 위 thin wrapper."""
+    pnl, _ = await get_realized_pnl_summary(
+        today_only=today_only, date_from=date_from, date_to=date_to, trade_mode=trade_mode,
+    )
+    return pnl
+
+
+async def get_daily_summary(
+    *,
+    days: int = 5,
+    date_from: str = "",
+    date_to: str = "",
+    trade_mode: Optional[str] = None,
+) -> list[dict]:
+    """
+    거래일별 요약 -- [{date, buy_count, sell_count, realized_pnl, buy_total_amt, pnl_rate, buy_fee, sell_fee, tax}].
+    """
+    await _ensure_loaded()
+    use_date_range = bool(date_from or date_to)
+
+    trading_dates = []
+    if use_date_range:
+        if date_from and date_to:
+            from datetime import datetime
+            start = datetime.strptime(date_from, "%Y-%m-%d").date()
+            end = datetime.strptime(date_to, "%Y-%m-%d").date()
+            current = start
+            while current <= end:
+                trading_dates.append(current.isoformat())
+                current = date.fromordinal(current.toordinal() + 1)
+    elif days > 0:
+        from backend.app.core.trading_calendar import get_recent_trading_days, get_chart_reference_trading_day
+        # 차트 기준 현재 거래일 사용 — 08:00 NXT 프리마켓 개시 전에는 오늘 데이터 점 미포함 (P10 SSOT).
+        # 프론트 getTradingToday()와 동일 의미: 개장 전 → 직전 거래일부터 과거 N거래일.
+        trading_dates = [d.isoformat() for d in get_recent_trading_days(days, from_date=get_chart_reference_trading_day())]
+    # days == 0 and not use_date_range: trading_dates를 락 내에서 데이터 기반으로 추출
+
+    async with _history_lock:
+        if not use_date_range and days == 0:
+            dates_set: set[str] = set()
+            for rec in _buy_history:
+                if trade_mode is not None and rec["trade_mode"] != trade_mode:
+                    continue
+                dates_set.add(rec["date"])
+            for rec in _sell_history:
+                if trade_mode is not None and rec["trade_mode"] != trade_mode:
+                    continue
+                dates_set.add(rec["date"])
+            trading_dates = sorted(dates_set)
+
+        daily_map = {}
+        for d in trading_dates:
+            buy_count = 0
+            sell_count = 0
+            realized_pnl = 0
+            buy_total = 0
+            buy_fee = 0
+            sell_fee = 0
+            sell_tax = 0
+            for rec in _buy_history:
+                if trade_mode is not None and rec["trade_mode"] != trade_mode:
+                    continue
+                if rec["date"] == d:
+                    buy_count += 1
+                    buy_fee += rec.get("fee") or 0
+            for rec in _sell_history:
+                if trade_mode is not None and rec["trade_mode"] != trade_mode:
+                    continue
+                if rec["date"] == d:
+                    sell_count += 1
+                    realized_pnl += rec["realized_pnl"] or 0
+                    buy_total += rec.get("buy_total_amt") or 0
+                    sell_fee += rec.get("fee") or 0
+                    sell_tax += rec.get("tax") or 0
+            daily_map[d] = {
+                "date": d,
+                "buy_count": buy_count,
+                "sell_count": sell_count,
+                "realized_pnl": realized_pnl,
+                "buy_total_amt": buy_total,
+                "pnl_rate": round(realized_pnl / buy_total * 100, 2) if buy_total > 0 else 0.0,
+                "buy_fee": buy_fee,
+                "sell_fee": sell_fee,
+                "tax": sell_tax,
+            }
+
+    result = []
+    # base_asset 조회 (기초자산 분모 방식 — 전일 장마감 스냅샷 total_asset)
+    # trade_mode가 None이면 현재 거래 모드로 해결 (base_asset은 모드별로 저장됨)
+    resolved_mode = trade_mode
+    if resolved_mode is None:
+        from backend.app.services.engine_account import get_trade_mode
+        resolved_mode = get_trade_mode()
+    from backend.app.db.database import get_db_connection
+    from backend.app.db.stock_tables import get_base_asset_for_period, get_earliest_base_asset
+    conn = await get_db_connection()
+    # earliest_base_asset = 해당 모드의 가장 오래된 total_asset (누적 카드 분모용).
+    # 1회 조회로 모든 행에 동일 값 적용 (P24 단순성 — 매 행마다 조회 금지).
+    # 없으면 None (프론트에서 rate null → '-' 표시, P20 폴백 금지).
+    try:
+        earliest_base_asset = await get_earliest_base_asset(conn, trade_mode=resolved_mode)
+    except Exception as e:
+        logger.warning("[이력] earliest_base_asset 조회 실패 (None으로 진행): %s", e, exc_info=True)
+        earliest_base_asset = None
+    for d in sorted(trading_dates):
+        entry = daily_map.get(d, {
+            "date": d,
+            "buy_count": 0,
+            "sell_count": 0,
+            "realized_pnl": 0,
+            "buy_total_amt": 0,
+            "pnl_rate": 0.0,
+            "buy_fee": 0,
+            "sell_fee": 0,
+            "tax": 0,
+        })
+        # base_asset = 전일 장마감 스냅샷 total_asset (당일 분모 = 전일 종가)
+        # 없으면 None (프론트에서 초기 투자원금으로 처리 — 결정 6, 폴백 아닌 초기값 정의)
+        try:
+            entry["base_asset"] = await get_base_asset_for_period(
+                conn, date_from=d, trade_mode=resolved_mode
+            )
+        except Exception as e:
+            logger.warning("[이력] base_asset 조회 실패 (None으로 진행): %s", e, exc_info=True)
+            entry["base_asset"] = None
+        # earliest_base_asset = 모든 행 동일 값 (누적 카드 분모용)
+        entry["earliest_base_asset"] = earliest_base_asset
+        result.append(entry)
+    return result
+
+
+async def clear_test_history() -> None:
+    """테스트모드(trade_mode=='test') 이력만 즉시 삭제 (비동기적 수행). 실전 이력은 보존."""
+    async with _history_lock:
+        _buy_history[:] = [r for r in _buy_history if r["trade_mode"] != "test"]
+        _sell_history[:] = [r for r in _sell_history if r["trade_mode"] != "test"]
+    # dry_run 포지션 캐시 무횜화
+    try:
+        from backend.app.services import dry_run
+        dry_run._positions_dirty = True
+    except Exception as e:
+        logger.warning("[정산] 모의투자 포지션 캐시 무효화 실패 (오래된 데이터 가능): %s", e, exc_info=True)
+    try:
+        from backend.app.db.db_writer import execute_db_write, DBWriteOperation
+        await execute_db_write(DBWriteOperation(
+            table="trades", operation="DELETE", data={},
+            query="DELETE FROM trades WHERE trade_mode = 'test'", params=(),
+        ))
+    except Exception as e:
+        logger.warning("[정산] DB 테스트 이력 삭제 실패: %s", e)
+    logger.info("[정산] 테스트 이력 삭제")
+
+
+async def broadcast_history(trade_mode: str) -> None:
+    """해당 trade_mode의 매수/매도 이력 및 일별 요약을 브로드캐스트 (초기 데이터 전송용)."""
+    await _broadcast_full_buy_history(trade_mode)
+    await _broadcast_full_sell_history(trade_mode)
+
+
+def _consume_fifo_sell(q: deque[dict], sell_qty: int) -> None:
+    """FIFO: 매도 수량만큼 가장 오래된 매수 lot부터 차감."""
+    remaining = sell_qty
+    while remaining > 0 and q:
+        lot = q[0]
+        if lot["qty"] <= remaining:
+            remaining -= lot["qty"]
+            q.popleft()
+        else:
+            lot["qty"] -= remaining
+            remaining = 0
+
+
+def _build_fifo_lots(trades: list[dict], trade_mode: str) -> dict[str, deque[dict]]:
+    """거래 이력을 종목별 FIFO lot 큐로 변환."""
+    lots: dict[str, deque[dict]] = {}
+    for rec in trades:
+        if rec.get("trade_mode") != trade_mode:
+            continue
+        cd = rec["stk_cd"]
+        if rec["side"] == "BUY":
+            q = lots.setdefault(cd, deque())
+            q.append({
+                "qty": int(rec["qty"]),
+                "price": int(rec["price"]),
+                "fee": int(rec.get("fee", 0) or 0),
+                "date": rec.get("date", ""),
+                "stk_nm": rec.get("stk_nm", ""),
+            })
+        else:
+            q = lots.get(cd)
+            if q:
+                _consume_fifo_sell(q, int(rec["qty"]))
+    return lots
+
+
+def _position_from_lots(stk_cd: str, q: deque[dict]) -> dict | None:
+    """FIFO lot 큐에서 보유 포지션 dict를 파생."""
+    total_qty = sum(lot["qty"] for lot in q)
+    if total_qty <= 0:
+        return None
+    total_price = sum(lot["qty"] * lot["price"] for lot in q)
+    total_fee = sum(lot["fee"] for lot in q)
+    avg_price = total_price // total_qty
+    buy_amount = avg_price * total_qty
+    buy_amt = buy_amount + total_fee
+    buy_date = ""
+    for lot in q:
+        if lot["date"] and (not buy_date or lot["date"] < buy_date):
+            buy_date = lot["date"]
+    stk_nm = q[-1].get("stk_nm") or q[0].get("stk_nm") or stk_cd
+    return {
+        "stk_cd": stk_cd,
+        "stk_nm": stk_nm,
+        "qty": total_qty,
+        "avg_price": avg_price,
+        "buy_amount": buy_amount,
+        "buy_amt": buy_amt,
+        "total_fee": total_fee,
+        "tax": 0,
+        "cur_price": None,
+        "eval_amt": None,
+        "pnl_amount": None,
+        "pnl_rate": None,
+        "buy_date": buy_date,
+    }
+
+
+async def build_positions_from_trades(trade_mode: str) -> dict[str, dict]:
+    """trades 이력에서 보유 포지션을 파생. SSOT: trades가 유일한 포지션 진실 원천.
+
+    - 종목별 FIFO(선입선출) lot 매칭: 매도 시 가장 오래된 매수 lot부터 차감.
+    - 반환된 `avg_price`/`buy_amount`는 순매입(수수료 제외), `buy_amt`/`total_fee`는
+      수수료 포함, `pnl_amount`/`pnl_rate`는 현금 기준(수수료/세금 포함).
+    """
+    await _ensure_loaded()
+    async with _history_lock:
+        # _buy_history/_sell_history는 DESC 정렬(최신순)이므로 시간순으로 처리
+        all_trades = list(_buy_history) + list(_sell_history)
+        all_trades.sort(key=lambda r: r["ts"])
+        lots = _build_fifo_lots(all_trades, trade_mode)
+        return {cd: pos for cd, q in lots.items() if (pos := _position_from_lots(cd, q)) is not None}

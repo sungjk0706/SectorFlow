@@ -1,0 +1,29 @@
+# SectorFlow Ruff 설정 — 하네스 엔지니어링 자동 강제
+# AGENTS.md 금지 패턴 + 아키텍처 원칙을 코드 수준에서 자동 차단
+# P24 단순성: 핵심 규칙만 활성화, 기존 코드베이스와 충돌하지 않는 규칙만 선택
+
+target-version = "py311"
+line-length = 120
+extend-exclude = ["backend/data", ".venv", "node_modules"]
+
+[lint]
+# 활성 규칙 (AGENTS.md 금지 패턴 + 아키텍처 원칙 매핑):
+# - S110  : try-except-pass 금지 (P20 silent except 금지, 금지 패턴 3)
+# - E722  : bare except 금지 (명시적 예외 타입 필수)
+# - F401  : unused import 금지 (금지 패턴 5 dead code)
+# - F841  : unused variable 금지 (금지 패턴 5 dead code)
+# - F811  : 재정의 금지 (P10 SSOT 위반 감지)
+# - T201  : print() 금지 (logger 사용 강제 — P23 로깅 일관성)
+# I001(import 정렬)은 제외 — 기존 193건 위반으로 일괄 적용 시 diff 과대. 별도 정리 태스크 권장
+select = ["S110", "E722", "F401", "F841", "F811", "T201"]
+
+# BLE001(blind except)은 제외 — except Exception as e: logger.warning()은 정상 패턴 (P20 위반 아님)
+# 기존 코드베이스 73건이 정상 로깅 패턴이므로 과도한 위반 양산 방지
+
+[lint.per-file-ignores]
+# 테스트 파일은 print 허용 (디버그 출력)
+"backend/tests/**" = ["T201"]
+# main.py 진입점은 print 허용 (기동 메시지)
+"main.py" = ["T201"]
+# __init__.py는 unused import 허용 (공개 API re-export)
+"**/__init__.py" = ["F401"]

@@ -1,0 +1,5 @@
+# Normalize line endings for text files
+* text=auto eol=lf
+
+# Ensure txt API spec files use LF
+*.txt text eol=lf

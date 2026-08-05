@@ -1,0 +1,60 @@
+전체테마	t8425	1	
+요청
+Header
+Element	한글명	type	Required	Length	Description
+content-type	컨텐츠타입	String	Y	100	LS증권 제공 API를 호출하기 위한 Request Body 데이터 포맷으로 "application/json; charset=utf-8 설정"
+authorization	접근토큰	String	Y	1000	OAuth 토큰이 필요한 API 경우 발급한 Access Token을 설정하기 위한 Request Heaeder Parameter
+tr_cd	거래 CD	String	Y	10	LS증권 거래코드
+tr_cont	연속 거래 여부	String	Y	1	연속거래 여부
+Y:연속○
+N:연속×
+tr_cont_key	연속 거래 Key	String	Y	18	연속일 경우 그전에 내려온 연속키 값 올림
+mac_address	MAC 주소	String	Y	12	법인인 경우 필수 세팅
+Body
+Element	한글명	type	Required	Length	Description
+t8425InBlock	t8425InBlock	Object	Y	-	
+  -dummy	Dummy	String	Y	1	
+응답
+Header
+Element	한글명	type	Required	Length	Description
+content-type	컨텐츠타입	String	Y	100	LS증권 제공 API를 호출하기 위한 Request Body 데이터 포맷으로 "application/json; charset=utf-8 설정"
+tr_cd	거래 CD	String	Y	10	LS증권 거래코드
+tr_cont	연속 거래 여부	String	Y	1	연속거래 여부
+Y:연속○
+N:연속×
+tr_cont_key	연속 거래 Key	String	Y	18	연속일 경우 그전에 내려온 연속키 값 올림
+Body
+Element	한글명	type	Required	Length	Description
+t8425OutBlock	t8425OutBlock	Object Array	Y	-	
+  -tmname	테마명	String	Y	36	
+  -tmcode	테마코드	String	Y	4	
+Example
+Request
+{
+   "t8425InBlock" :{
+      "dummy" : ""
+   }
+}
+Response
+{
+    "rsp_cd": "00000",
+    "rsp_msg": "정상적으로 조회가 완료되었습니다.",
+    "t8425OutBlock": [
+        {
+            "tmname": "화폐\/금융자동화기기(디지털화폐 등)",
+            "tmcode": "0008"
+        },
+        {
+            "tmname": "OLED(유기 발광 다이오드)",
+            "tmcode": "0009"
+        },
+        {
+            "tmname": "STO(증권형 토큰 발행)",
+            "tmcode": "0531"
+        },
+        {
+            "tmname": "페라이트",
+            "tmcode": "0534"
+        }
+    ]
+}

@@ -1,0 +1,264 @@
+/**
+ * 설정 페이지 공통 컴포넌트 — buy-settings / sell-settings / general-settings 에서 공유
+ * 중복 함수 6개를 한 곳에서 관리: parseHM, sectionTitle, createTimeSlot,
+ * updateTimeSlotDisplay, createTimeDropdown(+createGridPanel+createFineAdjust), createTimePairInput
+ */
+
+import { FONT_SIZE, FONT_WEIGHT, COLOR, RADIUS, ROW_PADDING, SHADOW } from './ui-styles'
+
+/* ── 상수 ── */
+const HOURS = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'))
+const MINS_10 = ['00', '10', '20', '30', '40', '50']
+
+/* ── parseHM ── */
+export function parseHM(v: string): [string, string] {
+  const parts = String(v || '09:00').split(':')
+  return [parts[0]?.padStart(2, '0') || '09', parts[1]?.padStart(2, '0') || '00']
+}
+
+/* ── sectionTitle ── */
+// 색상 COLOR.down 통일 + rightSlot 옵션(우측 요소 배치용 flex 래퍼) + centerSlot 옵션(중앙 요소) — P23/P24 일관성·중복 제거.
+export function sectionTitle(text: string, rightSlot?: HTMLElement, centerSlot?: HTMLElement): HTMLElement {
+  const div = document.createElement('div')
+  Object.assign(div.style, {
+    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+    fontWeight: FONT_WEIGHT.normal,
+    fontSize: FONT_SIZE.section,
+    color: COLOR.down,
+    padding: ROW_PADDING.section,
+    borderBottom: '2px solid ' + COLOR.borderLight,
+    marginBottom: '8px',
+  })
+  const textSpan = document.createElement('span')
+  textSpan.textContent = text
+  div.appendChild(textSpan)
+  if (centerSlot) {
+    // 중앙 요소를 정확히 가운데 정렬하기 위한 flex:1 래퍼 (좌·우 슬롯과 독립).
+    const centerWrap = document.createElement('span')
+    Object.assign(centerWrap.style, { flex: '1', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px' })
+    centerWrap.appendChild(centerSlot)
+    div.appendChild(centerWrap)
+  }
+  if (rightSlot) div.appendChild(rightSlot)
+  return div
+}
+
+/* ── createDescText — 설정 행 아래 설명 텍스트 ── */
+export function createDescText(text: string, extraStyle?: Partial<CSSStyleDeclaration>): HTMLElement {
+  const div = document.createElement('div')
+  Object.assign(div.style, {
+    fontSize: FONT_SIZE.desc,
+    color: COLOR.tertiary,
+    padding: '0 0 4px',
+    marginTop: '-4px',
+  })
+  if (extraStyle) Object.assign(div.style, extraStyle)
+  div.textContent = text
+  return div
+}
+
+/* ── createStepLabel — 단계 요약 라벨 (①~⑤ 등, 번호 없이 본문만 가능) ── */
+export function createStepLabel(num: string, text: string, extraStyle?: Partial<CSSStyleDeclaration>): HTMLElement {
+  const div = document.createElement('div')
+  Object.assign(div.style, {
+    fontSize: FONT_SIZE.desc,
+    color: COLOR.neutral,
+    marginBottom: '2px',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '4px',
+  })
+  if (num) {
+    const badge = document.createElement('span')
+    Object.assign(badge.style, { color: COLOR.down, fontWeight: FONT_WEIGHT.normal })
+    badge.textContent = num
+    div.appendChild(badge)
+  }
+  div.appendChild(document.createTextNode(text))
+  if (extraStyle) Object.assign(div.style, extraStyle)
+  return div
+}
+
+/* ── createTimeSlot ── */
+export function createTimeSlot(
+  hour: string,
+  minute: string,
+  onChange: (h: string, m: string) => void,
+): HTMLElement {
+  const span = document.createElement('span')
+  span.style.position = 'relative'
+  span.style.display = 'inline-block'
+
+  const display = document.createElement('span')
+  Object.assign(display.style, {
+    display: 'inline-flex', alignItems: 'center', gap: '1px',
+    background: COLOR.surface, border: '1px solid ' + COLOR.inactiveBg, borderRadius: RADIUS.sm,
+    padding: '4px 8px', cursor: 'pointer', fontVariantNumeric: 'tabular-nums',
+    fontSize: FONT_SIZE.label, userSelect: 'none',
+  })
+  display.innerHTML =
+    `<span style="color:${COLOR.neutral};font-weight:500">${hour}</span>` +
+    `<span style="color:${COLOR.muted}">:</span>` +
+    `<span style="color:${COLOR.neutral};font-weight:500">${minute}</span>` +
+    `<span style="font-size:${FONT_SIZE.chip};color:${COLOR.muted};margin-left:2px">▼</span>`
+
+  let dropdownEl: HTMLElement | null = null
+
+  display.addEventListener('click', () => {
+    if (dropdownEl) { dropdownEl.remove(); dropdownEl = null; return }
+    const curH = display.children[0].textContent || hour
+    const curM = display.children[2].textContent || minute
+    dropdownEl = createTimeDropdown(curH, curM,
+      (h) => onChange(h, display.children[2].textContent || minute),
+      (m) => onChange(display.children[0].textContent || hour, m),
+      () => { if (dropdownEl) { dropdownEl.remove(); dropdownEl = null } },
+      display,
+    )
+    document.body.appendChild(dropdownEl)
+  })
+
+  span.appendChild(display)
+  return span
+}
+
+/* ── updateTimeSlotDisplay ── */
+export function updateTimeSlotDisplay(slot: HTMLElement, h: string, m: string): void {
+  const spans = slot.firstElementChild!.children
+  if (spans[0]) (spans[0] as HTMLElement).textContent = h
+  if (spans[2]) (spans[2] as HTMLElement).textContent = m
+}
+
+/* ── createTimeDropdown ── */
+function createTimeDropdown(
+  hour: string, minute: string,
+  onChangeH: (h: string) => void,
+  onChangeM: (m: string) => void,
+  onClose: () => void,
+  anchor: HTMLElement,
+): HTMLElement {
+  const rect = anchor.getBoundingClientRect()
+  const div = document.createElement('div')
+  Object.assign(div.style, {
+    position: 'fixed',
+    top: `${rect.bottom + 4}px`,
+    left: `${rect.left}px`,
+    zIndex: '10000',
+    background: COLOR.white, border: '1px solid ' + COLOR.borderGrid, borderRadius: RADIUS.md,
+    boxShadow: SHADOW.popup, width: '240px',
+  })
+
+  let currentTab: 'hour' | 'minute' = 'hour'
+  let curH = hour, curM = minute
+
+  const tabBar = document.createElement('div')
+  tabBar.style.cssText = `display:flex;border-bottom:1px solid ${COLOR.borderLight};`
+  const hourTab = document.createElement('button'); hourTab.type = 'button'
+  const minTab = document.createElement('button'); minTab.type = 'button'
+
+  function renderTabs() {
+    for (const [btn, label, active] of [
+      [hourTab, `시 (${curH})`, currentTab === 'hour'],
+      [minTab, `분 (${curM})`, currentTab === 'minute'],
+    ] as [HTMLButtonElement, string, boolean][]) {
+      Object.assign(btn.style, {
+        flex: '1', padding: '6px 0', border: 'none', cursor: 'pointer',
+        fontSize: FONT_SIZE.badge, fontWeight: FONT_WEIGHT.normal,
+        color: active ? `${COLOR.down}` : `${COLOR.disabled}`,
+        background: active ? `${COLOR.downBg}` : 'transparent',
+      })
+      btn.textContent = label
+    }
+  }
+
+  hourTab.addEventListener('click', () => { currentTab = 'hour'; renderTabs(); renderContent() })
+  minTab.addEventListener('click', () => { currentTab = 'minute'; renderTabs(); renderContent() })
+  tabBar.appendChild(hourTab); tabBar.appendChild(minTab)
+  div.appendChild(tabBar)
+
+  const content = document.createElement('div')
+  div.appendChild(content)
+
+  function renderContent() {
+    while (content.firstChild) content.removeChild(content.firstChild)
+    if (currentTab === 'hour') {
+      content.appendChild(createGridPanel(HOURS, curH, 6, (h) => {
+        curH = h; onChangeH(h); currentTab = 'minute'; renderTabs(); renderContent()
+      }))
+    } else {
+      content.appendChild(createGridPanel(MINS_10, MINS_10.includes(curM) ? curM : '', 6, (m) => {
+        curM = m; onChangeM(m); onClose()
+      }))
+      content.appendChild(createFineAdjust(curM, (m) => { curM = m; onChangeM(m) }))
+    }
+  }
+
+  renderTabs()
+  renderContent()
+
+  const outsideHandler = (e: MouseEvent) => {
+    if (!div.contains(e.target as Node)) { onClose(); document.removeEventListener('mousedown', outsideHandler) }
+  }
+  setTimeout(() => document.addEventListener('mousedown', outsideHandler), 0)
+
+  return div
+}
+
+/* ── createGridPanel ── */
+function createGridPanel(
+  items: string[], value: string, columns: number,
+  onChange: (v: string) => void,
+): HTMLElement {
+  const grid = document.createElement('div')
+  Object.assign(grid.style, { display: 'grid', gridTemplateColumns: `repeat(${columns}, 1fr)`, gap: '2px', padding: '4px' })
+  for (const item of items) {
+    const btn = document.createElement('button'); btn.type = 'button'
+    const isActive = item === value
+    Object.assign(btn.style, {
+      width: '36px', height: '30px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+      border: 'none', borderRadius: RADIUS.sm, cursor: 'pointer', fontSize: FONT_SIZE.badge,
+      fontVariantNumeric: 'tabular-nums',
+      background: isActive ? `${COLOR.down}` : 'transparent',
+      color: isActive ? COLOR.white : `${COLOR.code}`,
+      fontWeight: FONT_WEIGHT.normal,
+    })
+    btn.textContent = item
+    btn.addEventListener('mouseenter', () => { if (item !== value) btn.style.background = COLOR.hoverBg })
+    btn.addEventListener('mouseleave', () => { if (item !== value) btn.style.background = 'transparent' })
+    btn.addEventListener('click', () => {
+      try { onChange(item) } catch (e) { console.error('[TimeDropdown] grid select error', e) }
+    })
+    grid.appendChild(btn)
+  }
+  return grid
+}
+
+/* ── createFineAdjust ── */
+function createFineAdjust(minute: string, onChange: (m: string) => void): HTMLElement {
+  let m = parseInt(minute, 10)
+  const wrap = document.createElement('div')
+  Object.assign(wrap.style, { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '4px 0', borderTop: '1px solid ' + COLOR.borderLight })
+
+  const decBtn = document.createElement('button'); decBtn.type = 'button'
+  Object.assign(decBtn.style, { width: '28px', height: '24px', border: '1px solid ' + COLOR.borderDark, borderRadius: RADIUS.xs, background: COLOR.surface, cursor: 'pointer', fontSize: FONT_SIZE.badge })
+  decBtn.textContent = '−1'
+
+  const label = document.createElement('span')
+  Object.assign(label.style, { fontSize: FONT_SIZE.badge, fontWeight: FONT_WEIGHT.normal, color: `${COLOR.down}`, minWidth: '24px', textAlign: 'center' })
+  label.textContent = minute
+
+  const incBtn = document.createElement('button'); incBtn.type = 'button'
+  Object.assign(incBtn.style, { width: '28px', height: '24px', border: '1px solid ' + COLOR.borderDark, borderRadius: RADIUS.xs, background: COLOR.surface, cursor: 'pointer', fontSize: FONT_SIZE.badge })
+  incBtn.textContent = '+1'
+
+  decBtn.addEventListener('click', () => {
+    m = Math.max(0, m - 1); const s = String(m).padStart(2, '0'); label.textContent = s
+    try { onChange(s) } catch (e) { console.error('[TimeDropdown] fine adjust dec error', e) }
+  })
+  incBtn.addEventListener('click', () => {
+    m = Math.min(59, m + 1); const s = String(m).padStart(2, '0'); label.textContent = s
+    try { onChange(s) } catch (e) { console.error('[TimeDropdown] fine adjust inc error', e) }
+  })
+
+  wrap.appendChild(decBtn); wrap.appendChild(label); wrap.appendChild(incBtn)
+  return wrap
+}

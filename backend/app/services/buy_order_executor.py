@@ -1,0 +1,326 @@
+# -*- coding: utf-8 -*-
+"""
+매수 주문 실행기 - 업종 매수 판단 및 실행 로직.
+
+engine_lifecycle.py에서 업종 매수 관련 함수를 분리.
+"""
+from __future__ import annotations
+import logging
+from backend.app.core.trade_mode import is_test_mode
+from backend.app.services.auto_trading_effective import auto_buy_effective, auto_buy_reject_reason
+logger = logging.getLogger(__name__)
+
+# ── State Gate: 주문가능 금액 부족 시 evaluate_buy_candidates 호출 차단 ──
+# 매도 체결 / 잔고 업데이트 이벤트에서 해제 후 재호출.
+_cash_insufficient: bool = False
+
+# ── 전역 조건 스냅샷: 조건 변화 없으면 매수 시도 스킵 (원칙 11 이벤트 기반) ──
+_last_global_snapshot: dict | None = None
+
+
+def invalidate_buy_snapshot() -> None:
+    """전역 조건 스냅샷 무효화 — 매수 성공/설정 변경/잔고 회복 시 호출."""
+    global _last_global_snapshot
+    _last_global_snapshot = None
+
+
+async def refresh_buy_market_guard_and_recompute() -> None:
+    """지수·장 상태 회복 시 매수 평가를 한 번 재개."""
+    from backend.app.services.risk_manager import get_risk_manager
+    status = await get_risk_manager().check_buy_market_guard()
+    if not status.allowed or not status.changed:
+        return
+    invalidate_buy_snapshot()
+    await evaluate_buy_candidates()
+
+
+async def _mark_all_reject_reasons(ss, reason_code: str) -> None:
+    """전역 차단 사유를 모든 guard_pass 매수 후보에 기록 후 WS delta 전송."""
+    from backend.app.services.trading import BUY_REJECT_REASON_TEXT
+    text = BUY_REJECT_REASON_TEXT.get(reason_code, "")
+    if not text:
+        return
+    for bt in ss.buy_targets:
+        if bt.stock.guard_pass:
+            bt.reject_reason = text
+    from backend.app.services.engine_account_notify import notify_buy_targets_update
+    await notify_buy_targets_update()
+
+
+async def _apply_market_guard_reject_reasons(ss, market_status) -> None:
+    """현재 시장별 차단 상태를 후보별 원인에 반영한다."""
+    from backend.app.services.risk_manager import get_market_guard_reason, is_market_guard_reason
+    changed = False
+    for bt in ss.buy_targets:
+        if not bt.stock.guard_pass:
+            continue
+        reason = get_market_guard_reason(bt.stock.market_type, market_status)
+        if reason:
+            if bt.reject_reason != reason:
+                bt.reject_reason = reason
+                changed = True
+        elif is_market_guard_reason(bt.reject_reason):
+            bt.reject_reason = ""
+            changed = True
+    if changed:
+        from backend.app.services.engine_account_notify import notify_buy_targets_update
+        await notify_buy_targets_update()
+
+
+def _refresh_buyable_prices(ss, available: int, effective_buy_amt: int | None, is_test: bool) -> set[str]:
+    """매수 가능 종목 집합 재계산 (P10 SSOT — execute_buy 내부와 동일 기준).
+
+    최초 _buyable_codes 구축과 매수 성공 후 잔액 갱신 시 모두 이 헬퍼를 호출하여
+    단일 진실 소스화. 잔액이 줄어들면 고가 종목이 _buyable_codes에서 빠짐.
+    execute_buy 내부(trading.py:267-273)와 동일 기준.
+    """
+    from backend.app.services import dry_run
+    from backend.app.services import settlement_engine
+    from backend.app.services.daily_time_scheduler import is_order_blocked_by_time
+    from backend.app.services.engine_state import state
+
+    _rebuy_block_on = bool(state.integrated_system_settings_cache.get("rebuy_block_on", True))
+    _new_codes: set[str] = set()
+    for bt in ss.buy_targets:
+        s = bt.stock
+        if not s.guard_pass:
+            continue
+        if is_order_blocked_by_time(s.code):
+            continue
+        if _rebuy_block_on and s.code in state.auto_trade._bought_today:
+            continue
+        if s.cur_price is None or s.cur_price <= 0:
+            continue
+        _price = s.cur_price
+        # 테스트모드 슬리피지 적용 (trading.py:254와 동일)
+        _est_price = dry_run.estimate_fill_price(_price, "BUY") if is_test else _price
+        # 종목별 가용 금액 = min(effective_buy_amt, available) 또는 available
+        _max_for_code = min(effective_buy_amt, available) if effective_buy_amt is not None else available
+        # 수수료 포함 최대 수량 1주 미만이면 매수 후보에서 제외 (P10 SSOT — trading.py와 동일 기준)
+        if settlement_engine.max_buy_qty_for_budget(_est_price, _max_for_code, is_test) <= 0:
+            continue
+        _new_codes.add(s.code)
+    return _new_codes
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 업종 매수 실행 함수
+# ──────────────────────────────────────────────────────────────────────────────
+
+async def evaluate_buy_candidates() -> None:
+    """
+    이벤트 기반 매수 판단 — 실시간 데이터 변경 시 _do_sector_recompute()에서 호출.
+    auto_buy_effective(시간 범위 + auto_buy_on + 마스터 스위치) 통과 시 매수 실행.
+    매수 후보 순회 — 1건 매수 성공 후 루프 종료 (건별 간격 적용):
+      - 1건 매수 성공 시 break — 다음 evaluate_buy_candidates 호출 시 간격 게이트 적용
+      - 종목별 차단 시 차순위 continue
+      - 전체 차단 시 break
+      - 잔액 0·최대 보유수·일일 한도 도달 시 break
+    buy_interval_on 시 사용자 설정 간격(초) 대기 — 매수 1건마다 간격 적용 (P21 UI 일치).
+    """
+    global _cash_insufficient
+    from backend.app.services import dry_run
+    from backend.app.services.daily_time_scheduler import is_order_blocked_by_time
+    from backend.app.services.engine_state import state
+
+    if not state.running:
+        return
+
+    if not state.auto_trade:
+        return
+
+    ss = state.sector_summary_cache
+    if not ss or not ss.buy_targets:
+        return
+
+    # ── 자동매수 게이트 (auto_buy_on + 시간 범위 + 마스터 스위치 통합 체크) ──
+    # 사유별 분기 → 모든 매수 후보 "원인" 컬럼에 차단 사유 표시 (P21 사용자 투명성).
+    # 기존 전역 게이트(max_holding 등)와 동일 패턴 — _mark_all_reject_reasons 일관성 (P23).
+    if not auto_buy_effective(state.integrated_system_settings_cache):
+        _reason = auto_buy_reject_reason(state.integrated_system_settings_cache)
+        if _reason:
+            await _mark_all_reject_reasons(ss, _reason)
+        return
+
+    # ── 시장별 매수 가드 사전 체크 ──────────────────────────────────
+    # 한 시장의 급락은 해당 시장 종목만 차단하고 다른 시장 후보는 계속 평가한다.
+    # NXT 전용 시간대의 정상적인 지수 미수신은 리스크 매니저가 허용한다.
+    from backend.app.services.risk_manager import get_risk_manager
+    _risk_manager = get_risk_manager()
+    _market_status = await _risk_manager.check_buy_market_guard()
+    await _apply_market_guard_reject_reasons(ss, _market_status)
+    if _market_status.changed:
+        invalidate_buy_snapshot()
+
+    # ── 전역 조건 사전 체크 ──────────────────────────────────────────
+    _max_limit = int(state.integrated_system_settings_cache["max_stock_cnt"])
+    _max_limit_on = bool(state.integrated_system_settings_cache.get("max_stock_cnt_on", True))
+    if is_test_mode(state.integrated_system_settings_cache):
+        _pos_for_cnt = await dry_run.get_positions()
+    else:
+        _pos_for_cnt = state.positions
+    _holding_cnt = sum(1 for p in _pos_for_cnt if int(p.get("qty", 0)) > 0)
+    if _max_limit_on and _holding_cnt >= _max_limit:
+        await _mark_all_reject_reasons(ss, "max_holding")
+        return
+
+    _buy_amt = int(state.integrated_system_settings_cache["buy_amt"])
+    _buy_amt_on = bool(state.integrated_system_settings_cache.get("buy_amt_on", True))
+    if _buy_amt_on and _buy_amt <= 0:
+        await _mark_all_reject_reasons(ss, "buy_amt_zero")
+        return
+
+    _max_daily = int(state.integrated_system_settings_cache["max_daily_total_buy_amt"])
+    _max_daily_on = bool(state.integrated_system_settings_cache.get("max_daily_total_buy_on", False))
+    _daily_remain: int | None = None
+    if _max_daily_on and _max_daily > 0:
+        if state.auto_trade._daily_buy_spent is None:
+            logger.critical("[매매] 일일 매수 상태 로드 실패 — 매수 시도 중단")
+            await _mark_all_reject_reasons(ss, "daily_state")
+            return
+        _daily_remain = _max_daily - state.auto_trade._daily_buy_spent
+        if _daily_remain <= 0:
+            await _mark_all_reject_reasons(ss, "daily_limit")
+            return
+
+    # ── 주문가능 금액 사전 체크 (매수 시도 전 조기 차단) ────────────────
+    _available = get_risk_manager().get_withdrawable_deposit()
+    if _buy_amt_on:
+        if _max_daily_on and _max_daily > 0 and _daily_remain is not None:
+            _effective_buy_amt = min(_buy_amt, _daily_remain)
+        else:
+            _effective_buy_amt = _buy_amt
+    else:
+        # buy_amt_on=False → 종목당 1회 매수금액 없음, 일일 한도만 적용
+        if _max_daily_on and _max_daily > 0 and _daily_remain is not None:
+            _effective_buy_amt = _daily_remain
+        else:
+            _effective_buy_amt = None  # 주문가능 금액이 상한
+    if _available <= 0:
+        _cash_insufficient = True
+        logger.info("[매매] 주문가능 금액 0원 — 매수 시도 중단")
+        await _mark_all_reject_reasons(ss, "risk_cash")
+        return
+    _cash_insufficient = False
+
+    # ── 전체 매수 간격 게이트 (토글 ON 시, 건별 적용) ───────────────
+    from backend.app.services.order_interval import check_order_interval
+    if not check_order_interval(state.integrated_system_settings_cache, "buy"):
+        return
+
+    # ── 전역 조건 스냅샷: 변화 없으면 매수 시도 스킵 (원칙 11 이벤트 기반) ──
+    _is_test = is_test_mode(state.integrated_system_settings_cache)
+
+    # ── 매수 가능 종목 집합: guard_pass + 장외 + 재매수 + 주문가능금액/가격 ──
+    # _refresh_buyable_prices 헬퍼로 단일 진실 소스화 (P10 SSOT).
+    # execute_buy 내부(trading.py:250-257)와 동일 기준으로 사전 필터링하여
+    # "매수 시도" 로그 후 차단되는 불필요한 호출 제거 (P21 사용자 투명성).
+    # available_cash를 snapshot에서 제거하고 _buyable_codes가 orderable/가격에
+    # 의존하도록 통일 — orderable 변동 시 _buyable_codes가 변하여 snapshot 반영.
+    _buyable_codes = _refresh_buyable_prices(ss, _available, _effective_buy_amt, _is_test)
+
+    _current_snapshot = {
+        "buyable_codes": tuple(sorted(_buyable_codes)),
+        "holding_cnt": _holding_cnt,
+        "daily_remain": _daily_remain if (_max_daily_on and _max_daily > 0) else None,
+        "buy_amt": _buy_amt,
+        "buy_amt_on": _buy_amt_on,
+        "max_limit": _max_limit,
+        "max_limit_on": _max_limit_on,
+        # 매수 후보 순서 변동 감지 — 업종 점수/순위 변동 시 매수 기회 재평가 (P11 이벤트 기반)
+        "ranks": tuple((bt.stock.code, bt.rank) for bt in ss.buy_targets if bt.stock.guard_pass),
+    }
+
+    global _last_global_snapshot
+    if _current_snapshot == _last_global_snapshot:
+        return
+    _last_global_snapshot = _current_snapshot
+
+    # ── 매수 후보 순회 — 1건 매수 성공 후 루프 종료 (건별 간격) ──────────
+    # 1건 매수 성공 시 break — 다음 이벤트 시 check_order_interval이 간격 판정
+    # 종목별 차단 시 차순위 continue
+    # 전체 차단 시 break
+    # 잔액 0·최대 보유수·일일 한도 도달 시 break
+    from backend.app.services.trading import (
+        BUY_REJECT_QTY_ZERO, BUY_GLOBAL_REJECT_REASONS, BUY_REJECT_REASON_TEXT,
+    )
+    from backend.app.services.risk_manager import (
+        get_risk_manager as _get_rm,
+        get_market_guard_reason,
+    )
+
+    _reject_reason_changed = False  # bt.reject_reason 변경 추적 — 루프 종료 후 notify 1회 호출 (P21)
+
+    for bt in ss.buy_targets:
+        s = bt.stock
+        if not s.guard_pass:
+            continue
+        if get_market_guard_reason(s.market_type, _market_status):
+            continue
+        # 체결 불가 시간대 주문 차단 (KRX 단독 종목만, NXT 종목은 허용)
+        if is_order_blocked_by_time(s.code):
+            continue
+        # 재매수 차단 + 주문가능금액/가격 필터 (buyable_codes와 동일 조건)
+        if s.code not in _buyable_codes:
+            continue
+
+        logger.debug("[매매] 매수 시도: %s(%s) 순위=%d 업종=%s",
+                     s.name, s.code, bt.rank, s.sector)
+        try:
+            if s.cur_price is None or s.cur_price <= 0:
+                break  # 현재가 미수신/0은 전역 이상 → 루프 종료
+            _price = s.cur_price
+            # 매수 근거(가산점 통합 문자열) 생성 — 발생한 가산점만 라벨 연결 (P20/P21/P23).
+            # 표시 순서 고정: 5거래일 고가 → 호가잔량비 → 뉴스 → 프.순.매.
+            # 라벨은 매수 후보 화면(buy-target-columns.ts)과 동일 텍스트 (P23 일관성).
+            _boost_parts: list[str] = []
+            if s.boost_high_triggered:
+                _boost_parts.append("5거래일 고가")
+            if s.boost_order_ratio_triggered:
+                _boost_parts.append("호가잔량비")
+            if s.boost_news_triggered:
+                _boost_parts.append("📰뉴스")
+            if s.boost_program_triggered:
+                _boost_parts.append("프.순.매")
+            _buy_reason = " · ".join(_boost_parts)  # 미발생 시 빈 문자열 (P20)
+            _ordered, _reason = await state.auto_trade.execute_buy(
+                s.code, float(_price), state.access_token or "",
+                reason=_buy_reason,
+            )
+            if _ordered:
+                logger.debug("[매매] 매수 주문 전송: %s(%s) 순위=%d", s.name, s.code, bt.rank)
+                invalidate_buy_snapshot()
+                from backend.app.services.order_interval import mark_order_executed
+                mark_order_executed("buy")
+                # 1건 매수 성공 — 건별 간격 적용 (다음 이벤트 시 check_order_interval 판정)
+                logger.debug("[매매] 매수 1건 — 주문 간격 대기")
+                break  # ← 1건 매수 후 루프 종료 (건별 간격)
+            else:
+                # 실패 사유 분류
+                _reject_text = BUY_REJECT_REASON_TEXT.get(_reason, "")
+                if _reject_text and bt.reject_reason != _reject_text:
+                    bt.reject_reason = _reject_text
+                    _reject_reason_changed = True
+                if _reason == BUY_REJECT_QTY_ZERO:
+                    # 잔액 0이면 전체 차단, 단가 비싸면 종목별 차단
+                    if _get_rm().get_withdrawable_deposit() <= 0:
+                        _cash_insufficient = True
+                        logger.info("[매매] %s 잔액 0 — 차순위 시도 중단 (사유=%s)", s.code, _reason)
+                        break
+                    else:
+                        logger.info("[매매] %s 단가 초과 — 차순위 시도 (사유=%s)", s.code, _reason)
+                        continue
+                if _reason in BUY_GLOBAL_REJECT_REASONS:
+                    logger.info("[매매] %s 전체 차단 사유 — 차순위 시도 중단 (사유=%s)", s.code, _reason)
+                    break
+                # 종목별 차단 사유 → 차순위 시도
+                logger.info("[매매] %s 종목별 차단 — 차순위 시도 (사유=%s)", s.code, _reason)
+                continue
+        except Exception as e:
+            logger.warning("[매매] 매수 실행 오류 %s: %s — 차순위 시도 중단", s.code, e, exc_info=True)
+            break  # 예외 시 안전 종료
+
+    # ── 차단 사유 변경 시 WS delta 전송 (P21 사용자 투명성) ──
+    if _reject_reason_changed:
+        from backend.app.services.engine_account_notify import notify_buy_targets_update
+        await notify_buy_targets_update()

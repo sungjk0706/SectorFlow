@@ -1,0 +1,40 @@
+특이테마	t1533	1	
+요청
+Header
+Element	한글명	type	Required	Length	Description
+content-type	컨텐츠타입	String	Y	100	LS증권 제공 API를 호출하기 위한 Request Body 데이터 포맷으로 "application/json; charset=utf-8 설정"
+authorization	접근토큰	String	Y	1000	OAuth 토큰이 필요한 API 경우 발급한 Access Token을 설정하기 위한 Request Heaeder Parameter
+tr_cd	거래 CD	String	Y	10	LS증권 거래코드
+tr_cont	연속 거래 여부	String	Y	1	연속거래 여부
+Y:연속○
+N:연속×
+tr_cont_key	연속 거래 Key	String	Y	18	연속일 경우 그전에 내려온 연속키 값 올림
+mac_address	MAC 주소	String	Y	12	법인인 경우 필수 세팅
+Body
+Element	한글명	type	Required	Length	Description
+t1533InBlock	t1533InBlock	Object	Y	-	
+  -gubun	구분	String	Y	1	1@상승율 상위 2@하락율 상위 3@거래증가율 상위 4@거래증가율 하위 5@상승종목비율 상위 6@상승종목비율 하위 7@기준대비 상승율 상위 8@기준대비 하락율 상위
+  -chgdate	대비일자	Number	Y	2	
+응답
+Header
+Element	한글명	type	Required	Length	Description
+content-type	컨텐츠타입	String	Y	100	LS증권 제공 API를 호출하기 위한 Request Body 데이터 포맷으로 "application/json; charset=utf-8 설정"
+tr_cd	거래 CD	String	Y	10	LS증권 거래코드
+tr_cont	연속 거래 여부	String	Y	1	연속거래 여부
+Y:연속○
+N:연속×
+tr_cont_key	연속 거래 Key	String	Y	18	연속일 경우 그전에 내려온 연속키 값 올림
+Body
+Element	한글명	type	Required	Length	Description
+t1533OutBlock	t1533OutBlock	Object	Y	-	
+  -bdate	일자	String	Y	8	
+t1533OutBlock1	t1533OutBlock1	Object Array	Y	-	
+  -tmname	테마명	String	Y	36	
+  -totcnt	전체	Number	Y	4	
+  -upcnt	상승	Number	Y	4	
+  -dncnt	하락	Number	Y	4	
+  -uprate	상승비율	Number	Y	6.2	
+  -diff_vol	거래증가율	Number	Y	10.2	
+  -avgdiff	평균등락율	Number	Y	6.2	
+  -chgdiff	대비등락율	Number	Y	6.2	
+  -tmcode	테마코드	String	Y	4	

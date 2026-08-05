@@ -1,0 +1,174 @@
+# -*- coding: utf-8 -*-
+"""
+설정값 기본값 정의 (코드 레벨 단일 소스 진리)
+DB 연결 실패 시 또는 DB에 값이 없을 때 사용
+"""
+
+from typing import Any
+
+# 사용자 설정 기본값 (user_settings)
+DEFAULT_USER_SETTINGS: dict[str, Any] = {
+    # 자동매매
+    "time_scheduler_on": False,
+    "auto_buy_on": False,
+    "buy_time_start": "09:00",
+    "buy_time_end": "15:20",
+    "auto_sell_on": False,
+    "sell_time_start": "09:00",
+    "sell_time_end": "15:20",
+    # 텔레그램
+    "tele_on": False,
+    "telegram_chat_id": "",
+    "telegram_bot_token_test": "",
+    "telegram_bot_token_real": "",
+    
+    # 투자모드
+    "trade_mode": "test",
+    "test_virtual_deposit": 10000000,
+    "test_virtual_balance": 10000000,
+    
+    # 증권사 선택
+    "broker": "kiwoom",
+    
+    # 매수 설정
+    "max_daily_total_buy_on": False,
+    "max_daily_total_buy_amt": 0,
+    "max_stock_cnt_on": True,
+    "max_stock_cnt": 5,
+    "buy_amt_on": True,
+    "buy_amt": 1000000,
+    "rebuy_block_on": True,
+    "rebuy_block_period": "today",
+    # 매수 차단 — 개별 종목 단위 (업종 단위 필터와 분리, P10/P23 책임 분리)
+    # buy_filter.apply_buy_block_guards()에서 업종 파라미터와 함께 소비되지만
+    # 필터 계층이 다름: sector_* = 업종 단위, buy_block_* = 개별 종목 단위 매수 차단
+    "buy_block_rise_on": True,
+    "buy_block_rise_pct": 7.0,
+    "buy_block_fall_on": True,
+    "buy_block_fall_pct": -7.0,
+    "boost_high_breakout_on": False,
+    "boost_high_breakout_score": 1.0,
+    "boost_order_ratio_on": False,
+    "boost_order_ratio_pct": 20,
+    "boost_order_ratio_score": 1.0,
+    "boost_program_net_buy_on": False,
+    "boost_program_net_buy_score": 1.0,
+
+    # 매수 가산점 — 뉴스 호재 (NWS)
+    "boost_news_on": False,
+    "boost_news_score": 1.0,
+    "news_boost_ttl_sec": 300,
+    "news_keywords": "수주,최대실적,특허,공급계약,무상증자,세계최초,MOU,FDA승인,독점공급,대규모수주",
+
+    # 리스크 관리
+    "max_single_stock_exposure": 20000000,
+
+    # 리스크 매니저 (일일 손실 한도, 손실률, 연속 손실)
+    # risk_manager_on=False 기본 — 사용자가 명시적으로 ON 해야 활성화
+    # risk_block_buy_on=True 기본 — 리스크 조건 충족 시 매수 차단 (보수적)
+    # risk_block_sell_on=False 기본 — 매도 차단은 손실 확대 방지를 위해 사용자 명시적 ON 필요
+    "risk_manager_on": False,
+    "daily_loss_limit_on": True,               # 일일 손실 한도 활성화 (기본 ON — 기존 항상 실행 동작 유지)
+    "daily_loss_limit": -500000,               # 일일 손실 한도 (원, 음수)
+    "daily_loss_rate_limit_on": False,
+    "daily_loss_rate_limit": -5.0,             # 일일 손실률 한도 (%)
+    "risk_block_buy_on": True,
+    "risk_block_sell_on": False,
+    "consecutive_loss_limit_on": False,
+    "consecutive_loss_limit": 3,               # 연속 손실 N회 시 중단
+
+    # 시장 지수 급락 가드 (KOSPI/KOSDAQ 각각 독립 설정 — 그룹 마스터 토글 없음)
+    # 매수/매도 차단 여부는 기존 risk_block_buy_on/risk_block_sell_on 재사용 (동일 차단 체계)
+    # KRX 활성 시간대 자료 미수신 시 매수 차단, NXT 전용 시간대 미수신은 정상 허용
+    "market_guard_kospi_on": False,
+    "market_guard_kospi_drop_threshold_pct": -5.0,   # KOSPI 임계 (%, 음수)
+    "market_guard_kosdaq_on": False,
+    "market_guard_kosdaq_drop_threshold_pct": -5.0,  # KOSDAQ 임계 (%, 음수)
+
+     # 매도 설정
+     "tp_apply": False,
+     "tp_val": 0,
+     "loss_apply": False,
+     "loss_val": 0,
+     "ts_apply": False,
+     "ts_start_val": 0,
+     "ts_drop_val": 0,
+     
+     # 매도 주문 설정
+     "sell_price_type": "mkt",
+     "sell_offset": 0,
+     "sell_custom_qty": 0,
+     "sell_qty_type": "%",
+
+     # 업종순위 설정 (업종 단위 필터 — 개별 종목 단위 매수 차단은 # 매수 설정 참조)
+     "sector_min_rise_ratio_pct": 60.0,
+     "sector_min_trade_amt": 0.0,
+     "sector_max_targets": 3,
+     "sector_sort_keys": ["score"],
+     # 런타임 파생 데이터 — DB에 저장되지 않음 (P22 데이터 정합성).
+     # 원본 SSOT: master_stocks_cache(종목 DB 로드 결과)의 sector 필드.
+     # 파생 경로: engine_cache._load_preboot_cache(기동 시 자동 구성) /
+     #           market_close_pipeline._rebuild_sector_layout(장마감 재구성).
+     # 캐시 갱신 시 _RUNTIME_ONLY_KEYS 보존 (engine_config.refresh_engine_integrated_system_settings_cache).
+     "sector_stock_layout": [],
+     # 업종 점수 3단계 가산점 슬라이더 (-100~+100, 기본값 0) — 조정 만점 = 업종 수 × (1 + slider/100)
+     "sector_bonus_rise_ratio_slider": 0,
+     "sector_bonus_relative_strength_slider": 0,
+     "sector_bonus_trade_amount_slider": 0,
+
+     # 주문 간격 (매수/매도 각각, 초 단위, 1~300, 1초 단위, 기본 30초)
+     "buy_interval_on": False,
+     "buy_interval_sec": 30,
+     "sell_interval_on": False,
+     "sell_interval_sec": 30,
+
+     # 수신율 임계값
+     "sector_start_threshold_pct": 70.0,
+
+     # 종목별 매도 설정
+     "sell_per_symbol": {},
+
+     # 브로커 기능별 매핑
+     "broker_config": {},
+
+     # 장마감 후 스케줄러 토글 (기본값 True = 활성화)
+     # ws_subscribe_end 도달 시 확정 데이터 다운로드 실행 여부
+     "scheduler_market_close_on": True,
+
+     # UI 설정 — 실시간 현재가 플래시 효과 (기본값 True = 활성화)
+     "ui_price_flash_on": True,
+
+     # 타임테이블 사용자 조정 시각 (장 시작 전 사전 준비 — P10 SSOT 기본값)
+     # 거래소 고정 7개 시간(08:00~20:00)은 코드 상수로 daily_time_scheduler.py:21-49에 유지.
+     "timetable.realtime_reset": "07:58",      # 실시간 항목 초기화
+     "timetable.ws_prestart": "07:59",         # WS 구독 사전 시작
+     "timetable.krx_pre_subscribe": "08:59",   # KRX 정규장 사전 구독
+     "timetable.confirmed_download": "20:40",  # 장 후 확정 데이터 다운로드 (NXT 종료 이후)
+
+     # 구독 한도 (종목 실시간 시세 0B 동시 구독 최대 개수, 기본 200)
+     # 보유종목 우선 등록 후 필터 통과 종목은 남은 자리만큼만 등록
+     "subscribe.max_0b_count": 200,
+
+     # 수익현황/수익상세 WS push 일별 요약 범위 (최근 N거래일, 0=전체)
+     "daily_summary_days": 20,
+
+     # 확정 시세 다운로드 시 사용할 증권사 (빈 문자열 = 현재 broker 사용)
+     "confirmed_data_broker": "",
+
+     # 실시간 시세 자동 구독 토글 (기본값 False = 수동)
+     "quote_auto_subscribe": False,
+ }
+ 
+ # 시스템 설정 기본값 (system_config)
+DEFAULT_SYSTEM_CONFIG: dict[str, Any] = {
+    # 마켓 시간(krx_*/nxt_* 14키)은 daily_time_scheduler.py 코드 상수가 SSOT (ARCHITECTURE.md 명시).
+    # DB 중복 저장 제거 (COUPLING-S2 후속, P10 SSOT) — 런타임 참조 0건.
+
+    # 시스템 동작 설정
+    "db_connection_timeout": 30,
+    "db_retry_count": 3,
+    "db_retry_delay": 1.0,
+    "cache_size": 1000,
+    "log_level": "INFO",
+}
+

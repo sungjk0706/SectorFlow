@@ -1,0 +1,218 @@
+주식
+API 가이드
+주식
+WEBSOCKET [주식] 실시간 시세
+기본정보
+Method	POST
+운영 도메인	wss://openapi.ls-sec.co.kr:9443
+모의투자 도메인	wss://openapi.ls-sec.co.kr:29443
+URL	/websocket
+Format	JSON
+Content-Type	application/json; charset=UTF-8
+Description	주식 주문현황 및 시세, 투자정보를 실시간으로 확인할 수 있습니다.
+
+(통합)거래원	UK1	-	
+요청
+Header
+Element	한글명	type	Required	Length	Description
+token	접근토큰	String	Y	1000	Access Token을 설정하기 위한 Header Parameter
+tr_type	거래 Type	String	Y	1	1: 계좌등록, 2: 계좌해제, 3: 실시간 시세 등록, 4: 실시간 시세 해제
+Body
+Element	한글명	type	Required	Length	Description
+tr_cd	거래 CD	String	Y	3	LS증권 거래코드
+tr_key	단축코드	String	Y	10	단축코드 7자리 + 공백 3자리
+응답
+Header
+Element	한글명	type	Required	Length	Description
+tr_cd	거래CD	String	Y	3	LS증권 거래코드
+Body
+Element	한글명	type	Required	Length	Description
+offerno1	매도증권사코드1	String	Y	3	
+bidno1	매수증권사코드1	String	Y	3	
+offertrad1	매도회원사명1	String	Y	6	
+bidtrad1	매수회원사명1	String	Y	6	
+tradmdvol1	매도거래량1	Number	Y	10	
+tradmsvol1	매수거래량1	Number	Y	10	
+tradmdrate1	매도거래량비중1	Number	Y	6.2	
+tradmsrate1	매수거래량비중1	Number	Y	6.2	
+tradmdcha1	매도거래량직전대비1	Number	Y	10	
+tradmscha1	매수거래량직전대비1	Number	Y	10	
+offerno2	매도증권사코드2	String	Y	3	
+bidno2	매수증권사코드2	String	Y	3	
+offertrad2	매도회원사명2	String	Y	6	
+bidtrad2	매수회원사명2	String	Y	6	
+tradmdvol2	매도거래량2	Number	Y	10	
+tradmsvol2	매수거래량2	Number	Y	10	
+tradmdrate2	매도거래량비중2	Number	Y	6.2	
+tradmsrate2	매수거래량비중2	Number	Y	6.2	
+tradmdcha2	매도거래량직전대비2	Number	Y	10	
+tradmscha2	매수거래량직전대비2	Number	Y	10	
+offerno3	매도증권사코드3	String	Y	3	
+bidno3	매수증권사코드3	String	Y	3	
+offertrad3	매도회원사명3	String	Y	6	
+bidtrad3	매수회원사명3	String	Y	6	
+tradmdvol3	매도거래량3	Number	Y	10	
+tradmsvol3	매수거래량3	Number	Y	10	
+tradmdrate3	매도거래량비중3	Number	Y	6.2	
+tradmsrate3	매수거래량비중3	Number	Y	6.2	
+tradmdcha3	매도거래량직전대비3	Number	Y	10	
+tradmscha3	매수거래량직전대비3	Number	Y	10	
+offerno4	매도증권사코드4	String	Y	3	
+bidno4	매수증권사코드4	String	Y	3	
+offertrad4	매도회원사명4	String	Y	6	
+bidtrad4	매수회원사명4	String	Y	6	
+tradmdvol4	매도거래량4	Number	Y	10	
+tradmsvol4	매수거래량4	Number	Y	10	
+tradmdrate4	매도거래량비중4	Number	Y	6.2	
+tradmsrate4	매수거래량비중4	Number	Y	6.2	
+tradmdcha4	매도거래량직전대비4	Number	Y	10	
+tradmscha4	매수거래량직전대비4	Number	Y	10	
+offerno5	매도증권사코드5	String	Y	3	
+bidno5	매수증권사코드5	String	Y	3	
+offertrad5	매도회원사명5	String	Y	6	
+bidtrad5	매수회원사명5	String	Y	6	
+tradmdvol5	매도거래량5	Number	Y	10	
+tradmsvol5	매수거래량5	Number	Y	10	
+tradmdrate5	매도거래량비중5	Number	Y	6.2	
+tradmsrate5	매수거래량비중5	Number	Y	6.2	
+tradmdcha5	매도거래량직전대비5	Number	Y	10	
+tradmscha5	매수거래량직전대비5	Number	Y	10	
+ftradmdvol	외국계증권사매도합계	String	Y	10	
+ftradmsvol	외국계증권사매수합계	String	Y	10	
+ftradmdrate	외국계증권사매도거래량비중	Number	Y	6.2	
+ftradmsrate	외국계증권사매수거래량비중	Number	Y	6.2	
+ftradmdcha	외국계증권사매도거래량직전대비	String	Y	10	
+ftradmscha	외국계증권사매수거래량직전대비	String	Y	10	
+shcode	단축코드	String	Y	9	
+tradmdval1	매도거래대금1	Number	Y	15	
+tradmsval1	매수거래대금1	Number	Y	15	
+tradmdavg1	매도평균단가1	Number	Y	7	
+tradmsavg1	매수평균단가1	Number	Y	7	
+tradmdval2	매도거래대금2	Number	Y	15	
+tradmsval2	매수거래대금2	Number	Y	15	
+tradmdavg2	매도평균단가2	Number	Y	7	
+tradmsavg2	매수평균단가2	Number	Y	7	
+tradmdval3	매도거래대금3	Number	Y	15	
+tradmsval3	매수거래대금3	Number	Y	15	
+tradmdavg3	매도평균단가3	Number	Y	7	
+tradmsavg3	매수평균단가3	Number	Y	7	
+tradmdval4	매도거래대금4	Number	Y	15	
+tradmsval4	매수거래대금4	Number	Y	15	
+tradmdavg4	매도평균단가4	Number	Y	7	
+tradmsavg4	매수평균단가4	Number	Y	7	
+tradmdval5	매도거래대금5	Number	Y	15	
+tradmsval5	매수거래대금5	Number	Y	15	
+tradmdavg5	매도평균단가5	Number	Y	7	
+tradmsavg5	매수평균단가5	Number	Y	7	
+ftradmdval	외국계증권사매도거래대금	Number	Y	15	
+ftradmsval	외국계증권사매수거래대금	Number	Y	15	
+ftradmdavg	외국계증권사매도평균단가	Number	Y	7	
+ftradmsavg	외국계증권사매수평균단가	Number	Y	7	
+time	수신시간	String	Y	6	
+exchname	거래소명	String	Y	3	
+ex_shcode	거래소별단축코드	String	Y	10	
+Example
+Request
+{
+ "header": {
+  "token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiJ9.eyJzdWIiOiJ0b2tlbiIsImF1ZCI6IjlkZmJhYWNiLWY5NWUtNGMwMi1hZGFlLTBhYzI3YTU4ZmM2NiIsIm5iZiI6MTc0MjUxMDc3OSwiZ3JhbnRfdHlwZSI6IkNsaWVudCIsImlzcyI6InVub2d3IiwiZXhwIjoxNzQyNTk0NDAwLCJpYXQiOjE3NDI1MTA3NzksImp0aSI6IlBTUFphQmp2S3V6V3VjeGlvYzhib21jdmsxY0U3cUs2V2JubSJ9.r8eqrh_LoLWvOa2WhCBLnXilk-2LZLSGcOSwJ3KuNolsHwRFvncrG0FEdw2sqhk",
+  "tr_type": "3"
+ },
+ "body": {
+  "tr_cd": "UK1",
+  "tr_key": "U000080   "
+ }
+}
+Response
+{
+    "header": {
+        "tr_cd": "UK1",
+        "tr_key": "U000080   "
+    },
+    "body": {
+        "tradmdrate1": "17.12",
+        "tradmdvol5": "11626",
+        "tradmdvol3": "24816",
+        "tradmdrate3": "9.46",
+        "tradmdrate2": "10.35",
+        "tradmdvol4": "16941",
+        "offerno2": "012",
+        "tradmdrate5": "4.43",
+        "offerno1": "050",
+        "tradmdrate4": "6.46",
+        "offerno4": "003",
+        "offerno3": "002",
+        "bidtrad4": "메릴린",
+        "offerno5": "005",
+        "bidtrad5": "메리츠",
+        "bidtrad2": "신한투",
+        "bidtrad3": "NH투자",
+        "tradmdvol1": "44893",
+        "bidtrad1": "키움증",
+        "tradmdvol2": "27140",
+        "tradmdval3": "486",
+        "offertrad5": "미래에",
+        "tradmdval4": "331",
+        "tradmdval1": "880",
+        "tradmdval2": "532",
+        "tradmdval5": "228",
+        "tradmscha2": "0",
+        "ftradmdval": "0",
+        "tradmscha1": "0",
+        "tradmscha4": "0",
+        "tradmscha3": "0",
+        "offertrad2": "NH투자",
+        "offertrad1": "키움증",
+        "offertrad4": "한국증",
+        "offertrad3": "신한투",
+        "tradmdcha5": "0",
+        "tradmdcha4": "0",
+        "tradmsavg1": "19655",
+        "tradmsavg2": "19584",
+        "tradmscha5": "0",
+        "tradmdavg1": "19615",
+        "tradmdavg3": "19602",
+        "tradmdavg2": "19632",
+        "tradmdavg5": "19656",
+        "tradmdavg4": "19563",
+        "tradmsavg3": "19571",
+        "ftradmscha": "0000000000",
+        "tradmsavg4": "19763",
+        "ftradmdvol": "0000000911",
+        "tradmsavg5": "19726",
+        "ftradmdavg": "0",
+        "tradmsval3": "414",
+        "tradmsval2": "793",
+        "tradmsval5": "260",
+        "ftradmsval": "0",
+        "tradmsval4": "356",
+        "tradmsval1": "841",
+        "tradmdcha1": "3",
+        "tradmdcha3": "0",
+        "tradmdcha2": "0",
+        "bidno1": "050",
+        "bidno3": "012",
+        "tradmsvol5": "13187",
+        "bidno2": "002",
+        "tradmsvol4": "18035",
+        "bidno5": "010",
+        "bidno4": "044",
+        "tradmsvol1": "42815",
+        "tradmsvol3": "21185",
+        "tradmsvol2": "40513",
+        "tradmsrate2": "15.45",
+        "tradmsrate1": "16.33",
+        "tradmsrate4": "6.88",
+        "tradmsrate3": "8.08",
+        "tradmsrate5": "5.03",
+        "ftradmsvol": "0000018035",
+        "ftradmdcha": "0000000000",
+        "ftradmsrate": "6.88",
+        "shcode": "000080",
+        "ftradmsavg": "0",
+        "ftradmdrate": "0.35",
+        "ex_shcode": "U000080",
+        "time": "160349",
+        "exchname": "NXT"
+    }
+}

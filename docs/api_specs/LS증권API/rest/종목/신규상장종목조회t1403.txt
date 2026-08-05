@@ -1,0 +1,258 @@
+REST [주식] 기타
+기본정보
+Method
+POST
+Domain
+https://openapi.ls-sec.co.kr:8080
+URL
+/stock/etc
+Format
+JSON
+Content-Type
+application/json; charset=UTF-8
+Description
+신용잔고 및 신규상장종목 등 종목별 기타정보를 확인할 수 있는 서비스입니다.
+
+TR명 TR코드 초당 전송 건수
+신규상장종목조회 t1403 1
+
+요청
+Header
+Element
+한글명
+type
+Required
+Length
+Description
+content-type
+컨텐츠타입
+String
+Y
+100
+LS증권 제공 API를 호출하기 위한 Request Body 데이터 포맷으로 "application/json; charset=utf-8 설정"
+authorization
+접근토큰
+String
+Y
+1000
+OAuth 토큰이 필요한 API 경우 발급한 Access Token을 설정하기 위한 Request Heaeder Parameter
+tr_cd
+거래 CD
+String
+Y
+10
+LS증권 거래코드
+tr_cont
+연속 거래 여부
+String
+Y
+1
+연속거래 여부
+Y:연속○
+N:연속×
+tr_cont_key
+연속 거래 Key
+String
+Y
+18
+연속일 경우 그전에 내려온 연속키 값 올림
+mac_address
+MAC 주소
+String
+Y
+12
+법인인 경우 필수 세팅
+Body
+Element
+한글명
+type
+Required
+Length
+Description
+t1403InBlock
+t1403InBlock
+Object
+Y
+-
+
+  -gubun
+구분
+String
+Y
+1
+0: 전체, 1:코스피, 2:코스닥
+  -styymm
+시작상장월
+String
+Y
+6
+YYYYMM
+  -enyymm
+종료상장월
+String
+Y
+6
+YYYYMM
+  -idx
+IDX
+Number
+Y
+4
+연속조회시 OutBlock의 동일필드 입력
+응답
+Header
+Element
+한글명
+type
+Required
+Length
+Description
+content-type
+컨텐츠타입
+String
+Y
+100
+LS증권 제공 API를 호출하기 위한 Request Body 데이터 포맷으로 "application/json; charset=utf-8 설정"
+tr_cd
+거래 CD
+String
+Y
+10
+LS증권 거래코드
+tr_cont
+연속 거래 여부
+String
+Y
+1
+연속거래 여부
+Y:연속○
+N:연속×
+tr_cont_key
+연속 거래 Key
+String
+Y
+18
+연속일 경우 그전에 내려온 연속키 값 올림
+Body
+Element
+한글명
+type
+Required
+Length
+Description
+t1403OutBlock
+t1403OutBlock
+Object
+Y
+-
+
+  -idx
+IDX
+Number
+Y
+4
+
+t1403OutBlock1
+t1403OutBlock1
+Object Array
+Y
+-
+
+  -hname
+한글명
+String
+Y
+20
+
+  -price
+현재가
+Number
+Y
+8
+
+  -sign
+전일대비구분
+String
+Y
+1
+
+  -change
+전일대비
+Number
+Y
+8
+
+  -diff
+등락율
+Number
+Y
+6.2
+
+  -volume
+누적거래량
+Number
+Y
+12
+
+  -kmprice
+공모가
+Number
+Y
+8
+
+  -date
+등록일
+String
+Y
+8
+
+  -recprice
+등록일기준가
+Number
+Y
+8
+
+  -kmdiff
+기준가등락율
+Number
+Y
+6.2
+
+  -close
+등록일종가
+Number
+Y
+8
+
+  -recdiff
+등록일등락율
+Number
+Y
+6.2
+
+  -shcode
+종목코드
+String
+Y
+6
+
+Example
+Request
+{
+  "t1403InBlock" : {
+    "gubun" : "1",
+    "styymm" : "1",
+    "enyymm" : "1",
+    "idx" : 0
+  }
+}
+Response
+{
+    "rsp_cd": "00000",
+    "t1403OutBlock": {
+        "idx": 0
+    },
+    "t1403OutBlock1": [
+    ],
+    "rsp_msg": "정상적으로 조회가 완료되었습니다."
+}

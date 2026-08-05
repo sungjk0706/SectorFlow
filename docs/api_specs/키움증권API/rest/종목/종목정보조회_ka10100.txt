@@ -1,0 +1,259 @@
+국내주식
+REST
+종목정보
+기본 정보
+※ ka10100 (종목정보 조회)
+종목 코드로 종목 정보를 조회합니다.
+
+Method
+POST
+운영 도메인
+https://api.kiwoom.com
+모의투자 도메인
+https://mockapi.kiwoom.com(KRX만 지원가능)
+URL
+/api/dostk/stkinfo
+Format
+JSON
+Content-Type
+application/json;charset=UTF-8
+
+
+TR명
+종목정보 조회
+ka10100
+요청Header
+
+Element
+한글명
+type
+Required
+Length
+Description
+authorization
+접근토큰
+String
+Y
+1000
+토큰 지정시 토큰타입("Bearer") 붙혀서 호출
+예) Bearer Egicyx...
+cont-yn
+연속조회여부
+String
+N
+1
+응답 Header의 연속조회여부값이 Y일 경우 다음데이터 요청시 응답 Header의 cont-yn값 세팅
+next-key
+연속조회키
+String
+N
+50
+응답 Header의 연속조회여부값이 Y일 경우 다음데이터 요청시 응답 Header의 next-key값 세팅
+api-id
+TR명
+String
+Y
+10
+7자리 TR코드, ex) ka00001
+Body
+
+Element
+한글명
+type
+Required
+Length
+Description
+stk_cd
+종목코드
+String
+Y
+6
+종목코드 6자리
+응답Header
+
+Element
+한글명
+type
+Required
+Length
+Description
+cont-yn
+연속조회여부
+String
+N
+1
+다음 데이터가 있을시 Y값 전달
+next-key
+연속조회키
+String
+N
+50
+다음 데이터가 있을시 다음 키값 전달
+api-id
+TR명
+String
+Y
+10
+7자리 TR코드, ex) ka00001
+Body
+
+Element
+한글명
+type
+Required
+Length
+Description
+code
+종목코드
+String
+N
+
+단축코드
+name
+종목명
+String
+N
+40
+
+listCount
+상장주식수
+String
+N
+16
+단위: 1주, 좌측 0-padding 처리된 부호 포함 16자리 숫자
+auditInfo
+감리구분
+String
+N
+
+
+regDay
+상장일
+String
+N
+8
+YYYYMMDD
+lastPrice
+전일종가
+String
+N
+8
+단위: 원, 좌측 0-padding 처리된 부호 포함 8자리 숫자
+state
+종목상태
+String
+N
+
+
+marketCode
+시장구분코드
+String
+N
+
+
+marketName
+시장명
+String
+N
+
+
+upName
+업종명
+String
+N
+
+
+upSizeName
+회사크기분류
+String
+N
+
+
+companyClassName
+회사분류
+String
+N
+
+코스닥만 존재함
+orderWarning
+투자유의종목여부
+String
+N
+
+0: 해당없음, 2: 정리매매, 3: 단기과열, 4: 투자위험, 5: 투자경과, 1: ETF투자주의요망(ETF인 경우만 전달
+nxtEnable
+NXT가능여부
+String
+N
+
+Y: 가능
+	•	PythonPython Java Javascript
+
+import requests
+import json
+
+# 종목정보 조회
+def fn_ka10100(token, data, cont_yn='N', next_key=''):
+	# 1. 요청할 API URL
+	#host = 'https://mockapi.kiwoom.com' # 모의투자
+	host = 'https://api.kiwoom.com' # 실전투자
+	endpoint = '/api/dostk/stkinfo'
+	url =  host + endpoint
+
+	# 2. header 데이터
+	headers = {
+		'Content-Type': 'application/json;charset=UTF-8', # 컨텐츠타입
+		'authorization': f'Bearer {token}', # 접근토큰
+		'cont-yn': cont_yn, # 연속조회여부
+		'next-key': next_key, # 연속조회키
+		'api-id': 'ka10100', # TR명
+	}
+
+	# 3. http POST 요청
+	response = requests.post(url, headers=headers, json=data)
+
+	# 4. 응답 상태 코드와 데이터 출력
+	print('Code:', response.status_code)
+	print('Header:', json.dumps({key: response.headers.get(key) for key in ['next-key', 'cont-yn', 'api-id']}, indent=4, ensure_ascii=False))
+	print('Body:', json.dumps(response.json(), indent=4, ensure_ascii=False))  # JSON 응답을 파싱하여 출력
+
+# 실행 구간
+if __name__ == '__main__':
+	# 1. 토큰 설정
+	MY_ACCESS_TOKEN = '사용자 AccessToken' # 접근토큰
+
+	# 2. 요청 데이터
+	params = {
+		'stk_cd': '005930', # 종목코드 종목코드 6자리
+	}
+
+	# 3. API 실행
+	fn_ka10100(token=MY_ACCESS_TOKEN, data=params)
+
+	# next-key, cont-yn 값이 있을 경우
+	# fn_ka10100(token=MY_ACCESS_TOKEN, data=params, cont_yn='Y', next_key='nextkey..')
+Example
+
+Request
+{
+	"stk_cd" : "005930"
+}
+Response
+{
+	"code":"005930",
+	"name":"삼성전자",
+	"listCount":"0000000026034239",
+	"auditInfo":"정상",
+	"regDay":"20090803",
+	"lastPrice":"00136000",
+	"state":"증거금20%|담보대출|신용가능",
+	"marketCode":"0",
+	"marketName":"거래소",
+	"upName":"금융업",
+	"upSizeName":"대형주",
+	"companyClassName":"",
+	"orderWarning":"0",
+	"nxtEnable":"Y",
+	"return_code":0,
+	"return_msg":"정상적으로 처리되었습니다"
+}

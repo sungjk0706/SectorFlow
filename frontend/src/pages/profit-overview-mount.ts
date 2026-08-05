@@ -1,0 +1,503 @@
+// frontend/src/pages/profit-overview-mount.ts
+// 수익현황 페이지 — mount 헬퍼 함수들 (F-05 분할, P24 단순성)
+// profit-overview.ts에서 이관. 순수 이동, 동작 변경 없음.
+
+import { createProfitChart } from '../components/canvas-profit-chart'
+import { createSectorDonut, type SectorDonutCenter } from '../components/canvas-sector-donut'
+import { globalSettingsManager } from '../settings'
+import { FONT_SIZE, FONT_WEIGHT, COLOR, RADIUS, pnlColor, fmtWon } from '../components/common/ui-styles'
+import { createActionButton } from '../components/common/button'
+import { sectionTitle } from '../components/common/settings-common'
+import { ACCOUNT_LABELS_REAL, ACCOUNT_LABELS_TEST } from '../components/common/account-labels'
+import { hotStore, getPositionIndex } from '../stores/hotStore'
+import { uiStore } from '../stores/uiStore'
+import { api } from '../api/client'
+import {
+  buildChartFromDailySummary,
+  buildSectorDonutRows,
+  computeCumulativePnl,
+  filterTradeRows,
+} from './profit-math'
+import {
+  renderAccountVals as renderAccountValsShared,
+  type AccountValsParams,
+} from './profit-shared'
+import { getTradingToday } from '../utils/date'
+import { saveProfitDateRange, type ProfitDateRange, type ProfitDateRangeMode } from './profit-overview-date'
+import { renderSectorStockPnl, updateExpandToggleBtn, buildStockListSection } from './profit-overview-sector-pnl'
+import type { ProfitOverviewState } from './profit-overview'
+
+/* ── 헬퍼 ── */
+
+const ROW_CSS = `display:flex;justify-content:space-between;padding:10px 4px;border-bottom:1px solid ${COLOR.hoverBg};font-size:${FONT_SIZE.body};`
+
+/* ── 계좌 현황 렌더 (shared 순수 함수 래핑) ── */
+
+export function renderAccountVals(state: ProfitOverviewState): void {
+  const hotState = hotStore.getState()
+  const settings = globalSettingsManager.getSettings()
+  const params: AccountValsParams = {
+    account: hotState.account,
+    positions: hotState.positions,
+    masterStocks: hotState.masterStocks,
+    positionCount: hotState.positionCount ?? 0,
+    isTestMode: settings?.trade_mode === 'test',
+    buyHistory: state.buyHistory,
+    sellHistory: state.sellHistory,
+    realAccountContainer: state.realAccountContainer,
+    testAccountContainer: state.testAccountContainer,
+    accountValRefs: state.accountValRefs,
+    testAccountValRefs: state.testAccountValRefs,
+    holdingCountSpan: state.holdingCountSpan,
+    holdingCountSpanTest: state.holdingCountSpanTest,
+  }
+  renderAccountValsShared(params)
+}
+
+/* ── 필터된 뷰 데이터 갱신: 도넛 차트 + 업종별 종목 수익 동시 업데이트 ── */
+
+/** 도넛 차트 중앙 레이블 결정 — 활성 quickLabel 우선, 없으면 "누적 손익" (P21 투명성).
+ *  quickLabel이 "당일"/"5거래일"/"당월"/"누적" 중 하나일 때 해당 레이블 반환 (전일 제거 — 다단계 1세션 결정 1). */
+function makeCenterTitle(quickLabel: string | undefined): string {
+  if (!quickLabel) return '누적 손익'
+  if (quickLabel === '당일') return '당일 손익'
+  if (quickLabel === '5거래일') return '5거래일 손익'
+  if (quickLabel === '당월') return '당월 손익'
+  return '누적 손익'
+}
+
+/** 도넛 차트 중앙 손익 계산 — 계좌 현황과 동일 SSOT 사용 (P10/P22).
+ *  데이터 소스: filteredSellHistory (날짜 필터 적용).
+ *  분모: 매수원금 기반 (aggregatePnl — 설계서 0절 최상위 원칙).
+ *        실전모드: 증권사 서버가 SSOT — rate null → '-' 표시 (AGENTS.md 실전vs테스트 테이블).
+ *  도넛 중앙 + 업종별 종목 수익 섹션 타이틀 중앙 요소가 동일 소스(computeCumulativePnl)를 공유 (P10 SSOT).
+ *  rate null 시 도넛/타이틀 모두 수익률 미표시. */
+function buildDonutCenter(state: ProfitOverviewState): SectorDonutCenter {
+  const settings = globalSettingsManager.getSettings()
+  const isTestMode = settings?.trade_mode === 'test'
+  const { pnl, rate } = computeCumulativePnl({
+    sellHistory: state.filteredSellHistory,
+    isTestMode,
+    dateFrom: state.localDateFrom,
+    dateTo: state.localDateTo,
+  })
+  return { pnl, rate, title: makeCenterTitle(state.localQuickLabel) }
+}
+
+export function refreshFilteredViews(state: ProfitOverviewState): void {
+  state.filteredSellHistory = filterTradeRows(state.sellHistory, state.localDateFrom, state.localDateTo)
+  const center = buildDonutCenter(state)
+  state.donutChart?.updateData(buildSectorDonutRows(state.filteredSellHistory), center)
+  updateSectorSummary(state, center)
+  renderSectorStockPnl(state)
+}
+
+/** 업종별 종목 수익 섹션 타이틀 중앙 요약 갱신 — 도넛 중앙(center)과 동일 소스 재사용 (P10 SSOT).
+ *  기간 라벨 + 총 실현손익 + 수익률. rate null 시 수익률 미표시 (P20 폴백 금지). */
+function updateSectorSummary(state: ProfitOverviewState, center: SectorDonutCenter): void {
+  const { sectorSummaryLabelRef, sectorSummaryPnlRef, sectorSummaryRateRef } = state
+  if (sectorSummaryLabelRef) sectorSummaryLabelRef.textContent = center.title ?? '누적 손익'
+  if (sectorSummaryPnlRef && center.pnl !== undefined) {
+    const sign = center.pnl >= 0 ? '+' : ''
+    sectorSummaryPnlRef.textContent = `${sign}${fmtWon(center.pnl)}`
+    sectorSummaryPnlRef.style.color = pnlColor(center.pnl)
+  }
+  if (sectorSummaryRateRef) {
+    if (center.rate !== undefined && center.rate !== null) {
+      const sign = center.rate >= 0 ? '+' : ''
+      sectorSummaryRateRef.textContent = `${sign}${center.rate.toFixed(2)}%`
+      sectorSummaryRateRef.style.color = pnlColor(center.rate)
+    } else {
+      sectorSummaryRateRef.textContent = ''
+    }
+  }
+}
+
+/* ── mount 헬퍼: 좌측 컬럼 (거래일별 수익률 차트 + 업종별 수익 도넛) ── */
+
+export function buildLeftColumn(): { leftColumn: HTMLDivElement; chartContainer: HTMLDivElement; donutChartContainer: HTMLDivElement } {
+  const leftColumn = document.createElement('div')
+  Object.assign(leftColumn.style, { flex: '5', minWidth: '0', display: 'flex', flexDirection: 'column', gap: '4px' })
+
+  // 좌측 상단: 거래일별 수익률 차트
+  const chartPanel = document.createElement('div')
+  Object.assign(chartPanel.style, { flex: '1', minWidth: '0', overflow: 'hidden', padding: '0 4px' })
+  chartPanel.appendChild(sectionTitle('거래일별 실현 수익률'))
+  const chartContainer = document.createElement('div')
+  Object.assign(chartContainer.style, { height: '100%' })
+  chartPanel.appendChild(chartContainer)
+
+  // 좌측 하단: 업종별 수익 도넛 차트
+  const donutPanel = document.createElement('div')
+  Object.assign(donutPanel.style, { flex: '1', minWidth: '0', overflow: 'hidden', padding: '0 4px', display: 'flex', flexDirection: 'column' })
+  donutPanel.appendChild(sectionTitle('업종별 수익 분포'))
+  const donutChartContainer = document.createElement('div')
+  Object.assign(donutChartContainer.style, { flex: '1', minHeight: '0' })
+  donutPanel.appendChild(donutChartContainer)
+
+  leftColumn.appendChild(chartPanel)
+  leftColumn.appendChild(donutPanel)
+  return { leftColumn, chartContainer, donutChartContainer }
+}
+
+/* ── mount 헬퍼: 계좌 현황 행 (실전/테스트 공통 — P23 중복 제거) ── */
+
+function buildAccountRows(
+  labels: readonly string[],
+  isTestMode: boolean,
+  valRefs: HTMLSpanElement[],
+  holdingCountTarget: (el: HTMLSpanElement) => void,
+): HTMLDivElement {
+  const container = document.createElement('div')
+  container.style.display = isTestMode ? 'none' : ''
+  for (let i = 0; i < labels.length; i++) {
+    // P25: 행 단위 격리 — 한 행 생성 throw 시 다음 행 계속 렌더링.
+    // valRefs.push(val)은 인덱스 기반(accountValRefs/testAccountValRefs)이므로
+    // 실패 시 더미 push로 인덱스 정합성 유지 (P22).
+    try {
+      const row = document.createElement('div')
+      row.style.cssText = ROW_CSS
+      if (i % 2 === 1) row.style.backgroundColor = COLOR.zebra
+      const label = document.createElement('span')
+      if (i === 4) {
+        label.appendChild(document.createTextNode('보유 종목 평가금액 ('))
+        const cntSpan = document.createElement('span')
+        cntSpan.style.color = COLOR.down
+        cntSpan.style.fontWeight = 'bold'
+        label.appendChild(cntSpan)
+        label.appendChild(document.createTextNode('종목)'))
+        holdingCountTarget(cntSpan)
+      } else {
+        label.textContent = labels[i]
+      }
+      const val = document.createElement('span')
+      Object.assign(val.style, { textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: FONT_SIZE.body })
+      row.appendChild(label)
+      row.appendChild(val)
+      container.appendChild(row)
+      valRefs.push(val)
+    } catch (e) {
+      console.error('[profit-overview] account row build error', e)
+      const dummyVal = document.createElement('span')
+      dummyVal.textContent = '-'
+      valRefs.push(dummyVal)
+    }
+  }
+  return container
+}
+
+/* ── mount 헬퍼: 우측 계좌 현황 패널 (실전 + 테스트 + 업종별 종목 수익) ── */
+
+export function buildAccountPanel(state: ProfitOverviewState, isTestMode: boolean): HTMLDivElement {
+  const accountPanel = document.createElement('div')
+  Object.assign(accountPanel.style, { flex: '5', minWidth: '0', overflow: 'auto', padding: '0 4px', display: 'flex', flexDirection: 'column' })
+
+  const accountHeader = sectionTitle('계좌 현황')
+  accountPanel.appendChild(accountHeader)
+
+  // 실전모드 컨테이너
+  state.realAccountContainer = buildAccountRows(
+    ACCOUNT_LABELS_REAL, isTestMode, state.accountValRefs,
+    (el) => { state.holdingCountSpan = el },
+  )
+  accountPanel.appendChild(state.realAccountContainer)
+
+  // 테스트모드 컨테이너
+  state.testAccountContainer = buildAccountRows(
+    ACCOUNT_LABELS_TEST, !isTestMode, state.testAccountValRefs,
+    (el) => { state.holdingCountSpanTest = el },
+  )
+  accountPanel.appendChild(state.testAccountContainer)
+
+  // 업종별 종목 수익 섹션 — 타이틀 + 전체보기 버튼 + 컨테이너
+  accountPanel.appendChild(buildStockListSection(state))
+
+  return accountPanel
+}
+
+/* ── mount 헬퍼: 하단 상세 분석 보기 버튼 ── */
+
+export function buildLowerSection(): HTMLDivElement {
+  const lower = document.createElement('div')
+  Object.assign(lower.style, { flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '8px 0' })
+  const detailBtn = createActionButton({
+    label: '상세 분석 보기 →',
+    variant: 'secondary',
+    padding: '10px 24px',
+    borderRadius: RADIUS.sm,
+    onClick: () => { location.hash = '#/profit-detail' },
+  })
+  Object.assign(detailBtn.style, {
+    fontWeight: FONT_WEIGHT.semibold,
+    border: '1px solid ' + COLOR.borderDark,
+    background: COLOR.surfaceLight,
+    color: COLOR.down,
+  })
+  lower.appendChild(detailBtn)
+  return lower
+}
+
+/* ── 날짜 범위 적용 (레이스 가드 — P19: 빠른 연속 클릭 시 구식 응답 덮어쓰기 방지) ── */
+
+async function applyDateRange(
+  state: ProfitOverviewState,
+  from: string,
+  to: string,
+  days?: number,
+  label?: string,
+  mode?: ProfitDateRangeMode,
+): Promise<void> {
+  const seq = ++state.applyDateRangeSeq
+  try {
+    const settings = globalSettingsManager.getSettings()
+    const tradeMode = settings?.trade_mode || 'test'
+    let actualFrom = from
+    let actualTo = to
+    let actualDays = days
+    // 빠른 선택은 버튼 생성 시점의 날짜를 사용하지 않고 현재 거래일 기준으로 재계산.
+    if (label === '당일') {
+      actualFrom = ''
+      actualTo = ''
+      actualDays = 1
+    } else if (label === '당월') {
+      const today = getTradingToday()
+      actualFrom = today ? `${today.slice(0, 7)}-01` : ''
+      actualTo = today
+      actualDays = undefined
+    }
+    const needsRangeFill = !actualFrom || !actualTo
+    // 현재 거래일을 받기 전에는 임의의 과거 거래일로 대체하지 않고 빈 자료로 대기.
+    const unresolvedRange = needsRangeFill && actualDays === undefined
+    if (unresolvedRange && seq !== state.applyDateRangeSeq) return
+    const data = unresolvedRange
+      ? []
+      : await api.getDailySummary(actualFrom, actualTo, tradeMode, actualDays)
+    if (seq !== state.applyDateRangeSeq) return
+    // days 기반(5거래일/누적) — 응답 데이터에서 실제 from/to 추출
+    if (needsRangeFill && actualDays !== undefined && data.length > 0) {
+      actualFrom = String(data[0].date)
+      actualTo = String(data[data.length - 1].date)
+    }
+    // from/to가 빈 문자열이었던 quickRange 버튼 — 입력란에 실제 범위 동기화
+    if (needsRangeFill || label === '당월') {
+      state.chart?.setDateRange(actualFrom, actualTo, label)
+    }
+    state.chart?.updateData(buildChartFromDailySummary(data))
+    // 차트 데이터를 페이지 로컬 상태에 저장 (공유 store 덮어쓰기 금지 — P10 SSOT)
+    state.chartDailySummary = data
+    state.localDateFrom = actualFrom
+    state.localDateTo = actualTo
+    state.localQuickLabel = label
+    state.localRangeMode = mode ?? (label ? 'quick' : 'manual')
+    saveProfitDateRange(actualFrom, actualTo, label, state.localRangeMode)
+    // days 기반 버튼(당일/5거래일/누적) 시 N값을 백엔드에 전파 → WS push 범위 연동 (결정 B)
+    if (actualDays !== undefined) {
+      try {
+        await globalSettingsManager.saveSection({ daily_summary_days: actualDays })
+      } catch (e) {
+        console.warn('[profit-overview] daily_summary_days 저장 실패:', e)
+      }
+    }
+    refreshFilteredViews(state)
+  } catch (err) {
+    console.error('[profit-overview] daily-summary fetch failed:', err)
+  }
+}
+
+/* ── 거래일 변경 시 자동 기간만 현재 기준으로 재조회 ── */
+function refreshAutomaticDateRange(state: ProfitOverviewState): void {
+  if (state.localRangeMode === 'manual' || state.localQuickLabel === '누적') return
+  const today = getTradingToday()
+  if (!today) return
+
+  if (state.localRangeMode === 'default') {
+    void applyDateRange(state, `${today.slice(0, 7)}-01`, today, undefined, undefined, 'default')
+    return
+  }
+  if (state.localQuickLabel === '당일') {
+    void applyDateRange(state, '', '', 1, '당일', 'quick')
+    return
+  }
+  if (state.localQuickLabel === '5거래일') {
+    void applyDateRange(state, '', '', 5, '5거래일', 'quick')
+    return
+  }
+  if (state.localQuickLabel === '당월') {
+    void applyDateRange(state, '', '', undefined, '당월', 'quick')
+  }
+}
+
+/* ── mount 헬퍼: 거래일별 수익률 차트 생성 + 초기 데이터 조회 ── */
+
+export function buildProfitChart(
+  state: ProfitOverviewState,
+  chartContainer: HTMLDivElement,
+  storedFrom: string,
+  storedTo: string,
+  saved: ProfitDateRange | null,
+): void {
+  const todayStr = getTradingToday()
+  const monthStart = todayStr ? `${todayStr.slice(0, 7)}-01` : ''
+  // 빠른 기간은 실제 날짜를 버튼 생성 시점에 고정하지 않고 선택 시 현재 거래일로 계산.
+  const quickDateRangesConfig = [
+    { label: '당일', days: 1 },
+    { label: '5거래일', days: 5 },
+    { label: '당월', from: monthStart, to: todayStr },
+    { label: '누적', days: 0 },
+  ]
+
+  state.chart = createProfitChart({
+    container: chartContainer,
+    data: buildChartFromDailySummary(state.chartDailySummary),
+    dateFrom: storedFrom,
+    dateTo: storedTo,
+    quickDateRanges: quickDateRangesConfig,
+    initialActiveQuickLabel: saved?.quickLabel,
+    onDateRangeChange: (from, to, days, label) => { void applyDateRange(state, from, to, days, label) },
+  })
+
+  // 초기 차트 데이터 — 저장된 quickLabel이 있으면 해당 버튼 기준 조회, 없으면 from/to로 조회
+  if (saved?.quickLabel) {
+    const savedQuick = quickDateRangesConfig.find(qr => qr.label === saved.quickLabel)
+    if (savedQuick) {
+      void applyDateRange(state, savedQuick.from ?? '', savedQuick.to ?? '', savedQuick.days, savedQuick.label, 'quick')
+    }
+  } else {
+    void applyDateRange(state, storedFrom, storedTo, undefined, undefined, saved?.mode ?? 'default')
+  }
+}
+
+/* ── mount 헬퍼: 업종별 수익 도넛 차트 생성 (필터링된 데이터로 초기 생성) ── */
+
+export function buildDonutChart(state: ProfitOverviewState, donutChartContainer: HTMLDivElement): void {
+  state.donutChart = createSectorDonut({
+    container: donutChartContainer,
+    data: buildSectorDonutRows(state.filteredSellHistory),
+    center: buildDonutCenter(state),
+    onSectorClick: (sector: string) => {
+      // 좌측 도넛 범례 업종 클릭 → 우측 종목수익 해당 업종으로 스크롤 + 하이라이트
+      state.activeSector = sector
+      state.allExpanded = false
+      updateExpandToggleBtn(state)
+      renderSectorStockPnl(state)
+      // 렌더 후 해당 업종 요소 찾아 스크롤
+      requestAnimationFrame(() => {
+        if (!state.sectorStockListContainer) return
+        const target = state.sectorStockListContainer.querySelector(`[data-sector="${CSS.escape(sector)}"]`) as HTMLElement | null
+        if (target) {
+          target.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        }
+      })
+    },
+  })
+}
+
+/* ── mount 헬퍼: rAF 배칭 렌더 (dirty 플래그 기반 selective update) ── */
+
+function flushRender(state: ProfitOverviewState): void {
+  state.rafId = requestAnimationFrame(() => {
+    state.rafId = null
+    if (!state.mounted) return
+
+    if (state.dirtyAccount) {
+      state.dirtyAccount = false
+      if (state.dataReady) renderAccountVals(state)
+    }
+
+    if (state.dirtyHistory) {
+      state.dirtyHistory = false
+      if (state.dataReady) renderAccountVals(state)
+      refreshFilteredViews(state)
+    }
+
+    if (state.dirtyChart) {
+      state.dirtyChart = false
+      const latest = hotStore.getState()
+      const settings = globalSettingsManager.getSettings()
+      const tradeModeChanged = settings?.trade_mode !== state.prevTradeMode
+      // WS push dailySummary → 페이지 로컬 동기화 (P10 SSOT — 공유 store = 최근 N거래일)
+      // 단, 사용자가 선택한 localDateFrom/To는 유지하여 차트 날짜 범위는 변경하지 않음
+      // chartDailySummary/analysisDailySummary 명시적 분리 (3단계)
+      state.chartDailySummary = latest.dailySummary
+      state.analysisDailySummary = latest.dailySummary
+      if (tradeModeChanged) {
+        state.chart?.updateData(buildChartFromDailySummary(state.chartDailySummary))
+      }
+      refreshFilteredViews(state)
+      if (tradeModeChanged) {
+        state.prevTradeMode = settings?.trade_mode
+        const isTest = settings?.trade_mode === 'test'
+        if (state.realAccountContainer && state.testAccountContainer) {
+          state.realAccountContainer.style.display = isTest ? 'none' : ''
+          state.testAccountContainer.style.display = isTest ? '' : 'none'
+        }
+        renderAccountVals(state)
+      }
+    }
+  })
+}
+
+/* ── mount 헬퍼: hotStore 구독 + 실시간 틱 핸들러 ── */
+
+export function subscribeProfitOverviewStore(state: ProfitOverviewState, initState: ReturnType<typeof hotStore.getState>): void {
+  state.prevSellRef = initState.sellHistory
+  state.prevBuyRef = initState.buyHistory
+  state.prevDailySummaryRef = initState.dailySummary
+  state.prevAccountRef = initState.account
+  state.prevTradeMode = globalSettingsManager.getSettings()?.trade_mode
+  state.prevPositionsRef = initState.positions
+  state.prevMasterStocksRef = initState.masterStocks
+  state.mounted = true
+
+  state.unsubStore = hotStore.subscribe((curr) => {
+    const accountChanged = curr.account !== state.prevAccountRef || curr.positions !== state.prevPositionsRef || curr.masterStocks !== state.prevMasterStocksRef
+    const historyChanged = curr.sellHistory !== state.prevSellRef || curr.buyHistory !== state.prevBuyRef
+    const chartChanged = curr.dailySummary !== state.prevDailySummaryRef || globalSettingsManager.getSettings()?.trade_mode !== state.prevTradeMode
+
+    if (!accountChanged && !historyChanged && !chartChanged) return
+
+    if (accountChanged) {
+      state.prevAccountRef = curr.account
+      state.prevPositionsRef = curr.positions
+      state.prevMasterStocksRef = curr.masterStocks
+      state.dirtyAccount = true
+    }
+    if (historyChanged) {
+      state.prevSellRef = curr.sellHistory
+      state.prevBuyRef = curr.buyHistory
+      state.sellHistory = curr.sellHistory
+      state.buyHistory = curr.buyHistory
+      state.dirtyHistory = true
+    }
+    if (chartChanged) {
+      state.prevDailySummaryRef = curr.dailySummary
+      state.prevTradeMode = globalSettingsManager.getSettings()?.trade_mode
+      state.dirtyChart = true
+    }
+
+    if (state.rafId !== null) return
+    flushRender(state)
+  })
+
+  let prevReferenceDay = uiStore.getState().marketPhase.chart_reference_trading_day
+  state.unsubUiStore = uiStore.subscribe((uiState) => {
+    const nextReferenceDay = uiState.marketPhase.chart_reference_trading_day
+    if (nextReferenceDay === prevReferenceDay) return
+    prevReferenceDay = nextReferenceDay
+    refreshAutomaticDateRange(state)
+  })
+
+  // 보유종목 실시간 틱 시 계좌현황 평가손익/수익률 갱신 (개별 종목 행과 동일 소스 — P22 데이터 정합성)
+  state.onRealDataTick = (e: Event) => {
+    try {
+      const code = (e as CustomEvent<string>).detail
+      if (getPositionIndex(code) !== undefined) {
+        state.dirtyAccount = true
+        if (state.rafId === null) flushRender(state)
+      }
+    } catch (err) {
+      console.error('[profit-overview] real-data-tick error', err)
+    }
+  }
+  window.addEventListener('real-data-tick', state.onRealDataTick)
+}
