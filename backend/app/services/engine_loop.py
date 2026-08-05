@@ -173,6 +173,22 @@ async def _token_recovery_loop(router, broker_nm: str) -> None:
                 engine_state.state.access_token = token
                 engine_state.state.token_failure_kind = None
                 engine_state.state.token_recovery_in_progress = False
+                # ── 관리자 누락 방지 — 부팅 시 토큰이 없어 생성되지 않았던 관리자를 ──
+                # 회복 성공 시점에 생성 (부팅 시 이미 생성된 경우 중복 생성 방지).
+                if engine_state.state.auto_trade is None:
+                    from backend.app.services.engine_lifecycle import sync_sell_overrides as _sync_sell_overrides_from_settings
+                    from backend.app.services.engine_config import _get_settings
+                    engine_state.state.auto_trade = AutoTradeManager(
+                        get_settings_fn=_get_settings,
+                    )
+                    _sync_sell_overrides_from_settings()
+                    # 매수 한도 화면 갱신 — 관리자 생성 전에는 0원으로 표시되었으므로
+                    # 생성 즉시 실제 거래내역 기반 값으로 갱신 (P21 사용자 투명성).
+                    try:
+                        from backend.app.services.engine_account import _broadcast_buy_limit_status
+                        await _broadcast_buy_limit_status()
+                    except Exception:
+                        logger.warning("[연결] 토큰 회복 후 매수 한도 브로드캐스트 실패", exc_info=True)
                 log_message(f" [연결] {broker_display} 토큰 회복 성공. 정상 모드 전환.")
                 await broadcast_engine_status()
                 return

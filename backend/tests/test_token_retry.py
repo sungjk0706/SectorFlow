@@ -552,3 +552,97 @@ class TestDuplicateLogicRemoval:
                "compute_backoff_delay" in dir(kiwoom_rest)
         assert getattr(ls_rest, "compute_backoff_delay", None) is auth_utils.compute_backoff_delay or \
                "compute_backoff_delay" in dir(ls_rest)
+
+
+# ── 토큰 회복 성공 시 자동매매 관리자 생성 검증 ──────────────────────────────────
+
+
+class TestTokenRecoveryCreatesAutoTradeManager:
+    """토큰 회복 루프 성공 시 누락된 자동매매 관리자가 생성되는지 검증.
+
+    버그: 부팅 시 토큰 발급 일시 실패 → 관리자 미생성 → 회복 루프 성공해도
+    관리자가 생성되지 않아 매수·매도·체결 갱신이 전부 멈추는 문제.
+    수정: 회복 성공 경로에 관리자 생성 + 매도 설정 동기화 추가.
+    """
+
+    @pytest.mark.asyncio
+    async def test_recovery_success_creates_auto_trade_when_missing(self):
+        """회복 성공 시 관리자가 없으면 생성 + 매도 설정 동기화 + 매수 한도 브로드캐스트."""
+        from backend.app.services import engine_loop, engine_state
+
+        mock_state = MagicMock()
+        mock_state.token_recovery_in_progress = False
+        mock_state.token_failure_kind = "transient"
+        mock_state.access_token = None
+        mock_state.engine_shutdown_requested = False
+        mock_state.broker_tokens = {}
+        mock_state.auto_trade = None  # 부팅 시 토큰 없어서 관리자 미생성 상태
+
+        async def _fake_get_tokens(_router):
+            mock_state.broker_tokens = {"kiwoom": "recovered_token"}
+            mock_state.token_failure_kind = None
+            return None
+
+        mock_router = MagicMock()
+        created_manager = MagicMock()
+
+        with (
+            patch.object(engine_state, "state", mock_state),
+            patch.object(engine_loop, "_get_all_tokens_async", new_callable=AsyncMock, side_effect=_fake_get_tokens),
+            patch.object(engine_loop, "BROKER_DISPLAY_NAMES", {"kiwoom": "키움"}),
+            patch.object(engine_loop.asyncio, "sleep", new_callable=AsyncMock),
+            patch("backend.app.services.engine_lifecycle.broadcast_engine_status", new_callable=AsyncMock),
+            patch("backend.app.services.engine_lifecycle.log_message"),
+            patch("backend.app.services.engine_lifecycle.sync_sell_overrides") as mock_sync,
+            patch("backend.app.services.engine_config._get_settings", return_value={}),
+            patch.object(engine_loop, "AutoTradeManager", return_value=created_manager) as mock_ctor,
+            patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock) as mock_buy_broadcast,
+        ):
+            await engine_loop._token_recovery_loop(mock_router, "kiwoom")
+
+        # 회복 성공 → 관리자 생성 + 매도 설정 동기화 + 매수 한도 브로드캐스트
+        assert mock_state.auto_trade is created_manager
+        mock_ctor.assert_called_once()
+        mock_sync.assert_called_once()
+        mock_buy_broadcast.assert_awaited()
+
+    @pytest.mark.asyncio
+    async def test_recovery_success_skips_creation_when_already_exists(self):
+        """회복 성공 시 관리자가 이미 있으면 중복 생성하지 않음 (부팅 시 정상 생성된 경우)."""
+        from backend.app.services import engine_loop, engine_state
+
+        mock_state = MagicMock()
+        mock_state.token_recovery_in_progress = False
+        mock_state.token_failure_kind = "transient"
+        mock_state.access_token = None
+        mock_state.engine_shutdown_requested = False
+        mock_state.broker_tokens = {}
+        existing_manager = MagicMock()
+        mock_state.auto_trade = existing_manager  # 부팅 시 이미 생성된 상태
+
+        async def _fake_get_tokens(_router):
+            mock_state.broker_tokens = {"kiwoom": "recovered_token"}
+            mock_state.token_failure_kind = None
+            return None
+
+        mock_router = MagicMock()
+
+        with (
+            patch.object(engine_state, "state", mock_state),
+            patch.object(engine_loop, "_get_all_tokens_async", new_callable=AsyncMock, side_effect=_fake_get_tokens),
+            patch.object(engine_loop, "BROKER_DISPLAY_NAMES", {"kiwoom": "키움"}),
+            patch.object(engine_loop.asyncio, "sleep", new_callable=AsyncMock),
+            patch("backend.app.services.engine_lifecycle.broadcast_engine_status", new_callable=AsyncMock),
+            patch("backend.app.services.engine_lifecycle.log_message"),
+            patch("backend.app.services.engine_lifecycle.sync_sell_overrides") as mock_sync,
+            patch("backend.app.services.engine_config._get_settings", return_value={}),
+            patch.object(engine_loop, "AutoTradeManager") as mock_ctor,
+            patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock) as mock_buy_broadcast,
+        ):
+            await engine_loop._token_recovery_loop(mock_router, "kiwoom")
+
+        # 관리자가 이미 있으므로 중복 생성하지 않음 — 기존 관리자 유지
+        assert mock_state.auto_trade is existing_manager
+        mock_ctor.assert_not_called()
+        mock_sync.assert_not_called()
+        mock_buy_broadcast.assert_not_awaited()
