@@ -141,7 +141,7 @@ class TestLsRestEnsureToken:
         api = _make_ls_rest()
         from backend.app.core.ls_rest import LsTokenInfo
         api._token_info = LsTokenInfo(access_token="tok", expires_in=100, issued_at=time.time())
-        with patch.object(api, "_issue_token", AsyncMock(return_value=True)) as mock_issue:
+        with patch.object(api, "_issue_token", AsyncMock(return_value=(True, None))) as mock_issue:
             result = await api.ensure_token()
             assert result is True
             mock_issue.assert_called_once()
@@ -149,7 +149,7 @@ class TestLsRestEnsureToken:
     async def test_no_token_triggers_issue(self):
         api = _make_ls_rest()
         api._token_info = None
-        with patch.object(api, "_issue_token", AsyncMock(return_value=False)) as mock_issue:
+        with patch.object(api, "_issue_token", AsyncMock(return_value=(False, "permanent"))) as mock_issue:
             result = await api.ensure_token()
             assert result is False
             mock_issue.assert_called_once()
@@ -174,33 +174,51 @@ class TestLsRestIssueToken:
         mock_client = mock_httpx_client(post_return=mock_resp)
         api._client = mock_client
         with patch.object(api, "ensure_client", AsyncMock()):
-            result = await api._issue_token()
-            assert result is True
+            ok, kind = await api._issue_token()
+            assert ok is True
+            assert kind is None
             assert api._token_info is not None
             assert api._token_info.access_token == "new_tok"
 
     async def test_no_credentials(self):
         api = _make_ls_rest(app_key="", app_secret="")
-        result = await api._issue_token()
-        assert result is False
+        ok, kind = await api._issue_token()
+        assert ok is False
+        assert kind == "permanent"
 
     async def test_http_failure(self):
         api = _make_ls_rest()
         mock_resp = mock_httpx_response(500)
         mock_client = mock_httpx_client(post_return=mock_resp)
         api._client = mock_client
-        with patch.object(api, "ensure_client", AsyncMock()):
-            result = await api._issue_token()
-            assert result is False
+        with (
+            patch.object(api, "ensure_client", AsyncMock()),
+            patch("backend.app.core.ls_rest.asyncio.sleep", new_callable=AsyncMock),
+        ):
+            ok, kind = await api._issue_token()
+            assert ok is False
+            assert kind == "transient"
 
-    async def test_token_field_missing(self):
+    async def test_token_field_missing_with_keyword_is_permanent(self):
+        api = _make_ls_rest()
+        mock_resp = mock_httpx_response(200, {"other": "data"}, text='{"error":"invalid_client"}')
+        mock_client = mock_httpx_client(post_return=mock_resp)
+        api._client = mock_client
+        with patch.object(api, "ensure_client", AsyncMock()):
+            ok, kind = await api._issue_token()
+            assert ok is False
+            assert kind == "permanent"
+            assert api._token_info is None
+
+    async def test_token_field_missing_no_keyword_is_transient(self):
         api = _make_ls_rest()
         mock_resp = mock_httpx_response(200, {"other": "data"})
         mock_client = mock_httpx_client(post_return=mock_resp)
         api._client = mock_client
         with patch.object(api, "ensure_client", AsyncMock()):
-            result = await api._issue_token()
-            assert result is False
+            ok, kind = await api._issue_token()
+            assert ok is False
+            assert kind == "transient"
             assert api._token_info is None
 
     async def test_429_retry_then_success(self):
@@ -213,16 +231,18 @@ class TestLsRestIssueToken:
             patch.object(api, "ensure_client", AsyncMock()),
             patch("backend.app.core.ls_rest.asyncio.sleep", new_callable=AsyncMock),
         ):
-            result = await api._issue_token()
-            assert result is True
+            ok, kind = await api._issue_token()
+            assert ok is True
+            assert kind is None
             assert api._token_info.access_token == "tok"
 
     async def test_no_client(self):
         api = _make_ls_rest()
         api._client = None
         with patch.object(api, "ensure_client", AsyncMock()):
-            result = await api._issue_token()
-            assert result is False
+            ok, kind = await api._issue_token()
+            assert ok is False
+            assert kind == "transient"
 
     async def test_exception_retry(self):
         api = _make_ls_rest()
@@ -232,8 +252,19 @@ class TestLsRestIssueToken:
             patch.object(api, "ensure_client", AsyncMock()),
             patch("backend.app.core.ls_rest.asyncio.sleep", new_callable=AsyncMock),
         ):
-            result = await api._issue_token()
-            assert result is False
+            ok, kind = await api._issue_token()
+            assert ok is False
+            assert kind == "transient"
+
+    async def test_permanent_http_401_returns_immediately(self):
+        api = _make_ls_rest()
+        mock_resp = mock_httpx_response(401)
+        mock_client = mock_httpx_client(post_return=mock_resp)
+        api._client = mock_client
+        with patch.object(api, "ensure_client", AsyncMock()):
+            ok, kind = await api._issue_token()
+            assert ok is False
+            assert kind == "permanent"
 
 
 # ── LsRestAPI.revoke_token ─────────────────────────────────────────────────────

@@ -12,7 +12,17 @@ import logging
 import time
 from dataclasses import dataclass
 import httpx
+from backend.app.core.auth_utils import (
+    classify_token_failure,
+    compute_backoff_delay,
+    retry_once_on_401,
+)
 from backend.app.core.broker_urls import build_broker_urls, BROKER_DISPLAY_NAMES
+from backend.app.core.constants import (
+    TOKEN_ISSUE_MAX_RETRIES,
+    TOKEN_PERMANENT_HTTP_CODES,
+    TOKEN_TRANSIENT_HTTP_CODES,
+)
 logger = logging.getLogger(__name__)
 
 _BROKER_DISPLAY = BROKER_DISPLAY_NAMES["ls"]
@@ -103,7 +113,8 @@ class LsRestAPI:
         async with self._lock:
             if self._token_info and not self._token_info.is_expired():
                 return True
-            return await self._issue_token()
+            ok, _ = await self._issue_token()
+            return ok
 
     def get_token(self) -> Optional[str]:
         """토큰 반환"""
@@ -111,16 +122,21 @@ class LsRestAPI:
             return self._token_info.access_token
         return None
 
-    async def _issue_token(self) -> bool:
-        """OAuth2 토큰 발급 (exponential backoff 재시도)"""
+    async def _issue_token(self) -> tuple[bool, Optional[str]]:
+        """OAuth2 토큰 발급 (exponential backoff 재시도).
+
+        공통 백오프·실패 분류 함수 적용 (설계서 결정 1·6·7).
+        반환: (성공여부, 실패종류) — 실패종류: "transient"/"permanent"/None(성공).
+        영구 실패(키 없음·401/403·인증 거부 코드)는 즉시 반환하여 회복 루프 진입 차단.
+        """
         if not self.app_key or not self.app_secret:
-            logger.warning("[연결] %s API 키 또는 시크릿 키 없음", _BROKER_DISPLAY)
-            return False
+            logger.warning("[연결] %s 토큰 발급 불가 — API 키 또는 시크릿 키 없음", _BROKER_DISPLAY)
+            return False, "permanent"
 
         await self.ensure_client()
         if self._client is None:
             logger.warning("[연결] %s HTTP 클라이언트 초기화 안됨", _BROKER_DISPLAY)
-            return False
+            return False, "transient"
 
         url = f"{self.base_url}{self.TOKEN_URL}"
         headers = {"Content-Type": "application/x-www-form-urlencoded"}
@@ -131,53 +147,88 @@ class LsRestAPI:
             "scope": "oob",
         }
 
-        max_retries = 3
-        for attempt in range(max_retries):
+        last_failure_kind: Optional[str] = None
+        for attempt in range(TOKEN_ISSUE_MAX_RETRIES):
             try:
                 if attempt > 0:
-                    wait_sec = 5 * attempt
+                    wait_sec = compute_backoff_delay(attempt)
                     logger.warning(
-                        f"[연결] {_BROKER_DISPLAY} 토큰 발급 재시도 {attempt+1}/{max_retries} — {wait_sec}초 대기"
+                        "[연결] %s 토큰 발급 재시도 %d/%d — %.1f초 대기",
+                        _BROKER_DISPLAY, attempt + 1, TOKEN_ISSUE_MAX_RETRIES, wait_sec,
                     )
                     await asyncio.sleep(wait_sec)
 
                 resp = await self._client.post(url, headers=headers, data=body, timeout=15)
                 data = resp.json() if resp.text else {}
 
-                if resp.status_code == 429:
-                    wait_sec = 10 * (attempt + 1)
+                # 일시 실패 HTTP 코드(429/5xx) — 공통 백오프 후 재시도
+                if resp.status_code in TOKEN_TRANSIENT_HTTP_CODES:
+                    last_failure_kind = classify_token_failure(resp.status_code)
+                    wait_sec = compute_backoff_delay(attempt)
                     logger.warning(
-                        f"[연결] {_BROKER_DISPLAY} 요청 과다 — {wait_sec}초 대기 후 재시도"
+                        "[연결] %s 토큰 발급 일시 실패 (응답코드=%s) — %.1f초 대기 후 재시도 (%d/%d)",
+                        _BROKER_DISPLAY, resp.status_code, wait_sec, attempt + 1, TOKEN_ISSUE_MAX_RETRIES,
                     )
                     await asyncio.sleep(wait_sec)
                     continue
 
-                if resp.status_code != 200:
-                    logger.warning(f"[연결] {_BROKER_DISPLAY} 토큰 발급 실패 (응답코드={resp.status_code})")
-                    return False
+                # 영구 실패 HTTP 코드(401/403) — 즉시 반환 (회복 루프 진입 차단)
+                if resp.status_code in TOKEN_PERMANENT_HTTP_CODES:
+                    failure_kind = classify_token_failure(resp.status_code)
+                    logger.warning(
+                        "[연결] %s 토큰 발급 영구 실패 (응답코드=%s)",
+                        _BROKER_DISPLAY, resp.status_code,
+                    )
+                    return False, failure_kind
 
+                # 기타 != 200 — 분류 후 반환
+                if resp.status_code != 200:
+                    failure_kind = classify_token_failure(resp.status_code, response_text=resp.text)
+                    logger.warning(
+                        "[연결] %s 토큰 발급 실패 (응답코드=%s)",
+                        _BROKER_DISPLAY, resp.status_code,
+                    )
+                    return False, failure_kind
+
+                # 200 — 토큰 파싱
                 access_token = data.get("access_token")
                 expires_in = data.get("expires_in", 86400)
 
                 if not access_token:
-                    logger.warning("[연결] %s 응답 성공이지만 토큰 없음", _BROKER_DISPLAY)
-                    return False
+                    # 응답 본문에서 LS 인증 거부 키워드 검사 (invalid_client 등)
+                    failure_kind = classify_token_failure(200, response_text=resp.text)
+                    if failure_kind == "permanent":
+                        logger.warning(
+                            "[연결] %s 인증 거부 — AppKey/AppSecret이 유효하지 않습니다. "
+                            "LS증권에서 발급한 키를 확인하세요. 응답: %s",
+                            _BROKER_DISPLAY, resp.text,
+                        )
+                    else:
+                        failure_kind = "transient"
+                        logger.warning(
+                            "[연결] %s 응답 성공이지만 토큰 없음",
+                            _BROKER_DISPLAY,
+                        )
+                    return False, failure_kind
 
                 self._token_info = LsTokenInfo(
                     access_token=access_token,
                     expires_in=expires_in,
                     issued_at=time.time(),
                 )
-                logger.info(f"[연결] {_BROKER_DISPLAY} 토큰 발급 성공 (유효기간={expires_in}초)")
-                return True
+                logger.info("[연결] %s 토큰 발급 성공 (유효기간=%s초)", _BROKER_DISPLAY, expires_in)
+                return True, None
 
             except Exception as e:
-                logger.warning(f"[연결] {_BROKER_DISPLAY} 토큰 발급 오류 (시도={attempt+1}): {e}", exc_info=True)
-                if attempt < max_retries - 1:
-                    continue
+                logger.warning(
+                    "[연결] %s 토큰 발급 오류 (시도=%d): %s: %s",
+                    _BROKER_DISPLAY, attempt + 1, type(e).__name__, e, exc_info=True,
+                )
+                last_failure_kind = classify_token_failure(None, exception=e)
+                continue
 
-        logger.warning(f"[연결] {_BROKER_DISPLAY} 토큰 발급 {max_retries}번 모두 실패")
-        return False
+        logger.warning("[연결] %s 토큰 발급 %d번 모두 실패", _BROKER_DISPLAY, TOKEN_ISSUE_MAX_RETRIES)
+        return False, last_failure_kind or "transient"
 
     async def revoke_token(self) -> bool:
         """OAuth2 접근 토큰 폐기 (LS증권 REST API 명세). 실패해도 예외 전파 안 함."""
@@ -294,6 +345,42 @@ class LsRestAPI:
                     )
                     await asyncio.sleep(wait_sec)
                     continue
+
+                # 401 감지 — 공통 재발급 헬퍼로 토큰 재발급 후 1회 재시도 (설계서 결정 3)
+                if resp.status_code == 401:
+                    logger.info("[연결] %s %s 주문 401 감지 — 토큰 재발급 후 1회 재시도", _BROKER_DISPLAY, order_kind)
+
+                    async def _do_post():
+                        r = await self._client.post(url, headers=headers, json=body, timeout=15)
+                        return r, r.status_code
+
+                    async def _reissue_token() -> bool:
+                        ok, _ = await self._issue_token()
+                        return ok
+
+                    async def _refresh_auth_header() -> None:
+                        if self._token_info:
+                            headers["Authorization"] = f"Bearer {self._token_info.access_token}"
+
+                    result = await retry_once_on_401(
+                        _reissue_token, _do_post, on_reissue_success=_refresh_auth_header
+                    )
+                    if isinstance(result, tuple) and result[1] == 200:
+                        r = result[0]
+                        data = r.json() if r.text else {}
+                        rsp_cd = data.get("rsp_cd", "")
+                        rsp_msg = data.get("rsp_msg", "")
+                        if rsp_cd == "00040" or rsp_cd == "00000":
+                            logger.info(f"[연결] {_BROKER_DISPLAY} {order_kind} 주문 성공: {rsp_msg}")
+                        else:
+                            logger.warning(f"[연결] {_BROKER_DISPLAY} {order_kind} 주문 실패: {rsp_cd} - {rsp_msg}")
+                        return data
+                    retry_status = result[1] if isinstance(result, tuple) else "?"
+                    logger.warning(
+                        "[연결] %s %s 401 재발급 후에도 실패 (응답코드=%s)",
+                        _BROKER_DISPLAY, order_kind, retry_status,
+                    )
+                    return None
 
                 if resp.status_code != 200:
                     logger.warning(f"[연결] {_BROKER_DISPLAY} {order_kind} 주문 실패 (응답코드={resp.status_code})")
