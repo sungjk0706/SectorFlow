@@ -681,19 +681,12 @@ sell_time_start — auto_sell_effective() 활성화
 sell_time_end   — auto_sell_effective() 비활성화
 ```
 
-WS 구독 구간 판정:
-```python
-is_ws_subscribe_window(settings):
-  1. 사전 구간(07:59~08:00): 시간 기반 판정 (_is_pre_subscribe_window())
-     - WS_SUBSCRIBE_PRESTART_TIME(07:59) <= t < NXT_PREMARKET_START(08:00)
-     - market_phase의 krx/nxt가 "휴장일"이면 False
-  2. 정규 구간: state.market_phase["nxt"]가 NXT_ACTIVE_PHASES에 포함 여부
-     (주말/공휴일은 calc_timebased_market_phase()가 nxt="휴장일"로 자동 차단)
-```
-
-엔진 루프의 WS 구간 감지: `engine_loop.py`의 메인 루프는 `ws_window_changed_event`를 대기하며:
-- 구간 진입: `ConnectorManager` 생성 + WS 연결 + 종목 구독.
-- 구간 종료: WS 연결 해제 + ConnectorManager 정리.
+WS 연결 제어 (자의적 판정 제거 — 2026-08-06):
+- 엔진 기동 시 `access_token` 있으면 즉시 `ConnectorManager` 생성 + WS 연결.
+- 엔진 루프는 `engine_stop_event` 대기만 수행 (중간 재판정 루프 제거).
+- 장마감(20:00) `_on_ws_subscribe_end()`가 `connector_manager.disconnect_all()` 직접 수행.
+- 시간대로 연결을 차단하는 자의적 판정은 제거됨. 증권사 서버가 24시간 연결을 허용하므로 앱이 시계로 판단하지 않음.
+- `is_nxt_only_window()`는 "KRX 단독 종목 제외" 용도(업종 점수 계산)로만 유지.
 
 ## S6. 상태 관리 (SSOT)
 
@@ -712,7 +705,7 @@ class EngineState:
     sector_score_index: dict                 — 업종별 점수 인덱스
 
     # 이벤트/락
-    engine_stop_event, ws_window_changed_event
+    engine_stop_event
     data_ready_event, token_ready_event
     bootstrap_event, sector_summary_ready_event
     engine_ready_event, server_ready_event
