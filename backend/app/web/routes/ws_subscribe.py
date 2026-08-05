@@ -2,7 +2,7 @@
 """WS 구독 제어 라우터 — 업종(0U) / 지수(0J) / 실시간시세(0B) 수동 시작·중지."""
 from __future__ import annotations
 from enum import Enum
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from backend.app.web.deps import get_current_user
 router = APIRouter(prefix="/api/ws-subscribe", tags=["ws-subscribe"])
@@ -23,14 +23,7 @@ async def start_subscription(
     body: SubscribeRequest,
     _: str = Depends(get_current_user),
 ):
-    """수동 구독 시작. WS 구독 구간 밖이면 400 에러."""
-    from backend.app.services.daily_time_scheduler import is_ws_subscribe_window
-    from backend.app.services.engine_state import state
-
-    settings = state.integrated_system_settings_cache
-    if not await is_ws_subscribe_window(settings):
-        raise HTTPException(status_code=400, detail="WS 구독 구간이 아닙니다")
-
+    """수동 구독 시작. 연결되어 있으면 허용 (시간대 자의적 판정 제거)."""
     from backend.app.services import ws_subscribe_control
 
     if body.group == SubscribeGroup.sector:

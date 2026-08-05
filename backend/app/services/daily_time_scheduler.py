@@ -466,17 +466,19 @@ def get_market_phase() -> dict:
 async def is_heavy_operation_allowed(now: datetime | None = None) -> bool:
     """
     대량 다운로드 및 무거운 배치 연산 허용 여부 반환.
-    - 실시간 연결 구간(market_phase 활성): 차단 (False)
+    - 실시간 데이터 살아있는 구간(사용자 설정 07:58~20:40): 차단 (False)
     - 그 외 시간: 허용 (True)
+
+    시간대 자의적 판정 제거 — is_realtime_reset_window() (사용자 설정 기반)로 교체 (P10 SSOT).
     """
     if now is None:
         now = _kst_now()
-    
-    # 실시간 연결 구간이면 무거운 작업 차단
-    if await is_ws_subscribe_window():
+
+    # 실시간 데이터 살아있는 구간이면 무거운 작업 차단
+    if await is_realtime_reset_window(engine_state.state.integrated_system_settings_cache):
         return False
-    
-    # 실시간 연결 구간 외면 허용
+
+    # 그 외 시간이면 허용
     return True
 
 
@@ -492,32 +494,6 @@ def _parse_hm(hm_str: str) -> tuple[int, int]:
     except Exception:
         logger.warning("[스케줄] 시간 파싱 실패 (시간 문자열=%r)", hm_str, exc_info=True)
         return 0, 0
-
-
-async def is_ws_subscribe_window(settings: dict | None = None) -> bool:
-    """
-    현재 시각이 웹소켓 구독 허용 구간인지 판단.
-    조건: market_phase의 NXT 페이즈가 활성 구간.
-    구독 구간 = NXT_ACTIVE_PHASES (프리마켓 ~ 애프터마켓, 08:00~20:00).
-    사전 구독 구간(07:59~08:00) 시간 기반 판정 추가 — 재시작 대응 (P16 살아있는 경로).
-    주말/공휴일은 calc_timebased_market_phase()가 nxt="휴장일"로 산정하므로 자동 차단.
-    settings 미전달 시 integrated_system_settings_cache에서 읽음.
-    SSOT: engine_state.state.market_phase가 구독 구간 판정의 단일 기준 (P10).
-    """
-    if settings is None:
-        settings = engine_state.state.integrated_system_settings_cache
-    if not settings:
-        raise RuntimeError("settings cache not initialized")
-
-    mp = engine_state.state.market_phase
-    nxt = mp.get("nxt", "")
-    if not nxt:
-        logger.error("[시스템] 장 상태 빈 문자열 감지: nxt=%r — 시간 기반 초기화 누락 가능", nxt)
-        return False
-    if nxt in NXT_ACTIVE_PHASES:
-        return True
-    # 사전 구독 구간(07:59~08:00) — 시간 기반 판정 (재시작 대응, P16)
-    return _is_pre_subscribe_window()
 
 
 def _realtime_reset_window_bounds(settings: dict) -> tuple[int, int]:
@@ -778,9 +754,7 @@ async def retry_pipeline_catchup_after_bootstrap() -> None:
     _cache_is_fresh = (_total > 0 and _stale_date == 0)
 
     # ── 판단: 실시간 필드 초기화 구간(07:58~20:40) — is_realtime_reset_window() 기반 (P10 SSOT).
-    # 사용자 설정(timetable.realtime_reset ~ timetable.confirmed_download)을 직접 참조하므로
-    # 거래소 고정 상수(08:00~20:00) 기반의 is_ws_subscribe_window()와 구간이 일치하지 않는
-    # 문제(00:00~07:58 단절 구간에서 다운로드 미발동)를 해결.
+    # 사용자 설정(timetable.realtime_reset ~ timetable.confirmed_download)을 직접 참조.
     # 초기화 구간 = 실시간 데이터가 살아있는 시간대 → 자동 다운로드 금지, 사용자 수동만 허용.
     # 초기화 구간 외(20:40 ~ 다음 거래일 07:58) = 실시간 데이터가 닫힌 시간대 → 데이터 불완정 시 자동 다운로드.
     in_reset_window = await is_realtime_reset_window(_settings)
@@ -1298,7 +1272,7 @@ async def _init_ws_subscribe_state() -> None:
     엔진 재기동 시 실시간 처리 준비 상태로 초기화 (자의적 시간대 판정 제거).
 
     항상 "실시간 구간 내" 처리를 수행 — GC 비활성화·필드 초기화·게이트 리셋·캐시 초기화.
-    시간대 자의적 판정(is_ws_subscribe_window) 제거로 사용자가 언제 앱을 켜든
+    시간대 자의적 판정 제거로 사용자가 언제 앱을 켜든
     동일하게 준비됨 (P16 살아있는 경로, P23 일관성).
     실시간 연결 자체는 엔진 루프 기동 시 _establish_realtime_connection()이 담당.
     """

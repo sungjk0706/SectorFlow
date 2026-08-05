@@ -27,17 +27,14 @@ def _patch_reconcile_with_trades():
 
 
 # ── is_realtime_reset_window 기본 패치 (autouse) ──────────────────────────────
-# 기존 테스트는 is_ws_subscribe_window만 patch → is_realtime_reset_window도 같은 값을
-# 반환하도록 묶어 기존 동작 유지. 개별 테스트에서 is_realtime_reset_window를 직접
-# patch하면 이 fixture보다 우선 적용됨.
+# 시간대 자의적 판정 제거 — is_realtime_reset_window 기본 False.
+# 개별 테스트에서 is_realtime_reset_window를 직접 patch하면 이 fixture보다 우선 적용됨.
 @pytest.fixture(autouse=True)
 def _patch_is_realtime_reset_window_default():
-    async def _same_as_ws(settings=None):
-        from backend.app.services.daily_time_scheduler import is_ws_subscribe_window
-        return await is_ws_subscribe_window(settings)
     with patch(
         "backend.app.services.daily_time_scheduler.is_realtime_reset_window",
-        new=_same_as_ws,
+        new_callable=AsyncMock,
+        return_value=False,
     ):
         yield
 
@@ -141,7 +138,6 @@ class TestLoadCachesPrebootNormal:
             patch("backend.app.db.stock_tables.load_master_stocks_table", new_callable=AsyncMock, return_value=snap),
             patch("backend.app.services.engine_account_notify._rebuild_layout_cache"),
             patch("backend.app.services.engine_account_notify.notify_cache"),
-            patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock, return_value=False),
             patch("backend.app.services.daily_time_scheduler.retry_pipeline_catchup_after_bootstrap", new_callable=AsyncMock),
             patch.object(engine_cache.asyncio, "create_task") as mock_create_task,
         ):
@@ -166,7 +162,6 @@ class TestLoadCachesPrebootNormal:
             patch("backend.app.db.stock_tables.load_master_stocks_table", new_callable=AsyncMock, return_value=snap),
             patch("backend.app.services.engine_account_notify._rebuild_layout_cache"),
             patch("backend.app.services.engine_account_notify.notify_cache"),
-            patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock, return_value=False),
             patch("backend.app.services.daily_time_scheduler.retry_pipeline_catchup_after_bootstrap", new_callable=AsyncMock),
             patch.object(engine_cache.asyncio, "create_task", side_effect=swallow_coro_side_effect),
         ):
@@ -187,7 +182,6 @@ class TestLoadCachesPrebootNormal:
             patch("backend.app.db.stock_tables.load_master_stocks_table", new_callable=AsyncMock, return_value=snap),
             patch("backend.app.services.engine_account_notify._rebuild_layout_cache"),
             patch("backend.app.services.engine_account_notify.notify_cache"),
-            patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock, return_value=False),
             patch("backend.app.services.daily_time_scheduler.retry_pipeline_catchup_after_bootstrap", new_callable=AsyncMock),
             patch.object(engine_cache.asyncio, "create_task", side_effect=swallow_coro_side_effect),
         ):
@@ -209,7 +203,6 @@ class TestLoadCachesPrebootNormal:
             patch("backend.app.db.stock_tables.load_master_stocks_table", new_callable=AsyncMock, return_value=snap),
             patch("backend.app.services.engine_account_notify._rebuild_layout_cache") as mock_rebuild,
             patch("backend.app.services.engine_account_notify.notify_cache"),
-            patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock, return_value=False),
             patch("backend.app.services.daily_time_scheduler.retry_pipeline_catchup_after_bootstrap", new_callable=AsyncMock),
             patch.object(engine_cache.asyncio, "create_task", side_effect=swallow_coro_side_effect),
         ):
@@ -232,7 +225,6 @@ class TestLoadCachesPrebootNormal:
             patch("backend.app.db.stock_tables.load_master_stocks_table", new_callable=AsyncMock, return_value=snap),
             patch("backend.app.services.engine_account_notify._rebuild_layout_cache"),
             patch("backend.app.services.engine_account_notify.notify_cache", mock_notify),
-            patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock, return_value=False),
             patch("backend.app.services.daily_time_scheduler.retry_pipeline_catchup_after_bootstrap", new_callable=AsyncMock),
             patch.object(engine_cache.asyncio, "create_task", side_effect=swallow_coro_side_effect),
         ):
@@ -253,7 +245,6 @@ class TestLoadCachesPrebootNormal:
             patch("backend.app.db.stock_tables.load_master_stocks_table", new_callable=AsyncMock, return_value=snap),
             patch("backend.app.services.engine_account_notify._rebuild_layout_cache"),
             patch("backend.app.services.engine_account_notify.notify_cache"),
-            patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock, return_value=False),
             patch("backend.app.services.daily_time_scheduler.retry_pipeline_catchup_after_bootstrap", new_callable=AsyncMock),
             patch.object(engine_cache.asyncio, "create_task", side_effect=swallow_coro_side_effect),
         ):
@@ -278,7 +269,6 @@ class TestLoadCachesPrebootNormal:
             patch("backend.app.db.stock_tables.load_master_stocks_table", new_callable=AsyncMock, return_value=snap),
             patch("backend.app.services.engine_account_notify._rebuild_layout_cache"),
             patch("backend.app.services.engine_account_notify.notify_cache"),
-            patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock, return_value=False),
             patch("backend.app.services.daily_time_scheduler.retry_pipeline_catchup_after_bootstrap", new_callable=AsyncMock),
             patch.object(engine_cache.asyncio, "create_task", side_effect=swallow_coro_side_effect),
         ):
@@ -297,8 +287,8 @@ class TestLoadCachesPrebootNormal:
 
 class TestLoadCachesPrebootWsWindow:
     @pytest.mark.asyncio
-    async def test_ws_window_true_resets_realtime_fields(self):
-        """WS 구간 True → _reset_realtime_fields 호출 + sector_summary_ready_event.set()."""
+    async def test_reset_window_true_resets_realtime_fields(self):
+        """초기화 구간 True → _reset_realtime_fields 호출 (업종순위는 항상 백그라운드 실행)."""
         from backend.app.services import engine_cache
 
         snap = _make_snapshot(3)
@@ -309,7 +299,7 @@ class TestLoadCachesPrebootWsWindow:
             patch("backend.app.db.stock_tables.load_master_stocks_table", new_callable=AsyncMock, return_value=snap),
             patch("backend.app.services.engine_account_notify._rebuild_layout_cache"),
             patch("backend.app.services.engine_account_notify.notify_cache"),
-            patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock, return_value=True),
+            patch("backend.app.services.daily_time_scheduler.is_realtime_reset_window", new_callable=AsyncMock, return_value=True),
             patch("backend.app.services.engine_initial_data._reset_realtime_fields", new_callable=AsyncMock) as mock_reset,
             patch("backend.app.services.daily_time_scheduler.retry_pipeline_catchup_after_bootstrap", new_callable=AsyncMock),
             patch.object(engine_cache.asyncio, "create_task", side_effect=swallow_coro_side_effect),
@@ -317,7 +307,8 @@ class TestLoadCachesPrebootWsWindow:
             await engine_cache._load_caches_preboot(_make_settings())
 
         mock_reset.assert_awaited_once()
-        mock_state.sector_summary_ready_event.set.assert_called_once()
+        # 업종순위는 항상 백그라운드 실행 — sector_summary_ready_event는 set하지 않음
+        mock_state.sector_summary_ready_event.set.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_ws_window_false_creates_recompute_task(self):
@@ -332,7 +323,6 @@ class TestLoadCachesPrebootWsWindow:
             patch("backend.app.db.stock_tables.load_master_stocks_table", new_callable=AsyncMock, return_value=snap),
             patch("backend.app.services.engine_account_notify._rebuild_layout_cache"),
             patch("backend.app.services.engine_account_notify.notify_cache"),
-            patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock, return_value=False),
             patch("backend.app.services.sector_data_provider.recompute_sector_summary_now", new_callable=AsyncMock),
             patch("backend.app.services.daily_time_scheduler.retry_pipeline_catchup_after_bootstrap", new_callable=AsyncMock),
             patch.object(engine_cache.asyncio, "create_task") as mock_create_task,
@@ -347,29 +337,6 @@ class TestLoadCachesPrebootWsWindow:
         assert mock_create_task.call_count >= 2
         # sector_summary_ready_event는 set되지 않음 (post-login에서 수행)
         mock_state.sector_summary_ready_event.set.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_ws_window_true_no_recompute_task(self):
-        """WS 구간 True → recompute_sector_summary_now 태스크 생성 안함."""
-        from backend.app.services import engine_cache
-
-        snap = _make_snapshot(3)
-        mock_state = MagicMock()
-        _apply_mocks(mock_state)
-        with (
-            patch.object(engine_state, "state", mock_state),
-            patch("backend.app.db.stock_tables.load_master_stocks_table", new_callable=AsyncMock, return_value=snap),
-            patch("backend.app.services.engine_account_notify._rebuild_layout_cache"),
-            patch("backend.app.services.engine_account_notify.notify_cache"),
-            patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock, return_value=True),
-            patch("backend.app.services.engine_initial_data._reset_realtime_fields", new_callable=AsyncMock),
-            patch("backend.app.services.sector_data_provider.recompute_sector_summary_now", new_callable=AsyncMock) as mock_recompute,
-            patch("backend.app.services.daily_time_scheduler.retry_pipeline_catchup_after_bootstrap", new_callable=AsyncMock),
-            patch.object(engine_cache.asyncio, "create_task", side_effect=swallow_coro_side_effect),
-        ):
-            await engine_cache._load_caches_preboot(_make_settings())
-
-        mock_recompute.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_reset_only_window_resets_and_recomputes(self):
@@ -389,7 +356,6 @@ class TestLoadCachesPrebootWsWindow:
             patch("backend.app.db.stock_tables.load_master_stocks_table", new_callable=AsyncMock, return_value=snap),
             patch("backend.app.services.engine_account_notify._rebuild_layout_cache"),
             patch("backend.app.services.engine_account_notify.notify_cache"),
-            patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock, return_value=False),
             patch("backend.app.services.daily_time_scheduler.is_realtime_reset_window", new_callable=AsyncMock, return_value=True),
             patch("backend.app.services.engine_initial_data._reset_realtime_fields", new_callable=AsyncMock) as mock_reset,
             patch("backend.app.services.engine_initial_data._mark_realtime_reset_done") as mock_mark,
@@ -424,7 +390,6 @@ class TestLoadCachesPrebootWsWindow:
             patch("backend.app.db.stock_tables.load_master_stocks_table", new_callable=AsyncMock, return_value=snap),
             patch("backend.app.services.engine_account_notify._rebuild_layout_cache"),
             patch("backend.app.services.engine_account_notify.notify_cache"),
-            patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock, return_value=False),
             patch("backend.app.services.daily_time_scheduler.is_realtime_reset_window", new_callable=AsyncMock, return_value=False),
             patch("backend.app.services.engine_initial_data._reset_realtime_fields", new_callable=AsyncMock) as mock_reset,
             patch("backend.app.services.sector_data_provider.recompute_sector_summary_now", new_callable=AsyncMock),
@@ -453,7 +418,6 @@ class TestLoadCachesPrebootTradeMode:
             patch("backend.app.db.stock_tables.load_master_stocks_table", new_callable=AsyncMock, return_value=snap),
             patch("backend.app.services.engine_account_notify._rebuild_layout_cache"),
             patch("backend.app.services.engine_account_notify.notify_cache"),
-            patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock, return_value=False),
             patch("backend.app.services.settlement_engine.load_state", new_callable=AsyncMock) as mock_load_state,
             patch("backend.app.services.daily_time_scheduler.retry_pipeline_catchup_after_bootstrap", new_callable=AsyncMock),
             patch.object(engine_cache.asyncio, "create_task", side_effect=swallow_coro_side_effect),
@@ -476,7 +440,6 @@ class TestLoadCachesPrebootTradeMode:
             patch("backend.app.db.stock_tables.load_master_stocks_table", new_callable=AsyncMock, return_value=snap),
             patch("backend.app.services.engine_account_notify._rebuild_layout_cache"),
             patch("backend.app.services.engine_account_notify.notify_cache"),
-            patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock, return_value=False),
             patch("backend.app.services.settlement_engine.load_state", new_callable=AsyncMock) as mock_load_state,
             patch("backend.app.services.daily_time_scheduler.retry_pipeline_catchup_after_bootstrap", new_callable=AsyncMock),
             patch.object(engine_cache.asyncio, "create_task", side_effect=swallow_coro_side_effect),
@@ -514,7 +477,6 @@ class TestLoadCachesPrebootTradeMode:
             patch("backend.app.db.stock_tables.load_master_stocks_table", new_callable=AsyncMock, return_value=snap),
             patch("backend.app.services.engine_account_notify._rebuild_layout_cache"),
             patch("backend.app.services.engine_account_notify.notify_cache"),
-            patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock, return_value=False),
             patch("backend.app.services.settlement_engine.load_state", side_effect=_load_state_side_effect) as mock_load_state,
             patch("backend.app.services.settlement_engine.reconcile_with_trades", reconcile_mock),
             patch("backend.app.services.daily_time_scheduler.retry_pipeline_catchup_after_bootstrap", new_callable=AsyncMock),
@@ -547,7 +509,6 @@ class TestLoadCachesPrebootMetrics:
             patch("backend.app.db.stock_tables.load_master_stocks_table", new_callable=AsyncMock, return_value=snap),
             patch("backend.app.services.engine_account_notify._rebuild_layout_cache"),
             patch("backend.app.services.engine_account_notify.notify_cache"),
-            patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock, return_value=False),
             patch("backend.app.services.daily_time_scheduler.retry_pipeline_catchup_after_bootstrap", new_callable=AsyncMock),
             patch.object(engine_cache.asyncio, "create_task", side_effect=swallow_coro_side_effect),
             patch.object(engine_cache, "logger") as mock_logger,
@@ -570,7 +531,6 @@ class TestLoadCachesPrebootMetrics:
             patch("backend.app.db.stock_tables.load_master_stocks_table", new_callable=AsyncMock, return_value=snap),
             patch("backend.app.services.engine_account_notify._rebuild_layout_cache"),
             patch("backend.app.services.engine_account_notify.notify_cache"),
-            patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock, return_value=False),
             patch("backend.app.services.daily_time_scheduler.retry_pipeline_catchup_after_bootstrap", new_callable=AsyncMock),
             patch.object(engine_cache.asyncio, "create_task", side_effect=swallow_coro_side_effect),
             patch.object(engine_cache, "logger") as mock_logger,
@@ -593,7 +553,6 @@ class TestLoadCachesPrebootMetrics:
             patch("backend.app.db.stock_tables.load_master_stocks_table", new_callable=AsyncMock, return_value=snap),
             patch("backend.app.services.engine_account_notify._rebuild_layout_cache"),
             patch("backend.app.services.engine_account_notify.notify_cache"),
-            patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock, return_value=False),
             patch("backend.app.services.daily_time_scheduler.retry_pipeline_catchup_after_bootstrap", new_callable=AsyncMock),
             patch.object(engine_cache.asyncio, "create_task", side_effect=swallow_coro_side_effect),
         ):
@@ -621,7 +580,6 @@ class TestLoadCachesPrebootCatchup:
             patch("backend.app.db.stock_tables.load_master_stocks_table", new_callable=AsyncMock, return_value=snap),
             patch("backend.app.services.engine_account_notify._rebuild_layout_cache"),
             patch("backend.app.services.engine_account_notify.notify_cache"),
-            patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock, return_value=False),
             patch("backend.app.services.daily_time_scheduler.retry_pipeline_catchup_after_bootstrap", new_callable=AsyncMock) as mock_catchup,
             patch.object(engine_cache.asyncio, "create_task", side_effect=swallow_coro_side_effect),
         ):
@@ -648,7 +606,6 @@ class TestLoadCachesPrebootCatchup:
             patch("backend.app.db.stock_tables.load_master_stocks_table", new_callable=AsyncMock, return_value=snap),
             patch("backend.app.services.engine_account_notify._rebuild_layout_cache"),
             patch("backend.app.services.engine_account_notify.notify_cache"),
-            patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock, return_value=False),
             patch("backend.app.services.daily_time_scheduler.retry_pipeline_catchup_after_bootstrap", _raise_import_error),
             patch.object(engine_cache.asyncio, "create_task", side_effect=swallow_coro_side_effect),
             patch.object(engine_cache, "logger") as mock_logger,

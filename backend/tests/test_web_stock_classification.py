@@ -95,20 +95,22 @@ class TestMoveStocksRequest:
 # ── _maybe_warning ─────────────────────────────────────────────────────────────
 
 class TestMaybeWarning:
-    """_maybe_warning: WS 구간 여부에 따라 warning 반환."""
+    """_maybe_warning: market_phase 기반 장중 여부에 따라 warning 반환 (시간대 자의적 판정 제거)."""
 
-    async def test_ws_window_returns_warning(self):
+    async def test_market_active_returns_warning(self):
         from backend.app.web.routes.stock_classification import _maybe_warning
-        with patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window",
-                   AsyncMock(return_value=True)):
+        mock_state = MagicMock()
+        mock_state.market_phase = {"krx": "정규장", "nxt": "메인마켓"}
+        with patch("backend.app.services.engine_state.state", mock_state):
             result = await _maybe_warning()
         assert "warning" in result
         assert "장중" in result["warning"]
 
-    async def test_non_ws_window_returns_empty(self):
+    async def test_market_inactive_returns_empty(self):
         from backend.app.web.routes.stock_classification import _maybe_warning
-        with patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window",
-                   AsyncMock(return_value=False)):
+        mock_state = MagicMock()
+        mock_state.market_phase = {"krx": "장개시전", "nxt": "장개시전"}
+        with patch("backend.app.services.engine_state.state", mock_state):
             result = await _maybe_warning()
         assert result == {}
 

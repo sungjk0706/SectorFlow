@@ -20,24 +20,18 @@ async def _login_post_pipeline() -> None:
         from backend.app.services.engine_ws import _cleanup_stale_ws_subscriptions_on_session_ready
         await _cleanup_stale_ws_subscriptions_on_session_ready()
 
-        from backend.app.services.daily_time_scheduler import is_ws_subscribe_window
         from backend.app.core.trade_mode import is_test_mode
-        _in_ws_window = await is_ws_subscribe_window(engine_state.state.integrated_system_settings_cache)
 
+        # 잔고 조회 — 테스트모드 생략, 실전모드는 account_rest_bootstrapped 기반만 (시간대 자의적 판정 제거)
         if is_test_mode(engine_state.state.integrated_system_settings_cache):
             logger.info("[연산] 파이프라인 — 테스트모드 — REST 잔고 조회 생략 (가상잔고 사용)")
-        elif not _in_ws_window:
-            if not engine_state.state.account_rest_bootstrapped:
-                logger.info("[연산] 파이프라인 — REST 잔고 선행 조회 시작")
-                from backend.app.services.engine_account import _update_account_memory
-                await _update_account_memory(engine_state.state.integrated_system_settings_cache)
-                logger.info("[연산] 파이프라인 — REST 잔고 선행 조회 (보유 %d종목)", len(engine_state.state.positions))
-            else:
-                logger.info("[연산] 파이프라인 — 잔고 이미 앱 기동 — 재조회 생략 (보유 %d종목)", len(engine_state.state.positions))
+        elif not engine_state.state.account_rest_bootstrapped:
+            logger.info("[연산] 파이프라인 — REST 잔고 선행 조회 시작")
+            from backend.app.services.engine_account import _update_account_memory
+            await _update_account_memory(engine_state.state.integrated_system_settings_cache)
+            logger.info("[연산] 파이프라인 — REST 잔고 선행 조회 (보유 %d종목)", len(engine_state.state.positions))
         else:
-            if not engine_state.state.positions and not engine_state.state.account_rest_bootstrapped:
-                from backend.app.services.engine_account import _update_account_memory
-                await _update_account_memory(engine_state.state.integrated_system_settings_cache)
+            logger.info("[연산] 파이프라인 — 잔고 이미 앱 기동 — 재조회 생략 (보유 %d종목)", len(engine_state.state.positions))
 
         stale = {cd for cd, entry in engine_state.state.master_stocks_cache.items() if entry.get("_subscribed", False)}
         if stale:
@@ -49,21 +43,20 @@ async def _login_post_pipeline() -> None:
 
         from backend.app.services import engine_account_notify as _account_notify
 
-        if _in_ws_window:
-            # Connector 연결 확인 및 구독
-            ws = engine_state.state.connector_manager
-            if ws and ws.is_connected():
-                # 실시간 구독 전 종목 필터링 상태(_filtered)를 최신화하기 위해 1회 재계산
-                await recompute_sector_summary_now()
-                from backend.app.services.engine_ws import _run_sector_reg_pipeline, _ensure_ws_subscriptions_for_positions
-                await _run_sector_reg_pipeline()
-                await _ensure_ws_subscriptions_for_positions()
-                # 동적 구독 복원 — sector_summary_cache 재계산 후 buy_targets 기준 DYNAMIC_REG
-                # 원칙 16: 동적 구독 복원이 실제 LOGIN 후 파이프라인에 배선됨
-                ss = engine_state.state.sector_summary_cache
-                if ss and ss.buy_targets:
-                    from backend.app.services.engine_sector_confirm import sync_dynamic_subscriptions
-                    sync_dynamic_subscriptions(ss.buy_targets)
+        # 구독 파이프라인 — 연결되어 있으면 항상 실행 (시간대 자의적 판정 제거, 사용자 설정 기반)
+        ws = engine_state.state.connector_manager
+        if ws and ws.is_connected():
+            # 실시간 구독 전 종목 필터링 상태(_filtered)를 최신화하기 위해 1회 재계산
+            await recompute_sector_summary_now()
+            from backend.app.services.engine_ws import _run_sector_reg_pipeline, _ensure_ws_subscriptions_for_positions
+            await _run_sector_reg_pipeline()
+            await _ensure_ws_subscriptions_for_positions()
+            # 동적 구독 복원 — sector_summary_cache 재계산 후 buy_targets 기준 DYNAMIC_REG
+            # 원칙 16: 동적 구독 복원이 실제 LOGIN 후 파이프라인에 배선됨
+            ss = engine_state.state.sector_summary_cache
+            if ss and ss.buy_targets:
+                from backend.app.services.engine_sector_confirm import sync_dynamic_subscriptions
+                sync_dynamic_subscriptions(ss.buy_targets)
 
             await _account_notify.notify_desktop_sector_refresh()
             await _account_notify.notify_desktop_sector_stocks_refresh()

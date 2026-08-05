@@ -44,7 +44,6 @@ class TestLoginPostPipeline:
         with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.sector_data_provider.recompute_sector_summary_now", new=AsyncMock()), \
              patch("backend.app.services.engine_ws._cleanup_stale_ws_subscriptions_on_session_ready", new=AsyncMock()), \
-             patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new=AsyncMock(return_value=False)), \
              patch("backend.app.core.trade_mode.is_test_mode", return_value=True), \
              patch("backend.app.services.engine_account._update_account_memory", new=AsyncMock()) as mock_update, \
              patch("backend.app.services.engine_account_notify.notify_desktop_sector_refresh", new=AsyncMock()) as mock_refresh, \
@@ -61,7 +60,6 @@ class TestLoginPostPipeline:
         with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.sector_data_provider.recompute_sector_summary_now", new=AsyncMock()), \
              patch("backend.app.services.engine_ws._cleanup_stale_ws_subscriptions_on_session_ready", new=AsyncMock()), \
-             patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new=AsyncMock(return_value=False)), \
              patch("backend.app.core.trade_mode.is_test_mode", return_value=False), \
              patch("backend.app.services.engine_account._update_account_memory", new=AsyncMock()) as mock_update, \
              patch("backend.app.services.engine_account_notify.notify_desktop_sector_refresh", new=AsyncMock()) as mock_refresh, \
@@ -78,7 +76,6 @@ class TestLoginPostPipeline:
         with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.sector_data_provider.recompute_sector_summary_now", new=AsyncMock()), \
              patch("backend.app.services.engine_ws._cleanup_stale_ws_subscriptions_on_session_ready", new=AsyncMock()), \
-             patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new=AsyncMock(return_value=False)), \
              patch("backend.app.core.trade_mode.is_test_mode", return_value=False), \
              patch("backend.app.services.engine_account._update_account_memory", new=AsyncMock()) as mock_update, \
              patch("backend.app.services.engine_account_notify.notify_desktop_sector_refresh", new=AsyncMock()) as mock_refresh, \
@@ -89,22 +86,21 @@ class TestLoginPostPipeline:
             mock_refresh.assert_called_once_with(force=True)
 
     @pytest.mark.asyncio
-    async def test_ws_window_no_positions_rest(self):
-        """WS 윈도우 + 잔고없음 + 미부트스트랩 → REST 조회 (L158-161)."""
+    async def test_not_bootstrapped_rest(self):
+        """미부트스트랩 → REST 조회 + 연결 없음 → 파이프라인 완료 플래그 (시간대 자의적 판정 제거)."""
         mock_state = _make_login_state_mock(account_rest_bootstrapped=False, positions={})
         with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.sector_data_provider.recompute_sector_summary_now", new=AsyncMock()), \
              patch("backend.app.services.engine_ws._cleanup_stale_ws_subscriptions_on_session_ready", new=AsyncMock()), \
-             patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new=AsyncMock(return_value=True)), \
              patch("backend.app.core.trade_mode.is_test_mode", return_value=False), \
              patch("backend.app.services.engine_account._update_account_memory", new=AsyncMock()) as mock_update, \
              patch("backend.app.services.engine_account_notify.notify_desktop_sector_refresh", new=AsyncMock()) as mock_refresh, \
              patch("backend.app.services.engine_account_notify.notify_desktop_sector_stocks_refresh", new=AsyncMock()) as mock_stocks_refresh:
             await _login_post_pipeline()
             mock_update.assert_called_once_with(mock_state.integrated_system_settings_cache)
-            # WS 윈도우이므로 ws_reg_pipeline_done.set 호출 안함
-            mock_state.ws_reg_pipeline_done.set.assert_not_called()
-            mock_refresh.assert_called_once_with()
+            # 연결 없음 → ws_reg_pipeline_done.set 호출 + force refresh
+            mock_state.ws_reg_pipeline_done.set.assert_called_once()
+            mock_refresh.assert_called_once_with(force=True)
             mock_stocks_refresh.assert_called_once_with()
 
     @pytest.mark.asyncio
@@ -120,7 +116,6 @@ class TestLoginPostPipeline:
         with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.sector_data_provider.recompute_sector_summary_now", new=AsyncMock()), \
              patch("backend.app.services.engine_ws._cleanup_stale_ws_subscriptions_on_session_ready", new=AsyncMock()), \
-             patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new=AsyncMock(return_value=False)), \
              patch("backend.app.core.trade_mode.is_test_mode", return_value=False), \
              patch("backend.app.services.engine_account._update_account_memory", new=AsyncMock()), \
              patch("backend.app.services.engine_account_notify.notify_desktop_sector_refresh", new=AsyncMock()), \
@@ -145,7 +140,6 @@ class TestLoginPostPipeline:
         with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.sector_data_provider.recompute_sector_summary_now", new=AsyncMock()) as mock_recompute, \
              patch("backend.app.services.engine_ws._cleanup_stale_ws_subscriptions_on_session_ready", new=AsyncMock()), \
-             patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new=AsyncMock(return_value=True)), \
              patch("backend.app.core.trade_mode.is_test_mode", return_value=False), \
              patch("backend.app.services.engine_account._update_account_memory", new=AsyncMock()) as mock_update, \
              patch("backend.app.services.engine_ws._run_sector_reg_pipeline", new=AsyncMock()) as mock_reg, \
@@ -162,8 +156,8 @@ class TestLoginPostPipeline:
             mock_stocks_refresh.assert_called_once_with()
 
     @pytest.mark.asyncio
-    async def test_ws_window_not_connected_notify(self):
-        """WS 윈도우 + ws 미연결 → notify만 (L184-185)."""
+    async def test_not_connected_sets_event(self):
+        """ws 미연결 → 파이프라인 완료 플래그 + force refresh (시간대 자의적 판정 제거)."""
         mock_connector = MagicMock()
         mock_connector.is_connected.return_value = False
         mock_state = _make_login_state_mock(
@@ -174,7 +168,6 @@ class TestLoginPostPipeline:
         with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.sector_data_provider.recompute_sector_summary_now", new=AsyncMock()) as mock_recompute, \
              patch("backend.app.services.engine_ws._cleanup_stale_ws_subscriptions_on_session_ready", new=AsyncMock()), \
-             patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new=AsyncMock(return_value=True)), \
              patch("backend.app.core.trade_mode.is_test_mode", return_value=False), \
              patch("backend.app.services.engine_account._update_account_memory", new=AsyncMock()), \
              patch("backend.app.services.engine_ws._run_sector_reg_pipeline", new=AsyncMock()) as mock_reg, \
@@ -185,8 +178,9 @@ class TestLoginPostPipeline:
             mock_recompute.assert_not_called()
             mock_reg.assert_not_called()
             mock_ensure.assert_not_called()
-            mock_state.ws_reg_pipeline_done.set.assert_not_called()
-            mock_refresh.assert_called_once_with()
+            # 연결 안 됨 → ws_reg_pipeline_done.set 호출 + force refresh
+            mock_state.ws_reg_pipeline_done.set.assert_called_once()
+            mock_refresh.assert_called_once_with(force=True)
             mock_stocks_refresh.assert_called_once_with()
 
     @pytest.mark.asyncio
@@ -196,7 +190,6 @@ class TestLoginPostPipeline:
         with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.sector_data_provider.recompute_sector_summary_now", new=AsyncMock()), \
              patch("backend.app.services.engine_ws._cleanup_stale_ws_subscriptions_on_session_ready", new=AsyncMock()), \
-             patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new=AsyncMock(return_value=False)), \
              patch("backend.app.core.trade_mode.is_test_mode", return_value=False), \
              patch("backend.app.services.engine_account._update_account_memory", new=AsyncMock()), \
              patch("backend.app.services.engine_account_notify.notify_desktop_sector_refresh", new=AsyncMock()) as mock_refresh, \
@@ -213,7 +206,6 @@ class TestLoginPostPipeline:
         with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.sector_data_provider.recompute_sector_summary_now", new=AsyncMock()), \
              patch("backend.app.services.engine_ws._cleanup_stale_ws_subscriptions_on_session_ready", new=AsyncMock(side_effect=Exception("pipeline error"))), \
-             patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new=AsyncMock(return_value=False)), \
              patch("backend.app.core.trade_mode.is_test_mode", return_value=False), \
              patch("backend.app.services.engine_account._update_account_memory", new=AsyncMock()), \
              patch("backend.app.services.engine_account_notify.notify_desktop_sector_refresh", new=AsyncMock()), \

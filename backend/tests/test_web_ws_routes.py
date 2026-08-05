@@ -7,7 +7,6 @@ deps는 get_current_user 함수 직접 호출.
 from __future__ import annotations
 
 import json
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 # Initialize queues before any lazy import of pipeline_compute (module-level get_broadcast_queue call)
@@ -364,19 +363,7 @@ class TestSubscribeRequest:
 
 
 class TestStartSubscription:
-    """ws_subscribe.py: POST /api/ws-subscribe/start — 수동 구독 시작."""
-
-    async def test_outside_window_raises_400(self):
-        from backend.app.web.routes.ws_subscribe import start_subscription, SubscribeRequest, SubscribeGroup
-        from fastapi import HTTPException
-        from backend.app.services.engine_state import state
-
-        state.integrated_system_settings_cache = {"test": True}
-        req = SubscribeRequest(group=SubscribeGroup.quote)
-        with patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock, return_value=False):
-            with pytest.raises(HTTPException) as exc_info:
-                await start_subscription(req, _="dev")
-        assert exc_info.value.status_code == 400
+    """ws_subscribe.py: POST /api/ws-subscribe/start — 수동 구독 시작 (시간대 자의적 판정 제거)."""
 
     async def test_sector_returns_status(self):
         from backend.app.web.routes.ws_subscribe import start_subscription, SubscribeRequest, SubscribeGroup
@@ -384,9 +371,8 @@ class TestStartSubscription:
 
         state.integrated_system_settings_cache = {"test": True}
         req = SubscribeRequest(group=SubscribeGroup.sector)
-        with patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock, return_value=True):
-            with patch("backend.app.services.ws_subscribe_control.get_subscribe_status", return_value={"quote": False}):
-                result = await start_subscription(req, _="dev")
+        with patch("backend.app.services.ws_subscribe_control.get_subscribe_status", return_value={"quote": False}):
+            result = await start_subscription(req, _="dev")
         assert result["ok"] is True
         assert "status" in result
 
@@ -396,9 +382,8 @@ class TestStartSubscription:
 
         state.integrated_system_settings_cache = {"test": True}
         req = SubscribeRequest(group=SubscribeGroup.industry)
-        with patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock, return_value=True):
-            with patch("backend.app.services.ws_subscribe_control.get_subscribe_status", return_value={"industry": False}):
-                result = await start_subscription(req, _="dev")
+        with patch("backend.app.services.ws_subscribe_control.get_subscribe_status", return_value={"industry": False}):
+            result = await start_subscription(req, _="dev")
         assert result["ok"] is True
 
     async def test_quote_start_success(self):
@@ -408,9 +393,8 @@ class TestStartSubscription:
         state.integrated_system_settings_cache = {"test": True}
         req = SubscribeRequest(group=SubscribeGroup.quote)
         mock_result = {"ok": True, "status": {"quote": True}}
-        with patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock, return_value=True):
-            with patch("backend.app.services.ws_subscribe_control.start_quote", new_callable=AsyncMock, return_value=mock_result):
-                result = await start_subscription(req, _="dev")
+        with patch("backend.app.services.ws_subscribe_control.start_quote", new_callable=AsyncMock, return_value=mock_result):
+            result = await start_subscription(req, _="dev")
         assert result["ok"] is True
         assert result["status"] == {"quote": True}
 
@@ -421,9 +405,8 @@ class TestStartSubscription:
         state.integrated_system_settings_cache = {"test": True}
         req = SubscribeRequest(group=SubscribeGroup.quote)
         mock_result = {"ok": False, "message": "이미 구독 중"}
-        with patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock, return_value=True):
-            with patch("backend.app.services.ws_subscribe_control.start_quote", new_callable=AsyncMock, return_value=mock_result):
-                result = await start_subscription(req, _="dev")
+        with patch("backend.app.services.ws_subscribe_control.start_quote", new_callable=AsyncMock, return_value=mock_result):
+            result = await start_subscription(req, _="dev")
         assert result["ok"] is False
         assert "이미 구독 중" in result["message"]
 

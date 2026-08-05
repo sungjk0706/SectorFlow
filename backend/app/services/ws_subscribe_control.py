@@ -169,16 +169,9 @@ async def stop_quote() -> dict:
 async def run_conditional_reg_pipeline() -> None:
     """index_auto_subscribe / quote_auto_subscribe에 따라 조건부 REG.
 
-    실시간 통신 구독 구간 외이면 REG 호출 없이 종료.
+    시간대 자의적 판정 제거 — 설정 기반으로만 동작 (사용자 설정 존중).
     모두 false면 종료.
     """
-    from backend.app.services.daily_time_scheduler import is_ws_subscribe_window
-
-    settings = engine_state.state.integrated_system_settings_cache
-
-    if not await is_ws_subscribe_window(settings):
-        return
-
     async with _get_lock():
         from backend.app.services import engine_ws_reg
         from backend.app.services.daily_time_scheduler import is_nxt_only_window

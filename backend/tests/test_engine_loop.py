@@ -940,19 +940,6 @@ class TestRunEngineLoopInit:
         warning_msgs = [str(c) for c in mock_logger.warning.call_args_list]
         assert any("엔진 루프 예외" in m for m in warning_msgs)
 
-    @pytest.mark.asyncio
-    async def test_ws_loop_isolates_subscribe_window_exception(self):
-        """is_ws_subscribe_window 예외 → 루프 종료 아닌 error 로그 + continue (B1-02-01, P25).
-
-        engine_stop_event가 False일 때 while 본문 진입 → is_ws_subscribe_window throw →
-        except에서 logger.error + asyncio.sleep(1) 후 continue → asyncio.wait 통과 →
-        다음 iteration에서 engine_stop_event.is_set()=True → 루프 정상 종료.
-        """
-        # NOTE: 구간 감지 루프 제거(자의적 시간대 판정 제거)로 이 테스트는 무의미.
-        # run_engine_loop는 기동 시 1회 연결 후 engine_stop_event.wait()만 수행.
-        # is_ws_subscribe_window 예외 경로 자체가 존재하지 않음.
-        pass
-
 
 # ── run_engine_loop — REST API / spec 처리 ─────────────────────────────────────
 

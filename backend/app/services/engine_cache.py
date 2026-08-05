@@ -94,15 +94,9 @@ async def _load_caches_preboot(settings: dict) -> None:
         # 캐시선행 완료 플래그 — 앱준비 에서 중복 로드 스킵용
         engine_state.state.preboot_cache_loaded = True
 
-        # ── 기동 시 실시간 필드 초기화 — 초기화 구간과 WS 연결 구간 분리 ──
-        # 초기화 구간(07:58~20:40): 낡은 실시간 값 제거. 20:00~20:40 공백 시간 포함 (P22).
-        # WS 연결 구간(07:59~20:00): 실시간 수신 중이므로 업종 재계산 생략.
-        # 20:00~20:40에 기동 시: 초기화만 수행, WS 연결 중으로 잘못 처리하지 않음.
-        from backend.app.services.daily_time_scheduler import (
-            is_ws_subscribe_window,
-            is_realtime_reset_window,
-        )
-        _in_ws_window = await is_ws_subscribe_window(settings)
+        # ── 기동 시 실시간 필드 초기화 — 사용자 설정 기반 초기화 구간 판정 (시간대 자의적 판정 제거) ──
+        # is_realtime_reset_window() (timetable.realtime_reset ~ timetable.confirmed_download) 기반.
+        from backend.app.services.daily_time_scheduler import is_realtime_reset_window
         _in_reset_window = await is_realtime_reset_window(settings)
         if _in_reset_window:
             from backend.app.services.engine_initial_data import _reset_realtime_fields, _mark_realtime_reset_done
@@ -130,19 +124,12 @@ async def _load_caches_preboot(settings: dict) -> None:
 
         engine_state.state.data_ready_event.set()
 
-        # 업종순위 캐시 초기 계산
-        # WS 구간 내: _init_ws_subscribe_state가 _sector_summary_cache를 클리어하므로
-        #   1차 계산 결과가 무효화됨. _login_post_pipeline에서 계산하므로 여기서는 스킵.
-        #   UI 블로킹 방지를 위해 sector_summary_ready_event만 set.
-        # WS 구간 외: 유일한 계산 경로이므로 반드시 수행.
-        if _in_ws_window:
-            engine_state.state.sector_summary_ready_event.set()
-            logger.info("[데이터] 실시간 통신 구독 구간 — 업종순위 계산 생략 (로그인 후 파이프라인에서 수행)")
-        else:
-            from backend.app.services.sector_data_provider import recompute_sector_summary_now
-            _task = asyncio.create_task(recompute_sector_summary_now())
-            _task.add_done_callback(lambda t: logger.warning("[데이터] 업종순위 계산 작업 실패: %s", t.exception()) if t.exception() else None)
-            logger.info("[데이터] 업종순위 계산 백그라운드 실행 (섹터 요약 이벤트 대기)")
+        # 업종순위 캐시 초기 계산 — 항상 백그라운드 실행 (시간대 자의적 판정 제거)
+        # 로그인 후 파이프라인에서 연결 성공 시 재계산하므로 멱등 (P22).
+        from backend.app.services.sector_data_provider import recompute_sector_summary_now
+        _task = asyncio.create_task(recompute_sector_summary_now())
+        _task.add_done_callback(lambda t: logger.warning("[데이터] 업종순위 계산 작업 실패: %s", t.exception()) if t.exception() else None)
+        logger.info("[데이터] 업종순위 계산 백그라운드 실행 (섹터 요약 이벤트 대기)")
 
         # 앱준비 완료 → 기동 시 스킵된 장마감 파이프라인 데이터동기화중 재시도
         # 백그라운드 실행: data_ready_event / bootstrap_event 이미 set() 상태이므로

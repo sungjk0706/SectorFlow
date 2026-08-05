@@ -45,7 +45,6 @@ from backend.app.services.daily_time_scheduler import (  # noqa: E402
     is_heavy_operation_allowed,
     _kst_now,
     _parse_hm,
-    is_ws_subscribe_window,
     is_realtime_reset_window,
     _realtime_reset_window_bounds,
     _fire_unified_confirmed_fetch,
@@ -905,71 +904,6 @@ class TestCalcCountdown:
             assert result is None
 
 
-# ── is_ws_subscribe_window ────────────────────────────────────────────────────
-
-class TestIsWsSubscribeWindow:
-    @pytest.mark.asyncio
-    async def test_holiday_returns_false(self):
-        mock_state = MagicMock()
-        mock_state.market_phase = {"krx": "휴장일", "nxt": "휴장일"}
-        with patch("backend.app.services.engine_state.state", mock_state):
-            result = await is_ws_subscribe_window({"timetable.confirmed_download": "20:40"})
-            assert result is False
-
-    @pytest.mark.asyncio
-    async def test_in_window_returns_true(self):
-        mock_state = MagicMock()
-        mock_state.market_phase = {"krx": "정규장", "nxt": "메인마켓"}
-        with patch("backend.app.services.engine_state.state", mock_state):
-            result = await is_ws_subscribe_window({"timetable.confirmed_download": "20:40"})
-            assert result is True
-
-    @pytest.mark.asyncio
-    async def test_outside_window_returns_false(self):
-        mock_state = MagicMock()
-        mock_state.market_phase = {"krx": "장개시전", "nxt": "장개시전"}
-        with patch("backend.app.services.engine_state.state", mock_state):
-            result = await is_ws_subscribe_window({"timetable.confirmed_download": "20:40"})
-            assert result is False
-
-    @pytest.mark.asyncio
-    async def test_empty_nxt_returns_false(self):
-        mock_state = MagicMock()
-        mock_state.market_phase = {"krx": "정규장", "nxt": ""}
-        with patch("backend.app.services.engine_state.state", mock_state):
-            result = await is_ws_subscribe_window({"timetable.confirmed_download": "20:40"})
-            assert result is False
-
-    @pytest.mark.asyncio
-    async def test_empty_settings_raises(self):
-        mock_state = MagicMock()
-        mock_state.integrated_system_settings_cache = {}
-        mock_state.market_phase = {"krx": "정규장", "nxt": "메인마켓"}
-        with patch("backend.app.services.engine_state.state", mock_state):
-            with pytest.raises(RuntimeError, match="settings cache not initialized"):
-                await is_ws_subscribe_window(None)
-
-    @pytest.mark.asyncio
-    async def test_pre_subscribe_window_returns_true(self):
-        """07:59~08:00 사전 구간 — 시간 기반 판정으로 True (재시작 대응, P16)."""
-        mock_state = MagicMock()
-        mock_state.market_phase = {"krx": "장개시전", "nxt": "장개시전"}
-        with patch("backend.app.services.engine_state.state", mock_state), \
-             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(7, 59)):
-            result = await is_ws_subscribe_window({"timetable.confirmed_download": "20:40"})
-            assert result is True
-
-    @pytest.mark.asyncio
-    async def test_pre_subscribe_window_holiday_returns_false(self):
-        """휴장일 사전 구간 — 시간 내라도 휴장일 → False."""
-        mock_state = MagicMock()
-        mock_state.market_phase = {"krx": "휴장일", "nxt": "휴장일"}
-        with patch("backend.app.services.engine_state.state", mock_state), \
-             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(7, 59)):
-            result = await is_ws_subscribe_window({"timetable.confirmed_download": "20:40"})
-            assert result is False
-
-
 # ── is_realtime_reset_window ──────────────────────────────────────────────────
 
 _RESET_SETTINGS = {
@@ -1090,14 +1024,14 @@ class TestIsRealtimeResetWindow:
 
 class TestIsHeavyOperationAllowed:
     @pytest.mark.asyncio
-    async def test_ws_window_blocks(self):
-        with patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock, return_value=True):
+    async def test_reset_window_blocks(self):
+        with patch("backend.app.services.daily_time_scheduler.is_realtime_reset_window", new_callable=AsyncMock, return_value=True):
             result = await is_heavy_operation_allowed()
             assert result is False
 
     @pytest.mark.asyncio
-    async def test_outside_ws_window_allows(self):
-        with patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock, return_value=False):
+    async def test_outside_reset_window_allows(self):
+        with patch("backend.app.services.daily_time_scheduler.is_realtime_reset_window", new_callable=AsyncMock, return_value=False):
             result = await is_heavy_operation_allowed()
             assert result is True
 
@@ -2162,7 +2096,7 @@ class TestRetryPipelineCatchup:
         """새벽 기동(02:00) + 데이터 불완정 → 자동 다운로드 트리거.
 
         핵심 시나리오: 20:40 ~ 다음 거래일 07:58 허용 구간 내에서 데이터 불완정 시 즉시 다운로드.
-        이전에는 is_ws_subscribe_window(08:00~20:00 하드코딩) + t < 20:40 조건으로 인해
+        이전에는 시간대 자의적 판정(08:00~20:00 하드코딩) + t < 20:40 조건으로 인해
         00:00~07:58 구간에서 다운로드가 발동하지 않던 버그.
         """
         mock_state = MagicMock()

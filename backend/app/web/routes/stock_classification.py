@@ -20,9 +20,15 @@ logger = logging.getLogger(__name__)
 
 
 async def _maybe_warning() -> dict:
-    """장중(WS 구독 구간)이면 warning 필드를 반환, 아니면 빈 dict."""
-    from backend.app.services.daily_time_scheduler import is_ws_subscribe_window
-    if await is_ws_subscribe_window():
+    """장중(market_phase NXT 활성 구간)이면 warning 필드를 반환, 아니면 빈 dict.
+
+    시간대 자의적 판정 제거 — market_phase SSOT 기반 (P10).
+    """
+    from backend.app.services import engine_state
+    from backend.app.services.daily_time_scheduler import NXT_ACTIVE_PHASES
+    mp = engine_state.state.market_phase
+    nxt = mp.get("nxt", "")
+    if nxt in NXT_ACTIVE_PHASES:
         return {"warning": "장중 변경은 즉시 매매에 반영됩니다"}
     return {}
 
