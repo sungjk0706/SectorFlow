@@ -28,12 +28,13 @@
                          reg_ack_return_code, rest_api_thread_sem,
                          _last_global_buy_ts, _last_global_sell_ts,
                          REG_POST_ACK_GAP_SEC
-  F. 안전/기동 플래그 (13) — running, engine_task, engine_loop_ref,
+  F. 안전/기동 플래그 (15) — running, engine_task, engine_loop_ref,
                          engine_scheduled_tasks, engine_shutdown_requested,
                          realtime_latency_exceeded, position_build_failed, degraded_mode,
                          preboot_cache_loaded, confirmed_refresh_running_confirmed,
                          confirmed_refresh_running_5d, latest_filter_summary_meta,
-                         integrated_system_settings_cache
+                         integrated_system_settings_cache,
+                         token_recovery_in_progress, token_failure_kind
 
 갱신 분산 주의 속성 (여러 파일에서 쓰기 — 향후 단일화 후보, 세션 10 조사 결과):
   - login_ok: 5곳 (kiwoom_connector, ls_connector ×2, engine_lifecycle, engine_loop,
@@ -116,6 +117,12 @@ class EngineState:
         # 둘 다 엔진 재기동 시에만 해제 (start_engine에서 초기화하지 않으면 이전 세션 값 잔존 위험).
         self.position_build_failed: bool = False
         self.degraded_mode: bool = False
+
+        # ── 토큰 회복 루프 상태 (그룹 F — 설계서 토큰발급 신뢰성 강화 5세션) ──
+        # token_recovery_in_progress: 백그라운드 회복 루프 진행 중 여부 (중복 루프 방지, P17 단일 소스)
+        # token_failure_kind: 마지막 토큰 발급 실패 종류 — "transient"/"permanent"/None(성공 또는 미시도)
+        self.token_recovery_in_progress: bool = False
+        self.token_failure_kind: str | None = None
 
         # ── Locks & Events (그룹 E + B account_rest_lock + F preboot_cache_loaded) ──
         self.data_ready_event: LazyEvent = LazyEvent()

@@ -11,6 +11,8 @@ import time
 from backend.app.core.broker_factory import get_router
 from backend.app.core.broker_providers import AuthProvider
 from backend.app.core.broker_urls import BROKER_DISPLAY_NAMES
+from backend.app.core.auth_utils import should_continue_recovery
+from backend.app.core.constants import TOKEN_RECOVERY_INTERVAL_SEC, TOKEN_RECOVERY_MAX_ATTEMPTS
 import logging
 from backend.app.core.trade_mode import is_test_mode
 from backend.app.services.trading import AutoTradeManager
@@ -54,6 +56,8 @@ async def _get_all_tokens_async(router) -> None:
     - confirmed_data_broker는 startup에서 제외하고 market_close_pipeline 자체 Lazy Auth에 위임.
     - router._auth_cache에 없는 증권사도 _create_provider로 생성하여 발급.
     - 발급된 토큰은 state.broker_tokens[broker_id]로 저장한다.
+    - 실패 종류(일시/영구)는 state.token_failure_kind에 저장 (5세션 — run_engine_loop 분기용).
+      성공 시 None, 실패 시 "transient"/"permanent".
     """
     auth_cache: dict[str, AuthProvider] = getattr(router, "_auth_cache", {})
 
@@ -74,7 +78,7 @@ async def _get_all_tokens_async(router) -> None:
     if not valid_broker_ids:
         return
 
-    async def _fetch_one(broker_id: str) -> tuple[str, str | None]:
+    async def _fetch_one(broker_id: str) -> tuple[str, str | None, str | None]:
         try:
             auth_provider = auth_cache.get(broker_id)
             if auth_provider is None:
@@ -84,11 +88,28 @@ async def _get_all_tokens_async(router) -> None:
                     engine_state.state.integrated_system_settings_cache, auth_cache,
                 )
             assert auth_provider is not None
+            # rest_api의 _issue_token() 직접 호출 — 실패 종류(일시/영구) 취득 (3·4세션).
+            # AuthProvider.get_access_token()은 실패 시 None만 반환하므로 종류를 알 수 없음.
+            rest_api = getattr(auth_provider, "rest_api", None)
+            if rest_api is not None and hasattr(rest_api, "_issue_token"):
+                ok, failure_kind = await rest_api._issue_token()
+                if ok:
+                    # 토큰 값은 get_token/get_access_token 경유로 취득 (증권사별 필드 차이)
+                    token = None
+                    if hasattr(rest_api, "get_token"):
+                        token = rest_api.get_token()
+                    elif hasattr(rest_api, "get_access_token"):
+                        token = await rest_api.get_access_token()
+                    return broker_id, token, None
+                return broker_id, None, failure_kind
+            # rest_api가 없는 경우 기존 get_access_token() 경유 (실패 종류 미상 — 일시로 간주)
             token = await auth_provider.get_access_token()
-            return broker_id, token
+            if token:
+                return broker_id, token, None
+            return broker_id, None, "transient"
         except Exception as e:
             logger.warning("[연결] %s 토큰 발급 실패: %s", BROKER_DISPLAY_NAMES.get(broker_id, broker_id.upper()), e, exc_info=True)
-            return broker_id, None
+            return broker_id, None, "transient"
 
     results = await asyncio.gather(
         *[_fetch_one(bid) for bid in valid_broker_ids],
@@ -97,11 +118,81 @@ async def _get_all_tokens_async(router) -> None:
 
     engine_state.state.broker_tokens.clear()
 
+    last_failure_kind: str | None = None
+
     for result in results:
         if isinstance(result, tuple):
-            broker_id, token = result
+            broker_id, token, failure_kind = result
+            last_failure_kind = failure_kind
             if token:
                 engine_state.state.broker_tokens[broker_id] = token
+                last_failure_kind = None
+
+    # 실패 종류를 state에 저장 — run_engine_loop 분기용 (5세션)
+    engine_state.state.token_failure_kind = last_failure_kind
+
+
+async def _token_recovery_loop(router, broker_nm: str) -> None:
+    """백그라운드 토큰 회복 루프 (설계서 결정 2·5).
+
+    시작 시 토큰 발급이 일시 실패한 경우에만 진입. 30초 간격 최대 10회(약 5분) 재시도.
+    회복 성공 시 state.access_token 설정 + 화면에 정상 모드 전환 알림.
+    10회 후에도 실패 시 시세 전용 모드 유지 + "수동 재시작 필요" 안내.
+    중복 루프 방지: state.token_recovery_in_progress 플래그로 단일 진입 보장 (P17).
+    """
+    from backend.app.services.engine_lifecycle import broadcast_engine_status, log_message
+
+    engine_state.state.token_recovery_in_progress = True
+    broker_display = BROKER_DISPLAY_NAMES.get(broker_nm, broker_nm)
+
+    try:
+        for attempt in range(TOKEN_RECOVERY_MAX_ATTEMPTS):
+            if not should_continue_recovery(attempt):
+                break
+            # 엔진 종료 요청 시 루프 즉시 종료
+            if engine_state.state.engine_shutdown_requested:
+                log_message(f" [연결] {broker_display} 토큰 회복 루프 중단 — 엔진 종료 요청.")
+                return
+            await asyncio.sleep(TOKEN_RECOVERY_INTERVAL_SEC)
+            if engine_state.state.engine_shutdown_requested:
+                log_message(f" [연결] {broker_display} 토큰 회복 루프 중단 — 엔진 종료 요청.")
+                return
+
+            try:
+                _broker_id, token, failure_kind = await _get_all_tokens_async(router)
+            except Exception as e:
+                logger.warning("[연결] %s 토큰 회복 시도 %d 실패: %s", broker_display, attempt + 1, e, exc_info=True)
+                continue
+
+            if token:
+                # 회복 성공 — 정상 모드 전환
+                engine_state.state.access_token = token
+                engine_state.state.token_failure_kind = None
+                engine_state.state.token_recovery_in_progress = False
+                log_message(f" [연결] {broker_display} 토큰 회복 성공. 정상 모드 전환.")
+                await broadcast_engine_status()
+                return
+
+            # 영구 실패로 전환된 경우 회복 루프 즉시 종료 (사용자 액션 필요)
+            if failure_kind == "permanent":
+                engine_state.state.access_token = None
+                engine_state.state.token_failure_kind = "permanent"
+                engine_state.state.token_recovery_in_progress = False
+                log_message(f" [연결] {broker_display} 토큰 회복 중 영구 실패 감지. API 키 확인 필요. 시세 전용 모드 유지.")
+                await broadcast_engine_status()
+                return
+
+        # 10회 후에도 실패 — 시세 전용 모드 유지
+        engine_state.state.token_recovery_in_progress = False
+        log_message(f" [연결] {broker_display} 토큰 회복 {TOKEN_RECOVERY_MAX_ATTEMPTS}회 실패. 수동 재시작 필요. 시세 전용 모드 유지.")
+        await broadcast_engine_status()
+    except asyncio.CancelledError:
+        engine_state.state.token_recovery_in_progress = False
+        log_message(f" [연결] {broker_display} 토큰 회복 루프 취소됨.")
+        raise
+    except Exception as e:
+        engine_state.state.token_recovery_in_progress = False
+        logger.warning("[연결] %s 토큰 회복 루프 오류: %s", broker_display, e, exc_info=True)
 
 
 async def _load_broker_spec_async(broker_nm: str, settings: dict) -> list:
@@ -152,6 +243,9 @@ async def run_engine_loop() -> None:
     engine_state.state.preboot_ready_event.clear()
     # 계좌 REST Lock 초기화 -- 이전 세션 잠금 상태 초기화
     engine_state.state.account_rest_lock = None
+    # 토큰 회복 루프 상태 초기화 — 이전 세션 잔존 방지 (5세션)
+    engine_state.state.token_recovery_in_progress = False
+    engine_state.state.token_failure_kind = None
 
     # 전역 이벤트 버스 (Queues)는 app.py lifespan에서 이미 초기화됨
 
@@ -201,14 +295,17 @@ async def run_engine_loop() -> None:
         _t_parallel_start = time.perf_counter()
 
         # 3개 독립 파이프라인 병렬 실행 — broker_spec은 gather 완료 후 사용
+        # _get_all_tokens_async는 state.token_failure_kind를 설정 (5세션) — gather와 분리하여
+        # 테스트에서 _get_all_tokens_async를 직접 mock할 수 있도록 별도 await.
         async def _load_spec():
             engine_state.state.broker_spec = await _load_broker_spec_async(broker_nm, settings)
 
         await asyncio.gather(
             _cache_and_bootstrap(settings),
-            _get_all_tokens_async(router),
             _load_spec(),
         )
+        # 토큰 발급은 캐시 로드와 독립 — gather 이후 직접 실행 (state.token_failure_kind 설정)
+        await _get_all_tokens_async(router)
 
         # 토큰 발급 phase 완료 시그널 — WS 유니캐스트가 stale broker_statuses를
         # 전송하지 않도록 보장 (token_ready_event.wait()에서 대기 중인 태스크가 깨어남)
@@ -236,14 +333,32 @@ async def run_engine_loop() -> None:
             from backend.app.services.engine_lifecycle import log_message
             log_message(f"[연산] 설정 로딩 — TR {len(engine_state.state.broker_spec)}개, 계좌: {acnt_no or '미설정'}")
 
-        # ── token 결과 반영 ──
+        # ── token 결과 반영 (실패 종류별 분기 — 5세션) ──
         token = engine_state.state.broker_tokens.get(broker_nm)
+        _failure_kind = engine_state.state.token_failure_kind
         if token:
             engine_state.state.access_token = token
-        else:
-            from backend.app.services.engine_lifecycle import log_message
-            log_message(f" [연결] {BROKER_DISPLAY_NAMES.get(broker_nm, broker_nm)} 토큰 발급 실패. 시세 전용 모드로 기동.")
+            engine_state.state.token_failure_kind = None
+        elif _failure_kind == "permanent":
+            # 영구 실패 — 회복 루프 진입 없이 즉시 시세 전용 모드 (사용자 액션 유도)
+            from backend.app.services.engine_lifecycle import log_message, broadcast_engine_status
             engine_state.state.access_token = None
+            engine_state.state.token_failure_kind = "permanent"
+            log_message(f" [연결] {BROKER_DISPLAY_NAMES.get(broker_nm, broker_nm)} 토큰 발급 영구 실패. API 키 확인 필요. 시세 전용 모드로 기동.")
+            await broadcast_engine_status()
+        else:
+            # 일시 실패 — 백그라운드 회복 루프 진입
+            from backend.app.services.engine_lifecycle import log_message
+            engine_state.state.access_token = None
+            engine_state.state.token_failure_kind = "transient"
+            # 중복 루프 방지 — 이미 회복 루프 진행 중이면 추가 생성 금지 (P17 단일 소스)
+            if not engine_state.state.token_recovery_in_progress:
+                from backend.app.services.engine_lifecycle import schedule_engine_task
+                log_message(f" [연결] {BROKER_DISPLAY_NAMES.get(broker_nm, broker_nm)} 토큰 발급 일시 실패. 백그라운드 회복 루프 시작. 시세 전용 모드로 기동.")
+                schedule_engine_task(
+                    _token_recovery_loop(router, broker_nm),
+                    context="token-recovery-loop",
+                )
 
         # ── 계좌 조회용 REST = Router의 AuthProvider에서 REST 실시간 인스턴스 공유 ──
         _auth_provider = router.auth
@@ -404,6 +519,8 @@ async def run_engine_loop() -> None:
         engine_state.state.broker_rest_apis.clear()
         engine_state.state.broker_tokens.clear()
         engine_state.state.running = False
+        # 토큰 회복 루프 진행 플래그만 해제 — token_failure_kind는 다음 기동 시 시작 부분에서 초기화 (5세션)
+        engine_state.state.token_recovery_in_progress = False
         from backend.app.services.engine_lifecycle import broadcast_engine_status, log_message, get_current_kst_time
         await broadcast_engine_status()
         log_message(f"[연산] 정지됨 ({get_current_kst_time()})")

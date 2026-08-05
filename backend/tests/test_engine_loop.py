@@ -81,6 +81,10 @@ def _mock_state(
     mock.ws_window_changed_event = MagicMock()
     mock.engine_loop_ref = None
     mock.account_rest_lock = None
+    # 토큰 회복 루프 상태 (5세션) — 실제 bool/None 타입으로 설정 (MagicMock truthy 방지)
+    mock.token_recovery_in_progress = False
+    mock.token_failure_kind = None
+    mock.engine_shutdown_requested = False
 
     return mock
 
@@ -195,10 +199,26 @@ class TestCacheAndBootstrap:
 
 # ── _get_all_tokens_async ──────────────────────────────────────────────────────
 
+def _mock_auth_provider_with_rest(token: str | None = None, failure_kind: str | None = None):
+    """rest_api._issue_token() 경로를 사용하는 AuthProvider mock 생성 (5세션).
+
+    _issue_token()은 (ok, failure_kind) 반환. ok=True 시 get_token()/get_access_token()으로 토큰 취득.
+    """
+    auth_provider = MagicMock()
+    rest_api = MagicMock()
+    rest_api._issue_token = AsyncMock(return_value=(token is not None, failure_kind))
+    if token is not None:
+        rest_api.get_token = MagicMock(return_value=token)
+        rest_api.get_access_token = AsyncMock(return_value=token)
+    auth_provider.rest_api = rest_api
+    auth_provider.get_access_token = AsyncMock(return_value=token)
+    return auth_provider
+
+
 class TestGetAllTokensAsync:
     @pytest.mark.asyncio
     async def test_no_valid_brokers_returns_early(self):
-        """유효한 API 키가 없는 증권사만 있으면 early return."""
+        """유효한 API 키가 없는 증권사만 있으면 early return — token_failure_kind 갱신 없음."""
         mock_state = _mock_state(app_key="", app_secret="")
         router = MagicMock()
         router._auth_cache = {}
@@ -213,12 +233,11 @@ class TestGetAllTokensAsync:
 
     @pytest.mark.asyncio
     async def test_token_success_stored_in_state(self):
-        """시나리오 2: broker=kiwoom, confirmed_data_broker="" → kiwoom get_access_token() 호출 O, kiwoom 토큰 저장."""
+        """시나리오 2: broker=kiwoom → _issue_token() 성공, kiwoom 토큰 저장 + token_failure_kind=None."""
         mock_state = _mock_state()
-        mock_state.broker_tokens = {}  # clear 가능한 dict
+        mock_state.broker_tokens = {}
 
-        auth_provider = MagicMock()
-        auth_provider.get_access_token = AsyncMock(return_value="token_123")
+        auth_provider = _mock_auth_provider_with_rest(token="token_123")
 
         router = MagicMock()
         router._auth_cache = {"kiwoom": auth_provider}
@@ -226,20 +245,63 @@ class TestGetAllTokensAsync:
         with (
             patch.object(engine_state, "state", mock_state),
         ):
-            # asyncio.gather가 실제로 실행되도록 create_task 없이 직접 호출
             await engine_loop._get_all_tokens_async(router)
 
-        # 활성 broker의 get_access_token()이 실제 호출됐는지 검증 (P19 살아있는 경로)
-        auth_provider.get_access_token.assert_awaited_once()
+        # _issue_token() 직접 호출 — 실패 종류 취득 (5세션)
+        auth_provider.rest_api._issue_token.assert_awaited_once()
         assert mock_state.broker_tokens.get("kiwoom") == "token_123"
+        assert mock_state.token_failure_kind is None
 
     @pytest.mark.asyncio
-    async def test_token_failure_returns_none(self):
-        """시나리오 8: 활성 broker 토큰 발급 실패 → broker_tokens에 저장 안함 + warning 로그 (시세 전용 모드 강등 경로 유지)."""
+    async def test_token_transient_failure_sets_kind(self):
+        """일시 실패 → broker_tokens에 저장 안함 + token_failure_kind="transient"."""
+        mock_state = _mock_state()
+        mock_state.broker_tokens = {}
+
+        auth_provider = _mock_auth_provider_with_rest(token=None, failure_kind="transient")
+
+        router = MagicMock()
+        router._auth_cache = {"kiwoom": auth_provider}
+
+        with (
+            patch.object(engine_state, "state", mock_state),
+        ):
+            await engine_loop._get_all_tokens_async(router)
+
+        auth_provider.rest_api._issue_token.assert_awaited_once()
+        assert "kiwoom" not in mock_state.broker_tokens
+        assert mock_state.token_failure_kind == "transient"
+
+    @pytest.mark.asyncio
+    async def test_token_permanent_failure_sets_kind(self):
+        """영구 실패 → broker_tokens에 저장 안함 + token_failure_kind="permanent"."""
+        mock_state = _mock_state()
+        mock_state.broker_tokens = {}
+
+        auth_provider = _mock_auth_provider_with_rest(token=None, failure_kind="permanent")
+
+        router = MagicMock()
+        router._auth_cache = {"kiwoom": auth_provider}
+
+        with (
+            patch.object(engine_state, "state", mock_state),
+        ):
+            await engine_loop._get_all_tokens_async(router)
+
+        auth_provider.rest_api._issue_token.assert_awaited_once()
+        assert "kiwoom" not in mock_state.broker_tokens
+        assert mock_state.token_failure_kind == "permanent"
+
+    @pytest.mark.asyncio
+    async def test_token_exception_sets_transient(self):
+        """_issue_token() 예외 → 일시 실패로 분류 + token_failure_kind="transient"."""
         mock_state = _mock_state()
         mock_state.broker_tokens = {}
 
         auth_provider = MagicMock()
+        rest_api = MagicMock()
+        rest_api._issue_token = AsyncMock(side_effect=Exception("Auth failed"))
+        auth_provider.rest_api = rest_api
         auth_provider.get_access_token = AsyncMock(side_effect=Exception("Auth failed"))
 
         router = MagicMock()
@@ -251,9 +313,8 @@ class TestGetAllTokensAsync:
         ):
             await engine_loop._get_all_tokens_async(router)
 
-        # 발급 시도는 했으나 실패 → 저장 안함 (강등 경로는 run_engine_loop에서 access_token=None 처리)
-        auth_provider.get_access_token.assert_awaited_once()
         assert "kiwoom" not in mock_state.broker_tokens
+        assert mock_state.token_failure_kind == "transient"
         warning_msgs = [str(c) for c in mock_logger.warning.call_args_list]
         assert any("토큰 발급 실패" in m for m in warning_msgs)
 
@@ -263,8 +324,7 @@ class TestGetAllTokensAsync:
         mock_state = _mock_state()
         mock_state.broker_tokens = {}
 
-        new_auth_provider = MagicMock()
-        new_auth_provider.get_access_token = AsyncMock(return_value="new_token")
+        new_auth_provider = _mock_auth_provider_with_rest(token="new_token")
 
         router = MagicMock()
         router._auth_cache = {}  # 빈 캐시
@@ -280,7 +340,7 @@ class TestGetAllTokensAsync:
 
     @pytest.mark.asyncio
     async def test_confirmed_data_broker_excluded_from_startup(self):
-        """시나리오 4: broker=kiwoom, confirmed_data_broker=ls → kiwoom get_access_token() 호출 O, ls 호출 X, kiwoom만 저장.
+        """시나리오 4: broker=kiwoom, confirmed_data_broker=ls → kiwoom _issue_token() 호출 O, ls 호출 X, kiwoom만 저장.
 
         기존 test_confirmed_data_broker_collected의 의도 반전 (Lazy Authentication 리팩토링).
         confirmed_data_broker는 startup 발급 대상에서 제외되고 배치 자체 Lazy Auth에 위임.
@@ -290,10 +350,8 @@ class TestGetAllTokensAsync:
         mock_state.integrated_system_settings_cache["ls_app_secret"] = "ls_secret"
         mock_state.broker_tokens = {}
 
-        kiwoom_auth = MagicMock()
-        kiwoom_auth.get_access_token = AsyncMock(return_value="kw_token")
-        ls_auth = MagicMock()
-        ls_auth.get_access_token = AsyncMock(return_value="ls_token")
+        kiwoom_auth = _mock_auth_provider_with_rest(token="kw_token")
+        ls_auth = _mock_auth_provider_with_rest(token="ls_token")
 
         router = MagicMock()
         router._auth_cache = {"kiwoom": kiwoom_auth, "ls": ls_auth}
@@ -302,25 +360,23 @@ class TestGetAllTokensAsync:
             await engine_loop._get_all_tokens_async(router)
 
         # 활성 broker(kiwoom)만 인증 호출 — confirmed_data_broker(ls)는 startup에서 인증하지 않음
-        kiwoom_auth.get_access_token.assert_awaited_once()
-        ls_auth.get_access_token.assert_not_called()
+        kiwoom_auth.rest_api._issue_token.assert_awaited_once()
+        ls_auth.rest_api._issue_token.assert_not_called()
         # 시나리오 5: 미사용 broker 토큰이 broker_tokens에 없음
         assert mock_state.broker_tokens.get("kiwoom") == "kw_token"
         assert "ls" not in mock_state.broker_tokens
 
     @pytest.mark.asyncio
     async def test_active_broker_ls_confirmed_kiwoom_excluded(self):
-        """시나리오 1+3: broker=ls, confirmed_data_broker=kiwoom → ls get_access_token() 호출 O, kiwoom 호출 X, ls만 저장."""
+        """시나리오 1+3: broker=ls, confirmed_data_broker=kiwoom → ls _issue_token() 호출 O, kiwoom 호출 X, ls만 저장."""
         mock_state = _mock_state(broker="ls", confirmed_data_broker="kiwoom")
         # ls API 키 설정 (_mock_state가 broker=ls에 대해 ls_app_key/secret 자동 생성)
         mock_state.integrated_system_settings_cache["kiwoom_app_key"] = "kw_key"
         mock_state.integrated_system_settings_cache["kiwoom_app_secret"] = "kw_secret"
         mock_state.broker_tokens = {}
 
-        ls_auth = MagicMock()
-        ls_auth.get_access_token = AsyncMock(return_value="ls_token")
-        kiwoom_auth = MagicMock()
-        kiwoom_auth.get_access_token = AsyncMock(return_value="kw_token")
+        ls_auth = _mock_auth_provider_with_rest(token="ls_token")
+        kiwoom_auth = _mock_auth_provider_with_rest(token="kw_token")
 
         router = MagicMock()
         router._auth_cache = {"ls": ls_auth, "kiwoom": kiwoom_auth}
@@ -329,8 +385,8 @@ class TestGetAllTokensAsync:
             await engine_loop._get_all_tokens_async(router)
 
         # 활성 broker(ls)만 인증 호출 — confirmed_data_broker(kiwoom)는 startup에서 인증하지 않음
-        ls_auth.get_access_token.assert_awaited_once()
-        kiwoom_auth.get_access_token.assert_not_called()
+        ls_auth.rest_api._issue_token.assert_awaited_once()
+        kiwoom_auth.rest_api._issue_token.assert_not_called()
         # 시나리오 5: 미사용 broker 토큰이 broker_tokens에 없음
         assert mock_state.broker_tokens.get("ls") == "ls_token"
         assert "kiwoom" not in mock_state.broker_tokens
@@ -341,8 +397,7 @@ class TestGetAllTokensAsync:
         mock_state = _mock_state()
         mock_state.broker_tokens = {"old_broker": "old_token"}
 
-        auth_provider = MagicMock()
-        auth_provider.get_access_token = AsyncMock(return_value="new_token")
+        auth_provider = _mock_auth_provider_with_rest(token="new_token")
 
         router = MagicMock()
         router._auth_cache = {"kiwoom": auth_provider}
@@ -365,8 +420,7 @@ class TestGetAllTokensAsync:
         mock_state = _mock_state(broker="")
         mock_state.broker_tokens = {}
 
-        auth_provider = MagicMock()
-        auth_provider.get_access_token = AsyncMock(return_value="token")
+        auth_provider = _mock_auth_provider_with_rest(token="token")
 
         router = MagicMock()
         router._auth_cache = {"kiwoom": auth_provider}
@@ -379,7 +433,7 @@ class TestGetAllTokensAsync:
 
         # 빈 broker → 발급 대상 없음 → gather 미호출, 토큰 저장 없음
         mock_gather.assert_not_called()
-        auth_provider.get_access_token.assert_not_called()
+        auth_provider.rest_api._issue_token.assert_not_called()
         assert mock_state.broker_tokens == {}
 
 
@@ -631,20 +685,25 @@ class TestRunEngineLoopInit:
         assert mock_state.access_token == "valid_token"
 
     @pytest.mark.asyncio
-    async def test_token_failure_sets_access_token_none(self):
-        """토큰 발급 실패 → state.access_token = None + 시세 전용 모드 로그."""
+    async def test_token_permanent_failure_sets_access_token_none(self):
+        """영구 실패 → state.access_token = None + 영구 실패 안내 로그 + 회복 루프 진입 없음."""
         mock_state = _mock_state()
         mock_state.broker_tokens = {}  # 토큰 없음
         mock_state.engine_stop_event.is_set.return_value = True
+        mock_state.token_recovery_in_progress = False
+        mock_state.token_failure_kind = None
 
         mock_router = _mock_router()
+
+        async def _set_permanent_failure(*args, **kwargs):
+            mock_state.token_failure_kind = "permanent"
 
         with (
             patch.object(engine_state, "state", mock_state),
             patch.object(engine_loop, "get_router", return_value=mock_router),
             patch.object(engine_loop, "is_test_mode", return_value=True),
             patch.object(engine_loop, "_load_caches_preboot", new_callable=AsyncMock),
-            patch.object(engine_loop, "_get_all_tokens_async", new_callable=AsyncMock),
+            patch.object(engine_loop, "_get_all_tokens_async", new_callable=AsyncMock, side_effect=_set_permanent_failure),
             patch.object(engine_loop, "_load_broker_spec_async", new_callable=AsyncMock, return_value=[]),
             patch.object(engine_loop.asyncio, "gather", new_callable=AsyncMock, side_effect=swallow_gather_side_effect),
             patch.object(engine_loop.asyncio, "create_task", side_effect=swallow_coro_side_effect),
@@ -652,6 +711,7 @@ class TestRunEngineLoopInit:
             patch("backend.app.services.engine_account_notify._rebuild_layout_cache"),
             patch("backend.app.services.engine_lifecycle.log_message") as mock_log,
             patch("backend.app.services.engine_lifecycle.broadcast_engine_status", new_callable=AsyncMock),
+            patch("backend.app.services.engine_lifecycle.schedule_engine_task", side_effect=swallow_coro_side_effect) as mock_schedule,
             patch("backend.app.services.engine_lifecycle.sync_sell_overrides"),
             patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock),
             patch("backend.app.services.engine_config._get_settings"),
@@ -660,8 +720,53 @@ class TestRunEngineLoopInit:
             await engine_loop.run_engine_loop()
 
         assert mock_state.access_token is None
+        assert mock_state.token_failure_kind == "permanent"
         log_msgs = [str(c) for c in mock_log.call_args_list]
-        assert any("시세 전용 모드" in m for m in log_msgs)
+        assert any("영구 실패" in m for m in log_msgs)
+        # 영구 실패 → 회복 루프 생성 없음
+        mock_schedule.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_token_transient_failure_starts_recovery_loop(self):
+        """일시 실패 → state.access_token = None + 회복 루프 태스크 생성."""
+        mock_state = _mock_state()
+        mock_state.broker_tokens = {}  # 토큰 없음
+        mock_state.engine_stop_event.is_set.return_value = True
+        mock_state.token_recovery_in_progress = False
+        mock_state.token_failure_kind = None
+
+        mock_router = _mock_router()
+
+        async def _set_transient_failure(*args, **kwargs):
+            mock_state.token_failure_kind = "transient"
+
+        with (
+            patch.object(engine_state, "state", mock_state),
+            patch.object(engine_loop, "get_router", return_value=mock_router),
+            patch.object(engine_loop, "is_test_mode", return_value=True),
+            patch.object(engine_loop, "_load_caches_preboot", new_callable=AsyncMock),
+            patch.object(engine_loop, "_get_all_tokens_async", new_callable=AsyncMock, side_effect=_set_transient_failure),
+            patch.object(engine_loop, "_load_broker_spec_async", new_callable=AsyncMock, return_value=[]),
+            patch.object(engine_loop.asyncio, "gather", new_callable=AsyncMock, side_effect=swallow_gather_side_effect),
+            patch.object(engine_loop.asyncio, "create_task", side_effect=swallow_coro_side_effect),
+            patch("backend.app.services.engine_state._notify_reg_ack"),
+            patch("backend.app.services.engine_account_notify._rebuild_layout_cache"),
+            patch("backend.app.services.engine_lifecycle.log_message") as mock_log,
+            patch("backend.app.services.engine_lifecycle.broadcast_engine_status", new_callable=AsyncMock),
+            patch("backend.app.services.engine_lifecycle.schedule_engine_task", side_effect=swallow_coro_side_effect) as mock_schedule,
+            patch("backend.app.services.engine_lifecycle.sync_sell_overrides"),
+            patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock),
+            patch("backend.app.services.engine_config._get_settings"),
+            patch("backend.app.services.daily_time_scheduler._init_ws_subscribe_state", new_callable=AsyncMock),
+        ):
+            await engine_loop.run_engine_loop()
+
+        assert mock_state.access_token is None
+        assert mock_state.token_failure_kind == "transient"
+        # 일시 실패 → 회복 루프 태스크 생성
+        mock_schedule.assert_called_once()
+        log_msgs = [str(c) for c in mock_log.call_args_list]
+        assert any("회복 루프" in m for m in log_msgs)
 
     @pytest.mark.asyncio
     async def test_finally_clears_broker_rest_apis(self):

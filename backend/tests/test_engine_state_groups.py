@@ -105,6 +105,8 @@ GROUP_F_SAFETY = {
     "confirmed_refresh_running_5d",
     "latest_filter_summary_meta",
     "integrated_system_settings_cache",
+    "token_recovery_in_progress",
+    "token_failure_kind",
 }
 
 ALL_GROUPS = {
@@ -123,7 +125,7 @@ class TestGroupClassification:
 
     def test_group_sizes_match_docstring(self):
         """docstring에 명시된 그룹별 속성 수와 일치."""
-        expected_sizes = {"A": 5, "B": 12, "C": 8, "D": 13, "E": 17, "F": 13}
+        expected_sizes = {"A": 5, "B": 12, "C": 8, "D": 13, "E": 17, "F": 15}
         for name, group in ALL_GROUPS.items():
             assert len(group) == expected_sizes[name], (
                 f"그룹 {name} 속성 수 불일치: 예상 {expected_sizes[name]}, 실제 {len(group)}"
@@ -134,7 +136,7 @@ class TestGroupClassification:
         all_attrs = set()
         for group in ALL_GROUPS.values():
             all_attrs |= group
-        assert len(all_attrs) == 68, f"전체 속성 수: {len(all_attrs)} (예상 68)"
+        assert len(all_attrs) == 70, f"전체 속성 수: {len(all_attrs)} (예상 70)"
 
     def test_no_overlap_between_groups(self):
         """어떤 속성도 두 그룹에 중복 분류되지 않음."""
