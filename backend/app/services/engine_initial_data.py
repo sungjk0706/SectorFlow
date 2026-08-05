@@ -217,7 +217,7 @@ async def _get_daily_summary_for_snapshot() -> list:
 
 _REALTIME_FIELDS = (
     "cur_price", "change", "change_rate", "trade_amount", "strength",
-    "order_ratio", "program_net_buy", "news_boost",
+    "order_ratio", "program_net_buy", "news_boost", "sign",
 )
 
 
@@ -252,6 +252,9 @@ async def _reset_realtime_fields() -> None:
             pos["change_rate"] = None
             pos["bid_depth"] = None
             pos["ask_depth"] = None
+
+    # 업종지수 실시간 캐시 초기화 (전일 잔존 부호·지수·대비·등락률 제거 — P22 정합성)
+    engine_state.state.index_data_cache.clear()
 
     # 업종 점수 캐시 초기화 (실시간 데이터 재계산 유도)
     _set_sector_summary(None, "engine_initial_data.reset_realtime_fields")
