@@ -184,6 +184,7 @@ async def build_master_cache_snapshot(codes: list[str]) -> dict:
 _SNAPSHOT_STOCK_FIELDS = {
     "code", "name", "cur_price", "change", "change_rate", "strength",
     "trade_amount", "sector", "avg_amt_5d", "market_type", "nxt_enable",
+    "sign",
 }
 
 

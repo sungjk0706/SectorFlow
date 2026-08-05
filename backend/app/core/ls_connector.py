@@ -221,6 +221,7 @@ class _LsSocket:
                         "12": drate_str,
                         "14": str(value),
                         "17": str(high),
+                        "25": sign,
                         "27": str(offerho),
                         "28": str(bidho),
                         "228": str(cpower),

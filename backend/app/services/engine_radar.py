@@ -82,14 +82,13 @@ def _apply_real01_volume_amount_to_radar_rows(raw_cd: str, vals: dict, *, is_0b_
         if "10" in vals:
             val10_str = str(vals["10"]).replace("+", "")
             entry["cur_price"] = abs(int(float(val10_str)))
+        if "25" in vals:
+            _raw25 = str(vals["25"]).strip()
+            entry["sign"] = _raw25 if _raw25 else "3"
+        else:
+            entry["sign"] = "3"
         if "11" in vals:
             val11_str = str(vals["11"]).strip()
-            if val11_str.startswith("-"):
-                entry["sign"] = "5"
-            elif val11_str.startswith("+"):
-                entry["sign"] = "2"
-            else:
-                entry["sign"] = "3"
             _chg = int(float(val11_str.replace("+", "").replace("-", "")))
             entry["change"] = -_chg if val11_str.startswith("-") else _chg
         if "12" in vals:
