@@ -285,9 +285,10 @@ export function createSectorDonut(options: SectorDonutOptions): SectorDonutApi {
         item.appendChild(dot)
         item.appendChild(label)
         item.appendChild(val)
-        const idxCapture = i
+        const sectorCapture = seg.row.sector
         item.addEventListener('mouseenter', () => {
-          hoveredIdx = idxCapture
+          // 업종명으로 현재 인덱스 실시간 조회 — 순서 변경 시에도 정확한 인덱스 유지
+          hoveredIdx = currentSegments.findIndex(s => s.row.sector === sectorCapture)
           scheduleRender()
         })
         item.addEventListener('mouseleave', () => {
