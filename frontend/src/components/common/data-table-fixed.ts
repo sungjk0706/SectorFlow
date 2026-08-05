@@ -465,10 +465,16 @@ export function createFixedMode<T extends object>(
   function updateItemByKey(key: string) {
     if (destroyed) return
     if (!options.keyFn) return
-    const idx = currentRows.findIndex((row) => {
-      if (isGroupRow(row)) return false
-      return options.keyFn!(row as T, currentRows.indexOf(row)) === key
-    })
+    // M-10: findIndex 콜백 내 indexOf 중복 호출(O(n²)) 제거 — 외부 인덱스 변수로 단일 순회(O(n))
+    let idx = -1
+    for (let i = 0; i < currentRows.length; i++) {
+      const row = currentRows[i]
+      if (isGroupRow(row)) continue
+      if (options.keyFn!(row as T, i) === key) {
+        idx = i
+        break
+      }
+    }
     if (idx < 0) return
     const rowEl = rowCaches[idx]
     if (!rowEl || rowEl.style.display === 'none') return

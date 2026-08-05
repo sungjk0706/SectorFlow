@@ -97,6 +97,8 @@ export interface StockClassificationPageState {
   sectorRowMap: Map<string, HTMLElement>
   prevTargetSectors: Set<string>
   selectedTargetSector: string | null  // 우측 패널 선택된 대상 업종
+  // M-07: 3패널 갱신 rAF 통합 — 중복 예약 방지 + unmount 시 취소
+  panelUpdateRafId: number | null
 }
 
 function createState(): StockClassificationPageState {
@@ -139,6 +141,7 @@ function createState(): StockClassificationPageState {
     sectorRowMap: new Map(),
     prevTargetSectors: new Set(),
     selectedTargetSector: null,
+    panelUpdateRafId: null,
   }
 }
 
@@ -189,6 +192,20 @@ function updateStockNameIndex(): void {
 /* ── 8.1 + 8.8: mount / unmount ── */
 
 /** stockClassificationStore 구독 — 데이터 변경 시 이동한 종목만 선택 상태에서 제거 */
+// M-07: 4개 패널 갱신을 rAF로 묶어 1프레임에 1회 렌더링 (중복 예약 방지 + unmount 시 취소)
+function schedulePanelUpdate(): void {
+  if (state.panelUpdateRafId !== null) return
+  state.panelUpdateRafId = requestAnimationFrame(() => {
+    state.panelUpdateRafId = null
+    if (!state.mounted) return
+    updateMasterPanel(state)
+    updateCenterPanel(state)
+    updateRightPanel(state)
+    updateStagingChipSectors(state)
+  })
+}
+
+/** stockClassificationStore 구독 — 데이터 변경 시 이동한 종목만 선택 상태에서 제거 */
 function handleStockDataChange(storeState: StockClassificationState, prev: StockClassificationState): void {
   if (storeState.allStocks !== prev.allStocks) {
     updateStockNameIndex()
@@ -219,21 +236,16 @@ function handleStockDataChange(storeState: StockClassificationState, prev: Stock
     state.anchorRow = -1
   }
 
-  updateMasterPanel(state)
-  updateCenterPanel(state)
-  updateRightPanel(state)
-  updateStagingChipSectors(state)
+  // M-07: 4개 패널 갱신을 rAF로 묶어 1프레임에 1회 렌더링 (중복 예약 방지)
+  schedulePanelUpdate()
 }
 
 /** stockClassificationStore 구독 콜백 */
 function handleStockClassificationChange(storeState: StockClassificationState, prev: StockClassificationState | null): void {
   if (!prev) {
-    // 첫 호출: 초기 렌더링
+    // 첫 호출: 초기 렌더링 — 4개 패널 갱신을 rAF로 묶어 1프레임에 1회 (M-07)
     updateStockNameIndex()
-    updateMasterPanel(state)
-    updateCenterPanel(state)
-    updateRightPanel(state)
-    updateStagingChipSectors(state)
+    schedulePanelUpdate()
     updateIndicatorBar(state)
     return
   }
@@ -313,6 +325,11 @@ function mount(_container: HTMLElement): void {
 function unmount(): void {
   notifyPageInactive('stock-classification')
   state.mounted = false
+  // M-07: 예약된 패널 갱신 취소 (P19 메모리 누수 방지)
+  if (state.panelUpdateRafId !== null) {
+    cancelAnimationFrame(state.panelUpdateRafId)
+    state.panelUpdateRafId = null
+  }
   resetStagingCallbacks()
   resetMasterCallbacks()
   resetCenterCallbacks()

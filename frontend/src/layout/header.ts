@@ -582,7 +582,15 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
 
   }
 
-  const unsubscribe = uiStore.subscribe(onStateChange)
+  // M-09: 헤더 칩 갱신을 rAF로 모아 1프레임에 1회 실행 (중복 예약 방지)
+  let headerRafId: number | null = null
+  const unsubscribe = uiStore.subscribe(() => {
+    if (headerRafId !== null) return
+    headerRafId = requestAnimationFrame(() => {
+      headerRafId = null
+      onStateChange(uiStore.getState())
+    })
+  })
 
   // 초기 렌더링
   onStateChange(uiStore.getState())
@@ -597,6 +605,10 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
   function destroy(): void {
     unsubscribe()
     clearInterval(countdownTimer)
+    if (headerRafId !== null) {
+      cancelAnimationFrame(headerRafId)
+      headerRafId = null
+    }
   }
 
   return { el: header, destroy }

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { bindWSToStore } from '../src/binding'
 import { uiStore } from '../src/stores/uiStore'
 import type { SectorScoreRow } from '../src/types'
@@ -36,12 +36,24 @@ describe('binding — sector-scores → sectorDataReady 전환', () => {
   let orders: ReturnType<typeof createMockWSClient>
 
   beforeEach(() => {
+    // M-02: sector-scores 핸들러가 rAF로 갱신을 미루므로 테스트에서는 동기 실행하도록 mock.
+    // 반환값으로 null을 주어 rAF ID 체크가 다음 emit을 차단하지 않도록 함
+    // (동기 실행 시 반환값이 콜백 내부의 null 설정을 덮어쓰는 문제 방지).
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
+      cb(0)
+      return null as unknown as number
+    })
+    vi.stubGlobal('cancelAnimationFrame', () => {})
     // uiStore 초기 상태로 리셋 (sectorDataReady=false)
     uiStore.setState({ sectorDataReady: false, sectorScoresWaiting: false, sectorScoresDelta: null })
     prices = createMockWSClient()
     settings = createMockWSClient()
     orders = createMockWSClient()
     bindWSToStore(prices as any, settings as any, orders as any)
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
   })
 
   it('초기 sectorDataReady 는 false 이다 (sectorScoresWaiting=false 기본값만으로 준비 완료 판단 금지)', () => {

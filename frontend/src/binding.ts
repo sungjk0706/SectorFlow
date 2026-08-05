@@ -237,8 +237,19 @@ export function bindWSToStore(
   })
 
   /* ── sector-scores: 업종순위 실시간 갱신 ── */
+  // M-02: applySectorScores(hotStore) + uiStore.setState 두 번 갱신을 rAF로 묶어
+  //       같은 화면 주기에 1회 렌더링으로 통합 (중복 예약 방지).
+  let sectorScoresRafId: number | null = null
+  let pendingSectorScoresData: {
+    scores?: SectorScoreRow[]
+    changed_scores?: SectorScoreRow[]
+    delta?: boolean
+    changed_sectors?: string[]
+    removed_sectors?: string[]
+    status?: { waiting?: boolean } & Record<string, unknown>
+  } | null = null
   pricesClient.onEvent('sector-scores', (data) => {
-    const d = data as {
+    pendingSectorScoresData = data as {
       scores?: SectorScoreRow[]
       changed_scores?: SectorScoreRow[]
       delta?: boolean
@@ -246,19 +257,26 @@ export function bindWSToStore(
       removed_sectors?: string[]
       status?: { waiting?: boolean } & Record<string, unknown>
     }
-    applySectorScores(d as unknown as SectorScoresEvent)
-    // sectorScoresDelta (uiStore) 갱신 + 수신 대기 상태 (P21 투명성)
-    // sectorDataReady — 컬럼 폭 계산 게이트: waiting!==true 시 준비 완료, waiting===true 시 대기.
-    // 초기 sectorScoresWaiting=false 기본값만으로 준비 완료로 판단하지 않고 실제 이벤트로만 전환.
-    const waiting = d.status?.waiting === true
-    uiStore.setState({
-      sectorScoresDelta: d.delta
-        ? { delta: true, changed_sectors: d.changed_sectors ?? [], removed_sectors: d.removed_sectors ?? [] }
-        : null,
-      sectorScoresWaiting: waiting,
-      sectorDataReady: !waiting,
+    if (sectorScoresRafId !== null) return
+    sectorScoresRafId = requestAnimationFrame(() => {
+      sectorScoresRafId = null
+      const d = pendingSectorScoresData
+      pendingSectorScoresData = null
+      if (!d) return
+      applySectorScores(d as unknown as SectorScoresEvent)
+      // sectorScoresDelta (uiStore) 갱신 + 수신 대기 상태 (P21 투명성)
+      // sectorDataReady — 컬럼 폭 계산 게이트: waiting!==true 시 준비 완료, waiting===true 시 대기.
+      // 초기 sectorScoresWaiting=false 기본값만으로 준비 완료로 판단하지 않고 실제 이벤트로만 전환.
+      const waiting = d.status?.waiting === true
+      uiStore.setState({
+        sectorScoresDelta: d.delta
+          ? { delta: true, changed_sectors: d.changed_sectors ?? [], removed_sectors: d.removed_sectors ?? [] }
+          : null,
+        sectorScoresWaiting: waiting,
+        sectorDataReady: !waiting,
+      })
+      // receiveRate는 receive-rate 이벤트가 단일 소스(P10 SSOT) — sector-scores에서 중복 갱신 제거
     })
-    // receiveRate는 receive-rate 이벤트가 단일 소스(P10 SSOT) — sector-scores에서 중복 갱신 제거
   })
 
   /* ── ws-subscribe-status: 구독 상태 실시간 갱신 ── */

@@ -40,6 +40,15 @@ class SectorStockTable extends HTMLElement {
   private currentMatchedSectors: Set<string> | null = null
   private rowCache = new Map<string, { stock: MasterStock; row: DataRowItem }>()
   private onRealDataTick: ((e: Event) => void) | null = null
+  // H-04: 요약 카운트 캐싱 — masterStocks 참조 변경 시에만 재계산
+  private countCache: {
+    stocksRef: MasterStock[] | null
+    stockCount: number
+    krxCount: number
+    nxtCount: number
+    kospiCount: number
+    kosdaqCount: number
+  } = { stocksRef: null, stockCount: 0, krxCount: 0, nxtCount: 0, kospiCount: 0, kosdaqCount: 0 }
 
   // DOM 참조
   private titleH3: HTMLElement | null = null
@@ -90,12 +99,27 @@ class SectorStockTable extends HTMLElement {
   private updateUI(rows: RowItem[]): void {
     const state = hotStore.getState()
     const uiState = uiStore.getState()
+    // H-04: 4개 filter() 순회를 단일 for 루프로 통합 + masterStocks 참조 변경 시에만 재계산
     const stocks = Object.values(state.masterStocks)
-    const stockCount = stocks.length
-    const krxCount = stocks.filter(s => !s.nxt_enable).length
-    const nxtCount = stocks.filter(s => s.nxt_enable).length
-    const kospiCount = stocks.filter(s => s.market_type === '0').length
-    const kosdaqCount = stocks.filter(s => s.market_type === '10').length
+    if (this.countCache.stocksRef !== stocks) {
+      let krxCount = 0, nxtCount = 0, kospiCount = 0, kosdaqCount = 0
+      for (let i = 0; i < stocks.length; i++) {
+        const s = stocks[i]
+        if (s.nxt_enable) nxtCount++
+        else krxCount++
+        if (s.market_type === '0') kospiCount++
+        else if (s.market_type === '10') kosdaqCount++
+      }
+      this.countCache = {
+        stocksRef: stocks,
+        stockCount: stocks.length,
+        krxCount,
+        nxtCount,
+        kospiCount,
+        kosdaqCount,
+      }
+    }
+    const { stockCount, krxCount, nxtCount, kospiCount, kosdaqCount } = this.countCache
     const minTradeAmt = uiState.settings?.sector_min_trade_amt ?? 0
 
     // summaryBar 갱신 — 숫자 span textContent만 갱신 (innerHTML 파괴 금지)
@@ -118,8 +142,8 @@ class SectorStockTable extends HTMLElement {
     if (this.nxtOnlyNoticeBadge) {
       const isNxtOnly = uiState.marketPhase.is_nxt_only === true
       if (isNxtOnly) {
-        const hiddenCount = stocks.filter(s => !s.nxt_enable).length
-        this.nxtOnlyNoticeBadge.textContent = `NXT 전용 시간대 — KRX 단독 종목 숨김 (${hiddenCount}종목)`
+        // hiddenCount === krxCount (!nxt_enable) — 캐시 재사용 (H-04)
+        this.nxtOnlyNoticeBadge.textContent = `NXT 전용 시간대 — KRX 단독 종목 숨김 (${krxCount}종목)`
         this.nxtOnlyNoticeBadge.style.opacity = '0'
         this.nxtOnlyNoticeBadge.style.display = 'flex'
         requestAnimationFrame(() => {
