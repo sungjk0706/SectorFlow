@@ -274,7 +274,7 @@ class TestSyncVsAsyncEquivalence:
         asyncio.create_task(
             dry_run.fake_fill_event("BUY", _TEST_CODE, qty, price, _TEST_NM)
         )
-        await asyncio.sleep(0.3)  # FAKE_FILL_DELAY(0.1s) + 여유
+        await asyncio.sleep(0.5)  # FAKE_FILL_DELAY(0.3s) + 여유
         orderable_async = settlement_engine.get_orderable()
 
         # (b) 동기: _apply_buy 직접 호출 (별도 격리 필요하므로 상태 리셋)
