@@ -46,6 +46,7 @@ BUY_REJECT_RISK_MARKET_DROP = "risk_market_drop" # 시장 지수 급락
 BUY_REJECT_RISK_MARKET_DATA = "risk_market_data" # 시장 지수 자료 확인 불가
 BUY_REJECT_TEST_CASH = "test_cash"               # 테스트 예수금 검증 실패
 BUY_REJECT_ORDER_FAIL = "order_fail"             # 주문 전송 실패
+BUY_REJECT_ORDER_BUSY = "order_busy"             # 주문 직렬화 잠금 점유 중 (다른 주문 처리 중)
 
 # 종목별 차단 사유 (차순위 시도 유효 → continue)
 BUY_REJECT_TIME_BLOCKED = "time_blocked"         # 체결 불가 시간대 (nxt 여부)
@@ -80,6 +81,7 @@ BUY_GLOBAL_REJECT_REASONS: frozenset[str] = frozenset({
     BUY_REJECT_RISK_MARKET_DATA,
     BUY_REJECT_TEST_CASH,
     BUY_REJECT_ORDER_FAIL,
+    BUY_REJECT_ORDER_BUSY,
 })
 
 # ── 매수 차단 사유 → UI "원인" 컬럼 표시 텍스트 (P10 SSOT, P21 사용자 투명성) ──
@@ -101,6 +103,7 @@ BUY_REJECT_REASON_TEXT: dict[str, str] = {
     BUY_REJECT_SIGNAL_INTERVAL:   "연속신호 차단",
     BUY_REJECT_QTY_ZERO:          "매수수량 0",
     BUY_REJECT_ORDER_FAIL:        "주문 전송 실패",
+    BUY_REJECT_ORDER_BUSY:        "주문 처리 중",
     BUY_REJECT_TEST_CASH:         "테스트 잔고 부족",
     BUY_REJECT_AUTO_BUY_OFF:      "자동매수 OFF",
     BUY_REJECT_MASTER_OFF:        "자동매매 OFF",
@@ -250,8 +253,8 @@ class AutoTradeManager:
         self._daily_buy_date: str = ""
         self._daily_buy_spent: int | None = None  # None = 로드 실패 (매수 차단)
         self._bought_today: dict[str, float] = {}  # stk_cd -> buy timestamp
-        # ── 글로벌 매수 락: 동시 매수 요청 순차 처리 (TOCTOU 경쟁 상태 방지, P22) ──
-        self._buy_lock: asyncio.Lock | None = None
+        # ── 글로벌 주문 락: 매수·매도 공통 주문 직렬화 (한 번에 하나의 주문만 실행, P22) ──
+        self._order_lock: asyncio.Lock | None = None
 
     async def _load_daily_buy_state(self) -> tuple[int | None, dict[str, float]]:
         """기동 시 trade_history에서 오늘 매수 합계 + 매수 종목 timestamp dict 로드.
@@ -299,19 +302,26 @@ class AutoTradeManager:
     async def execute_buy(self, stk_cd: str, current_price: float,
                     access_token: str, reason: str = "") -> tuple[bool, str]:
         """
-        매수 주문 실행 (글로벌 매수 락으로 순차 처리).
+        매수 주문 실행 (글로벌 주문 락으로 직렬화 — 즉시 시도, 점유 시 차단).
         reason: 매수 사유 (체결 이력 기록용 — 가산점 통합 문자열).
         반환값: (True, "")=주문 전송 성공, (False, 사유코드)=가드에 의해 차단/실패
+        결정 6: 잠금이 이미 점유 중이면 대기하지 않고 즉시 차단 반환 (다음 평가 주기 재시도).
         """
-        if self._buy_lock is None:
-            self._buy_lock = asyncio.Lock()
-        async with self._buy_lock:
+        if self._order_lock is None:
+            self._order_lock = asyncio.Lock()
+        if self._order_lock.locked():
+            logger.info("[매매] [매수차단] %s 주문 처리 중 — 즉시 차단 (다음 주기 재시도)", stk_cd)
+            return False, BUY_REJECT_ORDER_BUSY
+        await self._order_lock.acquire()
+        try:
             return await self._execute_buy_locked(stk_cd, current_price, access_token, reason)
+        finally:
+            self._order_lock.release()
 
     async def _execute_buy_locked(self, stk_cd: str, current_price: float,
                     access_token: str, reason: str = "") -> tuple[bool, str]:
         """
-        매수 주문 실행 본문 (글로벌 매수 락 내부).
+        매수 주문 실행 본문 (글로벌 주문 락 내부 — 매수·매도 공통 직렬화).
         TOCTOU 경쟁 상태 방지: reserve_buy_power로 검증+즉시 차감을 원자적 수행.
         반환값: (True, "")=주문 전송 성공, (False, 사유코드)=가드에 의해 차단/실패
         """
@@ -667,9 +677,40 @@ class AutoTradeManager:
         """trade_settings: _to_trade_settings (is_sell_mkt 등). base_settings: engine_settings (kiwoom/telegram용).
 
         반환: True=주문 전송 성공, False=차단/실패 (check_sell_conditions에서 건별 간격 적용에 사용).
+        결정 1·6: 글로벌 주문 락으로 매수·매도 공통 직렬화 — 즉시 시도, 점유 시 차단 반환.
         """
         if not trade_settings.get("is_sell_auto", False):
             return False
+        if self._order_lock is None:
+            self._order_lock = asyncio.Lock()
+        if self._order_lock.locked():
+            logger.info("[매매] [매도차단] %s(%s) 주문 처리 중 — 즉시 차단 (다음 주기 재시도)", stk_nm, stk_cd)
+            return False
+        await self._order_lock.acquire()
+        try:
+            return await self._execute_sell_locked(
+                stk_cd, cur_price, stk_nm, reason, qty, pnl_rate,
+                trade_settings, base_settings, access_token,
+            )
+        finally:
+            self._order_lock.release()
+
+    async def _execute_sell_locked(
+        self,
+        stk_cd: str,
+        cur_price: float,
+        stk_nm: str,
+        reason: str,
+        qty: int,
+        pnl_rate: float,
+        trade_settings: dict,
+        base_settings: dict,
+        access_token: str,
+    ) -> bool:
+        """매도 주문 실행 본문 (글로벌 주문 락 내부 — 매수·매도 공통 직렬화).
+
+        반환: True=주문 전송 성공, False=차단/실패.
+        """
         # ── 체결 불가 시간대 주문 게이트 — 매도 동일 적용 (P15/P16) ──
         if self._is_order_time_blocked(stk_cd):
             logger.info("[매매] [주문차단] %s(%s) 체결 불가 시간대 — 매도 중단", stk_nm, stk_cd)
