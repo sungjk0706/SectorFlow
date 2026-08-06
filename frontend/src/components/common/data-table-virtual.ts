@@ -6,6 +6,7 @@
 import { CELL_BORDER, COLOR, FONT_SIZE, FONT_WEIGHT, FONT_FAMILY } from './ui-styles'
 import { CELL_PADDING } from './table-config'
 import { createVirtualScroller } from '../virtual-scroller'
+import { createFrameScheduler } from './frame-scheduler'
 import {
   type ColumnDef,
   type TableRow,
@@ -439,43 +440,25 @@ export function createVirtualScrollMode<T extends object>(
     scroller.updateItems(rows)
   }
 
-  // Phase 2.1: 렌더링 주기 제한 (requestAnimationFrame)
+  // Phase 2.1: 렌더링 주기 제한 — 공통 화면주기 갱신 도구 사용 (W11 표현 통일)
   let pendingRows: TableRow<T>[] | null = null
-  let rafId: number | null = null
-  const TARGET_FPS = 60
-  const FRAME_INTERVAL = 1000 / TARGET_FPS
-  let lastRenderTime = 0
-
-  function scheduleRender() {
-    if (rafId !== null) return
-    rafId = -1
-    requestAnimationFrame((timestamp) => {
-      rafId = null
-
-      if (pendingRows === null) {
-        return
-      }
-      const elapsed = timestamp - lastRenderTime
-      if (elapsed < FRAME_INTERVAL) {
-        scheduleRender()
-        return
-      }
-      lastRenderTime = timestamp
-      const rows = pendingRows
-      pendingRows = null
-      if (destroyed) return
-      internalUpdate(rows)
-    })
-  }
+  const scheduler = createFrameScheduler(() => {
+    if (pendingRows === null) return
+    const rows = pendingRows
+    pendingRows = null
+    if (destroyed) return
+    internalUpdate(rows)
+  })
 
   function updateRows(rows: TableRow<T>[]) {
     if (destroyed) return
     pendingRows = rows
-    scheduleRender()
+    scheduler.schedule()
   }
 
   function destroy() {
     destroyed = true
+    scheduler.destroy()
     scroller.destroy()
     wrapper.remove()
   }

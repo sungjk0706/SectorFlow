@@ -29,16 +29,21 @@ export interface FrameScheduler {
  * @returns schedule/cancel/destroy 인터페이스
  */
 export function createFrameScheduler(callback: () => void): FrameScheduler {
-  let rafId: number | null = null
+  // scheduled: "예약 중" 상태 플래그 (중복 예약 방지). rafHandle과 분리 —
+  // 일부 환경(jsdom)에서 requestAnimationFrame이 콜백을 동기 실행하면
+  // 콜백 내부에서 rafHandle=null 설정 후 반환값이 rafHandle을 덮어쓰는 문제를 방지.
+  let scheduled = false
+  let rafHandle: number | null = null
   let lastRenderTime = 0
   let destroyed = false
 
   function schedule(): void {
     if (destroyed) return
-    if (rafId !== null) return
-    rafId = -1
-    rafId = requestAnimationFrame((timestamp) => {
-      rafId = null
+    if (scheduled) return
+    scheduled = true
+    rafHandle = requestAnimationFrame((timestamp) => {
+      scheduled = false
+      rafHandle = null
       if (destroyed) return
       const elapsed = timestamp - lastRenderTime
       if (elapsed < REFRESH_FRAME_INTERVAL) {
@@ -51,10 +56,11 @@ export function createFrameScheduler(callback: () => void): FrameScheduler {
   }
 
   function cancel(): void {
-    if (rafId !== null && rafId >= 0) {
-      cancelAnimationFrame(rafId)
+    if (rafHandle !== null && rafHandle >= 0) {
+      cancelAnimationFrame(rafHandle)
     }
-    rafId = null
+    rafHandle = null
+    scheduled = false
   }
 
   function destroy(): void {
