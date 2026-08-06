@@ -55,6 +55,8 @@ from backend.app.services.trading import (  # noqa: E402
     BUY_REJECT_RISK_MARKET_DROP,
     BUY_REJECT_RISK_SINGLE,
     BUY_REJECT_SIGNAL_INTERVAL,
+    BUY_REJECT_ORDER_BUSY,
+    BUY_REJECT_FILL_TIMEOUT,
     _map_risk_reason_to_code,
     _broadcast_daily_buy_state_status,
     _broadcast_test_cash_failed,
@@ -1268,3 +1270,174 @@ class TestExecuteBuyOrderFailure:
         assert result is False
         # 실전 라우터가 조회되지 않아야 함 (테스트모드는 fake_send_order만 사용)
         mock_get_router.assert_not_called()
+
+
+# ── 주문 직렬화 잠금 시나리오 (결정 1·2·3·6 — 5단계 신규 테스트) ────────────────
+
+class TestOrderSerializationLock:
+    """주문 직렬화 잠금 검증 — 매수·매도 공통 잠금으로 동시 주문 차단·교착 방지·타임아웃 알림.
+
+    시나리오:
+      1. 잠금 점유 중 매수·매도 주문 요청 시 즉시 차단 (결정 6 — 대기 없이 차단)
+      2. 주문 1건 실패 후 잠금 해제 → 다음 주문 정상 진입 (교착 없음 — P25 격리된 실패)
+      3. 주문 응답 타임아웃 시 화면 알림 + 잠금 해제 (결정 2·3 — P21 투명성)
+    """
+
+    @pytest.mark.asyncio
+    async def test_buy_blocked_when_lock_held(self):
+        """잠금 점유 중 매수 주문 요청 시 즉시 차단 — BUY_REJECT_ORDER_BUSY 반환 (결정 6)."""
+        mgr = _make_manager()
+        mgr._order_lock = asyncio.Lock()
+        await mgr._order_lock.acquire()  # 다른 주문 실행 중 시뮬레이션
+        try:
+            result, reason = await mgr.execute_buy("005930", 70000, "token")
+            assert result is False
+            assert reason == BUY_REJECT_ORDER_BUSY
+        finally:
+            mgr._order_lock.release()
+
+    @pytest.mark.asyncio
+    async def test_sell_blocked_when_lock_held(self):
+        """잠금 점유 중 매도 주문 요청 시 즉시 차단 — False 반환 (결정 1·6)."""
+        mgr = _make_manager()
+        mgr._order_lock = asyncio.Lock()
+        await mgr._order_lock.acquire()  # 매수 주문 실행 중 시뮬레이션
+        trade_settings = mgr._to_trade_settings(_raw_settings())
+        try:
+            result = await mgr.execute_sell(
+                "005930", 70000, "삼성전자", "손절", 10, -6.0,
+                trade_settings, _raw_settings(), "token",
+            )
+            assert result is False
+        finally:
+            mgr._order_lock.release()
+
+    @pytest.mark.asyncio
+    async def test_buy_failure_releases_lock_for_next_order(self):
+        """주문 1건 실패 후 잠금 해제 → 다음 주문 정상 진입 (교착 없음 — P25).
+
+        시나리오:
+          1. 첫 번째 execute_buy — 주문 전송 실패 (BUY_REJECT_ORDER_FAIL)
+          2. 잠금 해제 확인 (locked() == False)
+          3. 두 번째 execute_buy — 잠금 차단(BUY_REJECT_ORDER_BUSY) 아님 → 정상 경로 진입 증명
+        """
+        from backend.app.services import settlement_engine
+        from backend.app.services.trading import BUY_REJECT_ORDER_FAIL
+        mgr = _make_manager(_raw_settings(rebuy_block_on=False))
+        _reserved_cost = 980_147
+        original_cash = 10_000_000
+        settlement_engine._orderable = original_cash
+        settlement_engine._loaded = True
+
+        # ── 첫 번째 주문: 실패 ──
+        with patch("backend.app.services.engine_state.state") as mock_state, \
+             patch("backend.app.services.trading.auto_buy_effective", return_value=True), \
+             patch("backend.app.services.engine_account.get_positions", new_callable=AsyncMock, return_value=[]), \
+             patch("backend.app.services.trading.is_test_mode", return_value=True), \
+             patch("backend.app.services.settlement_engine.get_available_cash", return_value=original_cash), \
+             patch("backend.app.services.dry_run.estimate_fill_price", return_value=70000), \
+             patch("backend.app.services.trading.get_risk_manager") as mock_rm, \
+             patch("backend.app.services.data_manager.get_stock_name", return_value="삼성전자"), \
+             patch("backend.app.services.engine_strategy_core.reserve_test_buy_power", new_callable=AsyncMock, return_value=(True, "", _reserved_cost)), \
+             patch("backend.app.services.dry_run.fake_send_order", new_callable=AsyncMock, return_value={"success": False}), \
+             patch("backend.app.services.settlement_engine.release_buy_power", new_callable=AsyncMock), \
+             patch("backend.app.services.dry_run.set_stock_name", new_callable=AsyncMock), \
+             patch("backend.app.services.dry_run.fake_fill_event", new_callable=AsyncMock), \
+             patch("backend.app.services.trade_history.record_buy", new_callable=AsyncMock), \
+             patch("backend.app.core.journal.record_order_request", new_callable=AsyncMock), \
+             patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock), \
+             patch("backend.app.services.engine_lifecycle.schedule_engine_task", side_effect=_close_coro), \
+             patch("backend.app.services.trading._fire_and_forget_telegram"):
+            mock_state.realtime_latency_exceeded = False
+            mock_state.integrated_system_settings_cache = _raw_settings(rebuy_block_on=False)
+            mock_state.master_stocks_cache = {}
+            mock_rm.return_value.circuit_breaker.get_state.return_value = "CLOSED"
+            mock_rm.return_value.get_withdrawable_deposit.return_value = original_cash
+            mock_rm.return_value.check_buy_order_allowed = AsyncMock(return_value=(True, "승인"))
+            result1, reason1 = await mgr.execute_buy("005930", 70000, "token")
+
+        assert result1 is False
+        assert reason1 == BUY_REJECT_ORDER_FAIL
+        # 잠금 해제 확인 — 교착 상태 아님
+        assert mgr._order_lock is not None
+        assert mgr._order_lock.locked() is False
+
+        # ── 두 번째 주문: 잠금 차단이 아닌 정상 경로 진입 확인 ──
+        with patch("backend.app.services.engine_state.state") as mock_state2, \
+             patch("backend.app.services.trading.auto_buy_effective", return_value=True), \
+             patch("backend.app.services.engine_account.get_positions", new_callable=AsyncMock, return_value=[]), \
+             patch("backend.app.services.trading.is_test_mode", return_value=True), \
+             patch("backend.app.services.settlement_engine.get_available_cash", return_value=original_cash), \
+             patch("backend.app.services.dry_run.estimate_fill_price", return_value=70000), \
+             patch("backend.app.services.trading.get_risk_manager") as mock_rm2, \
+             patch("backend.app.services.data_manager.get_stock_name", return_value="삼성전자"), \
+             patch("backend.app.services.engine_strategy_core.reserve_test_buy_power", new_callable=AsyncMock, return_value=(True, "", _reserved_cost)), \
+             patch("backend.app.services.dry_run.fake_send_order", new_callable=AsyncMock, return_value={"success": False}), \
+             patch("backend.app.services.settlement_engine.release_buy_power", new_callable=AsyncMock), \
+             patch("backend.app.services.dry_run.set_stock_name", new_callable=AsyncMock), \
+             patch("backend.app.services.dry_run.fake_fill_event", new_callable=AsyncMock), \
+             patch("backend.app.services.trade_history.record_buy", new_callable=AsyncMock), \
+             patch("backend.app.core.journal.record_order_request", new_callable=AsyncMock), \
+             patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock), \
+             patch("backend.app.services.engine_lifecycle.schedule_engine_task", side_effect=_close_coro), \
+             patch("backend.app.services.trading._fire_and_forget_telegram"):
+            mock_state2.realtime_latency_exceeded = False
+            mock_state2.integrated_system_settings_cache = _raw_settings(rebuy_block_on=False)
+            mock_state2.master_stocks_cache = {}
+            mock_rm2.return_value.circuit_breaker.get_state.return_value = "CLOSED"
+            mock_rm2.return_value.get_withdrawable_deposit.return_value = original_cash
+            mock_rm2.return_value.check_buy_order_allowed = AsyncMock(return_value=(True, "승인"))
+            result2, reason2 = await mgr.execute_buy("005930", 70000, "token")
+
+        assert result2 is False
+        # BUY_REJECT_ORDER_BUSY가 아니면 잠금이 정상 해제되어 정상 진입한 것 (교착 없음)
+        # signal_interval 등 다른 게이트에서 차단되어도 잠금 정상 해제 증명은 유효
+        assert reason2 != BUY_REJECT_ORDER_BUSY
+
+    @pytest.mark.asyncio
+    async def test_fill_timeout_sends_notification_and_releases_lock(self):
+        """주문 응답 타임아웃 시 화면 알림 발생 + 잠금 해제 (결정 2·3 — P21 투명성).
+
+        시나리오:
+          1. 매수 주문 전송 성공
+          2. 체결 응답 타임아웃 (짧은 타임아웃으로 시뮬레이션)
+          3. 화면 알림 브로드캐스트 호출 확인
+          4. (False, BUY_REJECT_FILL_TIMEOUT) 반환
+          5. 잠금 해제 확인 (locked() == False)
+        """
+        mgr = _make_manager(_raw_settings(rebuy_block_on=False))
+        _reserved_cost = 980_147
+        with patch("backend.app.services.engine_state.state") as mock_state, \
+             patch("backend.app.services.trading.auto_buy_effective", return_value=True), \
+             patch("backend.app.services.engine_account.get_positions", new_callable=AsyncMock, return_value=[]), \
+             patch("backend.app.services.trading.is_test_mode", return_value=True), \
+             patch("backend.app.services.settlement_engine.get_available_cash", return_value=10_000_000), \
+             patch("backend.app.services.dry_run.estimate_fill_price", return_value=70000), \
+             patch("backend.app.services.trading.get_risk_manager") as mock_rm, \
+             patch("backend.app.services.data_manager.get_stock_name", return_value="삼성전자"), \
+             patch("backend.app.services.engine_strategy_core.reserve_test_buy_power", new_callable=AsyncMock, return_value=(True, "", _reserved_cost)), \
+             patch("backend.app.services.dry_run.fake_send_order", new_callable=AsyncMock, return_value={"success": True, "order_id": "test1"}), \
+             patch("backend.app.services.dry_run.set_stock_name", new_callable=AsyncMock), \
+             patch("backend.app.services.dry_run.fake_fill_event", new_callable=AsyncMock), \
+             patch("backend.app.services.trade_history.record_buy", new_callable=AsyncMock), \
+             patch("backend.app.core.journal.record_order_request", new_callable=AsyncMock), \
+             patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock), \
+             patch("backend.app.services.engine_lifecycle.schedule_engine_task", side_effect=_close_coro), \
+             patch("backend.app.services.trading._fire_and_forget_telegram"), \
+             patch.object(mgr, "_fill_timeout_for", return_value=0.01), \
+             patch("backend.app.services.trading._broadcast_order_fill_timeout", new_callable=AsyncMock) as mock_broadcast:
+            mock_state.realtime_latency_exceeded = False
+            mock_state.integrated_system_settings_cache = _raw_settings(rebuy_block_on=False)
+            mock_state.master_stocks_cache = {}
+            mock_rm.return_value.circuit_breaker.get_state.return_value = "CLOSED"
+            mock_rm.return_value.get_withdrawable_deposit.return_value = 10_000_000
+            mock_rm.return_value.check_buy_order_allowed = AsyncMock(return_value=(True, "승인"))
+            result, reason = await mgr.execute_buy("005930", 70000, "token")
+
+        assert result is False
+        assert reason == BUY_REJECT_FILL_TIMEOUT
+        # 화면 알림 브로드캐스트 호출 확인
+        mock_broadcast.assert_awaited_once()
+        # 잠금 해제 확인 — 타임아웃 후에도 잠금이 풀려 다음 주문 가능
+        assert mgr._order_lock is not None
+        assert mgr._order_lock.locked() is False
