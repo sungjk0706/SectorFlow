@@ -4,7 +4,7 @@
 
 import { hotStore } from '../stores/hotStore'
 import { uiStore, setSelectedSector } from '../stores/uiStore'
-import { FONT_WEIGHT, FONT_SIZE, COLOR, RADIUS, createAvgAmountCell } from '../components/common/ui-styles'
+import { FONT_WEIGHT, FONT_SIZE, COLOR, RADIUS, createAvgAmountCell, createFixedWidthNumberSpan } from '../components/common/ui-styles'
 import { createCardTitle } from '../components/common/card-title'
 import { createDataTable, type DataTableApi, type ColumnDef } from '../components/common/data-table'
 import { virtualScrollOptions } from '../components/common/table-options'
@@ -154,7 +154,11 @@ const COLUMNS: ColumnDef<SectorScoreRow>[] = [
     label: '집중도',
     align: 'right',
     type: 'score',
-    render: (row) => String(row.bonus_relative_strength),
+    render: (row) => {
+      const span = createFixedWidthNumberSpan('2.5em')
+      span.textContent = String(row.bonus_relative_strength)
+      return span
+    },
     headerStyle: NO_BORDER,
     cellStyle: NO_BORDER,
   },
@@ -166,7 +170,7 @@ const COLUMNS: ColumnDef<SectorScoreRow>[] = [
     render: (row) => {
       const txt = row.rise_ratio.toFixed(1) + '%'
       const color = row.rise_ratio > 50 ? COLOR.up : row.rise_ratio < 50 ? COLOR.down : COLOR.neutral
-      const span = document.createElement('span')
+      const span = createFixedWidthNumberSpan('4em')
       span.textContent = txt
       span.style.color = color
       return span

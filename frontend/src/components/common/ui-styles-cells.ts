@@ -83,6 +83,19 @@ function applyCell(cell: HTMLElement, align: string): void {
   })
 }
 
+/** 고정 폭 숫자 span 생성 — 실시간 갱신 시 자릿수 변화(9→10, 99→100 등)로 인한
+ *  좌우 레이아웃 시프트를 방지 (업계 표준: tabular-nums + 고정 폭 숫자 영역).
+ *  minWidthEm: 컬럼별 최대 자릿수를 수용하는 em 단위 폭. 색상은 반환된 span에 적용. */
+export function createFixedWidthNumberSpan(minWidthEm: string): HTMLSpanElement {
+  const span = document.createElement('span')
+  Object.assign(span.style, {
+    display: 'inline-block',
+    minWidth: minWidthEm,
+    textAlign: 'right',
+  })
+  return span
+}
+
 /* ── 헤더 셀 ── */
 
 /** 테이블 헤더 셀 (공통 border + 스타일) */
@@ -123,48 +136,55 @@ export function createCodeCell(code: string): HTMLElement {
   return cell
 }
 
-/** 현재가 셀 (우측정렬, 등락률 기반 색상, 가격 미수신 시 "-") */
+/** 현재가 셀 (우측정렬, 등락률 기반 색상, 가격 미수신 시 "-").
+ *  고정 폭 span에 담아 자릿수 변화(9,999→10,000 등) 시 밀림 방지. */
 export function createPriceCell(price: number | null | undefined, rate: number | null | undefined): HTMLElement {
   const cell = document.createElement('div')
   applyCell(cell, 'right')
-  
+  const span = createFixedWidthNumberSpan('6em')
   if (price === null || price === undefined) {
-    cell.textContent = '-'
+    span.textContent = '-'
   } else {
-    const span = document.createElement('span')
     span.style.color = rateColor(rate)
     span.textContent = fmtComma(price)
-    cell.appendChild(span)
   }
+  cell.appendChild(span)
   return cell
 }
 
 /** 대비 셀 (매수설정 페이지 스타일과 동일하게 통일).
- *  sign 제공 시 5단계 부호 원본 기준 색상·기호 적용 — 상한(1)·하한(4)은 진한 색상으로 구별 (P21). */
+ *  sign 제공 시 5단계 부호 원본 기준 색상·기호 적용 — 상한(1)·하한(4)은 진한 색상으로 구별 (P21).
+ *  숫자 부분을 고정 폭 span에 담아 자릿수 변화 시 화살표-숫자 간격이 일정하게 유지. */
 export function createChangeCell(change: number | null | undefined, sign?: string): HTMLElement {
   if (change === null || change === undefined) {
     const cell = document.createElement('div')
     applyCell(cell, 'right')
-    cell.textContent = '-'
+    const span = createFixedWidthNumberSpan('5em')
+    span.textContent = '-'
+    cell.appendChild(span)
     return cell
   }
   if (change === 0) {
     const cell = document.createElement('div')
     applyCell(cell, 'right')
-    cell.textContent = '0'
+    const span = createFixedWidthNumberSpan('5em')
+    span.textContent = '0'
+    cell.appendChild(span)
     return cell
   }
   const wrap = document.createElement('span')
-  wrap.style.display = 'inline-flex'
-  wrap.style.justifyContent = 'space-between'
-  wrap.style.width = '100%'
-  wrap.style.fontVariantNumeric = 'tabular-nums'
+  Object.assign(wrap.style, {
+    display: 'inline-flex',
+    justifyContent: 'space-between',
+    width: '100%',
+    fontVariantNumeric: 'tabular-nums',
+  })
 
   const arrow = document.createElement('span')
   arrow.textContent = changeArrow(change, sign)
   arrow.style.color = rateColor(change, sign)
 
-  const abs = document.createElement('span')
+  const abs = createFixedWidthNumberSpan('4em')
   abs.textContent = fmtComma(Math.abs(change))
   abs.style.color = rateColor(change, sign)
 
@@ -174,18 +194,19 @@ export function createChangeCell(change: number | null | undefined, sign?: strin
 }
 
 /** 등락률 셀 (우측정렬, +/- 포맷, rateColor, null이면 "-", 0이면 "0.00%").
- *  sign 제공 시 5단계 부호 원본 기준 색상 적용 — 상한(1)·하한(4)은 진한 색상으로 구별 (P21). */
+ *  sign 제공 시 5단계 부호 원본 기준 색상 적용 — 상한(1)·하한(4)은 진한 색상으로 구별 (P21).
+ *  고정 폭 span에 담아 부호/정수부 자릿수 변화 시 밀림 방지. */
 export function createRateCell(rate: number | null | undefined, sign?: string): HTMLElement {
   const cell = document.createElement('div')
   applyCell(cell, 'right')
+  const span = createFixedWidthNumberSpan('5em')
   if (rate === null || rate === undefined) {
-    cell.textContent = '-'
+    span.textContent = '-'
   } else {
-    const span = document.createElement('span')
     span.style.color = rateColor(rate, sign)
     span.textContent = fmtRate(rate)
-    cell.appendChild(span)
   }
+  cell.appendChild(span)
   return cell
 }
 
@@ -195,27 +216,25 @@ export function createRateCell(rate: number | null | undefined, sign?: string): 
 export function createAmountCell(amount: number | null | undefined): HTMLElement {
   const cell = document.createElement('div')
   applyCell(cell, 'right')
-  const span = document.createElement('span')
-  Object.assign(span.style, {
-    display: 'inline-block',
-    minWidth: '5.5em',
-    textAlign: 'right',
-  })
+  const span = createFixedWidthNumberSpan('5.5em')
   span.textContent = amount && amount > 0 ? fmtMillionsToBillion(amount) : '-'  // 백만원 → 억단위 (소수점 2자리 고정, 콤마)
   cell.appendChild(span)
   return cell
 }
 
-/** 체결강도 셀 (우측정렬, strengthColor) */
+/** 체결강도 셀 (우측정렬, strengthColor).
+ *  고정 폭 span에 담아 자릿수 변화(9.9→10.0 등) 시 밀림 방지. */
 export function createStrengthCell(strength: number | null | undefined): HTMLElement {
   const cell = document.createElement('div')
   applyCell(cell, 'right')
+  const span = createFixedWidthNumberSpan('4em')
   if (strength != null && !isNaN(strength) && strength > 0) {
-    cell.textContent = strength.toFixed(1)
-    cell.style.color = strengthColor(strength)
+    span.textContent = strength.toFixed(1)
+    span.style.color = strengthColor(strength)
   } else {
-    cell.textContent = '-'
+    span.textContent = '-'
   }
+  cell.appendChild(span)
   return cell
 }
 
@@ -225,12 +244,7 @@ export function createAvgAmountCell(amount: number): HTMLElement {
   const cell = document.createElement('div')
   applyCell(cell, 'right')
   // 백만원 단위 → 억단위 변환 (소수점 2자리 고정, 콤마)
-  const span = document.createElement('span')
-  Object.assign(span.style, {
-    display: 'inline-block',
-    minWidth: '5.5em',
-    textAlign: 'right',
-  })
+  const span = createFixedWidthNumberSpan('5.5em')
   span.textContent = amount > 0 ? fmtMillionsToBillion(amount) : '-'
   cell.appendChild(span)
   return cell
