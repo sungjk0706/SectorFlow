@@ -17,6 +17,7 @@ import { createBadgeRow, createBadge, updateBadge, type BadgeHandle, type BadgeS
 import { computeOrderBlockStatus } from '../utils/order-block-status'
 import { filterStocksBySearch } from '../utils/stock-search'
 import { COLUMNS, destroyOrderRatioCells } from './buy-target-columns'
+import { createFrameScheduler, type FrameScheduler } from '../components/common/frame-scheduler'
 import type { StockScore, AppSettings } from '../types'
 import type { UIState } from '../stores/uiStore'
 import type { HotState } from '../stores/hotStore'
@@ -29,7 +30,7 @@ let searchInput: ReturnType<typeof createSearchInput> | null = null
 let searchTerm = ''
 let unsubTargets: (() => void) | null = null
 let unsubUiStore: (() => void) | null = null
-let rafHandle: number | null = null
+let renderScheduler: FrameScheduler | null = null
 let onRealDataTick: ((e: Event) => void) | null = null
 let onOrderbookTick: ((e: Event) => void) | null = null
 let onProgramTick: ((e: Event) => void) | null = null
@@ -393,9 +394,8 @@ function renderTableRows(buyTargets: StockScore[]): void {
   }
 }
 
-/** rAF 콜백 — 최신 상태로 테이블 + 배지 갱신 */
+/** 화면주기 갱신 콜백 — 최신 상태로 테이블 + 배지 갱신 (공통 도구에서 호출) */
 function renderFrame(): void {
-  rafHandle = null
   if (!_mounted || !pageDataReady) return
   const latest = hotStore.getState()
   const latestUi = uiStore.getState()
@@ -424,7 +424,7 @@ function renderFrame(): void {
   }
 }
 
-/** rAF 배칭 — 상태 변화 감지 후 단일 rAF 예약 */
+/** 화면주기 갱신 예약 — 상태 변화 감지 후 공통 도구로 예약 */
 function scheduleRender(): void {
   const hotState = hotStore.getState()
   const uiState = uiStore.getState()
@@ -432,10 +432,8 @@ function scheduleRender(): void {
   const searchChanged = searchTerm !== _rsSearchTerm
   if (!(targetsChanged || searchChanged || hasStateChanged(hotState, uiState))) return
 
-  // rAF 배칭: 이미 예약된 rAF가 있으면 추가 예약하지 않음
-  // 콜백 실행 시 getState()로 최신 상태를 가져오므로 항상 최신 반영
-  if (rafHandle !== null) return
-  rafHandle = requestAnimationFrame(renderFrame)
+  // 공통 도구: 이미 예약 중이면 no-op, 콜백 실행 시 getState()로 최신 상태 반영
+  renderScheduler?.schedule()
 }
 
 /** O(1) 초저지연 DOM 갱신 이벤트 리스너 등록 */
@@ -497,6 +495,9 @@ function mount(container: HTMLElement): void {
   // 최신 HTTP 스냅샷 확인 전에는 기존 hotStore 값을 화면에 노출하지 않는다.
   renderTableRows([])
 
+  // 공통 화면주기 갱신 도구 — renderFrame을 화면 주기에 맞춰 실행
+  renderScheduler = createFrameScheduler(() => renderFrame())
+
   // Store 구독 — rAF 배칭 + reference equality guard
   unsubTargets = hotStore.subscribe(() => scheduleRender())
   unsubUiStore = uiStore.subscribe(() => scheduleRender())
@@ -522,7 +523,7 @@ function unmount(): void {
     window.removeEventListener('program-tick', onProgramTick)
     onProgramTick = null
   }
-  if (rafHandle !== null) { cancelAnimationFrame(rafHandle); rafHandle = null }
+  if (renderScheduler) { renderScheduler.destroy(); renderScheduler = null }
   if (unsubTargets) { unsubTargets(); unsubTargets = null }
   if (unsubUiStore) { unsubUiStore(); unsubUiStore = null }
   if (dataTable) { dataTable.destroy(); dataTable = null }

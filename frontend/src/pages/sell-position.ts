@@ -18,6 +18,7 @@ import { createBadgeRow, createBadge, updateBadge, type BadgeHandle } from '../c
 import { computeOrderBlockStatus } from '../utils/order-block-status'
 import { getLocalToday } from '../utils/date'
 import { computeHoldingsSummary, computePositionValuation, getPositionValuationPrice } from './profit-math'
+import { createFrameScheduler, type FrameScheduler } from '../components/common/frame-scheduler'
 import type { Position } from '../types'
 
 const COLUMNS: ColumnDef<Position>[] = [
@@ -112,9 +113,9 @@ let dataTable: DataTableApi<Position> | null = null
 let unsubStore: (() => void) | null = null
 let unsubUiStore: (() => void) | null = null
 let unsubSettings: (() => void) | null = null
-let _rafId: number | null = null
-let _summaryRafId: number | null = null
-let _statusRafId: number | null = null
+let _rowScheduler: FrameScheduler | null = null
+let _summaryScheduler: FrameScheduler | null = null
+let _statusScheduler: FrameScheduler | null = null
 let onRealDataTick: ((e: Event) => void) | null = null
 let _mounted = false
 let pageDataReady = false
@@ -319,25 +320,13 @@ function onHotStoreChange(state: HotState): void {
 
   // WS 상태 배지는 전역 싱글톤이 자동 업데이트하므로 수동 업데이트 제거
 
-  // rAF 배칭 — 프레임당 1회만 갱신 예약
-  if (_rafId === null) {
-    _rafId = requestAnimationFrame(() => {
-      _rafId = null
-      if (!_mounted) return
-      const latest = hotStore.getState()
-      dataTable?.updateRows(latest.positions)
-    })
-  }
+  // 공통 화면주기 갱신 도구 — 프레임당 1회만 갱신 예약
+  _rowScheduler?.schedule()
 }
 
-/** 매도상태 배지 rAF 배칭 갱신 — uiStore/settings 구독 공통 (P24 중복 제거) */
+/** 매도상태 배지 화면주기 갱신 — uiStore/settings 구독 공통 (P24 중복 제거) */
 function scheduleStatusUpdate(): void {
-  if (_statusRafId !== null) return
-  _statusRafId = requestAnimationFrame(() => {
-    _statusRafId = null
-    if (!_mounted) return
-    updateSellStatusBadge()
-  })
+  _statusScheduler?.schedule()
 }
 
 /** O(1) 초저지연 DOM 갱신 이벤트 리스너 등록 */
@@ -348,13 +337,9 @@ function setupTickListener(): void {
       if (dataTable && dataTable.updateItemByKey) {
         dataTable.updateItemByKey(code)
       }
-      // 보유종목 틱 시 요약 배지 갱신 (rAF 배칭 — 개별 행과 동일 소스로 실시간 일치)
-      if (getPositionIndex(code) !== undefined && _summaryRafId === null) {
-        _summaryRafId = requestAnimationFrame(() => {
-          _summaryRafId = null
-          if (!_mounted) return
-          renderSummary()
-        })
+      // 보유종목 틱 시 요약 배지 갱신 (공통 도구 — 개별 행과 동일 소스로 실시간 일치)
+      if (getPositionIndex(code) !== undefined) {
+        _summaryScheduler?.schedule()
       }
     } catch (err) {
       console.error('[sell-position] real-data-tick error', err)
@@ -385,11 +370,26 @@ function mount(container: HTMLElement): void {
   renderSummary()
   updateSellStatusBadge()
 
-  // Store 구독 — reference equality guard + rAF 배칭
+  // 공통 화면주기 갱신 도구 3종 — 테이블 행 / 요약 / 매도상태 배지
+  _rowScheduler = createFrameScheduler(() => {
+    if (!_mounted) return
+    const latest = hotStore.getState()
+    dataTable?.updateRows(latest.positions)
+  })
+  _summaryScheduler = createFrameScheduler(() => {
+    if (!_mounted) return
+    renderSummary()
+  })
+  _statusScheduler = createFrameScheduler(() => {
+    if (!_mounted) return
+    updateSellStatusBadge()
+  })
+
+  // Store 구독 — reference equality guard + 공통 도구 갱신
   unsubStore = hotStore.subscribe(onHotStoreChange)
 
   // uiStore 구독 — 매도상태 배지 갱신 (서킷브레이커/리스크/시간대 차단)
-  // rAF 배칭 — 프레임당 1회만 갱신 예약 (buy-target.ts 동일 패턴, P23 일관성)
+  // 공통 도구 — 프레임당 1회만 갱신 예약 (buy-target.ts 동일 패턴, P23 일관성)
   unsubUiStore = uiStore.subscribe(scheduleStatusUpdate)
 
   // globalSettingsManager 구독 — 자동매매/자동매도/매도 시간대 설정 변경 시 배지 갱신
@@ -410,9 +410,9 @@ function unmount(): void {
   if (unsubStore) { unsubStore(); unsubStore = null }
   if (unsubUiStore) { unsubUiStore(); unsubUiStore = null }
   if (unsubSettings) { unsubSettings(); unsubSettings = null }
-  if (_rafId !== null) { cancelAnimationFrame(_rafId); _rafId = null }
-  if (_summaryRafId !== null) { cancelAnimationFrame(_summaryRafId); _summaryRafId = null }
-  if (_statusRafId !== null) { cancelAnimationFrame(_statusRafId); _statusRafId = null }
+  if (_rowScheduler) { _rowScheduler.destroy(); _rowScheduler = null }
+  if (_summaryScheduler) { _summaryScheduler.destroy(); _summaryScheduler = null }
+  if (_statusScheduler) { _statusScheduler.destroy(); _statusScheduler = null }
   if (dataTable) { dataTable.destroy(); dataTable = null }
   summaryEvalBadge = null
   summaryPnlBadge = null
