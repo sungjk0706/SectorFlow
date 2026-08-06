@@ -8,6 +8,7 @@ import { FONT_WEIGHT, FONT_SIZE, COLOR, RADIUS, fmtMillionsToBillion } from '../
 import { createCardTitle } from '../components/common/card-title'
 import { createDataTable, type DataTableApi, type ColumnDef } from '../components/common/data-table'
 import { virtualScrollOptions } from '../components/common/table-options'
+import { createFrameScheduler, type FrameScheduler } from '../components/common/frame-scheduler'
 import { getMaxTargetsStatusEl, getMaxTargetsSumEl } from './sector-settings'
 import { type SectorScoreRow, DEFAULT_SECTOR_MAX_TARGETS } from '../types'
 import type { PageModule } from '../router'
@@ -20,6 +21,8 @@ let unsubUiStore: (() => void) | null = null
 let dataTable: DataTableApi<SectorScoreRow> | null = null
 // 행 클릭 핸들러 해제용 참조
 let rowClickHandler: ((e: MouseEvent) => void) | null = null
+// 공통 화면주기 갱신 도구 — 전체 갱신 경로(updateRows) 예약용 (delta 모드는 동기 유지)
+let renderScheduler: FrameScheduler | null = null
 
 // 현재 렌더에 사용된 maxScore (진행 바 비율 계산용) — updateRows 시마다 갱신
 let currentMaxScore = 1
@@ -281,9 +284,10 @@ function mount(container: HTMLElement): void {
 
   container.appendChild(root)
 
-  // hotStore/uiStore 구독 — sectorScores/selectedSector/settings/waiting 변동 시 동기 갱신
-  // rAF 제거: sectorScores는 0.2초마다 갱신되는 저빈도 데이터이므로 동기 갱신해도 P7 위반 없음.
-  // 우측 패널(sector-stock.ts)도 같은 store 변경 시 동기 갱신하여 두 패널이 같은 타이밍에 갱신 (P22 정합성).
+  // hotStore/uiStore 구독 — sectorScores/selectedSector/settings/waiting 변동 시 갱신.
+  // 전체 갱신 경로(updateRows)는 공통 화면주기 갱신 도구로 예약 — 한 화면 주기에 한 번만 실행 (W11 표현 통일).
+  // delta 모드(updateItemByKey)는 동기 유지 — 바뀐 업종만 즉시 갱신하는 것이 타이밍 동기화 목표에 부합 (W4).
+  // 우측 패널(sector-stock.ts)도 같은 store 변경 시 같은 공통 도구로 예약하여 두 패널이 같은 화면 주기에 갱신 (P22 정합성).
   {
     const initHot = hotStore.getState()
     let prevSectorScores = initHot.sectorScores
@@ -292,7 +296,8 @@ function mount(container: HTMLElement): void {
     let prevDelta: { delta: boolean; changed_sectors: string[]; removed_sectors: string[] } | null = initUi.sectorScoresDelta
     let prevWaiting = initUi.sectorScoresWaiting
 
-    const renderNow = (sectorChanged: boolean, settingsChanged: boolean, waitingChanged: boolean) => {
+    // 화면주기 갱신 콜백 — 전체 갱신 (공통 도구에서 호출). 실행 시점에 최신 상태를 다시 읽는다.
+    const renderNow = (deltaMode: boolean) => {
       if (!_mounted) return
       const latest = hotStore.getState()
       const latestUi = uiStore.getState()
@@ -306,24 +311,24 @@ function mount(container: HTMLElement): void {
         waitingNoticeEl.style.display = latestUi.sectorScoresWaiting ? 'flex' : 'none'
       }
 
-      // delta 모드: changed_sectors만 개별 갱신 (성능 최적화)
-      // 단, settings/selected/maxScore/waiting 변경 시는 전체 갱신 필요 (바 비율·rowStyle 영향)
+      // delta 모드: changed_sectors만 개별 갱신 (동기 호출 시에만 — 바뀐 업종만 즉시 갱신)
+      // 전체 모드: updateRows로 전체 재구성 (공통 도구 콜백에서 호출)
       const delta = latestUi.sectorScoresDelta
       const sorted = [...latest.sectorScores].sort((a, b) => a.rank - b.rank)
       const newMaxScore = sorted.length > 0 ? Math.max(...sorted.map(s => s.final_score), 1) : 1
-      const maxScoreChanged = newMaxScore !== currentMaxScore
-      const needFullRefresh = settingsChanged || sectorChanged || maxScoreChanged || waitingChanged
-      if (delta && delta.delta && !needFullRefresh && dataTable && dataTable.updateItemByKey) {
-        currentMaxScore = newMaxScore
+      currentMaxScore = newMaxScore
+      if (deltaMode && delta && delta.delta && dataTable && dataTable.updateItemByKey) {
         for (const sector of delta.changed_sectors) {
           dataTable.updateItemByKey(sector)
         }
       } else if (dataTable) {
-        currentMaxScore = newMaxScore
         dataTable.updateRows(sorted)
       }
       updateMaxTargetsStatus(latest.sectorScores, maxTargets)
     }
+
+    // 공통 화면주기 갱신 도구 — 전체 갱신 경로를 화면 주기에 맞춰 실행 (delta 모드는 동기 유지)
+    renderScheduler = createFrameScheduler(() => renderNow(false))
 
     const checkAndRender = () => {
       const state = hotStore.getState()
@@ -341,8 +346,25 @@ function mount(container: HTMLElement): void {
 
       if (!scoresChanged && !sectorChanged && !settingsChanged && !deltaChanged && !waitingChanged) return
 
-      // 동기 갱신 — rAF 미사용 (저빈도 sectorScores + 두 패널 동시 렌더 보장, P22 정합성)
-      renderNow(sectorChanged, settingsChanged, waitingChanged)
+      // delta 모드 판정 — settings/selected/waiting 변경이 없고 maxScore도 동일하면
+      // 바뀐 업종만 동기 갱신 (타이밍 동기화 목표에 부합).
+      // 그 외(전체 갱신 필요)는 공통 도구로 화면주기 갱신 예약.
+      const delta = uiState.sectorScoresDelta
+      const needFullByFlags = settingsChanged || sectorChanged || waitingChanged
+      let useDelta = false
+      if (delta && delta.delta && !needFullByFlags && dataTable && dataTable.updateItemByKey) {
+        const sorted = [...state.sectorScores].sort((a, b) => a.rank - b.rank)
+        const newMaxScore = sorted.length > 0 ? Math.max(...sorted.map(s => s.final_score), 1) : 1
+        if (newMaxScore === currentMaxScore) useDelta = true
+      }
+
+      if (useDelta) {
+        // delta 모드 — 동기 갱신 유지 (바뀐 업종만 즉시)
+        renderNow(true)
+      } else {
+        // 전체 갱신 — 공통 도구로 화면주기 갱신 예약 (이미 예약 중이면 no-op)
+        renderScheduler?.schedule()
+      }
     }
 
     unsubStore = hotStore.subscribe(checkAndRender)
@@ -369,6 +391,7 @@ function unmount(): void {
   _mounted = false
   if (unsubStore) { unsubStore(); unsubStore = null }
   if (unsubUiStore) { unsubUiStore(); unsubUiStore = null }
+  if (renderScheduler) { renderScheduler.destroy(); renderScheduler = null }
   if (rowClickHandler && dataTable) {
     dataTable.el.removeEventListener('click', rowClickHandler)
     rowClickHandler = null
