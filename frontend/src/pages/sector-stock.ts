@@ -13,7 +13,8 @@ import { createActionButton } from '../components/common/button'
 import { createSearchInput } from '../components/common/search-input'
 import { createMarketCountRow, type MarketCountRowHandle } from '../components/common/market-count-row'
 import { FONT_SIZE, FONT_WEIGHT, COLOR, RADIUS } from '../components/common/ui-styles'
-import { type MasterStock, DEFAULT_SECTOR_MAX_TARGETS } from '../types'
+import { createFrameScheduler, type FrameScheduler } from '../components/common/frame-scheduler'
+import { type MasterStock, type SectorScoreRow, DEFAULT_SECTOR_MAX_TARGETS } from '../types'
 import { filterStocksBySearch } from '../utils/stock-search'
 import {
   COLUMNS,
@@ -40,6 +41,10 @@ class SectorStockTable extends HTMLElement {
   private currentMatchedSectors: Set<string> | null = null
   private rowCache = new Map<string, { stock: MasterStock; row: DataRowItem }>()
   private onRealDataTick: ((e: Event) => void) | null = null
+  // 공통 화면주기 갱신 도구 — 전체 갱신 경로(updateRows) 예약용 (delta 모드는 동기 유지)
+  private renderScheduler: FrameScheduler | null = null
+  // rank 변동 감지용 — 이전 업종별 순위 저장 (전체 갱신 시마다 재구축)
+  private prevSectorRanks = new Map<string, number>()
   // H-04: 요약 카운트 캐싱 — masterStocks 참조 변경 시에만 재계산
   private countCache: {
     stocksRef: MasterStock[] | null
@@ -94,6 +99,45 @@ class SectorStockTable extends HTMLElement {
     const mappedRows = mapRowsToTableRows(rows)
     if (this.dataTable) this.dataTable.updateRows(mappedRows)
     this.updateUI(rows)
+  }
+
+  /** 증분 갱신 — 바뀐 업종의 그룹행만 갱신 (rank 변동 없이 점수·파생만 바뀐 경우).
+   *  가운데 패널(sector-ranking-list.ts)의 delta 모드와 같은 타이밍에 동기 갱신 (W4 정합성).
+   *  updateItems로 표 엔진 내부 items 배열을 최신 데이터로 동기 교체 후,
+   *  바뀐 업종의 그룹행만 updateItemByKey로 다시 렌더링 — 전체 재구성 비용 회피. */
+  private refreshRowsIncremental(changedSectors: string[]): void {
+    if (!this.dataTable) return
+    const rows = this.buildRows()
+    const mappedRows = mapRowsToTableRows(rows)
+    if (this.dataTable.updateItems) this.dataTable.updateItems(mappedRows)
+    if (this.dataTable.updateItemByKey) {
+      for (const sector of changedSectors) {
+        this.dataTable.updateItemByKey('g-' + sector)
+      }
+    }
+    this.updateUI(rows)
+    this.updatePrevRanks()
+  }
+
+  /** 이전 업종별 순위 맵 재구축 — 전체 갱신·증분 갱신 후 호출하여 다음 rank 변동 감지 기준 갱신 */
+  private updatePrevRanks(): void {
+    this.prevSectorRanks = new Map()
+    const scores = hotStore.getState().sectorScores
+    for (const s of scores) this.prevSectorRanks.set(s.sector, s.rank)
+  }
+
+  /** rank 변동 감지 — changed_sectors 중 하나라도 이전 순위와 다르거나 새 업종이면 true (전체 갱신 필요) */
+  private detectRankChange(changedSectors: string[], currentScores: SectorScoreRow[]): boolean {
+    const currentMap = new Map<string, number>()
+    for (const s of currentScores) currentMap.set(s.sector, s.rank)
+    for (const sector of changedSectors) {
+      const prevRank = this.prevSectorRanks.get(sector)
+      const currentRank = currentMap.get(sector)
+      if (prevRank === undefined || currentRank === undefined || prevRank !== currentRank) {
+        return true
+      }
+    }
+    return false
   }
 
   private updateUI(rows: RowItem[]): void {
@@ -362,18 +406,21 @@ class SectorStockTable extends HTMLElement {
     let prevSettings = initUi.settings
     let prevMarketPhase = initUi.marketPhase
     let prevWaiting = initUi.sectorScoresWaiting
+    let prevDelta = initUi.sectorScoresDelta
 
     const checkAndRefresh = () => {
       const state = hotStore.getState()
       const uiState = uiStore.getState()
-      const changed =
-        state.masterStocks !== prevMasterStocks ||
-        state.sectorScores !== prevSectorScores ||
-        uiState.selectedSector !== prevSelectedSector ||
-        uiState.wsSubscribeStatus !== prevWsSubscribeStatus ||
-        uiState.settings !== prevSettings ||
-        uiState.marketPhase !== prevMarketPhase ||
-        uiState.sectorScoresWaiting !== prevWaiting
+      const masterStocksChanged = state.masterStocks !== prevMasterStocks
+      const sectorScoresChanged = state.sectorScores !== prevSectorScores
+      const selectedSectorChanged = uiState.selectedSector !== prevSelectedSector
+      const wsSubscribeChanged = uiState.wsSubscribeStatus !== prevWsSubscribeStatus
+      const settingsChanged = uiState.settings !== prevSettings
+      const marketPhaseChanged = uiState.marketPhase !== prevMarketPhase
+      const waitingChanged = uiState.sectorScoresWaiting !== prevWaiting
+      const deltaChanged = uiState.sectorScoresDelta !== prevDelta
+
+      const changed = masterStocksChanged || sectorScoresChanged || selectedSectorChanged || wsSubscribeChanged || settingsChanged || marketPhaseChanged || waitingChanged || deltaChanged
 
       if (!changed) return
 
@@ -382,7 +429,7 @@ class SectorStockTable extends HTMLElement {
       }
 
       // selectedSector가 좌측 패널에서 변경된 경우: 양쪽 검색 입력란 초기화
-      if (uiState.selectedSector !== prevSelectedSector) {
+      if (selectedSectorChanged) {
         if (this.searchInput) { this.searchInput.clear(); this.searchTerm = '' }
         if (this.sectorSearchInput) { this.sectorSearchInput.clear(); this.sectorSearchTerm = '' }
       }
@@ -394,14 +441,34 @@ class SectorStockTable extends HTMLElement {
       prevSettings = uiState.settings
       prevMarketPhase = uiState.marketPhase
       prevWaiting = uiState.sectorScoresWaiting
+      prevDelta = uiState.sectorScoresDelta
 
-      // 동기 갱신 — rAF 미사용.
-      // sectorScores는 0.2초마다 갱신되는 저빈도 데이터이므로 동기 갱신해도 P7 위반 없음.
-      // 가운데 패널(sector-ranking-list.ts)도 같은 store 변경 시 동기 갱신하여
-      // 두 패널이 같은 타이밍에 갱신 (P22 정합성 — 행 순서/순위 라벨 동시 변경).
-      // real-data-tick 리스너(종목 시세 O(1) 갱신)는 별도 경로로 유지됨.
       if (!this._mounted) return
-      this.refreshRows()
+
+      // delta 판정 — 설계서 결정 3-1 판정 흐름:
+      // 1. delta 정보 없음 또는 전체 모드(delta=false) → 전체 갱신
+      // 2. 사용자 인터랙션(업종 선택·해제, 설정·구독·장상태·대기·종목 데이터 변경) → 전체 갱신
+      // 3. removed_sectors 1건 이상 → 전체 갱신 (업종 사라지면 그룹 순서 달라짐)
+      // 4. changed_sectors 중 rank 변동 1건 이상 → 전체 갱신 (그룹행 순서 재배치 필요)
+      // 5. 위 모두 해당 없음 → 증분 갱신 (바뀐 업종 그룹행만 동기 갱신)
+      // real-data-tick 리스너(종목 시세 O(1) 갱신)는 별도 경로로 유지됨.
+      const delta = uiState.sectorScoresDelta
+      const userInteractionChanged = selectedSectorChanged || settingsChanged || wsSubscribeChanged || marketPhaseChanged || waitingChanged || masterStocksChanged
+
+      if (!delta || !delta.delta || userInteractionChanged || delta.removed_sectors.length > 0) {
+        // 전체 갱신 — 공통 화면주기 갱신 도구로 예약 (가운데 패널과 같은 화면 주기에 실행, W4 정합성)
+        this.renderScheduler?.schedule()
+        return
+      }
+
+      if (this.detectRankChange(delta.changed_sectors, state.sectorScores)) {
+        // rank 변동 → 전체 갱신
+        this.renderScheduler?.schedule()
+        return
+      }
+
+      // 증분 갱신 — 동기 호출 (가운데 패널 delta 모드와 같은 타이밍, W4 정합성)
+      this.refreshRowsIncremental(delta.changed_sectors)
     }
 
     this.unsubStore = hotStore.subscribe(checkAndRefresh)
@@ -475,6 +542,15 @@ class SectorStockTable extends HTMLElement {
     const mappedRows = mapRowsToTableRows(initialRows)
     if (this.dataTable && this.dataTable.updateItems) this.dataTable.updateItems(mappedRows)
     this.updateUI(initialRows)
+    // rank 변동 감지 기준 구축 — 초기 업종별 순위 저장
+    this.updatePrevRanks()
+
+    // 공통 화면주기 갱신 도구 — 전체 갱신 경로를 화면 주기에 맞춰 실행 (delta 모드는 동기 유지).
+    // 가운데 패널(sector-ranking-list.ts)과 같은 공통 도구 사용 — 두 패널이 같은 화면 주기에 갱신 (W4 정합성).
+    this.renderScheduler = createFrameScheduler(() => {
+      this.refreshRows()
+      this.updatePrevRanks()
+    })
 
     // Store 구독
     this.setupSubscriptions()
@@ -510,6 +586,7 @@ class SectorStockTable extends HTMLElement {
       window.removeEventListener('real-data-tick', this.onRealDataTick)
       this.onRealDataTick = null
     }
+    if (this.renderScheduler) { this.renderScheduler.destroy(); this.renderScheduler = null }
     if (this.unsubStore) { this.unsubStore(); this.unsubStore = null }
     if (this.unsubUi) { this.unsubUi(); this.unsubUi = null }
     if (this.dataTable) { this.dataTable.destroy(); this.dataTable = null }
@@ -527,6 +604,7 @@ class SectorStockTable extends HTMLElement {
     this.rowCache = new Map()
     this.currentMatchedCodes = null
     this.currentMatchedSectors = null
+    this.prevSectorRanks = new Map()
     this.searchTerm = ''
     this.sectorSearchTerm = ''
   }
