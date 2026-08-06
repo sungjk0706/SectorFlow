@@ -955,14 +955,19 @@ async def _on_ws_subscribe_start() -> None:
             await _on_realtime_fields_reset()
         # market-phase WS 브로드캐스트 (WS 구독 시작 = 07:59 또는 08:00 전환 시점)
         _broadcast_market_phase()
-        # 실시간 연결은 엔진 기동 시 이미 맺어져 있음 (자의적 시간대 판정 제거).
-        # 여기서는 구독 신청 트리거 + 데이터 준비 역할만 수행.
+        # 엔진 루프 각성 — 시간 판정 루프가 구간 진입 감지하여 연결 맺기 (P16 살아있는 경로)
+        engine_state.state.ws_window_changed_event.set()
+        logger.info("[작업실행] NXT 종목 구독 신청 — 엔진 루프에 연결 통지 (사전 — 07:59)")
     except Exception as e:
         logger.warning("[작업실행] NXT 종목 구독 신청 콜백 오류: %s", e, exc_info=True)
 
 
 async def _on_ws_subscribe_end() -> None:
-    """WS 구독 종료 시각이 되면 자동 실행 — 실시간 수신 중단 + WS 연결 해제 + 업종 재계산을 순서대로 하는 함수."""
+    """WS 구독 종료 시각(20:00) 자동 실행 — 실시간 수신 중단 + 업종 재계산.
+
+    구독 해지만 수행. 실시간 연결 해제는 엔진 루프의 시간 판정 루프가 20:40 경과 시 수행.
+    20:00~20:40 구간은 연결이 유지됨 (확정 다운로드 준비, 단순성).
+    """
     try:
         logger.info("[작업실행] NXT 종목 구독 해지 + 장마감 시작 (20:00 — 장마감)")
         # 장마감 후 GC 정상화 및 메모리 정리
@@ -984,19 +989,8 @@ async def _on_ws_subscribe_end() -> None:
         _set_status(quote=False)
         # market-phase WS 브로드캐스트 (구독 종료 시각 기준 상태 반영)
         _broadcast_market_phase()
-        # ── 장마감(20:00) 실시간 연결 직접 정리 (자의적 판정 아닌 이벤트 기반) ──
-        # 엔진 루프의 구간 감지 루프가 제거되었으므로, 여기서 직접 연결 해제.
-        # 하루 장이 완전히 끝나는 시점이므로 연결 정리는 합리적 (설계 결정 3).
-        if engine_state.state.connector_manager is not None:
-            try:
-                if hasattr(engine_state.state.connector_manager, 'disconnect_all'):
-                    await engine_state.state.connector_manager.disconnect_all()
-                engine_state.state.connector_manager = None
-                logger.info("[연결] 장마감 실시간 연결 해제 (20:00 — 장마감)")
-                from backend.app.services.engine_lifecycle import broadcast_engine_status as _broadcast_engine_ws
-                await _broadcast_engine_ws()
-            except Exception as e:
-                logger.error("[연결] 장마감 실시간 연결 해제 실패: %s", e, exc_info=True)
+        # ── 연결 해제는 엔진 루프의 시간 판정 루프가 20:40 경과 시 수행 ──
+        # 20:00~20:40 구간은 연결 유지 (확정 다운로드 준비).
         # ── 확정 데이터 다운로드는 타임테이블 11번째 항목(timetable.confirmed_download)이 담당 ──
         # ws_subscribe_end와 분리하여 증권사 확정 데이터 준비 시간 확보 (기본값 20:40)
     except Exception as e:
@@ -1269,16 +1263,22 @@ async def _timetable_startup_scan() -> None:
 
 async def _init_ws_subscribe_state() -> None:
     """
-    엔진 재기동 시 실시간 처리 준비 상태로 초기화 (자의적 시간대 판정 제거).
+    엔진 재기동 시 실시간 처리 준비 상태로 초기화 (시간 구간 판정).
 
-    항상 "실시간 구간 내" 처리를 수행 — GC 비활성화·필드 초기화·게이트 리셋·캐시 초기화.
-    시간대 자의적 판정 제거로 사용자가 언제 앱을 켜든
-    동일하게 준비됨 (P16 살아있는 경로, P23 일관성).
-    실시간 연결 자체는 엔진 루프 기동 시 _establish_realtime_connection()이 담당.
+    거래일 07:58~20:40 구간 내에 기동한 경우에만 "실시간 구간 내" 처리 수행 —
+    GC 비활성화·필드 초기화·게이트 리셋·캐시 초기화.
+    구간 외 기동 시에는 처리하지 않고 대기 — 07:58 도달 시 _on_realtime_fields_reset() + _on_ws_subscribe_start()가 수행.
+    실시간 연결 자체는 엔진 루프의 시간 판정 루프가 담당.
     """
     settings = engine_state.state.integrated_system_settings_cache
     if not settings or not isinstance(settings, dict):
         raise RuntimeError("settings cache not initialized")
+
+    # 시간 구간 판정 — 구간 외면 실시간 준비 처리 스킵
+    in_window = await is_realtime_reset_window(settings)
+    if not in_window:
+        logger.info("[스케줄] 기동 — 실시간 구간 외, 준비 처리 스킵")
+        return
 
     # ── 수신율 임계값 게이트 — 실시간 구간 처리이므로 항상 리셋 ──
     from backend.app.pipelines.pipeline_compute import reset_sector_threshold
@@ -1311,7 +1311,9 @@ async def _init_ws_subscribe_state() -> None:
 
     # market-phase WS 브로드캐스트 — _on_ws_subscribe_start와 동일
     _broadcast_market_phase()
-    # 실시간 연결은 엔진 루프 기동 시 맺어짐 (자의적 시간대 판정 제거).
+    # 엔진 루프 각성 — 시간 판정 루프가 구간 진입 감지하여 연결 맺기 (P16 살아있는 경로)
+    engine_state.state.ws_window_changed_event.set()
+    logger.info("[스케줄] 구독 구간 내 시작 — 엔진 루프에 연결 통지")
 
 
 def _trigger_reg_pipeline() -> None:

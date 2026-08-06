@@ -22,16 +22,22 @@ logger = logging.getLogger(__name__)
 
 
 async def _establish_realtime_connection() -> None:
-    """실시간 연결을 1회 시도한다 (자의적 시간대 판정 제거 — 항상 연결 시도).
+    """실시간 연결을 1회 시도한다 (시간 구간 판정 — 거래일 07:58~20:40에만 연결).
 
-    access_token이 있으면 ConnectorManager를 생성·연결. 없으면 연결 안됨 상태 유지.
-    연결 성공 여부와 무관하게 반환 — 이후 엔진 루프는 종료 신호만 대기 (P16 살아있는 경로).
-    토큰 회복 루프에서도 호출 — 토큰 회복 성공 시 즉시 연결 맺기 (빈틈 없음).
+    access_token이 있고 시간 구간 내이면 ConnectorManager를 생성·연결.
+    구간 외이면 연결 안 됨 상태 유지 — 엔진 루프의 시간 판정 루프가 구간 진입 시 재호출.
+    토큰 회복 루프에서도 호출 — 회복 성공 시 구간 내면 즉시 연결 맺기.
     """
     if not engine_state.state.access_token:
         return
     if engine_state.state.connector_manager is not None:
         return  # 이미 연결됨 — 중복 연결 방지
+    # 시간 구간 판정 — 사용자 설정 기반 (07:58~20:40), 비거래일/공휴일 자동 차단
+    from backend.app.services.daily_time_scheduler import is_realtime_reset_window
+    in_window = await is_realtime_reset_window(engine_state.state.integrated_system_settings_cache)
+    if not in_window:
+        logger.info("[연결] 실시간 구간 외 — 연결 대기")
+        return
     try:
         from backend.app.core.connector_manager import ConnectorManager
         from backend.app.services.engine_ws import _broker_message_handler
@@ -54,6 +60,25 @@ async def _establish_realtime_connection() -> None:
     except Exception as e:
         logger.error("[연결] 실시간 연결 초기화 실패: %s", e, exc_info=True)
         engine_state.state.connector_manager = None
+
+
+async def _disconnect_realtime_connection() -> None:
+    """실시간 연결을 해제한다 (시간 구간 종료 — 20:40 경과 시).
+
+    ConnectorManager가 있으면 disconnect_all + None 할당.
+    구간 내에서는 호출되지 않음 — 시간 판정 루프가 구간 외 진입 시에만 호출.
+    """
+    if engine_state.state.connector_manager is None:
+        return
+    try:
+        from backend.app.services.engine_lifecycle import broadcast_engine_status as _broadcast_engine_ws
+        if hasattr(engine_state.state.connector_manager, 'disconnect_all'):
+            await engine_state.state.connector_manager.disconnect_all()
+        engine_state.state.connector_manager = None
+        logger.info("[연결] 실시간 구간 종료 — 연결 해제")
+        await _broadcast_engine_ws()
+    except Exception as e:
+        logger.error("[연결] 실시간 연결 해제 실패: %s", e, exc_info=True)
 
 
 async def _cache_and_bootstrap(settings: dict) -> None:
@@ -225,10 +250,12 @@ async def _token_recovery_loop(router, broker_nm: str) -> None:
                     except Exception:
                         logger.warning("[연결] 토큰 회복 후 매수 한도 브로드캐스트 실패", exc_info=True)
                 log_message(f" [연결] {broker_display} 토큰 회복 성공. 정상 모드 전환.")
-                # 토큰 회복 성공 시 즉시 실시간 연결 시도 (자의적 시간대 판정 제거 — 항상 연결).
-                # 엔진 루프의 구간 감지 루프가 제거되었으므로, 여기서 직접 연결을 맺어야
-                # 회복 후 데이터 흐름이 끊기지 않는다 (P16 살아있는 경로).
+                # 토큰 회복 성공 시 실시간 연결 시도 (시간 구간 판정 — 구간 내면 연결).
+                # _establish_realtime_connection() 내부에서 is_realtime_reset_window() 판정.
+                # 구간 외면 연결 안 함 — 엔진 루프의 시간 판정 루프가 구간 진입 시 연결.
                 await _establish_realtime_connection()
+                # 엔진 루프 각성 — 구간 재판정 트리거 (P16 살아있는 경로)
+                engine_state.state.ws_window_changed_event.set()
                 await broadcast_engine_status()
                 return
 
@@ -476,15 +503,44 @@ async def run_engine_loop() -> None:
 
         await start_compute_loop()
 
-        # ── 실시간 연결 (자의적 시간대 판정 제거 — 기동 시 1회 연결 시도) ──
-        # access_token이 있으면 즉시 증권사 실시간 연결 시도.
-        # 연결 해제는 장마감(20:00) 이벤트(_on_ws_subscribe_end)가 직접 수행.
-        # 토큰 회복 루프 성공 시에도 _establish_realtime_connection()이 직접 연결 맺음.
+        # ── 실시간 연결 시간 판정 루프 ──
+        # 거래일 07:58~20:40 구간에만 웹소켓 연결. 구간 외에는 연결 안 함.
+        # 판정 기준: is_realtime_reset_window() (사용자 설정 기반, 비거래일 자동 차단).
+        # 스케줄러가 시간 도달 시 ws_window_changed_event.set()으로 루프를 즉시 각성 (P16).
         engine_state.state.engine_stop_event.clear()
+        engine_state.state.ws_window_changed_event.clear()
         await _establish_realtime_connection()
 
-        # 엔진 종료 신호만 대기 — 중간 시간대 재판정 루프 제거 (P24 단순성, P16 살아있는 경로).
-        await engine_state.state.engine_stop_event.wait()
+        while not engine_state.state.engine_stop_event.is_set():
+            try:
+                _settings = engine_state.state.integrated_system_settings_cache
+                from backend.app.services.daily_time_scheduler import is_realtime_reset_window
+                _should_connect = await is_realtime_reset_window(_settings) if engine_state.state.access_token else False
+
+                if _should_connect:
+                    # 구간 내 — 연결이 없으면 맺기
+                    if engine_state.state.connector_manager is None:
+                        await _establish_realtime_connection()
+                else:
+                    # 구간 외 — 연결이 있으면 해제
+                    if engine_state.state.connector_manager is not None:
+                        await _disconnect_realtime_connection()
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error("[연산] WS 구간 감지 루프 오류 (계속): %s", e, exc_info=True)
+                await asyncio.sleep(1)
+
+            # 엔진 종료 신호 또는 구간 변경 이벤트 대기 (이벤트 기반 — 폴링 아님)
+            stop_wait = asyncio.create_task(engine_state.state.engine_stop_event.wait())
+            change_wait = asyncio.create_task(engine_state.state.ws_window_changed_event.wait())
+            done, pending = await asyncio.wait(
+                [stop_wait, change_wait],
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            for p in pending:
+                p.cancel()
+            engine_state.state.ws_window_changed_event.clear()
 
     except asyncio.CancelledError:
         pass

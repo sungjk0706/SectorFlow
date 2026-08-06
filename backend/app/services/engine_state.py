@@ -21,9 +21,10 @@
                          krx_countdown_override, nxt_countdown_override,
                          last_realtime_reset_date, last_ws_subscribe_start_date,
                          last_krx_pre_subscribe_date, last_confirmed_download_date
-  E. 이벤트/락/상수 (16) — data_ready_event, token_ready_event, ws_reg_pipeline_done,
+  E. 이벤트/락/상수 (17) — data_ready_event, token_ready_event, ws_reg_pipeline_done,
                          bootstrap_event, sector_summary_ready_event, engine_ready_event,
                          server_ready_event, preboot_ready_event, engine_stop_event,
+                         ws_window_changed_event,
                          reg_seq_lock, reg_ack_event,
                          reg_ack_return_code, rest_api_thread_sem,
                          _last_global_buy_ts, _last_global_sell_ts,
@@ -136,6 +137,7 @@ class EngineState:
         self.preboot_cache_loaded: bool = False
         self.preboot_ready_event = LazyEvent()
         self.engine_stop_event = LazyEvent()
+        self.ws_window_changed_event = LazyEvent()
         self.reg_seq_lock: asyncio.Lock | None = None
         self.reg_ack_event = LazyEvent()
         self.reg_ack_return_code: str = ""

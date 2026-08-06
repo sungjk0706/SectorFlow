@@ -1591,9 +1591,9 @@ class TestOnWsSubscribeEnd:
              patch("backend.app.services.engine_lifecycle.broadcast_engine_status", new_callable=AsyncMock):
             await _on_ws_subscribe_end()
             assert mock_state.confirmed_done is False
-            # 장마감 시 직접 연결 해제 (자의적 판정 아닌 이벤트 기반)
-            mock_mgr.disconnect_all.assert_awaited()
-            assert mock_state.connector_manager is None
+            # 20:00에는 구독 해지만 수행 — 연결은 유지 (20:40에 엔진 루프가 해제)
+            mock_mgr.disconnect_all.assert_not_awaited()
+            assert mock_state.connector_manager is mock_mgr
 
 
 # ── _on_confirmed_download ────────────────────────────────────────────────────
@@ -1649,18 +1649,38 @@ class TestOnConfirmedDownload:
 
 class TestInitWsSubscribeState:
     @pytest.mark.asyncio
-    async def test_init_always_activates_realtime(self):
-        """자의적 시간대 판정 제거 — 항상 실시간 구간 처리 (GC 비활성화 + 필드 초기화)."""
+    async def test_init_in_window_activates_realtime(self):
+        """구간 내 기동 시 실시간 구간 처리 (GC 비활성화 + 필드 초기화)."""
         mock_state = MagicMock()
         mock_state.integrated_system_settings_cache = {"timetable.confirmed_download": "20:40"}
         mock_state.preboot_cache_loaded = True
+        mock_state.market_phase = {"krx": "정규장", "nxt": "메인마켓"}
         with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler.gc"), \
              patch("backend.app.services.engine_initial_data._reset_realtime_fields", new_callable=AsyncMock), \
              patch("backend.app.services.engine_account_notify.notify_cache"), \
              patch("backend.app.services.daily_time_scheduler._broadcast_market_phase"), \
-             patch("backend.app.pipelines.pipeline_compute.reset_sector_threshold"):
+             patch("backend.app.pipelines.pipeline_compute.reset_sector_threshold"), \
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(10, 0)):
             await _init_ws_subscribe_state()
+
+    @pytest.mark.asyncio
+    async def test_init_outside_window_skips(self):
+        """구간 외 기동 시 실시간 준비 처리 스킵 (시간 구간 판정)."""
+        mock_state = MagicMock()
+        mock_state.integrated_system_settings_cache = {"timetable.confirmed_download": "20:40"}
+        mock_state.preboot_cache_loaded = True
+        mock_state.market_phase = {"krx": "장개시전", "nxt": "장개시전"}
+        with patch("backend.app.services.engine_state.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler.gc") as mock_gc, \
+             patch("backend.app.services.engine_initial_data._reset_realtime_fields", new_callable=AsyncMock) as mock_reset, \
+             patch("backend.app.services.engine_account_notify.notify_cache"), \
+             patch("backend.app.services.daily_time_scheduler._broadcast_market_phase"), \
+             patch("backend.app.pipelines.pipeline_compute.reset_sector_threshold"), \
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(3, 0)):
+            await _init_ws_subscribe_state()
+            mock_gc.disable.assert_not_called()
+            mock_reset.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_empty_settings_raises(self):
@@ -1671,17 +1691,19 @@ class TestInitWsSubscribeState:
                 await _init_ws_subscribe_state()
 
     @pytest.mark.asyncio
-    async def test_init_disables_gc_and_resets_fields(self):
-        """기동 시 항상 GC 비활성화 + 실시간 필드 초기화 수행 (자의적 판정 제거)."""
+    async def test_init_in_window_disables_gc_and_resets_fields(self):
+        """구간 내 기동 시 GC 비활성화 + 실시간 필드 초기화 수행."""
         mock_state = MagicMock()
         mock_state.integrated_system_settings_cache = {"timetable.confirmed_download": "20:40"}
         mock_state.preboot_cache_loaded = True
+        mock_state.market_phase = {"krx": "정규장", "nxt": "메인마켓"}
         with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler.gc") as mock_gc, \
              patch("backend.app.services.engine_initial_data._reset_realtime_fields", new_callable=AsyncMock) as mock_reset, \
              patch("backend.app.services.engine_account_notify.notify_cache") as mock_notify_cache, \
              patch("backend.app.services.daily_time_scheduler._broadcast_market_phase"), \
-             patch("backend.app.pipelines.pipeline_compute.reset_sector_threshold"):
+             patch("backend.app.pipelines.pipeline_compute.reset_sector_threshold"), \
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(10, 0)):
             await _init_ws_subscribe_state()
             mock_gc.disable.assert_called_once()
             mock_reset.assert_awaited_once()
