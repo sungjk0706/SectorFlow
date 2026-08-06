@@ -35,6 +35,19 @@ def _close_coro_and_fill(mgr):
         return DEFAULT
     return _side
 
+
+def _fake_fill_and_set(mgr):
+    """fake_fill_event 동기 대기 모의 — 체결 응답 이벤트 설정.
+
+    3단계(가상 체결 동기 대기) 대응: fake_fill_event가 await로 직접 호출되므로,
+    모의 객체가 on_fill_update 역할을 대신하여 _fill_event를 설정.
+    _fill_event가 None이면 (주문 미전송/guard 차단) 이벤트 설정 생략.
+    """
+    async def _side(*args, **kwargs):
+        if mgr._fill_event is not None:
+            mgr._fill_event.set()
+    return _side
+
 from backend.app.services.trading import AutoTradeManager  # noqa: E402
 from backend.app.services.trading import (  # noqa: E402
     BUY_REJECT_AUTO_BUY_OFF,
@@ -216,7 +229,7 @@ class TestExecuteBuyGates:
              patch("backend.app.services.engine_strategy_core.reserve_test_buy_power", new_callable=AsyncMock, return_value=(True, "", 490350)), \
              patch("backend.app.services.dry_run.fake_send_order", new_callable=AsyncMock, return_value={"success": True, "order_id": "test1"}), \
              patch("backend.app.services.dry_run.set_stock_name", new_callable=AsyncMock), \
-             patch("backend.app.services.dry_run.fake_fill_event", new_callable=AsyncMock), \
+             patch("backend.app.services.dry_run.fake_fill_event", new_callable=AsyncMock, side_effect=_fake_fill_and_set(mgr)), \
              patch("backend.app.services.trade_history.record_buy", new_callable=AsyncMock), \
              patch("backend.app.core.journal.record_order_request", new_callable=AsyncMock), \
              patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock), \
@@ -946,7 +959,7 @@ class TestDailyBuySpentFeeInclusive:
              patch("backend.app.services.engine_strategy_core.reserve_test_buy_power", new_callable=AsyncMock, return_value=(True, "", 490350)), \
              patch("backend.app.services.dry_run.fake_send_order", new_callable=AsyncMock, return_value={"success": True, "order_id": "test1"}), \
              patch("backend.app.services.dry_run.set_stock_name", new_callable=AsyncMock), \
-             patch("backend.app.services.dry_run.fake_fill_event", new_callable=AsyncMock), \
+             patch("backend.app.services.dry_run.fake_fill_event", new_callable=AsyncMock, side_effect=_fake_fill_and_set(mgr)), \
              patch("backend.app.services.trade_history.record_buy", new_callable=AsyncMock), \
              patch("backend.app.core.journal.record_order_request", new_callable=AsyncMock), \
              patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock), \
@@ -985,7 +998,7 @@ class TestDailyBuySpentFeeInclusive:
              patch("backend.app.services.engine_strategy_core.reserve_test_buy_power", new_callable=AsyncMock, return_value=(True, "", 0)), \
              patch("backend.app.services.trading.get_router") as mock_router, \
              patch("backend.app.services.dry_run.set_stock_name", new_callable=AsyncMock), \
-             patch("backend.app.services.dry_run.fake_fill_event", new_callable=AsyncMock), \
+             patch("backend.app.services.dry_run.fake_fill_event", new_callable=AsyncMock, side_effect=_fake_fill_and_set(mgr)), \
              patch("backend.app.services.trade_history.record_buy", new_callable=AsyncMock), \
              patch("backend.app.core.journal.record_order_request", new_callable=AsyncMock), \
              patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock), \
@@ -1031,7 +1044,7 @@ class TestBuyAmtSinglePurchase:
              patch("backend.app.services.engine_strategy_core.reserve_test_buy_power", new_callable=AsyncMock, return_value=(True, "", 490350)), \
              patch("backend.app.services.dry_run.fake_send_order", new_callable=AsyncMock, return_value={"success": True, "order_id": "test1"}), \
              patch("backend.app.services.dry_run.set_stock_name", new_callable=AsyncMock), \
-             patch("backend.app.services.dry_run.fake_fill_event", new_callable=AsyncMock), \
+             patch("backend.app.services.dry_run.fake_fill_event", new_callable=AsyncMock, side_effect=_fake_fill_and_set(mgr)), \
              patch("backend.app.services.trade_history.record_buy", new_callable=AsyncMock), \
              patch("backend.app.core.journal.record_order_request", new_callable=AsyncMock), \
              patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock), \
@@ -1075,7 +1088,7 @@ class TestBuyAmtSinglePurchase:
              patch("backend.app.services.engine_strategy_core.reserve_test_buy_power", new_callable=AsyncMock, return_value=(True, "", 0)), \
              patch("backend.app.services.dry_run.fake_send_order", new_callable=AsyncMock, return_value={"success": True, "order_id": "test1"}), \
              patch("backend.app.services.dry_run.set_stock_name", new_callable=AsyncMock), \
-             patch("backend.app.services.dry_run.fake_fill_event", new_callable=AsyncMock), \
+             patch("backend.app.services.dry_run.fake_fill_event", new_callable=AsyncMock, side_effect=_fake_fill_and_set(mgr)), \
              patch("backend.app.services.trade_history.record_buy", new_callable=AsyncMock), \
              patch("backend.app.core.journal.record_order_request", new_callable=AsyncMock), \
              patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock), \
@@ -1114,7 +1127,7 @@ class TestExecuteBuyReasonPassThrough:
              patch("backend.app.services.engine_strategy_core.reserve_test_buy_power", new_callable=AsyncMock, return_value=(True, "", 490350)), \
              patch("backend.app.services.dry_run.fake_send_order", new_callable=AsyncMock, return_value={"success": True, "order_id": "test1"}), \
              patch("backend.app.services.dry_run.set_stock_name", new_callable=AsyncMock), \
-             patch("backend.app.services.dry_run.fake_fill_event", new_callable=AsyncMock), \
+             patch("backend.app.services.dry_run.fake_fill_event", new_callable=AsyncMock, side_effect=_fake_fill_and_set(mgr)), \
              patch("backend.app.services.trade_history.record_buy", new_callable=AsyncMock) as mock_record_buy, \
              patch("backend.app.core.journal.record_order_request", new_callable=AsyncMock), \
              patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock), \
@@ -1149,7 +1162,7 @@ class TestExecuteBuyReasonPassThrough:
              patch("backend.app.services.engine_strategy_core.reserve_test_buy_power", new_callable=AsyncMock, return_value=(True, "", 490350)), \
              patch("backend.app.services.dry_run.fake_send_order", new_callable=AsyncMock, return_value={"success": True, "order_id": "test1"}), \
              patch("backend.app.services.dry_run.set_stock_name", new_callable=AsyncMock), \
-             patch("backend.app.services.dry_run.fake_fill_event", new_callable=AsyncMock), \
+             patch("backend.app.services.dry_run.fake_fill_event", new_callable=AsyncMock, side_effect=_fake_fill_and_set(mgr)), \
              patch("backend.app.services.trade_history.record_buy", new_callable=AsyncMock) as mock_record_buy, \
              patch("backend.app.core.journal.record_order_request", new_callable=AsyncMock), \
              patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock), \
@@ -1206,7 +1219,7 @@ class TestExecuteBuyOrderFailure:
              patch("backend.app.services.dry_run.fake_send_order", new_callable=AsyncMock, return_value={"success": False}) as mock_send, \
              patch("backend.app.services.settlement_engine.release_buy_power", new_callable=AsyncMock) as mock_release, \
              patch("backend.app.services.dry_run.set_stock_name", new_callable=AsyncMock), \
-             patch("backend.app.services.dry_run.fake_fill_event", new_callable=AsyncMock), \
+             patch("backend.app.services.dry_run.fake_fill_event", new_callable=AsyncMock, side_effect=_fake_fill_and_set(mgr)), \
              patch("backend.app.services.trade_history.record_buy", new_callable=AsyncMock), \
              patch("backend.app.core.journal.record_order_request", new_callable=AsyncMock), \
              patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock), \
@@ -1253,7 +1266,7 @@ class TestExecuteBuyOrderFailure:
              patch("backend.app.services.dry_run.fake_send_order", new_callable=AsyncMock, return_value={"success": False}), \
              patch("backend.app.services.settlement_engine.release_buy_power", new_callable=AsyncMock), \
              patch("backend.app.services.dry_run.set_stock_name", new_callable=AsyncMock), \
-             patch("backend.app.services.dry_run.fake_fill_event", new_callable=AsyncMock), \
+             patch("backend.app.services.dry_run.fake_fill_event", new_callable=AsyncMock, side_effect=_fake_fill_and_set(mgr)), \
              patch("backend.app.services.trade_history.record_buy", new_callable=AsyncMock), \
              patch("backend.app.core.journal.record_order_request", new_callable=AsyncMock), \
              patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock), \
@@ -1342,7 +1355,7 @@ class TestOrderSerializationLock:
              patch("backend.app.services.dry_run.fake_send_order", new_callable=AsyncMock, return_value={"success": False}), \
              patch("backend.app.services.settlement_engine.release_buy_power", new_callable=AsyncMock), \
              patch("backend.app.services.dry_run.set_stock_name", new_callable=AsyncMock), \
-             patch("backend.app.services.dry_run.fake_fill_event", new_callable=AsyncMock), \
+             patch("backend.app.services.dry_run.fake_fill_event", new_callable=AsyncMock, side_effect=_fake_fill_and_set(mgr)), \
              patch("backend.app.services.trade_history.record_buy", new_callable=AsyncMock), \
              patch("backend.app.core.journal.record_order_request", new_callable=AsyncMock), \
              patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock), \
@@ -1375,7 +1388,7 @@ class TestOrderSerializationLock:
              patch("backend.app.services.dry_run.fake_send_order", new_callable=AsyncMock, return_value={"success": False}), \
              patch("backend.app.services.settlement_engine.release_buy_power", new_callable=AsyncMock), \
              patch("backend.app.services.dry_run.set_stock_name", new_callable=AsyncMock), \
-             patch("backend.app.services.dry_run.fake_fill_event", new_callable=AsyncMock), \
+             patch("backend.app.services.dry_run.fake_fill_event", new_callable=AsyncMock, side_effect=_fake_fill_and_set(mgr)), \
              patch("backend.app.services.trade_history.record_buy", new_callable=AsyncMock), \
              patch("backend.app.core.journal.record_order_request", new_callable=AsyncMock), \
              patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock), \

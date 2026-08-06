@@ -339,9 +339,9 @@ class AutoTradeManager:
         return self._FILL_TIMEOUTS.get(broker, self._FILL_TIMEOUT_DEFAULT)
 
     def _begin_fill_await(self, stk_cd: str) -> None:
-        """체결 응답 대기 시작 — 이벤트 생성 (가상 체결 예약 전 호출하여 경쟁 상태 방지).
+        """체결 응답 대기 시작 — 이벤트 생성 (가상 체결 동기 호출 전 또는 실전 주문 전송 전 호출).
 
-        반드시 schedule_engine_task(가상 체결) 또는 실전 주문 전송 전에 호출.
+        반드시 가상 체결(fake_fill_event) 동기 호출 또는 실전 주문 전송 전에 호출.
         on_fill_update가 체결 응답 수신 시 self._fill_event.set() 호출.
         """
         self._fill_event = asyncio.Event()
@@ -677,15 +677,12 @@ class AutoTradeManager:
         except Exception:
             logger.warning("[매매] 매수 한도 전송 실패", exc_info=True)
 
-        # ── 테스트모드: 가상 체결 이벤트 예약 (실전 WS "00"과 동일한 downstream) ──
-        # schedule_engine_task 사용 — ARCHITECTURE.md 금지 패턴 2 준수 (P23 일관성)
+        # ── 테스트모드: 가상 체결 동기 대기 (실전 WS "00"과 동일한 downstream, P18 동등성) ──
+        # 주문 흐름 내에서 가상 체결 완료까지 대기 — "주문 → 대기 → 응답 → 다음" 흐름 (결정 4).
+        # fake_fill_event 내부에서 on_fill_update가 _fill_event를 설정 → _end_fill_await가 즉시 통과.
         if is_test_mode(raw_all):
             _dry_fill_price = int(order_price) if order_price > 0 else int(current_price)
-            from backend.app.services.engine_lifecycle import schedule_engine_task
-            schedule_engine_task(
-                dry_run.fake_fill_event("BUY", stk_cd, buy_qty, _dry_fill_price, stk_nm, pre_reserved=True),
-                context="가상 체결 이벤트(매수)",
-            )
+            await dry_run.fake_fill_event("BUY", stk_cd, buy_qty, _dry_fill_price, stk_nm, pre_reserved=True)
 
         t_str = datetime.now().strftime("%H:%M:%S")
         fmt_price = f"{fill_price:,}"
@@ -909,15 +906,12 @@ class AutoTradeManager:
             buy_date=_buy_date,
         )
 
-        # ── 테스트모드: 가상 체결 이벤트 예약 (실전 WS "00"과 동일한 downstream) ──
-        # schedule_engine_task 사용 — ARCHITECTURE.md 금지 패턴 2 준수 (P23 일관성)
+        # ── 테스트모드: 가상 체결 동기 대기 (실전 WS "00"과 동일한 downstream, P18 동등성) ──
+        # 주문 흐름 내에서 가상 체결 완료까지 대기 — "주문 → 대기 → 응답 → 다음" 흐름 (결정 4).
+        # fake_fill_event 내부에서 on_fill_update가 _fill_event를 설정 → _end_fill_await가 즉시 통과.
         if is_test_mode(base_settings):
             _dry_sell_price = int(order_price) if order_price > 0 else int(cur_price)
-            from backend.app.services.engine_lifecycle import schedule_engine_task
-            schedule_engine_task(
-                dry_run.fake_fill_event("SELL", stk_cd, qty, _dry_sell_price, stk_nm),
-                context="가상 체결 이벤트(매도)",
-            )
+            await dry_run.fake_fill_event("SELL", stk_cd, qty, _dry_sell_price, stk_nm)
 
         # ── RiskManager 성공 보고 ─────────────────────────────────────────────
         try:
