@@ -8,32 +8,7 @@ from __future__ import annotations
 import pytest
 import time as _time
 import asyncio
-from unittest.mock import AsyncMock, DEFAULT, patch
-
-
-def _close_coro(*args, **kwargs):
-    """mock에 전달된 코루틴을 close하여 RuntimeWarning 방지."""
-    for arg in args:
-        if asyncio.iscoroutine(arg):
-            arg.close()
-    return DEFAULT
-
-
-def _close_coro_and_fill(mgr):
-    """schedule_engine_task 모의 — 코루틴 close + 체결 응답 이벤트 설정.
-
-    4단계(주문 응답 대기) 대응: 가상 체결(fake_fill_event)이 모의 객체로 대체된 경우
-    on_fill_update가 호출되지 않으므로, 대기 중인 체결 응답 이벤트를 직접 설정.
-    _fill_event가 None이면 (주문 미전송/guard 차단) 이벤트 설정 생략.
-    """
-    def _side(*args, **kwargs):
-        for arg in args:
-            if asyncio.iscoroutine(arg):
-                arg.close()
-        if mgr._fill_event is not None:
-            mgr._fill_event.set()
-        return DEFAULT
-    return _side
+from unittest.mock import AsyncMock, patch
 
 
 def _fake_fill_and_set(mgr):
@@ -233,7 +208,6 @@ class TestExecuteBuyGates:
              patch("backend.app.services.trade_history.record_buy", new_callable=AsyncMock), \
              patch("backend.app.core.journal.record_order_request", new_callable=AsyncMock), \
              patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock), \
-             patch("backend.app.services.engine_lifecycle.schedule_engine_task", side_effect=_close_coro_and_fill(mgr)), \
              patch("backend.app.services.trading._fire_and_forget_telegram"):
             mock_state.realtime_latency_exceeded = False
             mock_state.integrated_system_settings_cache = _raw_settings(rebuy_block_on=False)
@@ -963,7 +937,6 @@ class TestDailyBuySpentFeeInclusive:
              patch("backend.app.services.trade_history.record_buy", new_callable=AsyncMock), \
              patch("backend.app.core.journal.record_order_request", new_callable=AsyncMock), \
              patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock), \
-             patch("backend.app.services.engine_lifecycle.schedule_engine_task", side_effect=_close_coro_and_fill(mgr)), \
              patch("backend.app.services.trading._fire_and_forget_telegram"):
             mock_state.realtime_latency_exceeded = False
             mock_state.integrated_system_settings_cache = _raw_settings(rebuy_block_on=False)
@@ -1002,7 +975,6 @@ class TestDailyBuySpentFeeInclusive:
              patch("backend.app.services.trade_history.record_buy", new_callable=AsyncMock), \
              patch("backend.app.core.journal.record_order_request", new_callable=AsyncMock), \
              patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock), \
-             patch("backend.app.services.engine_lifecycle.schedule_engine_task", side_effect=_close_coro_and_fill(mgr)), \
              patch("backend.app.services.trading._fire_and_forget_telegram"):
             mock_state.realtime_latency_exceeded = False
             mock_state.integrated_system_settings_cache = _raw_settings(rebuy_block_on=False)
@@ -1048,7 +1020,6 @@ class TestBuyAmtSinglePurchase:
              patch("backend.app.services.trade_history.record_buy", new_callable=AsyncMock), \
              patch("backend.app.core.journal.record_order_request", new_callable=AsyncMock), \
              patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock), \
-             patch("backend.app.services.engine_lifecycle.schedule_engine_task", side_effect=_close_coro_and_fill(mgr)), \
              patch("backend.app.services.trading._fire_and_forget_telegram"):
             mock_state.realtime_latency_exceeded = False
             mock_state.integrated_system_settings_cache = _raw_settings(rebuy_block_on=False)
@@ -1092,7 +1063,6 @@ class TestBuyAmtSinglePurchase:
              patch("backend.app.services.trade_history.record_buy", new_callable=AsyncMock), \
              patch("backend.app.core.journal.record_order_request", new_callable=AsyncMock), \
              patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock), \
-             patch("backend.app.services.engine_lifecycle.schedule_engine_task", side_effect=_close_coro_and_fill(mgr)), \
              patch("backend.app.services.trading._fire_and_forget_telegram"):
             mock_state.realtime_latency_exceeded = False
             mock_state.integrated_system_settings_cache = _raw_settings(buy_amt_on=False, max_daily_total_buy_on=False)
@@ -1131,7 +1101,6 @@ class TestExecuteBuyReasonPassThrough:
              patch("backend.app.services.trade_history.record_buy", new_callable=AsyncMock) as mock_record_buy, \
              patch("backend.app.core.journal.record_order_request", new_callable=AsyncMock), \
              patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock), \
-             patch("backend.app.services.engine_lifecycle.schedule_engine_task", side_effect=_close_coro_and_fill(mgr)), \
              patch("backend.app.services.trading._fire_and_forget_telegram"):
             mock_state.realtime_latency_exceeded = False
             mock_state.integrated_system_settings_cache = _raw_settings(rebuy_block_on=False)
@@ -1166,7 +1135,6 @@ class TestExecuteBuyReasonPassThrough:
              patch("backend.app.services.trade_history.record_buy", new_callable=AsyncMock) as mock_record_buy, \
              patch("backend.app.core.journal.record_order_request", new_callable=AsyncMock), \
              patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock), \
-             patch("backend.app.services.engine_lifecycle.schedule_engine_task", side_effect=_close_coro_and_fill(mgr)), \
              patch("backend.app.services.trading._fire_and_forget_telegram"):
             mock_state.realtime_latency_exceeded = False
             mock_state.integrated_system_settings_cache = _raw_settings(rebuy_block_on=False)
@@ -1223,7 +1191,6 @@ class TestExecuteBuyOrderFailure:
              patch("backend.app.services.trade_history.record_buy", new_callable=AsyncMock), \
              patch("backend.app.core.journal.record_order_request", new_callable=AsyncMock), \
              patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock), \
-             patch("backend.app.services.engine_lifecycle.schedule_engine_task", side_effect=_close_coro_and_fill(mgr)), \
              patch("backend.app.services.trading._fire_and_forget_telegram"):
             mock_state.realtime_latency_exceeded = False
             mock_state.integrated_system_settings_cache = _raw_settings(rebuy_block_on=False)
@@ -1270,7 +1237,6 @@ class TestExecuteBuyOrderFailure:
              patch("backend.app.services.trade_history.record_buy", new_callable=AsyncMock), \
              patch("backend.app.core.journal.record_order_request", new_callable=AsyncMock), \
              patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock), \
-             patch("backend.app.services.engine_lifecycle.schedule_engine_task", side_effect=_close_coro_and_fill(mgr)), \
              patch("backend.app.services.trading._fire_and_forget_telegram"), \
              patch("backend.app.services.trading.get_router") as mock_get_router:
             mock_state.realtime_latency_exceeded = False
@@ -1359,7 +1325,6 @@ class TestOrderSerializationLock:
              patch("backend.app.services.trade_history.record_buy", new_callable=AsyncMock), \
              patch("backend.app.core.journal.record_order_request", new_callable=AsyncMock), \
              patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock), \
-             patch("backend.app.services.engine_lifecycle.schedule_engine_task", side_effect=_close_coro), \
              patch("backend.app.services.trading._fire_and_forget_telegram"):
             mock_state.realtime_latency_exceeded = False
             mock_state.integrated_system_settings_cache = _raw_settings(rebuy_block_on=False)
@@ -1392,7 +1357,6 @@ class TestOrderSerializationLock:
              patch("backend.app.services.trade_history.record_buy", new_callable=AsyncMock), \
              patch("backend.app.core.journal.record_order_request", new_callable=AsyncMock), \
              patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock), \
-             patch("backend.app.services.engine_lifecycle.schedule_engine_task", side_effect=_close_coro), \
              patch("backend.app.services.trading._fire_and_forget_telegram"):
             mock_state2.realtime_latency_exceeded = False
             mock_state2.integrated_system_settings_cache = _raw_settings(rebuy_block_on=False)
@@ -1435,7 +1399,6 @@ class TestOrderSerializationLock:
              patch("backend.app.services.trade_history.record_buy", new_callable=AsyncMock), \
              patch("backend.app.core.journal.record_order_request", new_callable=AsyncMock), \
              patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock), \
-             patch("backend.app.services.engine_lifecycle.schedule_engine_task", side_effect=_close_coro), \
              patch("backend.app.services.trading._fire_and_forget_telegram"), \
              patch.object(mgr, "_fill_timeout_for", return_value=0.01), \
              patch("backend.app.services.trading._broadcast_order_fill_timeout", new_callable=AsyncMock) as mock_broadcast:
@@ -1454,3 +1417,143 @@ class TestOrderSerializationLock:
         # 잠금 해제 확인 — 타임아웃 후에도 잠금이 풀려 다음 주문 가능
         assert mgr._order_lock is not None
         assert mgr._order_lock.locked() is False
+
+
+# ── 테스트모드 가상 응답 시간 — 주문 흐름 검증 (4단계 신규 테스트) ──────────────
+
+class TestTestModeFillAwaitFlow:
+    """테스트모드 주문 흐름 검증 — "주문 → 대기 → 응답 → 다음" 구조 (P18 동등성).
+
+    3단계에서 가상 체결을 백그라운드 예약에서 주문 흐름 내 동기 대기로 변경.
+    본 테스트는 변경된 구조가 올바르게 동작하는지 검증:
+      1. fake_fill_event가 await로 직접 호출되는지 (백그라운드 예약이 아님)
+      2. 주문 접수(fake_send_order) → 가상 체결 대기(fake_fill_event) → 응답 확인 순서
+      3. 가상 응답 시간 대기 후 체결 이벤트가 발생하여 주문이 완료되는지
+    """
+
+    @pytest.mark.asyncio
+    async def test_fake_fill_event_awaited_not_scheduled(self):
+        """가상 체결이 백그라운드 예약이 아닌 await로 직접 호출되는지 검증.
+
+        schedule_engine_task가 호출되지 않고, fake_fill_event가 await로 실행됨을 확인.
+        """
+        mgr = _make_manager(_raw_settings(rebuy_block_on=False))
+        with patch("backend.app.services.engine_state.state") as mock_state, \
+             patch("backend.app.services.trading.auto_buy_effective", return_value=True), \
+             patch("backend.app.services.engine_account.get_positions", new_callable=AsyncMock, return_value=[]), \
+             patch("backend.app.services.trading.is_test_mode", return_value=True), \
+             patch("backend.app.services.settlement_engine.get_available_cash", return_value=10_000_000), \
+             patch("backend.app.services.dry_run.estimate_fill_price", return_value=70000), \
+             patch("backend.app.services.trading.get_risk_manager") as mock_rm, \
+             patch("backend.app.services.data_manager.get_stock_name", return_value="삼성전자"), \
+             patch("backend.app.services.engine_strategy_core.reserve_test_buy_power", new_callable=AsyncMock, return_value=(True, "", 490350)), \
+             patch("backend.app.services.dry_run.fake_send_order", new_callable=AsyncMock, return_value={"success": True, "order_id": "test1"}), \
+             patch("backend.app.services.dry_run.set_stock_name", new_callable=AsyncMock), \
+             patch("backend.app.services.dry_run.fake_fill_event", new_callable=AsyncMock, side_effect=_fake_fill_and_set(mgr)) as mock_fill, \
+             patch("backend.app.services.trade_history.record_buy", new_callable=AsyncMock), \
+             patch("backend.app.core.journal.record_order_request", new_callable=AsyncMock), \
+             patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock), \
+             patch("backend.app.services.engine_lifecycle.schedule_engine_task") as mock_schedule, \
+             patch("backend.app.services.trading._fire_and_forget_telegram"):
+            mock_state.realtime_latency_exceeded = False
+            mock_state.integrated_system_settings_cache = _raw_settings(rebuy_block_on=False)
+            mock_state.master_stocks_cache = {}
+            mock_rm.return_value.circuit_breaker.get_state.return_value = "CLOSED"
+            mock_rm.return_value.get_withdrawable_deposit.return_value = 10_000_000
+            mock_rm.return_value.check_buy_order_allowed = AsyncMock(return_value=(True, "승인"))
+            result, _reason = await mgr.execute_buy("005930", 70000, "token")
+
+        assert result is True
+        # fake_fill_event가 await로 호출되었는지 확인 (백그라운드 예약이 아님)
+        mock_fill.assert_awaited_once()
+        # schedule_engine_task는 호출되지 않아야 함 (백그라운드 예약 제거 확인)
+        mock_schedule.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_order_flow_sequence_send_then_fill_then_await(self):
+        """주문 흐름 순서 검증 — 주문 접수 → 가상 체결 대기 → 응답 확인.
+
+        fake_send_order(주문 접수)가 fake_fill_event(가상 체결)보다 먼저 호출되는지,
+        그리고 _end_fill_await(응답 확인)가 fake_fill_event 이후에 완료되는지 검증.
+        """
+        mgr = _make_manager(_raw_settings(rebuy_block_on=False))
+        _call_order: list[str] = []
+
+        async def _track_send(*a, **kw):
+            _call_order.append("send_order")
+            return {"success": True, "order_id": "test1"}
+
+        async def _track_fill(*a, **kw):
+            _call_order.append("fill_event")
+            if mgr._fill_event is not None:
+                mgr._fill_event.set()
+
+        with patch("backend.app.services.engine_state.state") as mock_state, \
+             patch("backend.app.services.trading.auto_buy_effective", return_value=True), \
+             patch("backend.app.services.engine_account.get_positions", new_callable=AsyncMock, return_value=[]), \
+             patch("backend.app.services.trading.is_test_mode", return_value=True), \
+             patch("backend.app.services.settlement_engine.get_available_cash", return_value=10_000_000), \
+             patch("backend.app.services.dry_run.estimate_fill_price", return_value=70000), \
+             patch("backend.app.services.trading.get_risk_manager") as mock_rm, \
+             patch("backend.app.services.data_manager.get_stock_name", return_value="삼성전자"), \
+             patch("backend.app.services.engine_strategy_core.reserve_test_buy_power", new_callable=AsyncMock, return_value=(True, "", 490350)), \
+             patch("backend.app.services.dry_run.fake_send_order", new_callable=AsyncMock, side_effect=_track_send), \
+             patch("backend.app.services.dry_run.set_stock_name", new_callable=AsyncMock), \
+             patch("backend.app.services.dry_run.fake_fill_event", new_callable=AsyncMock, side_effect=_track_fill), \
+             patch("backend.app.services.trade_history.record_buy", new_callable=AsyncMock), \
+             patch("backend.app.core.journal.record_order_request", new_callable=AsyncMock), \
+             patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock), \
+             patch("backend.app.services.trading._fire_and_forget_telegram"):
+            mock_state.realtime_latency_exceeded = False
+            mock_state.integrated_system_settings_cache = _raw_settings(rebuy_block_on=False)
+            mock_state.master_stocks_cache = {}
+            mock_rm.return_value.circuit_breaker.get_state.return_value = "CLOSED"
+            mock_rm.return_value.get_withdrawable_deposit.return_value = 10_000_000
+            mock_rm.return_value.check_buy_order_allowed = AsyncMock(return_value=(True, "승인"))
+            result, _reason = await mgr.execute_buy("005930", 70000, "token")
+
+        assert result is True
+        # 주문 접수가 가상 체결보다 먼저 호출되었는지 확인 ("주문 → 대기 → 응답 → 다음")
+        assert _call_order[0] == "send_order", \
+            f"주문 접수가 가상 체결보다 먼저 호출되어야 함: {_call_order}"
+        assert _call_order[1] == "fill_event", \
+            f"가상 체결이 주문 접수 이후에 호출되어야 함: {_call_order}"
+        assert len(_call_order) == 2, \
+            f"주문 접수 + 가상 체결 2단계만 호출되어야 함: {_call_order}"
+
+    @pytest.mark.asyncio
+    async def test_fill_await_completes_after_fake_fill_event(self):
+        """가상 응답 시간 대기 후 체결 이벤트 발생으로 응답 대기가 완료되는지 검증.
+
+        fake_fill_event가 _fill_event를 설정하면 _end_fill_await가 타임아웃 없이
+        즉시 통과하여 주문이 성공으로 완료되는지 확인.
+        """
+        mgr = _make_manager(_raw_settings(rebuy_block_on=False))
+        with patch("backend.app.services.engine_state.state") as mock_state, \
+             patch("backend.app.services.trading.auto_buy_effective", return_value=True), \
+             patch("backend.app.services.engine_account.get_positions", new_callable=AsyncMock, return_value=[]), \
+             patch("backend.app.services.trading.is_test_mode", return_value=True), \
+             patch("backend.app.services.settlement_engine.get_available_cash", return_value=10_000_000), \
+             patch("backend.app.services.dry_run.estimate_fill_price", return_value=70000), \
+             patch("backend.app.services.trading.get_risk_manager") as mock_rm, \
+             patch("backend.app.services.data_manager.get_stock_name", return_value="삼성전자"), \
+             patch("backend.app.services.engine_strategy_core.reserve_test_buy_power", new_callable=AsyncMock, return_value=(True, "", 490350)), \
+             patch("backend.app.services.dry_run.fake_send_order", new_callable=AsyncMock, return_value={"success": True, "order_id": "test1"}), \
+             patch("backend.app.services.dry_run.set_stock_name", new_callable=AsyncMock), \
+             patch("backend.app.services.dry_run.fake_fill_event", new_callable=AsyncMock, side_effect=_fake_fill_and_set(mgr)), \
+             patch("backend.app.services.trade_history.record_buy", new_callable=AsyncMock), \
+             patch("backend.app.core.journal.record_order_request", new_callable=AsyncMock), \
+             patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock), \
+             patch("backend.app.services.trading._fire_and_forget_telegram"), \
+             patch("backend.app.services.trading._broadcast_order_fill_timeout", new_callable=AsyncMock) as mock_timeout:
+            mock_state.realtime_latency_exceeded = False
+            mock_state.integrated_system_settings_cache = _raw_settings(rebuy_block_on=False)
+            mock_state.master_stocks_cache = {}
+            mock_rm.return_value.circuit_breaker.get_state.return_value = "CLOSED"
+            mock_rm.return_value.get_withdrawable_deposit.return_value = 10_000_000
+            mock_rm.return_value.check_buy_order_allowed = AsyncMock(return_value=(True, "승인"))
+            result, _reason = await mgr.execute_buy("005930", 70000, "token")
+
+        assert result is True
+        # 가상 체결이 응답 이벤트를 설정했으므로 타임아웃 알림이 발생하지 않아야 함
+        mock_timeout.assert_not_called()
