@@ -660,14 +660,15 @@ class TestTokenRecoveryCreatesAutoTradeManager:
 class TestTokenRecoveryEstablishesConnection:
     """토큰 회복 루프 성공 시 실시간 연결을 직접 맺는지 검증.
 
-    자의적 시간대 판정 제거: 회복 성공 경로에서 이벤트 알림으로
-    엔진 루프를 각성하던 구조를 제거. 대신 _establish_realtime_connection()을
-    직접 호출하여 토큰 회복 즉시 연결을 맺음 (P16 살아있는 경로).
+    회복 성공 시 _establish_realtime_connection()을 직접 호출하여 토큰 회복 즉시 연결 시도.
+    _establish_realtime_connection() 내부에서 시간 구간 판정 (is_realtime_reset_window) —
+    구간 내면 연결, 구간 외면 연결 안 함. 이후 ws_window_changed_event.set()으로
+    엔진 루프를 각성하여 구간 재판정 트리거 (P16 살아있는 경로).
     """
 
     @pytest.mark.asyncio
     async def test_recovery_success_calls_establish_connection(self):
-        """회복 성공 시 _establish_realtime_connection() 호출 — 직접 연결 시도."""
+        """회복 성공 시 _establish_realtime_connection() 호출 — 직접 연결 시도 (시간 구간 판정 내부 수행)."""
         from backend.app.services import engine_loop, engine_state
 
         mock_state = MagicMock()
@@ -677,6 +678,7 @@ class TestTokenRecoveryEstablishesConnection:
         mock_state.engine_shutdown_requested = False
         mock_state.broker_tokens = {}
         mock_state.auto_trade = MagicMock()  # 이미 관리자 존재
+        mock_state.ws_window_changed_event = MagicMock()
 
         async def _fake_get_tokens(_router):
             mock_state.broker_tokens = {"kiwoom": "recovered_token"}
@@ -700,8 +702,10 @@ class TestTokenRecoveryEstablishesConnection:
         ):
             await engine_loop._token_recovery_loop(mock_router, "kiwoom")
 
-        # 회복 성공 → 직접 실시간 연결 시도
+        # 회복 성공 → 직접 실시간 연결 시도 (시간 구간 판정은 함수 내부에서 수행)
         mock_connect.assert_awaited()
+        # 엔진 루프 각성 — 구간 재판정 트리거
+        mock_state.ws_window_changed_event.set.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_recovery_failure_does_not_call_establish_connection(self):

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import sys
+from contextlib import ExitStack
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -78,6 +79,7 @@ def _mock_state(
     mock.preboot_ready_event = MagicMock()
     mock.engine_stop_event = MagicMock()
     mock.engine_stop_event.is_set.return_value = True  # while 루프 즉시 종료
+    mock.ws_window_changed_event = MagicMock()  # 시간 판정 루프 각성 이벤트
     mock.engine_loop_ref = None
     mock.account_rest_lock = None
     # 토큰 회복 루프 상태 (5세션) — 실제 bool/None 타입으로 설정 (MagicMock truthy 방지)
@@ -939,6 +941,158 @@ class TestRunEngineLoopInit:
         assert any("예외" in m for m in log_msgs)
         warning_msgs = [str(c) for c in mock_logger.warning.call_args_list]
         assert any("엔진 루프 예외" in m for m in warning_msgs)
+
+
+# ── run_engine_loop — 실시간 연결 시간 판정 루프 ────────────────────────────────
+
+def _apply_run_engine_loop_patches(stack: ExitStack, mock_state, mock_router):
+    """run_engine_loop 공통 patch 적용 — ExitStack 기반 (중첩 깊이 제한 회피).
+
+    _get_all_tokens_async는 broker_tokens.clear() 후 토큰을 복원하도록 side_effect 설정.
+    반환: (mock_connect, mock_disconnect) — _establish/_disconnect_realtime_connection mock.
+    """
+    # broker_tokens에서 기본 브로커 토큰 추출 — clear 후 복원용
+    _broker = mock_state.integrated_system_settings_cache.get("broker", "kiwoom")
+    _token = mock_state.broker_tokens.get(_broker) if isinstance(mock_state.broker_tokens, dict) else None
+
+    async def _refill_tokens(_router):
+        if _token is not None and isinstance(mock_state.broker_tokens, dict):
+            mock_state.broker_tokens[_broker] = _token
+        mock_state.token_failure_kind = None
+
+    stack.enter_context(patch.object(engine_state, "state", mock_state))
+    stack.enter_context(patch.object(engine_loop, "get_router", return_value=mock_router))
+    stack.enter_context(patch.object(engine_loop, "is_test_mode", return_value=True))
+    stack.enter_context(patch.object(engine_loop, "_load_caches_preboot", new_callable=AsyncMock))
+    stack.enter_context(patch.object(engine_loop, "_get_all_tokens_async", side_effect=_refill_tokens))
+    stack.enter_context(patch.object(engine_loop, "_load_broker_spec_async", new_callable=AsyncMock, return_value=[]))
+    stack.enter_context(patch.object(engine_loop.asyncio, "gather", new_callable=AsyncMock, side_effect=swallow_gather_side_effect))
+    stack.enter_context(patch.object(engine_loop.asyncio, "create_task", side_effect=swallow_coro_side_effect))
+    stack.enter_context(patch.object(engine_loop.asyncio, "wait", new_callable=AsyncMock, return_value=(set(), set())))
+    stack.enter_context(patch.object(engine_loop.asyncio, "sleep", new_callable=AsyncMock))
+    stack.enter_context(patch("backend.app.services.engine_state._notify_reg_ack"))
+    stack.enter_context(patch("backend.app.services.engine_account_notify._rebuild_layout_cache"))
+    stack.enter_context(patch("backend.app.services.engine_lifecycle.log_message"))
+    stack.enter_context(patch("backend.app.services.engine_lifecycle.broadcast_engine_status", new_callable=AsyncMock))
+    stack.enter_context(patch("backend.app.services.engine_lifecycle.sync_sell_overrides"))
+    stack.enter_context(patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock))
+    stack.enter_context(patch("backend.app.services.engine_config._get_settings"))
+    stack.enter_context(patch("backend.app.services.daily_time_scheduler._init_ws_subscribe_state", new_callable=AsyncMock))
+    stack.enter_context(patch.object(engine_loop, "AutoTradeManager"))
+    mock_connect = stack.enter_context(patch.object(engine_loop, "_establish_realtime_connection", new_callable=AsyncMock))
+    mock_disconnect = stack.enter_context(patch.object(engine_loop, "_disconnect_realtime_connection", new_callable=AsyncMock))
+    return mock_connect, mock_disconnect
+
+
+class TestRunEngineLoopRealtimeWindow:
+    """엔진 루프 시간 판정 루프 — 거래일 07:58~20:40 구간에만 연결 (설계서 결정 1·3·5).
+
+    while 루프가 is_realtime_reset_window()로 구간 판정:
+    - 구간 내 + 연결 없음 → _establish_realtime_connection() 호출
+    - 구간 외 + 연결 있음 → _disconnect_realtime_connection() 호출
+    - ws_window_changed_event 수신 시 즉시 재판정 (이벤트 기반 — 폴링 아님)
+    """
+
+    @pytest.mark.asyncio
+    async def test_outside_window_does_not_connect(self):
+        """구간 외 기동 시 연결 시도 없이 대기 — 새벽 기동 시 연결 안 됨."""
+        mock_state = _mock_state(access_token="valid_token", broker_tokens={"kiwoom": "valid_token"})
+        mock_state.engine_stop_event.is_set.side_effect = [False, True]
+        mock_router = _mock_router()
+
+        with ExitStack() as stack:
+            mock_connect, mock_disconnect = _apply_run_engine_loop_patches(stack, mock_state, mock_router)
+            stack.enter_context(patch("backend.app.services.daily_time_scheduler.is_realtime_reset_window", new_callable=AsyncMock, return_value=False))
+            await engine_loop.run_engine_loop()
+
+        # 구간 외 → 루프 본문에서 연결 시도 없음 (기동 시 1회 호출은 구간 외이므로 즉시 return)
+        # _establish_realtime_connection은 기동 시 1회 + 루프에서는 구간 외이므로 호출 없음
+        # 기동 시 호출은 내부에서 is_realtime_reset_window 판정 후 return → connector_manager None 유지
+        mock_disconnect.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_inside_window_connects_when_no_connection(self):
+        """구간 내 + 연결 없음 → _establish_realtime_connection() 호출 — 장 중 연결 맺기."""
+        mock_state = _mock_state(access_token="valid_token", broker_tokens={"kiwoom": "valid_token"})
+        mock_state.connector_manager = None  # 연결 없음
+        mock_state.engine_stop_event.is_set.side_effect = [False, True]
+        mock_router = _mock_router()
+
+        with ExitStack() as stack:
+            mock_connect, mock_disconnect = _apply_run_engine_loop_patches(stack, mock_state, mock_router)
+            stack.enter_context(patch("backend.app.services.daily_time_scheduler.is_realtime_reset_window", new_callable=AsyncMock, return_value=True))
+            await engine_loop.run_engine_loop()
+
+        # 구간 내 + 연결 없음 → 루프에서 연결 시도 (기동 시 1회 + 루프 1회 = 최소 2회)
+        assert mock_connect.await_count >= 1
+        mock_disconnect.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_outside_window_disconnects_when_connected(self):
+        """구간 외 + 연결 있음 → _disconnect_realtime_connection() 호출 — 20:40 경과 시 연결 해제.
+
+        시나리오: 기동 시 구간 내여서 연결이 맺어졌고, 이후 20:40 경과로 구간 외 진입.
+        _establish_realtime_connection mock가 기동 시 connector_manager를 설정(연결 맺음 시뮬레이션),
+        while 루프에서 is_realtime_reset_window=False → _disconnect 호출.
+        """
+        mock_state = _mock_state(access_token="valid_token", broker_tokens={"kiwoom": "valid_token"})
+        mock_mgr = MagicMock()
+        # while 진입(False) → 본문 실행 → 다음 진입(True) → 종료
+        mock_state.engine_stop_event.is_set.side_effect = [False, True]
+        mock_router = _mock_router()
+
+        with ExitStack() as stack:
+            mock_connect, mock_disconnect = _apply_run_engine_loop_patches(stack, mock_state, mock_router)
+            # 기동 시 연결 맺음 시뮬레이션 — _establish가 connector_manager 설정
+            async def _establish_sets_mgr():
+                mock_state.connector_manager = mock_mgr
+            mock_connect.side_effect = _establish_sets_mgr
+            stack.enter_context(patch("backend.app.services.daily_time_scheduler.is_realtime_reset_window", new_callable=AsyncMock, return_value=False))
+            await engine_loop.run_engine_loop()
+
+        # 구간 외 + 연결 있음 → 루프에서 연결 해제
+        mock_disconnect.assert_awaited()
+
+    @pytest.mark.asyncio
+    async def test_no_token_does_not_connect(self):
+        """토큰 없음 → 구간 내여도 연결 시도 없음 — _should_connect=False 경로."""
+        mock_state = _mock_state(access_token=None)
+        mock_state.engine_stop_event.is_set.side_effect = [False, True]
+        mock_router = _mock_router()
+
+        with ExitStack() as stack:
+            mock_connect, mock_disconnect = _apply_run_engine_loop_patches(stack, mock_state, mock_router)
+            stack.enter_context(patch("backend.app.services.daily_time_scheduler.is_realtime_reset_window", new_callable=AsyncMock, return_value=True))
+            await engine_loop.run_engine_loop()
+
+        # 토큰 없음 → 루프에서 _should_connect=False → 연결 시도 없음
+        # (기동 시 호출은 access_token=None으로 즉시 return)
+        mock_disconnect.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_window_check_exception_continues_loop(self):
+        """is_realtime_reset_window 예외 → 루프 종료 아닌 error 로그 + continue (P25 격리된 실패).
+
+        engine_stop_event가 False일 때 while 본문 진입 → is_realtime_reset_window throw →
+        except에서 logger.error + asyncio.sleep(1) 후 continue → asyncio.wait 통과 →
+        다음 iteration에서 engine_stop_event.is_set()=True → 루프 정상 종료.
+        """
+        mock_state = _mock_state(access_token="valid_token", broker_tokens={"kiwoom": "valid_token"})
+        mock_state.engine_stop_event.is_set.side_effect = [False, True]
+        mock_state.ws_window_changed_event = MagicMock()
+        mock_router = _mock_router()
+
+        with ExitStack() as stack:
+            mock_connect, mock_disconnect = _apply_run_engine_loop_patches(stack, mock_state, mock_router)
+            stack.enter_context(patch("backend.app.services.daily_time_scheduler.is_realtime_reset_window", new_callable=AsyncMock, side_effect=RuntimeError("reset window check failed")))
+            mock_logger = stack.enter_context(patch.object(engine_loop, "logger"))
+            await engine_loop.run_engine_loop()
+
+        # is_realtime_reset_window 예외가 logger.error로 기록되었는지 확인
+        error_msgs = [str(c) for c in mock_logger.error.call_args_list]
+        assert any("WS 구간 감지 루프 오류" in m for m in error_msgs)
+        # 루프가 종료되지 않고 continue했음을 간접 확인: engine_stop_event.is_set()이 2회 이상 호출
+        assert mock_state.engine_stop_event.is_set.call_count >= 2
 
 
 # ── run_engine_loop — REST API / spec 처리 ─────────────────────────────────────

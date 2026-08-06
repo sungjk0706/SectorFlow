@@ -1357,6 +1357,7 @@ class TestOnWsSubscribeStart:
         # 멱등성 가드 통과: 빈 문자열이어야 실행됨 (4단계)
         mock_state.last_ws_subscribe_start_date = ""
         mock_state.last_realtime_reset_date = ""
+        mock_state.ws_window_changed_event = MagicMock()
         with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(8, 0)), \
              patch("backend.app.core.trading_calendar.is_trading_day", return_value=True), \
@@ -1365,7 +1366,8 @@ class TestOnWsSubscribeStart:
              patch("backend.app.services.engine_account_notify.notify_cache"), \
              patch("backend.app.services.daily_time_scheduler._broadcast_market_phase"):
             await _on_ws_subscribe_start()
-            # 자의적 시간대 판정 제거 — 이벤트 통지 없음, 구독 신청 트리거 + 데이터 준비만 수행
+            # 엔진 루프 각성 — 시간 판정 루프가 구간 진입 감지하여 연결 맺기 (P16 살아있는 경로)
+            mock_state.ws_window_changed_event.set.assert_called_once()
 
 
 # ── _on_realtime_fields_reset (4단계 — 07:58 사전 트리거) ──────────────────────
@@ -1580,6 +1582,7 @@ class TestOnWsSubscribeEnd:
         mock_mgr = MagicMock()
         mock_mgr.disconnect_all = AsyncMock()
         mock_state.connector_manager = mock_mgr
+        mock_state.ws_window_changed_event = MagicMock()
         with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler.gc"), \
              patch("backend.app.core.memory_monitor.start_memory_monitor"), \
@@ -1594,6 +1597,8 @@ class TestOnWsSubscribeEnd:
             # 20:00에는 구독 해지만 수행 — 연결은 유지 (20:40에 엔진 루프가 해제)
             mock_mgr.disconnect_all.assert_not_awaited()
             assert mock_state.connector_manager is mock_mgr
+            # 20:00에는 엔진 루프 각성 이벤트 set 없음 — 연결 해제는 20:40 루프가 담당
+            mock_state.ws_window_changed_event.set.assert_not_called()
 
 
 # ── _on_confirmed_download ────────────────────────────────────────────────────
@@ -1650,11 +1655,12 @@ class TestOnConfirmedDownload:
 class TestInitWsSubscribeState:
     @pytest.mark.asyncio
     async def test_init_in_window_activates_realtime(self):
-        """구간 내 기동 시 실시간 구간 처리 (GC 비활성화 + 필드 초기화)."""
+        """구간 내 기동 시 실시간 구간 처리 (GC 비활성화 + 필드 초기화 + 엔진 루프 각성)."""
         mock_state = MagicMock()
         mock_state.integrated_system_settings_cache = {"timetable.confirmed_download": "20:40"}
         mock_state.preboot_cache_loaded = True
         mock_state.market_phase = {"krx": "정규장", "nxt": "메인마켓"}
+        mock_state.ws_window_changed_event = MagicMock()
         with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler.gc"), \
              patch("backend.app.services.engine_initial_data._reset_realtime_fields", new_callable=AsyncMock), \
@@ -1663,6 +1669,8 @@ class TestInitWsSubscribeState:
              patch("backend.app.pipelines.pipeline_compute.reset_sector_threshold"), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(10, 0)):
             await _init_ws_subscribe_state()
+            # 구간 내 기동 시 엔진 루프 각성 — 시간 판정 루프가 즉시 연결 시도 (P16 살아있는 경로)
+            mock_state.ws_window_changed_event.set.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_init_outside_window_skips(self):
@@ -1671,6 +1679,7 @@ class TestInitWsSubscribeState:
         mock_state.integrated_system_settings_cache = {"timetable.confirmed_download": "20:40"}
         mock_state.preboot_cache_loaded = True
         mock_state.market_phase = {"krx": "장개시전", "nxt": "장개시전"}
+        mock_state.ws_window_changed_event = MagicMock()
         with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler.gc") as mock_gc, \
              patch("backend.app.services.engine_initial_data._reset_realtime_fields", new_callable=AsyncMock) as mock_reset, \
@@ -1681,6 +1690,8 @@ class TestInitWsSubscribeState:
             await _init_ws_subscribe_state()
             mock_gc.disable.assert_not_called()
             mock_reset.assert_not_awaited()
+            # 구간 외 기동 시 엔진 루프 각성 이벤트 set 없음 — 07:58 도달 시 별도 트리거
+            mock_state.ws_window_changed_event.set.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_empty_settings_raises(self):
