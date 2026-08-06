@@ -14,7 +14,8 @@ import { createSearchInput } from '../components/common/search-input'
 import { createMarketCountRow, type MarketCountRowHandle } from '../components/common/market-count-row'
 import { FONT_SIZE, FONT_WEIGHT, COLOR, RADIUS } from '../components/common/ui-styles'
 import { createFrameScheduler, type FrameScheduler } from '../components/common/frame-scheduler'
-import { type MasterStock, type SectorScoreRow, DEFAULT_SECTOR_MAX_TARGETS } from '../types'
+import { createRankChangeDetector, type RankChangeDetector } from '../components/common/rank-change-detector'
+import { type MasterStock, DEFAULT_SECTOR_MAX_TARGETS } from '../types'
 import { filterStocksBySearch } from '../utils/stock-search'
 import {
   COLUMNS,
@@ -43,8 +44,8 @@ class SectorStockTable extends HTMLElement {
   private onRealDataTick: ((e: Event) => void) | null = null
   // 공통 화면주기 갱신 도구 — 전체 갱신 경로(updateRows) 예약용 (delta 모드는 동기 유지)
   private renderScheduler: FrameScheduler | null = null
-  // rank 변동 감지용 — 이전 업종별 순위 저장 (전체 갱신 시마다 재구축)
-  private prevSectorRanks = new Map<string, number>()
+  // 순위 변동 감지 도구 — 가운데 패널(sector-ranking-list.ts)과 같은 도구 공유 (W11 표현 통일 · W12 중복 제거)
+  private rankDetector: RankChangeDetector | null = null
   // H-04: 요약 카운트 캐싱 — masterStocks 참조 변경 시에만 재계산
   private countCache: {
     stocksRef: MasterStock[] | null
@@ -99,6 +100,7 @@ class SectorStockTable extends HTMLElement {
     const mappedRows = mapRowsToTableRows(rows)
     if (this.dataTable) this.dataTable.updateRows(mappedRows)
     this.updateUI(rows)
+    this.rankDetector?.reset(hotStore.getState().sectorScores)
   }
 
   /** 증분 갱신 — 바뀐 업종의 그룹행만 갱신 (rank 변동 없이 점수·파생만 바뀐 경우).
@@ -116,28 +118,7 @@ class SectorStockTable extends HTMLElement {
       }
     }
     this.updateUI(rows)
-    this.updatePrevRanks()
-  }
-
-  /** 이전 업종별 순위 맵 재구축 — 전체 갱신·증분 갱신 후 호출하여 다음 rank 변동 감지 기준 갱신 */
-  private updatePrevRanks(): void {
-    this.prevSectorRanks = new Map()
-    const scores = hotStore.getState().sectorScores
-    for (const s of scores) this.prevSectorRanks.set(s.sector, s.rank)
-  }
-
-  /** rank 변동 감지 — changed_sectors 중 하나라도 이전 순위와 다르거나 새 업종이면 true (전체 갱신 필요) */
-  private detectRankChange(changedSectors: string[], currentScores: SectorScoreRow[]): boolean {
-    const currentMap = new Map<string, number>()
-    for (const s of currentScores) currentMap.set(s.sector, s.rank)
-    for (const sector of changedSectors) {
-      const prevRank = this.prevSectorRanks.get(sector)
-      const currentRank = currentMap.get(sector)
-      if (prevRank === undefined || currentRank === undefined || prevRank !== currentRank) {
-        return true
-      }
-    }
-    return false
+    this.rankDetector?.reset(hotStore.getState().sectorScores)
   }
 
   private updateUI(rows: RowItem[]): void {
@@ -461,8 +442,8 @@ class SectorStockTable extends HTMLElement {
         return
       }
 
-      if (this.detectRankChange(delta.changed_sectors, state.sectorScores)) {
-        // rank 변동 → 전체 갱신
+      if (this.rankDetector?.detect(delta.changed_sectors, state.sectorScores)) {
+        // rank 변동 → 전체 갱신 (공통 도구 사용 — W11 표현 통일 · W12 중복 제거)
         this.renderScheduler?.schedule()
         return
       }
@@ -542,14 +523,15 @@ class SectorStockTable extends HTMLElement {
     const mappedRows = mapRowsToTableRows(initialRows)
     if (this.dataTable && this.dataTable.updateItems) this.dataTable.updateItems(mappedRows)
     this.updateUI(initialRows)
-    // rank 변동 감지 기준 구축 — 초기 업종별 순위 저장
-    this.updatePrevRanks()
+    // rank 변동 감지 도구 생성 + 초기 업종별 순위 저장
+    this.rankDetector = createRankChangeDetector()
+    this.rankDetector.reset(hotStore.getState().sectorScores)
 
     // 공통 화면주기 갱신 도구 — 전체 갱신 경로를 화면 주기에 맞춰 실행 (delta 모드는 동기 유지).
     // 가운데 패널(sector-ranking-list.ts)과 같은 공통 도구 사용 — 두 패널이 같은 화면 주기에 갱신 (W4 정합성).
+    // refreshRows 내부에서 rankDetector.reset 호출 — 콜백에서 별도 reset 불필요 (W12 중복 제거).
     this.renderScheduler = createFrameScheduler(() => {
       this.refreshRows()
-      this.updatePrevRanks()
     })
 
     // Store 구독
@@ -604,7 +586,7 @@ class SectorStockTable extends HTMLElement {
     this.rowCache = new Map()
     this.currentMatchedCodes = null
     this.currentMatchedSectors = null
-    this.prevSectorRanks = new Map()
+    this.rankDetector = null
     this.searchTerm = ''
     this.sectorSearchTerm = ''
   }

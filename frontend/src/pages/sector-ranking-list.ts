@@ -9,6 +9,7 @@ import { createCardTitle } from '../components/common/card-title'
 import { createDataTable, type DataTableApi, type ColumnDef } from '../components/common/data-table'
 import { virtualScrollOptions } from '../components/common/table-options'
 import { createFrameScheduler, type FrameScheduler } from '../components/common/frame-scheduler'
+import { createRankChangeDetector, type RankChangeDetector } from '../components/common/rank-change-detector'
 import { getMaxTargetsStatusEl, getMaxTargetsSumEl } from './sector-settings'
 import { type SectorScoreRow, DEFAULT_SECTOR_MAX_TARGETS } from '../types'
 import type { PageModule } from '../router'
@@ -30,9 +31,8 @@ let currentMaxScore = 1
 let currentMaxTargets = DEFAULT_SECTOR_MAX_TARGETS
 // 현재 선택 업종 (rowStyle 클로저가 참조)
 let currentSelected: string | null = null
-// rank 변동 감지용 — 이전 업종별 순위 저장 (전체 갱신 시마다 재구축)
-// 우측 패널(sector-stock.ts)의 prevSectorRanks와 같은 패턴 (W4 정합성 · W11 표현 통일)
-let prevSectorRanks = new Map<string, number>()
+// 순위 변동 감지 도구 — 우측 패널(sector-stock.ts)과 같은 도구 공유 (W11 표현 통일 · W12 중복 제거)
+let rankDetector: RankChangeDetector | null = null
 
 // 수신 대기 중 메시지 요소 (P21 투명성 — 임계값 미통과 시 표시)
 let waitingNoticeEl: HTMLElement | null = null
@@ -203,29 +203,7 @@ function refreshRows(scores: SectorScoreRow[]): void {
   const sorted = [...scores].sort((a, b) => a.rank - b.rank)
   currentMaxScore = sorted.length > 0 ? Math.max(...sorted.map(s => s.final_score), 1) : 1
   dataTable.updateRows(sorted)
-  updatePrevRanks(scores)
-}
-
-/** 이전 업종별 순위 맵 재구축 — 전체 갱신 후 호출하여 다음 rank 변동 감지 기준 갱신.
- *  우측 패널(sector-stock.ts)의 updatePrevRanks와 같은 패턴 (W4 정합성 · W11 표현 통일). */
-function updatePrevRanks(scores: SectorScoreRow[]): void {
-  prevSectorRanks = new Map()
-  for (const s of scores) prevSectorRanks.set(s.sector, s.rank)
-}
-
-/** rank 변동 감지 — changed_sectors 중 하나라도 이전 순위와 다르거나 새 업종이면 true (전체 갱신 필요).
- *  우측 패널(sector-stock.ts)의 detectRankChange와 같은 패턴 (W4 정합성 · W11 표현 통일). */
-function detectRankChange(changedSectors: string[], currentScores: SectorScoreRow[]): boolean {
-  const currentMap = new Map<string, number>()
-  for (const s of currentScores) currentMap.set(s.sector, s.rank)
-  for (const sector of changedSectors) {
-    const prevRank = prevSectorRanks.get(sector)
-    const currentRank = currentMap.get(sector)
-    if (prevRank === undefined || currentRank === undefined || prevRank !== currentRank) {
-      return true
-    }
-  }
-  return false
+  rankDetector?.reset(scores)
 }
 
 /* ── mount ── */
@@ -233,6 +211,7 @@ function mount(container: HTMLElement): void {
   _mounted = true
   dataTable = null
   rowClickHandler = null
+  rankDetector = createRankChangeDetector()
 
   const root = document.createElement('div')
   Object.assign(root.style, { padding: '0', margin: '0', width: '100%', height: '100%', display: 'flex', flexDirection: 'column' })
@@ -383,9 +362,8 @@ function mount(container: HTMLElement): void {
       if (delta && delta.delta && !needFullByFlags && dataTable && dataTable.updateItemByKey) {
         const sorted = [...state.sectorScores].sort((a, b) => a.rank - b.rank)
         const newMaxScore = sorted.length > 0 ? Math.max(...sorted.map(s => s.final_score), 1) : 1
-        // rank 변동 감지 — changed_sectors 중 하나라도 이전 순위와 다르면 전체 갱신.
-        // 우측 패널(sector-stock.ts)의 detectRankChange와 같은 패턴 (W4 정합성).
-        const hasRankChange = detectRankChange(delta.changed_sectors, state.sectorScores)
+        // rank 변동 감지 — 공통 도구 사용 (W11 표현 통일 · W12 중복 제거)
+        const hasRankChange = rankDetector?.detect(delta.changed_sectors, state.sectorScores) ?? false
         if (newMaxScore === currentMaxScore && !hasRankChange) useDelta = true
       }
 
@@ -432,7 +410,7 @@ function unmount(): void {
     dataTable = null
   }
   waitingNoticeEl = null
-  prevSectorRanks = new Map()
+  rankDetector = null
 }
 
 export default { mount, unmount } satisfies PageModule
