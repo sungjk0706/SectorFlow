@@ -13,18 +13,25 @@ logger = logging.getLogger(__name__)
 _BROKER_DISPLAY = BROKER_DISPLAY_NAMES["kiwoom"]
 
 
-async def _send_request(url: str, headers: dict, params: dict, max_retries: int = 3, delay: float = 1.0) -> Optional[httpx.Response]:
+async def _send_request(url: str, headers: dict, params: dict, max_retries: int = 1, delay: float = 1.0) -> Optional[httpx.Response]:
+    """주문 전송 HTTP 요청 (재시도 폐지 — 1회만 시도 후 실패 시 즉시 None 반환).
+
+    주문 재시도 전면 폐지 (설계서 결정 3): 장중 체결가 변동 + 중복 주문 위험 제거.
+    타임아웃 10초 — 주문 응답 대기 기준 (설계서 결정 3).
+    max_retries/delay 파라미터는 하위 호환용으로 유지하되 기본값 1회.
+    """
     for attempt in range(max_retries):
         try:
             async with httpx.AsyncClient() as client:
-                r = await client.post(url, headers=headers, json=params, timeout=5)
+                r = await client.post(url, headers=headers, json=params, timeout=10)
                 if r.status_code == 200:
                     return r
                 logger.warning("[매매] %s 응답 코드 %s (시도=%d/%d) URL=%s", _BROKER_DISPLAY, r.status_code, attempt + 1, max_retries, url)
         except Exception as e:
             logger.warning("[매매] %s 통신 오류 (시도=%d/%d): %s", _BROKER_DISPLAY, attempt + 1, max_retries, e, exc_info=True)
-        await asyncio.sleep(delay)
-    logger.error("[매매] %s %d번 재시도 모두 실패 (URL=%s)", _BROKER_DISPLAY, max_retries, url)
+        if attempt < max_retries - 1:
+            await asyncio.sleep(delay)
+    logger.error("[매매] %s 주문 전송 실패 (URL=%s)", _BROKER_DISPLAY, url)
     return None
 
 

@@ -325,86 +325,65 @@ class LsRestAPI:
             }
         }
 
-        max_retries = 3
-        for attempt in range(max_retries):
-            try:
-                if attempt > 0:
-                    wait_sec = 2 * attempt
-                    logger.warning(
-                        f"[연결] {_BROKER_DISPLAY} {order_kind} 주문 재시도 {attempt+1}/{max_retries} — {wait_sec}초 대기"
-                    )
-                    await asyncio.sleep(wait_sec)
+        # 주문 재시도 전면 폐지 (설계서 결정 3) — 1회만 시도 후 실패 시 즉시 None 반환.
+        # 단, 401(토큰 만료) 시 토큰 재발급 후 1회 재시도는 유지 — 인증 갱신 후 동일 요청 재전송이므로 중복 주문 위험 없음.
+        try:
+            resp = await self._client.post(url, headers=headers, json=body, timeout=15)
+            data = resp.json() if resp.text else {}
 
-                resp = await self._client.post(url, headers=headers, json=body, timeout=15)
-                data = resp.json() if resp.text else {}
+            # 401 감지 — 공통 재발급 헬퍼로 토큰 재발급 후 1회 재시도 (설계서 결정 3 예외)
+            if resp.status_code == 401:
+                logger.info("[연결] %s %s 주문 401 감지 — 토큰 재발급 후 1회 재시도", _BROKER_DISPLAY, order_kind)
 
-                if resp.status_code == 429:
-                    wait_sec = 8 * (attempt + 1)
-                    logger.warning(
-                        f"[연결] {_BROKER_DISPLAY} {order_kind} 주문 요청 과다 — {wait_sec}초 대기 후 재시도"
-                    )
-                    await asyncio.sleep(wait_sec)
-                    continue
+                async def _do_post():
+                    r = await self._client.post(url, headers=headers, json=body, timeout=15)
+                    return r, r.status_code
 
-                # 401 감지 — 공통 재발급 헬퍼로 토큰 재발급 후 1회 재시도 (설계서 결정 3)
-                if resp.status_code == 401:
-                    logger.info("[연결] %s %s 주문 401 감지 — 토큰 재발급 후 1회 재시도", _BROKER_DISPLAY, order_kind)
+                async def _reissue_token() -> bool:
+                    ok, _ = await self._issue_token()
+                    return ok
 
-                    async def _do_post():
-                        r = await self._client.post(url, headers=headers, json=body, timeout=15)
-                        return r, r.status_code
+                async def _refresh_auth_header() -> None:
+                    if self._token_info:
+                        headers["Authorization"] = f"Bearer {self._token_info.access_token}"
 
-                    async def _reissue_token() -> bool:
-                        ok, _ = await self._issue_token()
-                        return ok
-
-                    async def _refresh_auth_header() -> None:
-                        if self._token_info:
-                            headers["Authorization"] = f"Bearer {self._token_info.access_token}"
-
-                    result = await retry_once_on_401(
-                        _reissue_token, _do_post, on_reissue_success=_refresh_auth_header
-                    )
-                    if isinstance(result, tuple) and result[1] == 200:
-                        r = result[0]
-                        data = r.json() if r.text else {}
-                        rsp_cd = data.get("rsp_cd", "")
-                        rsp_msg = data.get("rsp_msg", "")
-                        if rsp_cd == "00040" or rsp_cd == "00000":
-                            logger.info(f"[연결] {_BROKER_DISPLAY} {order_kind} 주문 성공: {rsp_msg}")
-                        else:
-                            logger.warning(f"[연결] {_BROKER_DISPLAY} {order_kind} 주문 실패: {rsp_cd} - {rsp_msg}")
-                        return data
-                    retry_status = result[1] if isinstance(result, tuple) else "?"
-                    logger.warning(
-                        "[연결] %s %s 401 재발급 후에도 실패 (응답코드=%s)",
-                        _BROKER_DISPLAY, order_kind, retry_status,
-                    )
-                    return None
-
-                if resp.status_code != 200:
-                    logger.warning(f"[연결] {_BROKER_DISPLAY} {order_kind} 주문 실패 (응답코드={resp.status_code})")
+                result = await retry_once_on_401(
+                    _reissue_token, _do_post, on_reissue_success=_refresh_auth_header
+                )
+                if isinstance(result, tuple) and result[1] == 200:
+                    r = result[0]
+                    data = r.json() if r.text else {}
+                    rsp_cd = data.get("rsp_cd", "")
+                    rsp_msg = data.get("rsp_msg", "")
+                    if rsp_cd == "00040" or rsp_cd == "00000":
+                        logger.info(f"[연결] {_BROKER_DISPLAY} {order_kind} 주문 성공: {rsp_msg}")
+                    else:
+                        logger.warning(f"[연결] {_BROKER_DISPLAY} {order_kind} 주문 실패: {rsp_cd} - {rsp_msg}")
                     return data
-
-                rsp_cd = data.get("rsp_cd", "")
-                rsp_msg = data.get("rsp_msg", "")
-
-                if rsp_cd == "00040" or rsp_cd == "00000":  # 성공 코드
-                    logger.info(f"[연결] {_BROKER_DISPLAY} {order_kind} 주문 성공: {rsp_msg}")
-                else:
-                    logger.warning(f"[연결] {_BROKER_DISPLAY} {order_kind} 주문 실패: {rsp_cd} - {rsp_msg}")
-
-                return data
-
-            except Exception as e:
-                logger.warning(f"[연결] {_BROKER_DISPLAY} {order_kind} 주문 오류 (시도={attempt+1}): {e}", exc_info=True)
-                if attempt < max_retries - 1:
-                    await asyncio.sleep(2 * (attempt + 1))
-                    continue
+                retry_status = result[1] if isinstance(result, tuple) else "?"
+                logger.warning(
+                    "[연결] %s %s 401 재발급 후에도 실패 (응답코드=%s)",
+                    _BROKER_DISPLAY, order_kind, retry_status,
+                )
                 return None
 
-        logger.warning(f"[연결] {_BROKER_DISPLAY} {order_kind} 주문 {max_retries}번 모두 실패")
-        return None
+            if resp.status_code != 200:
+                logger.warning(f"[연결] {_BROKER_DISPLAY} {order_kind} 주문 실패 (응답코드={resp.status_code})")
+                return data
+
+            rsp_cd = data.get("rsp_cd", "")
+            rsp_msg = data.get("rsp_msg", "")
+
+            if rsp_cd == "00040" or rsp_cd == "00000":  # 성공 코드
+                logger.info(f"[연결] {_BROKER_DISPLAY} {order_kind} 주문 성공: {rsp_msg}")
+            else:
+                logger.warning(f"[연결] {_BROKER_DISPLAY} {order_kind} 주문 실패: {rsp_cd} - {rsp_msg}")
+
+            return data
+
+        except Exception as e:
+            logger.warning(f"[연결] {_BROKER_DISPLAY} {order_kind} 주문 오류: {e}", exc_info=True)
+            return None
 
     async def buy_order(
         self,

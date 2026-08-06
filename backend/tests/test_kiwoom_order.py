@@ -1,7 +1,7 @@
-"""kiwoom_order.py 단위 테스트 — 주문 거래소 결정, HTTP 재시도, 주문 전송.
+"""kiwoom_order.py 단위 테스트 — 주문 거래소 결정, HTTP 요청, 주문 전송.
 
 resolve_exchange: _NX 접미사, exchange_mode 설정, 기본 SOR
-_send_request: httpx 재시도 로직, HTTP 200 반환, 예외 처리, 최대 재시도 실패
+_send_request: httpx 요청 로직, HTTP 200 반환, 예외 처리, 재시도 폐지(1회만 시도)
 send_order: BUY/SELL 라우팅, 알 수 없는 주문 타입, NXT trde_tp 조정, 통신 장애, 성공/실패
 
 의존성: build_broker_urls, httpx.AsyncClient, get_nxt_trde_tp (lazy import)
@@ -71,11 +71,12 @@ class TestSendRequest:
             patch("backend.app.core.kiwoom_order.httpx.AsyncClient", return_value=mock_client),
             patch("backend.app.core.kiwoom_order.asyncio.sleep", new_callable=AsyncMock),
         ):
-            result = await _send_request("http://test", {}, {}, max_retries=3)
+            result = await _send_request("http://test", {}, {})
         assert result is mock_resp
 
     @pytest.mark.asyncio
-    async def test_non_200_retries_then_fails(self):
+    async def test_non_200_fails_immediately(self):
+        """재시도 폐지 — 500 응답 시 1회만 시도 후 즉시 None 반환 (설계서 결정 3)."""
         from backend.app.core.kiwoom_order import _send_request
         mock_resp = mock_httpx_response(500, {})
         mock_client = mock_httpx_client(post_return=mock_resp, as_context_manager=True)
@@ -83,35 +84,24 @@ class TestSendRequest:
             patch("backend.app.core.kiwoom_order.httpx.AsyncClient", return_value=mock_client),
             patch("backend.app.core.kiwoom_order.asyncio.sleep", new_callable=AsyncMock),
         ):
-            result = await _send_request("http://test", {}, {}, max_retries=2, delay=0)
+            result = await _send_request("http://test", {}, {}, delay=0)
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_exception_retries_then_fails(self):
+    async def test_exception_fails_immediately(self):
+        """재시도 폐지 — 예외 발생 시 1회만 시도 후 즉시 None 반환 (설계서 결정 3)."""
         from backend.app.core.kiwoom_order import _send_request
         mock_client = mock_httpx_client(post_side_effect=Exception("network error"), as_context_manager=True)
         with (
             patch("backend.app.core.kiwoom_order.httpx.AsyncClient", return_value=mock_client),
             patch("backend.app.core.kiwoom_order.asyncio.sleep", new_callable=AsyncMock),
         ):
-            result = await _send_request("http://test", {}, {}, max_retries=2, delay=0)
+            result = await _send_request("http://test", {}, {}, delay=0)
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_success_on_second_attempt(self):
-        from backend.app.core.kiwoom_order import _send_request
-        mock_resp_ok = mock_httpx_response(200, {"rt_cd": "0"})
-        mock_resp_fail = mock_httpx_response(500, {})
-        mock_client = mock_httpx_client(post_side_effect=[mock_resp_fail, mock_resp_ok], as_context_manager=True)
-        with (
-            patch("backend.app.core.kiwoom_order.httpx.AsyncClient", return_value=mock_client),
-            patch("backend.app.core.kiwoom_order.asyncio.sleep", new_callable=AsyncMock),
-        ):
-            result = await _send_request("http://test", {}, {}, max_retries=3, delay=0)
-        assert result is mock_resp_ok
-
-    @pytest.mark.asyncio
-    async def test_single_retry_success(self):
+    async def test_single_attempt_success(self):
+        """재시도 폐지 — 1회 시도로 성공 (설계서 결정 3)."""
         from backend.app.core.kiwoom_order import _send_request
         mock_resp = mock_httpx_response(200, {"rt_cd": "0"})
         mock_client = mock_httpx_client(post_return=mock_resp, as_context_manager=True)
@@ -119,7 +109,7 @@ class TestSendRequest:
             patch("backend.app.core.kiwoom_order.httpx.AsyncClient", return_value=mock_client),
             patch("backend.app.core.kiwoom_order.asyncio.sleep", new_callable=AsyncMock),
         ):
-            result = await _send_request("http://test", {}, {}, max_retries=1, delay=0)
+            result = await _send_request("http://test", {}, {}, delay=0)
         assert result is mock_resp
 
 

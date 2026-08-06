@@ -477,12 +477,12 @@ class TestLsRestBuyOrder:
             result = await api.buy_order("A005930", 10, 70000)
             assert result is not None  # returns data even on HTTP failure
 
-    async def test_429_retry(self):
+    async def test_429_no_retry_returns_data(self):
+        """재시도 폐지 — 429 응답 시 재시도 없이 data 반환 (설계서 결정 3)."""
         api = _make_ls_rest()
         api._token_info = _make_ls_token_info()
-        resp_429 = mock_httpx_response(429)
-        resp_200 = mock_httpx_response(200, {"rsp_cd": "00000"})
-        mock_client = mock_httpx_client(post_side_effect=[resp_429, resp_200])
+        resp_429 = mock_httpx_response(429, {"rsp_cd": "error"})
+        mock_client = mock_httpx_client(post_return=resp_429)
         api._client = mock_client
         with (
             patch.object(api, "ensure_client", AsyncMock()),
@@ -490,12 +490,14 @@ class TestLsRestBuyOrder:
             patch("backend.app.core.ls_rest.asyncio.sleep", new_callable=AsyncMock),
         ):
             result = await api.buy_order("A005930", 10, 70000)
-            assert result["rsp_cd"] == "00000"
+            # 429는 != 200이므로 data 반환 (재시도 없음)
+            assert result is not None
 
     async def test_exception(self):
+        """재시도 폐지 — 예외 발생 시 1회만 시도 후 즉시 None 반환 (설계서 결정 3)."""
         api = _make_ls_rest()
         api._token_info = _make_ls_token_info()
-        mock_client = mock_httpx_client(post_side_effect=[Exception("err"), Exception("err"), Exception("err")])
+        mock_client = mock_httpx_client(post_side_effect=Exception("err"))
         api._client = mock_client
         with (
             patch.object(api, "ensure_client", AsyncMock()),
@@ -613,9 +615,10 @@ class TestLsRestSellOrder:
             assert result is not None
 
     async def test_exception(self):
+        """재시도 폐지 — 예외 발생 시 1회만 시도 후 즉시 None 반환 (설계서 결정 3)."""
         api = _make_ls_rest()
         api._token_info = _make_ls_token_info()
-        mock_client = mock_httpx_client(post_side_effect=[Exception("err"), Exception("err"), Exception("err")])
+        mock_client = mock_httpx_client(post_side_effect=Exception("err"))
         api._client = mock_client
         with (
             patch.object(api, "ensure_client", AsyncMock()),
