@@ -316,3 +316,11 @@ export function setDisabled(el: HTMLElement, disabled: boolean): void {
   el.style.opacity = disabled ? '0.4' : '1'
   el.style.pointerEvents = disabled ? 'none' : 'auto'
 }
+
+/* ── 실시간 표 갱신 주기 상수 (단일 소스 — W3 SSOT) ── */
+
+/** 목표 갱신 주기 — 초당 프레임 수. 모든 실시간 표가 이 값을 참조 (P10 SSOT). */
+export const REFRESH_FPS = 60
+
+/** 한 화면 주기 간격(ms) — 1000 / REFRESH_FPS. rAF 배칭 도구의 FPS 제한 기준. */
+export const REFRESH_FRAME_INTERVAL = 1000 / REFRESH_FPS
