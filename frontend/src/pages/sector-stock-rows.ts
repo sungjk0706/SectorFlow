@@ -39,11 +39,11 @@ export const COLUMNS: ColumnDef<DataRowItem>[] = [
   makeStrengthColumn<DataRowItem>((item) => item.stock.strength != null ? parseFloat(String(item.stock.strength)) : null),
   {
     ...makeAmountColumn<DataRowItem>((item) => item.stock.trade_amount != null ? Number(item.stock.trade_amount) : null),
-    maxWidth: 90,
+    maxWidth: 100,
   },
   {
     ...makeAvgAmountColumn<DataRowItem>((item) => Number(item.stock.avg_amt_5d) || 0),
-    maxWidth: 90,
+    maxWidth: 100,
   },
 ]
 

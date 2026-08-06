@@ -4,7 +4,7 @@
 
 import { hotStore } from '../stores/hotStore'
 import { uiStore, setSelectedSector } from '../stores/uiStore'
-import { FONT_WEIGHT, FONT_SIZE, COLOR, RADIUS, fmtMillionsToBillion } from '../components/common/ui-styles'
+import { FONT_WEIGHT, FONT_SIZE, COLOR, RADIUS, createAvgAmountCell } from '../components/common/ui-styles'
 import { createCardTitle } from '../components/common/card-title'
 import { createDataTable, type DataTableApi, type ColumnDef } from '../components/common/data-table'
 import { virtualScrollOptions } from '../components/common/table-options'
@@ -179,7 +179,7 @@ const COLUMNS: ColumnDef<SectorScoreRow>[] = [
     label: '평균거래',
     align: 'right',
     type: 'avg_amount',
-    render: (row) => fmtMillionsToBillion(row.avg_trade_amount),
+    render: (row) => createAvgAmountCell(row.avg_trade_amount),
     headerStyle: NO_BORDER,
     cellStyle: { ...NO_BORDER, color: COLOR.tertiary },
   },

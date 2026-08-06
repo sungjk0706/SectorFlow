@@ -189,11 +189,20 @@ export function createRateCell(rate: number | null | undefined, sign?: string): 
   return cell
 }
 
-/** 거래대금 셀 (우측정렬, 기본색, 억 단위) */
+/** 거래대금 셀 (우측정렬, 기본색, 억 단위).
+ *  숫자를 고정 폭 span에 담아 자릿수 변화(9→10, 99→100 등)에도 텍스트 시작 위치가
+ *  밀리지 않도록 한다 (업계 표준: tabular-nums + 고정 폭 숫자 영역). */
 export function createAmountCell(amount: number | null | undefined): HTMLElement {
   const cell = document.createElement('div')
   applyCell(cell, 'right')
-  cell.textContent = amount && amount > 0 ? fmtMillionsToBillion(amount) : '-'  // 백만원 → 억단위 (소수점 2자리, 콤마)
+  const span = document.createElement('span')
+  Object.assign(span.style, {
+    display: 'inline-block',
+    minWidth: '5.5em',
+    textAlign: 'right',
+  })
+  span.textContent = amount && amount > 0 ? fmtMillionsToBillion(amount) : '-'  // 백만원 → 억단위 (소수점 2자리 고정, 콤마)
+  cell.appendChild(span)
   return cell
 }
 
@@ -210,12 +219,20 @@ export function createStrengthCell(strength: number | null | undefined): HTMLEle
   return cell
 }
 
-/** 5거래일 평균 셀 (우측정렬, 기본색) */
+/** 5거래일 평균 셀 (우측정렬, 기본색).
+ *  거래대금 셀과 동일 패턴 — 고정 폭 span에 담아 자릿수 변화 시 밀림 방지 (P23 일관성). */
 export function createAvgAmountCell(amount: number): HTMLElement {
   const cell = document.createElement('div')
   applyCell(cell, 'right')
-  // 백만원 단위 → 억단위 변환 (소수점 1자리, 콤마)
-  cell.textContent = amount > 0 ? fmtMillionsToBillion(amount) : '-'
+  // 백만원 단위 → 억단위 변환 (소수점 2자리 고정, 콤마)
+  const span = document.createElement('span')
+  Object.assign(span.style, {
+    display: 'inline-block',
+    minWidth: '5.5em',
+    textAlign: 'right',
+  })
+  span.textContent = amount > 0 ? fmtMillionsToBillion(amount) : '-'
+  cell.appendChild(span)
   return cell
 }
 

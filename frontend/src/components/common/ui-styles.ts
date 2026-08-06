@@ -228,11 +228,12 @@ export function fmtWon(v: number): string {
   return `${v.toLocaleString()}원`
 }
 
-/** 백만원 단위 → 억 단위 문자열 (ko-KR, 소수점 2자리, 콤마).
- *  소수점 2자리까지 표시하여 백엔드 백만원 단위 값을 온전히 표시 (1자리 시 손실 방지).
+/** 백만원 단위 → 억 단위 문자열 (ko-KR, 소수점 2자리 고정, 콤마).
+ *  소수점 2자리를 항상 고정하여 실시간 갱신 시 자릿수 변동(1자리↔2자리)로 인한
+ *  좌우 레이아웃 시프트를 제거 (업계 표준: tabular-nums + 고정 소수점 자릿수).
  *  순수 변환만 담당 — null/0/음수 등 빈 값 처리는 호출부에서 담당 (P20 폴백 금지). */
 export function fmtMillionsToBillion(v: number): string {
-  return (v / 100).toLocaleString('ko-KR', { minimumFractionDigits: 1, maximumFractionDigits: 2 })
+  return (v / 100).toLocaleString('ko-KR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
 /**
