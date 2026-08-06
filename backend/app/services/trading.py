@@ -47,6 +47,7 @@ BUY_REJECT_RISK_MARKET_DATA = "risk_market_data" # 시장 지수 자료 확인 �
 BUY_REJECT_TEST_CASH = "test_cash"               # 테스트 예수금 검증 실패
 BUY_REJECT_ORDER_FAIL = "order_fail"             # 주문 전송 실패
 BUY_REJECT_ORDER_BUSY = "order_busy"             # 주문 직렬화 잠금 점유 중 (다른 주문 처리 중)
+BUY_REJECT_FILL_TIMEOUT = "fill_timeout"         # 주문 체결 응답 타임아웃 (접수 후 체결 응답 미수신)
 
 # 종목별 차단 사유 (차순위 시도 유효 → continue)
 BUY_REJECT_TIME_BLOCKED = "time_blocked"         # 체결 불가 시간대 (nxt 여부)
@@ -82,6 +83,7 @@ BUY_GLOBAL_REJECT_REASONS: frozenset[str] = frozenset({
     BUY_REJECT_TEST_CASH,
     BUY_REJECT_ORDER_FAIL,
     BUY_REJECT_ORDER_BUSY,
+    BUY_REJECT_FILL_TIMEOUT,
 })
 
 # ── 매수 차단 사유 → UI "원인" 컬럼 표시 텍스트 (P10 SSOT, P21 사용자 투명성) ──
@@ -104,6 +106,7 @@ BUY_REJECT_REASON_TEXT: dict[str, str] = {
     BUY_REJECT_QTY_ZERO:          "매수수량 0",
     BUY_REJECT_ORDER_FAIL:        "주문 전송 실패",
     BUY_REJECT_ORDER_BUSY:        "주문 처리 중",
+    BUY_REJECT_FILL_TIMEOUT:      "주문 응답 시간 초과",
     BUY_REJECT_TEST_CASH:         "테스트 잔고 부족",
     BUY_REJECT_AUTO_BUY_OFF:      "자동매수 OFF",
     BUY_REJECT_MASTER_OFF:        "자동매매 OFF",
@@ -211,6 +214,26 @@ async def _broadcast_test_cash_resolved() -> None:
         logger.warning("[매매] test-cash-failed 해제 브로드캐스트 실패", exc_info=True)
 
 
+async def _broadcast_order_fill_timeout(*, stk_cd: str, stk_nm: str, side: str) -> None:
+    """주문 체결 응답 타임아웃을 화면에 전송 (P21 사용자 투명성, 결정 3).
+
+    주문은 접수되었으나 체결 응답이 타임아웃 내 오지 않음 — 재시도 없이 알림 후 대기.
+    P23(일관성): risk-block-status 브로드캐스트 패턴과 동일 (_safe_broadcast 사용).
+    P18(테스트모드 동등성): 모드 무관 동일 동작.
+    """
+    try:
+        from backend.app.services.engine_account_notify import _safe_broadcast
+        _side_nm = "매수" if side.upper() == "BUY" else "매도"
+        await _safe_broadcast("order-fill-timeout", {
+            "stk_cd": stk_cd,
+            "stk_nm": stk_nm,
+            "side": _side_nm,
+            "message": f"{stk_nm}({_base_stk_cd(stk_cd)}) {_side_nm} 주문 응답 시간 초과",
+        })
+    except Exception:
+        logger.warning("[매매] order-fill-timeout 브로드캐스트 실패", exc_info=True)
+
+
 async def _handle_order_failure() -> None:
     """주문 전송 실패 공통 후처리 — RiskManager 실패 보고 + 서킷브레이커 차단 시 마스터 스위치 강제 OFF.
 
@@ -255,6 +278,12 @@ class AutoTradeManager:
         self._bought_today: dict[str, float] = {}  # stk_cd -> buy timestamp
         # ── 글로벌 주문 락: 매수·매도 공통 주문 직렬화 (한 번에 하나의 주문만 실행, P22) ──
         self._order_lock: asyncio.Lock | None = None
+        # ── 체결 응답 대기: 주문 접수 후 체결·잔고 응답 수신까지 대기 (결정 2, P22 정합성) ──
+        # 잠금은 체결 응답 수신 후 해제 — 한 번에 하나의 주문만 잔고에 영향.
+        # _fill_event: 현재 대기 중인 주문의 체결 응답 이벤트 (잠금으로 1주문만 실행되므로 단일)
+        # _fill_awaiting_cd: 대기 중인 주문의 종목코드 (on_fill_update에서 일치 시 이벤트 설정)
+        self._fill_event: asyncio.Event | None = None
+        self._fill_awaiting_cd: str | None = None
 
     async def _load_daily_buy_state(self) -> tuple[int | None, dict[str, float]]:
         """기동 시 trade_history에서 오늘 매수 합계 + 매수 종목 timestamp dict 로드.
@@ -298,6 +327,59 @@ class AutoTradeManager:
                 )
                 # P21: 로드 성공 시 차단 해제 알림 (이전 실패 상태가 화면에 남아있지 않도록)
                 await _broadcast_daily_buy_state_status(failed=False)
+
+    # ── 체결 응답 대기 (결정 2 — 주문 접수 후 체결·잔고 응답 수신까지 대기) ──────
+    # 타임아웃: 키움 10초 / LS 15초 (결정 5 — 재시도 폐지 후 타임아웃은 알림 시점 기준)
+    _FILL_TIMEOUTS: dict[str, float] = {"kiwoom": 10.0, "ls": 15.0}
+    _FILL_TIMEOUT_DEFAULT: float = 10.0
+
+    def _fill_timeout_for(self, settings: dict) -> float:
+        """설정의 증권사별 체결 응답 타임아웃 반환 (P18 — 모드 무관 동일)."""
+        broker = str(settings.get("broker", "") or "").lower()
+        return self._FILL_TIMEOUTS.get(broker, self._FILL_TIMEOUT_DEFAULT)
+
+    def _begin_fill_await(self, stk_cd: str) -> None:
+        """체결 응답 대기 시작 — 이벤트 생성 (가상 체결 예약 전 호출하여 경쟁 상태 방지).
+
+        반드시 schedule_engine_task(가상 체결) 또는 실전 주문 전송 전에 호출.
+        on_fill_update가 체결 응답 수신 시 self._fill_event.set() 호출.
+        """
+        self._fill_event = asyncio.Event()
+        self._fill_awaiting_cd = _base_stk_cd(str(stk_cd))
+
+    async def _end_fill_await(
+        self, stk_cd: str, stk_nm: str, side: str, settings: dict,
+    ) -> bool:
+        """체결 응답 대기 완료 — 이벤트 대기 + 타임아웃 처리 (결정 2, P22 정합성).
+
+        잠금 해제 시점을 체결 응답 수신 후로 이동 — 한 번에 하나의 주문만 잔고에 영향.
+        테스트모드: 가상 체결 이벤트(fake_fill_event) → on_fill_update가 이벤트 설정.
+        실전모드: 실시간 체결 이벤트(키움 "00" / LS 체결 채널) → on_fill_update가 이벤트 설정.
+        타임아웃 시 사용자 알림(화면 + 텔레그램) 후 False 반환 (잠금은 호출자 try/finally로 해제).
+
+        반환: True=체결 응답 수신, False=타임아웃 (사용자 알림 완료)
+        """
+        if self._fill_event is None:
+            return True  # 대기 미시작 — 대기 없이 진행 (호출 순서 오류 안전 장치)
+        timeout = self._fill_timeout_for(settings)
+        try:
+            await asyncio.wait_for(self._fill_event.wait(), timeout=timeout)
+            logger.info("[매매] [체결응답] %s(%s) %s 체결 응답 수신 — 잠금 해제", stk_nm, stk_cd, side)
+            return True
+        except asyncio.TimeoutError:
+            logger.warning(
+                "[매매] [체결응답 타임아웃] %s(%s) %s — %s초 내 체결 응답 미수신. 알림 후 잠금 해제.",
+                stk_nm, stk_cd, side, timeout,
+            )
+            _fire_and_forget_telegram(
+                f"⚠️ [주문 응답 시간 초과] {stk_nm}({_base_stk_cd(stk_cd)}) {side} 주문 체결 응답이 {timeout}초 내 오지 않았습니다.",
+                settings,
+            )
+            await _broadcast_order_fill_timeout(stk_cd=stk_cd, stk_nm=stk_nm, side=side)
+            return False
+        finally:
+            self._fill_event = None
+            self._fill_awaiting_cd = None
 
     async def execute_buy(self, stk_cd: str, current_price: float,
                     access_token: str, reason: str = "") -> tuple[bool, str]:
@@ -546,6 +628,9 @@ class AutoTradeManager:
             await _handle_order_failure()
             return False, BUY_REJECT_ORDER_FAIL
 
+        # ── 체결 응답 대기 시작 (결정 2 — 가상 체결 예약/WS 응답 전에 이벤트 생성) ──
+        self._begin_fill_await(stk_cd)
+
         # ── 저널링: 주문 요청 기록 ─────────────────────────────────────────────
         order_id = res.get("order_id", f"buy_{stk_cd}_{int(time.time())}")
         _mode = "test" if is_test_mode(raw_all) else "real"
@@ -626,6 +711,14 @@ class AutoTradeManager:
         if is_test_mode(raw_all):
             await _broadcast_test_cash_resolved()
 
+        # ── 체결·잔고 응답 대기 (결정 2 — 잠금 해제 시점을 체결 응답 후로 이동) ──
+        # 테스트모드: 가상 체결(fake_fill_event) → on_fill_update가 이벤트 설정.
+        # 실전모드: WS "00" 체결 이벤트 → on_fill_update가 이벤트 설정.
+        # 타임아웃 시 사용자 알림 후 차단 반환 — 주문은 접수되었으나 체결 미확정 (P21 투명성).
+        _fill_ok = await self._end_fill_await(stk_cd, stk_nm, "매수", raw_all)
+        if not _fill_ok:
+            return False, BUY_REJECT_FILL_TIMEOUT
+
         return True, BUY_OK
 
     async def on_fill_update(
@@ -661,6 +754,13 @@ class AutoTradeManager:
         elif str(side) in ("3", "4"):
             state["has_open_buy"] = False
         self._buy_state[stk_cd] = state
+
+        # ── 체결 응답 대기 이벤트 설정 (결정 2 — 잠금 해제 시점을 체결 응답 후로) ──
+        # 전량 체결(side 1/2, unex=0) 또는 취소·거부(side 3/4) 시 대기 중인 주문이면 이벤트 설정.
+        # 종목코드 일치 시에만 설정 — 다른 종목의 체결 응답으로 오해 방지 (P22 정합성).
+        _is_fill_done = (str(side) in ("1", "2") and unex == 0) or str(side) in ("3", "4")
+        if _is_fill_done and self._fill_event is not None and self._fill_awaiting_cd == nk:
+            self._fill_event.set()
 
     async def execute_sell(
         self,
@@ -776,6 +876,9 @@ class AutoTradeManager:
             await _handle_order_failure()
             return False
 
+        # ── 체결 응답 대기 시작 (결정 2 — 가상 체결 예약/WS 응답 전에 이벤트 생성) ──
+        self._begin_fill_await(stk_cd)
+
         # ── 매도 주문 전송 성공 — 간격 타이머 갱신 (P22: 실제 실행만 기록) ──
         from backend.app.services.order_interval import mark_order_executed
         mark_order_executed("sell")
@@ -828,6 +931,14 @@ class AutoTradeManager:
                 await _broadcast_circuit_breaker_recovered()
         except Exception:
             logger.warning("[매매] 리스크 관리자 성공 보고 실패", exc_info=True)
+
+        # ── 체결·잔고 응답 대기 (결정 2 — 잠금 해제 시점을 체결 응답 후로 이동) ──
+        # 테스트모드: 가상 체결(fake_fill_event) → on_fill_update가 이벤트 설정.
+        # 실전모드: WS "00" 체결 이벤트 → on_fill_update가 이벤트 설정.
+        # 타임아웃 시 사용자 알림 후 차단 반환 — 주문은 접수되었으나 체결 미확정 (P21 투명성).
+        _fill_ok = await self._end_fill_await(stk_cd, stk_nm, "매도", base_settings)
+        if not _fill_ok:
+            return False
 
         return True  # 매도 주문 전송 성공
 

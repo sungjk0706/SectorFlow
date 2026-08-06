@@ -18,6 +18,23 @@ def _close_coro(*args, **kwargs):
             arg.close()
     return DEFAULT
 
+
+def _close_coro_and_fill(mgr):
+    """schedule_engine_task 모의 — 코루틴 close + 체결 응답 이벤트 설정.
+
+    4단계(주문 응답 대기) 대응: 가상 체결(fake_fill_event)이 모의 객체로 대체된 경우
+    on_fill_update가 호출되지 않으므로, 대기 중인 체결 응답 이벤트를 직접 설정.
+    _fill_event가 None이면 (주문 미전송/guard 차단) 이벤트 설정 생략.
+    """
+    def _side(*args, **kwargs):
+        for arg in args:
+            if asyncio.iscoroutine(arg):
+                arg.close()
+        if mgr._fill_event is not None:
+            mgr._fill_event.set()
+        return DEFAULT
+    return _side
+
 from backend.app.services.trading import AutoTradeManager  # noqa: E402
 from backend.app.services.trading import (  # noqa: E402
     BUY_REJECT_AUTO_BUY_OFF,
@@ -201,7 +218,7 @@ class TestExecuteBuyGates:
              patch("backend.app.services.trade_history.record_buy", new_callable=AsyncMock), \
              patch("backend.app.core.journal.record_order_request", new_callable=AsyncMock), \
              patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock), \
-             patch("backend.app.services.engine_lifecycle.schedule_engine_task", side_effect=_close_coro), \
+             patch("backend.app.services.engine_lifecycle.schedule_engine_task", side_effect=_close_coro_and_fill(mgr)), \
              patch("backend.app.services.trading._fire_and_forget_telegram"):
             mock_state.realtime_latency_exceeded = False
             mock_state.integrated_system_settings_cache = _raw_settings(rebuy_block_on=False)
@@ -931,7 +948,7 @@ class TestDailyBuySpentFeeInclusive:
              patch("backend.app.services.trade_history.record_buy", new_callable=AsyncMock), \
              patch("backend.app.core.journal.record_order_request", new_callable=AsyncMock), \
              patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock), \
-             patch("backend.app.services.engine_lifecycle.schedule_engine_task", side_effect=_close_coro), \
+             patch("backend.app.services.engine_lifecycle.schedule_engine_task", side_effect=_close_coro_and_fill(mgr)), \
              patch("backend.app.services.trading._fire_and_forget_telegram"):
             mock_state.realtime_latency_exceeded = False
             mock_state.integrated_system_settings_cache = _raw_settings(rebuy_block_on=False)
@@ -970,7 +987,7 @@ class TestDailyBuySpentFeeInclusive:
              patch("backend.app.services.trade_history.record_buy", new_callable=AsyncMock), \
              patch("backend.app.core.journal.record_order_request", new_callable=AsyncMock), \
              patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock), \
-             patch("backend.app.services.engine_lifecycle.schedule_engine_task", side_effect=_close_coro), \
+             patch("backend.app.services.engine_lifecycle.schedule_engine_task", side_effect=_close_coro_and_fill(mgr)), \
              patch("backend.app.services.trading._fire_and_forget_telegram"):
             mock_state.realtime_latency_exceeded = False
             mock_state.integrated_system_settings_cache = _raw_settings(rebuy_block_on=False)
@@ -979,6 +996,8 @@ class TestDailyBuySpentFeeInclusive:
             mock_rm.return_value.get_withdrawable_deposit.return_value = 10_000_000
             mock_rm.return_value.check_buy_order_allowed = AsyncMock(return_value=(True, "승인"))
             mock_router.return_value.order.send_order = AsyncMock(return_value={"success": True, "order_id": "real1"})
+            # 실전모드: WS "00" 체결 응답 대기 — 테스트에서는 WS 미수신이므로 대기 통과 모의
+            mgr._end_fill_await = AsyncMock(return_value=True)
             result, _reason = await mgr.execute_buy("005930", 70000, "token")
         assert result is True
         # 실전모드: fee=0 → spent = base만
@@ -1014,7 +1033,7 @@ class TestBuyAmtSinglePurchase:
              patch("backend.app.services.trade_history.record_buy", new_callable=AsyncMock), \
              patch("backend.app.core.journal.record_order_request", new_callable=AsyncMock), \
              patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock), \
-             patch("backend.app.services.engine_lifecycle.schedule_engine_task", side_effect=_close_coro), \
+             patch("backend.app.services.engine_lifecycle.schedule_engine_task", side_effect=_close_coro_and_fill(mgr)), \
              patch("backend.app.services.trading._fire_and_forget_telegram"):
             mock_state.realtime_latency_exceeded = False
             mock_state.integrated_system_settings_cache = _raw_settings(rebuy_block_on=False)
@@ -1058,7 +1077,7 @@ class TestBuyAmtSinglePurchase:
              patch("backend.app.services.trade_history.record_buy", new_callable=AsyncMock), \
              patch("backend.app.core.journal.record_order_request", new_callable=AsyncMock), \
              patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock), \
-             patch("backend.app.services.engine_lifecycle.schedule_engine_task", side_effect=_close_coro), \
+             patch("backend.app.services.engine_lifecycle.schedule_engine_task", side_effect=_close_coro_and_fill(mgr)), \
              patch("backend.app.services.trading._fire_and_forget_telegram"):
             mock_state.realtime_latency_exceeded = False
             mock_state.integrated_system_settings_cache = _raw_settings(buy_amt_on=False, max_daily_total_buy_on=False)
@@ -1097,7 +1116,7 @@ class TestExecuteBuyReasonPassThrough:
              patch("backend.app.services.trade_history.record_buy", new_callable=AsyncMock) as mock_record_buy, \
              patch("backend.app.core.journal.record_order_request", new_callable=AsyncMock), \
              patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock), \
-             patch("backend.app.services.engine_lifecycle.schedule_engine_task", side_effect=_close_coro), \
+             patch("backend.app.services.engine_lifecycle.schedule_engine_task", side_effect=_close_coro_and_fill(mgr)), \
              patch("backend.app.services.trading._fire_and_forget_telegram"):
             mock_state.realtime_latency_exceeded = False
             mock_state.integrated_system_settings_cache = _raw_settings(rebuy_block_on=False)
@@ -1132,7 +1151,7 @@ class TestExecuteBuyReasonPassThrough:
              patch("backend.app.services.trade_history.record_buy", new_callable=AsyncMock) as mock_record_buy, \
              patch("backend.app.core.journal.record_order_request", new_callable=AsyncMock), \
              patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock), \
-             patch("backend.app.services.engine_lifecycle.schedule_engine_task", side_effect=_close_coro), \
+             patch("backend.app.services.engine_lifecycle.schedule_engine_task", side_effect=_close_coro_and_fill(mgr)), \
              patch("backend.app.services.trading._fire_and_forget_telegram"):
             mock_state.realtime_latency_exceeded = False
             mock_state.integrated_system_settings_cache = _raw_settings(rebuy_block_on=False)
@@ -1189,7 +1208,7 @@ class TestExecuteBuyOrderFailure:
              patch("backend.app.services.trade_history.record_buy", new_callable=AsyncMock), \
              patch("backend.app.core.journal.record_order_request", new_callable=AsyncMock), \
              patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock), \
-             patch("backend.app.services.engine_lifecycle.schedule_engine_task", side_effect=_close_coro), \
+             patch("backend.app.services.engine_lifecycle.schedule_engine_task", side_effect=_close_coro_and_fill(mgr)), \
              patch("backend.app.services.trading._fire_and_forget_telegram"):
             mock_state.realtime_latency_exceeded = False
             mock_state.integrated_system_settings_cache = _raw_settings(rebuy_block_on=False)
@@ -1236,7 +1255,7 @@ class TestExecuteBuyOrderFailure:
              patch("backend.app.services.trade_history.record_buy", new_callable=AsyncMock), \
              patch("backend.app.core.journal.record_order_request", new_callable=AsyncMock), \
              patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock), \
-             patch("backend.app.services.engine_lifecycle.schedule_engine_task", side_effect=_close_coro), \
+             patch("backend.app.services.engine_lifecycle.schedule_engine_task", side_effect=_close_coro_and_fill(mgr)), \
              patch("backend.app.services.trading._fire_and_forget_telegram"), \
              patch("backend.app.services.trading.get_router") as mock_get_router:
             mock_state.realtime_latency_exceeded = False
