@@ -279,18 +279,21 @@ run_frontend() {
     fi
 }
 
-# ─── 사실 보고 근거 검증 (하네스 강화 — 추측 보고 차단 + 2-게이트 패턴) ───
+# ─── 사실 보고 근거 검증 (하네스 강화 — 추측 보고 차단 + 4-게이트 패턴) ───
 # 이번 세션에서 생성/수정된 보고서(조사보고서/설계서/태스크)에 근거 표기가 있는지 확인.
-# 3계층 검증 (인터넷 검증 패턴 취합 — 2-게이트 + Phantom Grounding 방지):
+# 4계층 검증 (인터넷 검증 패턴 취합 — 2-게이트 + Phantom Grounding 방지 + 코드 대조):
 #   게이트 1 (cite-check): 단정 표현이 있는데 근거 표기가 0개면 차단 (기존)
-#   게이트 2 (근접성 검사): 단정이 있는 문단(빈 줄로 구분)에 근거가 없으면 차단 (신규 — 1단계)
-#   게이트 3 (근거 존재 확인): 근거로 적힌 파일 경로가 실제 파일 시스템에 없으면 차단 (신규 — 2단계)
+#   게이트 2 (근접성 검사): 단정이 있는 문단(빈 줄로 구분)에 근거가 없으면 차단 (1단계)
+#   게이트 3 (근거 존재 확인): 근거로 적힌 파일 경로가 실제 파일 시스템에 없으면 차단 (2단계)
+#   게이트 4 (코드-단정 연관): 근거 코드의 식별자가 단정 문단에 언급되지 않으면 차단 (3단계)
 # 선언된 추측("가정/가능성/추측/예상")은 허용 — 가정 선언 의무 규칙 준수.
 # 사건 재발 방지: 2026-08-07 추측 보고 사건 (코드 안 읽고 구조 단언 → 사용자 추궁 후 정정).
 # 패턴 출처:
 #   - a builder's codex "claim-verify-gate" 2-게이트 (cite-check + claim-verify)
 #   - Agent Patterns 카탈로그 "Hallucinated Sources" fail-closed 검증
 #   - 학술 연구 LedgerMind "Phantom Grounding" — 인용은 있으나 인용이 단정을 지지하지 않는 실패
+#   - GitHub truth + agentic_codebase::grounding — 클레임에서 코드 참조 추출, 실제 코드와 대조,
+#     "검증 불가능한 것은 정직하게 거부" 철학. NLI 모델 없이 결정론적 방식으로 의미 연관 근사.
 check_fact_grounding() {
     local SNAPSHOT=".devin/state/session_changes_snapshot.txt"
 
@@ -384,7 +387,7 @@ check_fact_grounding() {
         local para_line=0
         local ungrounded_details=""
 
-        while IFS= read -r line; do
+        while IFS= read -r line || [ -n "$line" ]; do
             para_line=$((para_line + 1))
             # 빈 줄(공백만) = 문단 구분자
             if [ -z "$(printf '%s' "$line" | tr -d '[:space:]')" ]; then
@@ -456,8 +459,112 @@ check_fact_grounding() {
             continue
         fi
 
-        # 3계층 전부 통과
-        echo "[pre-complete] ✅ $rf — 3계층 통과 (단정 ${has_assertion}·근거 ${has_evidence}·문단 근접성 OK·근거 파일 존재 OK)"
+        # ── 게이트 4: 코드-단정 의미 연관 검사 (신규 — 3단계) ──
+        # 근거로 적힌 파일:라인의 실제 코드 내용을 추출하고, 그 코드의 식별자(함수명·변수명 등)가
+        # 단정이 포함된 문단에 언급되어 있는지 검사. 하나도 없으면 "관련 없는 코드를 근거로 적음"으로 차단.
+        # "코드는 읽었는데 잘못 해석"·"관련 없는 코드 근거" 실패 모드 방지.
+        # 패턴: truth "클레임을 실제 코드와 대조" + agentic_codebase::grounding "코드 참조 추출 + 그래프 대조"
+        # 한계: 완전한 의미 검증(NLI)이 아닌 식별자 동시 출현 휴리스틱. truth 철학에 따라
+        # "검증 불가능한 것은 통과시키되, 명백히 무관한 근거는 차단" — false positive 최소화.
+        local FILELINE_RE='[a-zA-Z_][a-zA-Z0-9_/]+\.(py|ts|js|tsx|jsx):[0-9]+'
+        local ungrounded_refs=""
+        local total_refs=0
+
+        # 보고서에서 파일:라인 패턴 추출
+        local fileline_matches
+        fileline_matches=$(grep -oE "$FILELINE_RE" "$rf" 2>/dev/null | sort -u || true)
+
+        if [ -n "$fileline_matches" ]; then
+            while IFS= read -r fl; do
+                [ -z "$fl" ] && continue
+                total_refs=$((total_refs + 1))
+
+                # 파일 경로와 라인 번호 분리
+                local fl_file="${fl%:*}"
+                local fl_line="${fl##*:}"
+                [ -f "$fl_file" ] || continue
+
+                # 해당 라인 ±5줄 코드 추출
+                local start_line=$((fl_line - 5))
+                [ "$start_line" -lt 1 ] && start_line=1
+                local end_line=$((fl_line + 5))
+                local code_snippet
+                code_snippet=$(sed -n "${start_line},${end_line}p" "$fl_file" 2>/dev/null || true)
+
+                [ -z "$code_snippet" ] && continue
+
+                # 코드에서 식별자 추출 — 영어 단어, 4글자 이상 (함수명·변수명·클래스명)
+                # 키워드 제외 (def/class/import/return/if/else/for/while/try/except/async/await 등)
+                local code_identifiers
+                code_identifiers=$(printf '%s' "$code_snippet" \
+                    | grep -oE '[a-zA-Z_][a-zA-Z0-9_]+' \
+                    | grep -vE '^(def|class|import|from|return|if|else|elif|for|while|try|except|finally|with|as|in|not|and|or|is|None|True|False|async|await|self|cls|print|len|range|open|raise|pass|break|continue|global|nonlocal|yield|lambda|del|assert)$' \
+                    | sort -u 2>/dev/null || true)
+
+                [ -z "$code_identifiers" ] && continue
+
+                # 해당 파일:라인이 포함된 문단 추출 (게이트 2와 동일한 문단 분할)
+                # 단정이 있는 문단을 찾아, 그 문단에 코드 식별자가 하나라도 언급되었는지 검사
+                local para_with_ref=""
+                local current_p=""
+                local in_target_para=false
+
+                while IFS= read -r pline || [ -n "$pline" ]; do
+                    if [ -z "$(printf '%s' "$pline" | tr -d '[:space:]')" ]; then
+                        # 문단 종료 — 타겟 파일:라인이 이 문단에 있었으면 저장
+                        if $in_target_para; then
+                            para_with_ref="$current_p"
+                            in_target_para=false
+                        fi
+                        current_p=""
+                        continue
+                    fi
+                    current_p="${current_p}${pline}"$'\n'
+                    # 이 줄에 타겟 파일:라인이 포함되어 있는지
+                    if echo "$pline" | grep -qF "$fl"; then
+                        in_target_para=true
+                    fi
+                done < "$rf"
+                # 마지막 문단
+                if $in_target_para; then
+                    para_with_ref="$current_p"
+                fi
+
+                [ -z "$para_with_ref" ] && continue
+
+                # 단정 문단에서 파일:라인 패턴 자체를 제거한 텍스트로 식별자 매칭.
+                # 파일 경로 자체(engine_loop 등)가 식별자로 추출되어 항상 통과하는 우회 방지.
+                local para_text_only
+                para_text_only=$(printf '%s' "$para_with_ref" | sed -E 's/[a-zA-Z_][a-zA-Z0-9_/]+\.(py|ts|js|tsx|jsx):[0-9]+//g' | sed -E 's/[a-zA-Z_][a-zA-Z0-9_/]+\.(py|ts|js|tsx|jsx)//g')
+
+                # 단정 문단(파일 경로 제거)에 코드 식별자 중 하나라도 언급되었는지 검사
+                local found_match=false
+                while IFS= read -r ident; do
+                    [ -z "$ident" ] && continue
+                    if printf '%s' "$para_text_only" | grep -qF "$ident"; then
+                        found_match=true
+                        break
+                    fi
+                done <<< "$code_identifiers"
+
+                if ! $found_match; then
+                    ungrounded_refs="${ungrounded_refs}  ${fl} (코드 식별자와 단정 문단 연관 없음)"$'\n'
+                fi
+            done <<< "$fileline_matches"
+        fi
+
+        if [ -n "$ungrounded_refs" ]; then
+            echo "[pre-complete] ❌ 사실 보고 근거-단정 연관 위반 (게이트 4) — $rf"
+            echo "[pre-complete]    근거 코드 ${total_refs}개 중 연관 없는 근거:"
+            printf '%s' "$ungrounded_refs" | sed 's/^/      /'
+            echo "[pre-complete]    → 근거로 인용한 코드의 함수명·변수명이 단정 문단에 언급되어야 함"
+            echo "[pre-complete]    패턴: truth + agentic_codebase::grounding — 클레임과 실제 코드 대조, 무관한 근거 차단"
+            FAILED=$((FAILED + 1))
+            continue
+        fi
+
+        # 4계층 전부 통과
+        echo "[pre-complete] ✅ $rf — 4계층 통과 (단정 ${has_assertion}·근거 ${has_evidence}·근접성 OK·파일 존재 OK·코드 연관 OK)"
     done <<< "$report_files"
 }
 
