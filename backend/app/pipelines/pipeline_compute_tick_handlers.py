@@ -218,7 +218,7 @@ async def _handle_real_01_tick(
         try:
             broadcast_queue.put_nowait({"type": "real-data", "data": item})
         except asyncio.QueueFull:
-            logger.warning("[연산] 전송 큐 가득 참 — 화면 데이터 누락 (종목코드=%s)", raw_cd)
+            logger.debug("[연산] 전송 큐 가득 참 — 화면 데이터 누락 (종목코드=%s)", raw_cd)
 
         # ── 2. 레이더 행 갱신 + 업종 점수 증분 재계산 트리거 ──
         _apply_01_radar_and_receive_rate(raw_cd, nk_px, vals, is_0b_tick)

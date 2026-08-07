@@ -271,6 +271,10 @@ class InterceptHandler(logging.Handler):
         "Uvicorn running on": "Uvicorn 실행 중",
     }
 
+    # uvicorn.error 로거에서 출력되는 WS 핸드셰이크 메시지 — access_log=False로 제거되지 않는
+    # [accepted] 등의 메시지를 필터링하여 프레임워크 계층 로그 중복 제거 (앱 계층에서 별도 기록).
+    _WS_HANDSHAKE_SKIP = "[accepted]"
+
     def emit(self, record: logging.LogRecord) -> None:
         """표준 logging 레코드를 loguru로 전달."""
         try:
@@ -285,6 +289,11 @@ class InterceptHandler(logging.Handler):
 
         msg = record.getMessage()
         msg_lower = msg.strip().lower()
+
+        # uvicorn.error 로거의 WS 핸드셰이크 [accepted] 메시지 스킵 — 앱 계층에서 별도 기록하므로 중복 제거
+        if record.name.startswith("uvicorn") and self._WS_HANDSHAKE_SKIP in msg:
+            return
+
         if msg_lower in self._WS_MSG_MAP:
             msg = self._WS_MSG_MAP[msg_lower]
         elif record.name.startswith("websockets"):
@@ -465,10 +474,13 @@ def setup_console_intercept(log_level: str = "INFO") -> None:
     # 5xx 예외는 uvicorn.error가 별도로 ERROR로 로깅하므로 실패는 여전히 포착됨.
     logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
 
-    # websockets — InterceptHandler로 인터셉트 (connection open/closed 한국어 치환)
+    # websockets — InterceptHandler로 인터셉트 + WARNING 상향
+    # connection open/closed INFO 메시지는 앱 계층에서 별도 기록하므로 중복 제거.
+    # WARNING 이상(연결 오류 등)만 출력되도록 레벨 상향.
     for ws_name in ("websockets", "websockets.client", "websockets.server"):
         logging.getLogger(ws_name).handlers = [InterceptHandler()]
         logging.getLogger(ws_name).propagate = False
+        logging.getLogger(ws_name).setLevel(logging.WARNING)
 
     # 외부 라이브러리 노이즈 차단
     for noisy in ("httpx", "httpcore"):

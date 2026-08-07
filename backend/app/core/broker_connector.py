@@ -149,7 +149,7 @@ class BrokerConnector(ABC):
             try:
                 token = await self._get_token_async()
                 if not token:
-                    logger.warning("[연결] %s 재연결 %d회: 토큰 발급 실패", self._broker_display, attempt)
+                    logger.debug("[연결] %s 재연결 %d회: 토큰 발급 실패", self._broker_display, attempt)
                     continue
                 await self._reconnect_socket(token)
                 self._connected = True
@@ -158,7 +158,7 @@ class BrokerConnector(ABC):
                     from backend.app.services.engine_state import state
                     state.login_ok = True
                 except Exception:
-                    logger.warning("[연결] %s 로그인 상태 복원 실패", self._broker_display, exc_info=True)
+                    logger.debug("[연결] %s 로그인 상태 복원 실패", self._broker_display, exc_info=True)
                 logger.info("[연결] %s 재연결 성공 (시도 %d회)", self._broker_display, attempt)
                 # 재연결 성공 후 큐 클리어 (과거 데이터 제거)
                 if self._ws_queue is not None:
@@ -170,18 +170,18 @@ class BrokerConnector(ABC):
                         except asyncio.QueueEmpty:
                             break
                     if cleared > 0:
-                        logger.warning("[연결] %s 재연결 후 큐 정리 — %d건 폐기", self._broker_display, cleared)
+                        logger.debug("[연결] %s 재연결 후 큐 정리 — %d건 폐기", self._broker_display, cleared)
                 # 연결 상태 전송
                 try:
                     from backend.app.services.ws_subscribe_control import broadcast_ws_connection_status
                     broadcast_ws_connection_status(True)
                 except Exception:
-                    logger.warning("[연결] %s 재연결 상태 전송 실패", self._broker_display, exc_info=True)
+                    logger.debug("[연결] %s 재연결 상태 전송 실패", self._broker_display, exc_info=True)
                 # 서브클래스별 재구독 훅 (LS: JIF/NWS)
                 try:
                     await self._on_reconnect_resubscribe()
                 except Exception:
-                    logger.warning("[연결] %s 재연결 후 재구독 훅 실패", self._broker_display, exc_info=True)
+                    logger.debug("[연결] %s 재연결 후 재구독 훅 실패", self._broker_display, exc_info=True)
                 # 구독 복원 콜백 (ConnectorManager가 REG 재전송)
                 if self._on_reconnect_success:
                     await self._on_reconnect_success(self.broker_id)
@@ -227,7 +227,7 @@ class BrokerConnector(ABC):
                 try:
                     _q.get_nowait()
                     _q.put_nowait(msg)
-                    logger.warning("[연결] %s 데이터 큐 누락 발생 — 최신 데이터 유지", _display)
+                    logger.debug("[연결] %s 데이터 큐 누락 발생 — 최신 데이터 유지", _display)
                 except asyncio.QueueEmpty:
                     _q.put_nowait(msg)
         return _queue_put_with_drop

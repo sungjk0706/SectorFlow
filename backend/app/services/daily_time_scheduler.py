@@ -569,12 +569,12 @@ async def _on_nxt_premarket_start() -> None:
         today = _kst_now().date()
         if today.weekday() >= 5 or not is_trading_day(today):
             return
-        logger.info("[작업실행] NXT 프리마켓 진입 — 업종 재계산 시작 (KRX 단독 종목 제외)")
+        logger.info("[스케줄] NXT 프리마켓 진입 — 업종 재계산 시작 (KRX 단독 종목 제외)")
         from backend.app.services.sector_data_provider import recompute_sector_summary_now
         await recompute_sector_summary_now()
-        logger.info("[작업실행] NXT 프리마켓 진입 — 업종 재계산 종료")
+        # 종료 로그 제거 — sector_data_provider.py에서 [업종] 재계산 종료로 기록 (중복 제거)
     except Exception as e:
-        logger.warning("[작업실행] NXT 프리마켓 콜백 오류: %s", e, exc_info=True)
+        logger.warning("[스케줄] NXT 프리마켓 콜백 오류: %s", e, exc_info=True)
 
 
 async def _on_krx_market_open() -> None:
@@ -592,12 +592,12 @@ async def _on_krx_market_open() -> None:
         today = _kst_now()
         if today.weekday() >= 5 or not is_trading_day(today.date()):
             return
-        logger.info("[작업실행] KRX 정규장 진입 — 업종 재계산 시작 (09:00)")
+        logger.info("[스케줄] KRX 정규장 진입 — 업종 재계산 시작 (09:00)")
         from backend.app.services.sector_data_provider import recompute_sector_summary_now
         await recompute_sector_summary_now()
-        logger.info("[작업실행] 업종 재계산 종료 (09:00 KRX 정규장)")
+        # 종료 로그 제거 — sector_data_provider.py에서 [업종] 재계산 종료로 기록 (중복 제거)
     except Exception as e:
-        logger.warning("[작업실행] KRX 정규장 진입 업종 재계산 콜백 오류: %s", e, exc_info=True)
+        logger.warning("[스케줄] KRX 정규장 진입 업종 재계산 콜백 오류: %s", e, exc_info=True)
 
 
 async def _on_krx_pre_subscribe() -> None:
@@ -622,7 +622,7 @@ async def _on_krx_pre_subscribe() -> None:
         from backend.app.core.trading_calendar import is_trading_day
         if today.weekday() >= 5 or not is_trading_day(today.date()):
             return
-        logger.info("[작업실행] KRX 단독 종목 사전 구독 시작 (08:59)")
+        logger.info("[스케줄] KRX 단독 종목 사전 구독 시작 (08:59)")
         from backend.app.services.engine_ws_reg import subscribe_sector_stocks_0b
 
         _cache = engine_state.state.master_stocks_cache
@@ -634,15 +634,15 @@ async def _on_krx_pre_subscribe() -> None:
         if after_count > before_count:
             engine_state.state.last_krx_pre_subscribe_date = today_str
             logger.info(
-                "[작업실행] KRX 단독 종목 사전 구독 완료 — 신규 %d종목 (구독 %d→%d)",
+                "[스케줄] KRX 단독 종목 사전 구독 완료 — 신규 %d종목 (구독 %d→%d)",
                 after_count - before_count, before_count, after_count,
             )
         else:
             logger.warning(
-                "[작업실행] KRX 사전 구독 0건 — 가짜 성공 방지: 가드 미설정 (WS 미연결·필터 누락·이미 전량 구독 등 원인 확인 필요)"
+                "[스케줄] KRX 사전 구독 0건 — 가짜 성공 방지: 가드 미설정 (WS 미연결·필터 누락·이미 전량 구독 등 원인 확인 필요)"
             )
     except Exception as e:
-        logger.warning("[작업실행] KRX 사전 구독 콜백 오류: %s", e, exc_info=True)
+        logger.warning("[스케줄] KRX 사전 구독 콜백 오류: %s", e, exc_info=True)
 
 
 async def _on_krx_closing_auction_start() -> None:
@@ -658,14 +658,14 @@ async def _on_krx_closing_auction_start() -> None:
         today = _kst_now().date()
         if today.weekday() >= 5 or not is_trading_day(today):
             return
-        logger.info("[작업실행] KRX 종가 동시호가 — 업종 재계산 시작 (15:20)")
+        logger.info("[스케줄] KRX 종가 동시호가 — 업종 재계산 시작 (15:20)")
         from backend.app.services.engine_initial_data import _reset_program_net_buy_only
         await _reset_program_net_buy_only()
         from backend.app.services.sector_data_provider import recompute_sector_summary_now
         await recompute_sector_summary_now()
-        logger.info("[작업실행] 업종 재계산 종료 (15:20 종가 동시호가)")
+        # 종료 로그 제거 — sector_data_provider.py에서 [업종] 재계산 종료로 기록 (중복 제거)
     except Exception as e:
-        logger.warning("[작업실행] KRX 종가 동시호가 콜백 오류: %s", e, exc_info=True)
+        logger.warning("[스케줄] KRX 종가 동시호가 콜백 오류: %s", e, exc_info=True)
 
 
 def _fire_unified_confirmed_fetch() -> None:
@@ -897,7 +897,7 @@ async def _on_realtime_fields_reset() -> None:
         from backend.app.core.trading_calendar import is_trading_day
         if today.weekday() >= 5 or not is_trading_day(today.date()):
             return
-        logger.info("[작업실행] 실시간 필드 초기화 + GC 비활성화 + 캐시 초기화 (사전 — 07:58)")
+        logger.info("[스케줄] 실시간 필드 초기화 + GC 비활성화 + 캐시 초기화 (사전 — 07:58)")
         # 장중 GC 비활성화 (HFT 지연 방지) — 거래일 체크 이후 실행 (주말 GC 비활성화 방지)
         gc.disable()
         logger.info("[스케줄] 장중 메모리 정리 비활성화 (실시간 처리 지연 방지)")
@@ -914,9 +914,9 @@ async def _on_realtime_fields_reset() -> None:
         _set_sector_summary(None, "daily_time_scheduler.pre_ws_subscribe_reset")
         # last_realtime_reset_date 쓰기는 _mark_realtime_reset_done() 단일 경로 (세션 11 P10 SSOT)
         _mark_realtime_reset_done(today_str)
-        logger.info("[작업실행] 실시간 필드 초기화 + GC 비활성화 + 캐시 초기화 (사전 — 07:58)")
+        logger.info("[스케줄] 실시간 필드 초기화 + GC 비활성화 + 캐시 초기화 (사전 — 07:58)")
     except Exception as e:
-        logger.warning("[작업실행] 실시간 필드 초기화 오류: %s", e, exc_info=True)
+        logger.warning("[스케줄] 실시간 필드 초기화 오류: %s", e, exc_info=True)
 
 
 async def _on_ws_subscribe_start() -> None:
@@ -930,14 +930,14 @@ async def _on_ws_subscribe_start() -> None:
         today = _kst_now()
         today_str = today.strftime("%Y%m%d")
         if engine_state.state.last_ws_subscribe_start_date == today_str:
-            logger.debug("[작업실행] NXT 시작 생략 (이미 실행됨 — %s)", today_str)
+            logger.debug("[스케줄] NXT 시작 생략 (이미 실행됨 — %s)", today_str)
             return
         if today.weekday() >= 5:
             return
         from backend.app.core.trading_calendar import is_trading_day
         if not is_trading_day(today.date()):
             return
-        logger.info("[작업실행] NXT 시작 — 실시간 필드 초기화 + 구독 신청")
+        logger.info("[스케줄] NXT 시작 — 실시간 필드 초기화 + 구독 신청")
         engine_state.state.last_ws_subscribe_start_date = today_str
         # 1. 실시간 필드 초기화 선행 (기존 _on_realtime_fields_reset 통합 — 멱등성 가드 내장)
         await _on_realtime_fields_reset()
@@ -945,9 +945,9 @@ async def _on_ws_subscribe_start() -> None:
         _broadcast_market_phase()
         # 3. 엔진 루프 각성 — 시간 판정 루프가 구간 진입 감지하여 토큰 발급 + 연결 맺기 (P16 살아있는 경로)
         engine_state.state.ws_window_changed_event.set()
-        logger.info("[작업실행] NXT 시작 — 엔진 루프에 연결 통지")
+        logger.info("[스케줄] NXT 시작 — 엔진 루프에 연결 통지")
     except Exception as e:
-        logger.warning("[작업실행] NXT 시작 콜백 오류: %s", e, exc_info=True)
+        logger.warning("[스케줄] NXT 시작 콜백 오류: %s", e, exc_info=True)
 
 
 async def _on_ws_subscribe_end() -> None:
@@ -957,11 +957,11 @@ async def _on_ws_subscribe_end() -> None:
     본 함수는 phase 감지용으로 유지 — GC 정상화·메모리 정리·게이트 해제만 수행.
     """
     try:
-        logger.info("[작업실행] NXT 장마감 — 메모리 정리 + 상태 정리 (20:00 — 장마감)")
+        logger.info("[스케줄] NXT 장마감 — 메모리 정리 + 상태 정리 (20:00 — 장마감)")
         # 장마감 후 GC 정상화 및 메모리 정리
         gc.enable()
         gc.collect()
-        logger.info("[작업실행] 장마감 후 메모리 정리 정상화")
+        logger.info("[스케줄] 장마감 후 메모리 정리 정상화")
 
         from backend.app.core.memory_monitor import start_memory_monitor, log_memory_snapshot, stop_memory_monitor
         start_memory_monitor()
@@ -979,7 +979,7 @@ async def _on_ws_subscribe_end() -> None:
         # ── NXT 종목 구독해지 + 연결 종료 + 토큰 폐기는 nxt_end direct 엔트리(_on_nxt_end)가 담당 ──
         # ── 확정 데이터 다운로드는 타임테이블 confirmed_download 항목이 담당 (기본값 20:40) ──
     except Exception as e:
-        logger.warning("[작업실행] NXT 장마감 콜백 오류: %s", e, exc_info=True)
+        logger.warning("[스케줄] NXT 장마감 콜백 오류: %s", e, exc_info=True)
 
 
 async def _on_nxt_end() -> None:
@@ -994,20 +994,20 @@ async def _on_nxt_end() -> None:
         today = _kst_now()
         today_str = today.strftime("%Y%m%d")
         if engine_state.state.last_nxt_end_date == today_str:
-            logger.debug("[작업실행] NXT 종료 생략 (이미 실행됨 — %s)", today_str)
+            logger.debug("[스케줄] NXT 종료 생략 (이미 실행됨 — %s)", today_str)
             return
         if today.weekday() >= 5 or not is_trading_day(today.date()):
             return
-        logger.info("[작업실행] NXT 종료 — NXT 종목 구독해지 + 연결 종료 + 토큰 폐기 (20:00)")
+        logger.info("[스케줄] NXT 종료 — NXT 종목 구독해지 + 연결 종료 + 토큰 폐기 (20:00)")
         engine_state.state.last_nxt_end_date = today_str
 
         # 1. NXT 종목 구독해지 (KRX 단독 종목은 krx_end에서 이미 해지됨)
         from backend.app.services.market_close_pipeline import remove_nxt_stocks
         result = await remove_nxt_stocks()
         if result.get("skipped"):
-            logger.debug("[작업실행] NXT 종목 구독해지 생략 — 실시간 미연결")
+            logger.debug("[스케줄] NXT 종목 구독해지 생략 — 실시간 미연결")
         else:
-            logger.info("[작업실행] NXT 종목 구독해지 — 해지 %d종목, 실패 %d종목", result.get("removed", 0), result.get("failed", 0))
+            logger.info("[스케줄] NXT 종목 구독해지 — 해지 %d종목, 실패 %d종목", result.get("removed", 0), result.get("failed", 0))
 
         # 2. 웹소켓 연결 종료 (지연 임포트 — 순환 참조 회피)
         from backend.app.services.engine_loop import _disconnect_realtime_connection
@@ -1019,13 +1019,13 @@ async def _on_nxt_end() -> None:
                 await _rest_api.revoke_token()
             except Exception as e:
                 from backend.app.core.broker_urls import BROKER_DISPLAY_NAMES
-                logger.warning("[작업실행] %s 토큰 폐기 실패: %s", BROKER_DISPLAY_NAMES.get(_broker_id, _broker_id), e, exc_info=True)
+                logger.warning("[스케줄] %s 토큰 폐기 실패: %s", BROKER_DISPLAY_NAMES.get(_broker_id, _broker_id), e, exc_info=True)
 
         # 4. market-phase WS 브로드캐스트 (phase 감지용 phase 엔트리와 동시각 중복 시 보완)
         _broadcast_market_phase()
-        logger.info("[작업실행] NXT 종료 완료 — 구독해지 + 연결 종료 + 토큰 폐기")
+        logger.info("[스케줄] NXT 종료 완료 — 구독해지 + 연결 종료 + 토큰 폐기")
     except Exception as e:
-        logger.warning("[작업실행] NXT 종료 콜백 오류: %s", e, exc_info=True)
+        logger.warning("[스케줄] NXT 종료 콜백 오류: %s", e, exc_info=True)
 
 
 async def _on_krx_end() -> None:
@@ -1040,11 +1040,11 @@ async def _on_krx_end() -> None:
         today = _kst_now()
         today_str = today.strftime("%Y%m%d")
         if engine_state.state.last_krx_end_date == today_str:
-            logger.debug("[작업실행] KRX 종료 생략 (이미 실행됨 — %s)", today_str)
+            logger.debug("[스케줄] KRX 종료 생략 (이미 실행됨 — %s)", today_str)
             return
         if today.weekday() >= 5 or not is_trading_day(today.date()):
             return
-        logger.info("[작업실행] KRX 종료 — KRX 단독 종목 구독해지 (15:20)")
+        logger.info("[스케줄] KRX 종료 — KRX 단독 종목 구독해지 (15:20)")
         engine_state.state.last_krx_end_date = today_str
 
         if not engine_state.state.krx_remove_done:
@@ -1053,12 +1053,12 @@ async def _on_krx_end() -> None:
             result = await remove_krx_only_stocks()
             if result.get("skipped"):
                 engine_state.state.krx_remove_done = False
-                logger.debug("[작업실행] KRX 단독 종목 구독해지 생략 — 플래그 복원 (앱준비 후 재시도 가능)")
+                logger.debug("[스케줄] KRX 단독 종목 구독해지 생략 — 플래그 복원 (앱준비 후 재시도 가능)")
             else:
-                logger.info("[작업실행] KRX 단독 종목 구독해지 — 해지 %d종목, 실패 %d종목 (15:20)", result.get("removed", 0), result.get("failed", 0))
+                logger.info("[스케줄] KRX 단독 종목 구독해지 — 해지 %d종목, 실패 %d종목 (15:20)", result.get("removed", 0), result.get("failed", 0))
     except Exception as e:
         engine_state.state.krx_remove_done = False
-        logger.warning("[작업실행] KRX 종료 콜백 오류: %s", e, exc_info=True)
+        logger.warning("[스케줄] KRX 종료 콜백 오류: %s", e, exc_info=True)
 
 
 async def _on_confirmed_download() -> None:

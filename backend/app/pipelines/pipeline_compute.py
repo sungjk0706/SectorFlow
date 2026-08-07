@@ -323,6 +323,10 @@ async def _compute_loop_impl() -> None:
 
                     await _process_tick_batch(batch, broadcast_queue)
 
+                    # 큐 상태 추적 (DEBUG) — 배치 크기가 1보다 큰 경우만 기록하여 틱 폭주 추정
+                    if len(batch) > 1:
+                        logger.debug("[연산] 틱 배치 처리 — %d건 (큐 잔여: %d)", len(batch), tick_queue.qsize())
+
                 # P0-1: 틱 폭주 시 이벤트 루프 고갈 방지 - 협력적 멀티태스킹 (Yielding)
                 await asyncio.sleep(0)
             except asyncio.CancelledError:
@@ -441,7 +445,7 @@ async def _handle_sector_recompute(
         from backend.app.services.sector_data_provider import recompute_sector_summary_now
         await recompute_sector_summary_now()
 
-        logger.info("[연산] 업종순위 재계산 종료")
+        # [연산] 업종순위 재계산 종료 로그 제거 — sector_data_provider.py에서 [업종] 재계산 종료로 기록 (중복 제거)
 
     except Exception as e:
         logger.error("[연산] 업종순위 재계산 오류: %s", e, exc_info=True)

@@ -650,12 +650,12 @@ class LsConnector(BrokerConnector):
         try:
             await self.subscribe_jif()
         except Exception:
-            logger.warning("[구독] %s 재연결 후 장운영정보 구독 실패", _BROKER_DISPLAY, exc_info=True)
+            logger.debug("[구독] %s 재연결 후 장운영정보 구독 실패", _BROKER_DISPLAY, exc_info=True)
         # 실시간 뉴스(NWS) 재구독
         try:
             await self.subscribe_news()
         except Exception:
-            logger.warning("[구독] %s 재연결 후 실시간뉴스 구독 실패", _BROKER_DISPLAY, exc_info=True)
+            logger.debug("[구독] %s 재연결 후 실시간뉴스 구독 실패", _BROKER_DISPLAY, exc_info=True)
 
     def set_queue_callback(self, queue: asyncio.Queue) -> None:
         """Producer-Consumer Queue 설정 (누락 정책 적용)."""

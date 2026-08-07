@@ -242,7 +242,7 @@ class KiwoomConnector(BrokerConnector):
                 from backend.app.services.ws_subscribe_control import broadcast_ws_connection_status
                 broadcast_ws_connection_status(True)
             except Exception:
-                logger.warning("[연결] %s 연결 상태 전송 실패", _BROKER_DISPLAY, exc_info=True)
+                logger.debug("[연결] %s 연결 상태 전송 실패", _BROKER_DISPLAY, exc_info=True)
 
     async def disconnect(self) -> None:
         """수신루프 중단 + WebSocket 종료. 재연결 루프도 중단."""
@@ -260,7 +260,7 @@ class KiwoomConnector(BrokerConnector):
                 from backend.app.services.ws_subscribe_control import broadcast_ws_connection_status
                 broadcast_ws_connection_status(False)
             except Exception:
-                logger.warning("[연결] %s 연결 해제 상태 전송 실패", _BROKER_DISPLAY, exc_info=True)
+                logger.debug("[연결] %s 연결 해제 상태 전송 실패", _BROKER_DISPLAY, exc_info=True)
 
     async def send_message(self, payload: dict) -> bool:
         """engine_service._ws_send_reg_unreg_and_wait_ack용 송신 API."""

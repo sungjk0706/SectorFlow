@@ -316,8 +316,8 @@ class TestGetAllTokensAsync:
 
         assert "kiwoom" not in mock_state.broker_tokens
         assert mock_state.token_failure_kind == "transient"
-        warning_msgs = [str(c) for c in mock_logger.warning.call_args_list]
-        assert any("토큰 발급 실패" in m for m in warning_msgs)
+        debug_msgs = [str(c) for c in mock_logger.debug.call_args_list]
+        assert any("토큰 발급 실패" in m for m in debug_msgs)
 
     @pytest.mark.asyncio
     async def test_auth_cache_miss_creates_provider(self):

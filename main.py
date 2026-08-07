@@ -70,4 +70,5 @@ if __name__ == "__main__":
         ws_ping_interval=30,
         ws_ping_timeout=10,
         log_config=None,  # InterceptHandler가 uvicorn에 의해 덮어씌워지지 않도록 함
+        access_log=False,  # uvicorn 접속 로그 억제 — [accepted] 등 WS 핸드셰이크 로그 제거 (앱 계층에서 별도 기록)
     )

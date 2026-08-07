@@ -129,7 +129,7 @@ async def _safe_broadcast(
         try:
             await _broadcast(event_type, payload, group=group, revision=revision)
         except Exception as e:
-            logger.warning(f"[시스템] {event_type} 화면 전송 실패: {e}", exc_info=True)
+            logger.debug(f"[시스템] {event_type} 화면 전송 실패: {e}", exc_info=True)
 
 
 # ── Set 캐시 재구축 함수 ─────────────────────────────────────────────────────
@@ -291,7 +291,7 @@ async def notify_desktop_sector_scores(*, force: bool = False) -> None:
         from backend.app.pipelines.pipeline_compute import is_sector_threshold_passed
         threshold_passed = is_sector_threshold_passed()
     except Exception as e:
-        logger.warning("[시스템] 수신율 임계값 게이트 조회 실패 (전송 허용): %s", e)
+        logger.debug("[시스템] 수신율 임계값 게이트 조회 실패 (전송 허용): %s", e)
 
     if not threshold_passed:
         # 임계값 미통과: "대기 중" 상태 전송 (빈 scores + waiting 플래그)
@@ -412,7 +412,7 @@ async def notify_desktop_sector_stocks_refresh(*, force: bool = False) -> None:
             snapshot = await build_master_cache_snapshot(list(codes))
             await ws_manager.send_to(ws, "master-cache-snapshot", snapshot)
         except Exception as e:
-            logger.warning("[시스템] master-cache-snapshot 전송 실패: %s", e, exc_info=True)
+            logger.debug("[시스템] master-cache-snapshot 전송 실패: %s", e, exc_info=True)
 
     # notify_cache 갱신 (기존 호환성 — delta 기준점 유지)
     from backend.app.services.sector_data_provider import get_sector_stocks

@@ -106,7 +106,7 @@ async def _ensure_account_subscription() -> None:
         await engine_ws_reg.subscribe_account_realtime()
         logger.info("[구독] 실전모드 — 계좌(그룹 10) 구독 보장")
     except Exception as e:
-        logger.warning("[구독] 계좌 구독 보장 실패: %s", e, exc_info=True)
+        logger.debug("[구독] 계좌 구독 보장 실패: %s", e, exc_info=True)
 
 
 # ---------------------------------------------------------------------------
@@ -136,7 +136,7 @@ async def start_quote() -> dict:
             logger.info("[구독] 실시간시세(0B, 그룹 4) 구독 시작")
             return {"ok": True, "status": get_subscribe_status()}
         except Exception as e:
-            logger.warning("[구독] 실시간시세 구독 시작 실패: %s", e, exc_info=True)
+            logger.debug("[구독] 실시간시세 구독 시작 실패: %s", e, exc_info=True)
             return {"ok": False, "message": str(e)}
 
 
@@ -181,7 +181,7 @@ async def run_conditional_reg_pipeline() -> None:
             _set_status(quote=True)
             logger.info("[구독] 실시간시세(0B) 자동 구독")
         except Exception as e:
-            logger.warning("[구독] 실시간시세 자동 구독 실패: %s", e, exc_info=True)
+            logger.debug("[구독] 실시간시세 자동 구독 실패: %s", e, exc_info=True)
 
         try:
             index_ok = await engine_ws_reg.subscribe_index_realtime()
@@ -189,7 +189,7 @@ async def run_conditional_reg_pipeline() -> None:
                 _set_status(index=True)
                 logger.info("[구독] 업종지수(0J) 자동 구독")
         except Exception as e:
-            logger.warning("[구독] 업종지수 자동 구독 실패: %s", e, exc_info=True)
+            logger.debug("[구독] 업종지수 자동 구독 실패: %s", e, exc_info=True)
 
         # 실전모드에서 구독 시작했으면 계좌 구독 보장
         await _ensure_account_subscription()

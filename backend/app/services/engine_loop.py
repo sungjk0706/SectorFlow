@@ -29,8 +29,10 @@ async def _establish_realtime_connection() -> None:
     토큰 회복 루프에서도 호출 — 회복 성공 시 구간 내면 즉시 연결 맺기.
     """
     if not engine_state.state.access_token:
+        logger.debug("[연결] 토큰 미확보 — 실시간 연결 스킵")
         return
     if engine_state.state.connector_manager is not None:
+        logger.debug("[연결] 커넥터 이미 존재 — 연결 시도 스킵")
         return  # 이미 연결됨 — 중복 연결 방지
     # 시간 구간 판정 — 사용자 설정 기반 (07:58~20:40), 비거래일/공휴일 자동 차단
     from backend.app.services.daily_time_scheduler import is_realtime_reset_window
@@ -237,7 +239,7 @@ async def _get_all_tokens_async(router) -> None:
                 return broker_id, token, None
             return broker_id, None, "transient"
         except Exception as e:
-            logger.warning("[연결] %s 토큰 발급 실패: %s", BROKER_DISPLAY_NAMES.get(broker_id, broker_id.upper()), e, exc_info=True)
+            logger.debug("[연결] %s 토큰 발급 실패: %s", BROKER_DISPLAY_NAMES.get(broker_id, broker_id.upper()), e, exc_info=True)
             return broker_id, None, "transient"
 
     results = await asyncio.gather(
