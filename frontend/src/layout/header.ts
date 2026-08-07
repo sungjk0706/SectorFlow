@@ -569,14 +569,14 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
         autoSellChip.style.display = ''
         teleChip.style.display = ''
         // 자동매매 칩: 마스터 ON + 거래일 + NXT 시간 창 내 → "자동매매" 녹색.
-        // 마스터 ON + 휴장일 또는 NXT 시간 창 외 → "대기중" 회색 (거래일 오면 자동 재개).
+        // 마스터 ON + 휴장일 또는 NXT 시간 창 외 → "매매대기" 회색 (거래일 오면 자동 재개).
         // 마스터 OFF → "자동매매" 회색 (사용자가 직접 끈 상태 — 수동으로 다시 켜야 함).
         // 휴장일 판단은 marketPhase SSOT 사용, NXT 시간 창은 사용자 설정값 사용 (P10 SSOT, P21 투명성).
         const isHoliday = marketPhase.krx === '휴장일' || marketPhase.nxt === '휴장일'
         const isMasterOn = !!settings.time_scheduler_on
         const inNxtWindow = !isHoliday && isInNxtTradeWindow(settings)
         if (isMasterOn) {
-          applyStatusChip(autoTradeChip, inNxtWindow ? '자동매매' : '대기중', inNxtWindow)
+          applyStatusChip(autoTradeChip, inNxtWindow ? '자동매매' : '매매대기', inNxtWindow)
         } else {
           applyStatusChip(autoTradeChip, '자동매매', false)
         }
