@@ -19,9 +19,7 @@ if TYPE_CHECKING:
 from backend.app.services.engine_symbol_utils import (
     _base_stk_cd,
     is_nxt_enabled,
-    get_ws_subscribe_code,
 )
-from backend.app.core.kiwoom_ws_reg import build_0b_remove_payloads
 from backend.app.core.trading_calendar import (
     get_current_trading_day_str,
     get_previous_trading_day_str,
@@ -126,10 +124,12 @@ def _get_krx_only_codes() -> list[str]:
 async def remove_krx_only_stocks() -> dict:
     """KRX 단독 종목(nxt_enable=False)만 선택적 REMOVE.
 
+    연결 관리자의 증권사별 라우팅에 위임하여 각 증권사 규격으로 해지 메시지 전송.
+    정상 종료 경로(disconnect_all)와 동일한 구조 (P23 일관성).
+
     Returns:
         {"removed": int, "failed": int, "skipped": bool}
     """
-    # 0B REMOVE 페이로드 전송 — 증권사별 ACK 지원 여부로 분기
     ws = engine_state.state.connector_manager
     if not ws or not ws.is_connected():
         logger.warning("[스케줄] KRX 장마감 구독해지 생략 — 실시간 미연결")
@@ -140,64 +140,31 @@ async def remove_krx_only_stocks() -> dict:
         logger.info("[스케줄] KRX 장마감 구독해지 대상 없음")
         return {"removed": 0, "failed": 0, "skipped": False}
 
-    # 종목코드를 실시간 통신 구독 형식으로 변환하여 페이로드 생성
-    ws_codes = [get_ws_subscribe_code(cd) for cd in krx_codes]
-    payloads = build_0b_remove_payloads(ws_codes)
+    # 원본 6자리 코드 그대로 전달 — 각 커넥터가 자사 규격으로 변환 (P10 SSOT).
+    # 장마감 경로에서 변환하면 연결 관리자 _sub_codes 매칭 실패 → 해지 누락 발생.
+    try:
+        ok = await ws.unsubscribe_stocks(krx_codes)
+    except Exception as exc:
+        logger.warning(
+            "[스케줄] KRX 장마감 구독해지 오류: %s", exc, exc_info=True,
+        )
+        return {"removed": 0, "failed": len(krx_codes), "skipped": False}
 
-    if not payloads:
-        return {"removed": 0, "failed": 0, "skipped": False}
-
-    removed = 0
-    failed = 0
-    chunk_size = 100
-
-    # 증권사별 ACK 지원 여부 확인
-    supports_ack = ws.supports_ack() if hasattr(ws, 'supports_ack') else True
-
-    for ci, payload in enumerate(payloads):
-        chunk = krx_codes[ci * chunk_size : (ci + 1) * chunk_size]
-        try:
-            if supports_ack:
-                # ACK 지원 증권사 (키움): ACK 대기
-                from backend.app.services.engine_ws import _ws_send_reg_unreg_and_wait_ack
-                ack_ok, rc = await _ws_send_reg_unreg_and_wait_ack(payload, sender=ws)
-            else:
-                # ACK 미지원 증권사 (LS): 즉시 전송 (응답 대기 없음)
-                from backend.app.services.engine_ws import _ws_send_remove_fire_and_forget
-                ack_ok = await _ws_send_remove_fire_and_forget(payload, sender=ws)
-                rc = ""
-        except Exception as exc:
-            logger.warning(
-                "[스케줄] KRX 장마감 구독해지 %d/%d 오류: %s",
-                ci + 1, len(payloads), exc,
-                exc_info=True,
-            )
-            failed += len(chunk)
-            continue
-
-        if ack_ok:
-            # 성공 — 전종목 마스터 캐시에서 "_subscribed" 제거
-            for cd in chunk:
-                if cd in engine_state.state.master_stocks_cache:
-                    engine_state.state.master_stocks_cache[cd].pop("_subscribed", None)
-            removed += len(chunk)
-            if supports_ack:
-                logger.info(
-                    "[스케줄] KRX 장마감 구독해지 %d/%d 완료 — %d종목 (rc=%s)",
-                    ci + 1, len(payloads), len(chunk), rc,
-                )
-            else:
-                logger.info(
-                    "[스케줄] KRX 장마감 구독해지 %d/%d 완료 — %d종목 (ACK 미지원)",
-                    ci + 1, len(payloads), len(chunk),
-                )
-        else:
-            # 실패 — 전종목 마스터 캐시의 "_subscribed" 유지 + 경고
-            failed += len(chunk)
-            logger.warning(
-                "[스케줄] KRX 장마감 구독해지 %d/%d 실패 — %d종목 유지",
-                ci + 1, len(payloads), len(chunk),
-            )
+    if ok:
+        # 성공 — 전종목 마스터 캐시에서 "_subscribed" 제거
+        # (연결 관리자는 _sub_codes만 제거하므로 장마감 경로에서 별도 수행)
+        for cd in krx_codes:
+            if cd in engine_state.state.master_stocks_cache:
+                engine_state.state.master_stocks_cache[cd].pop("_subscribed", None)
+        removed = len(krx_codes)
+        failed = 0
+    else:
+        # 실패 — 전종목 마스터 캐시의 "_subscribed" 유지
+        removed = 0
+        failed = len(krx_codes)
+        logger.warning(
+            "[스케줄] KRX 장마감 구독해지 실패 — %d종목 유지", len(krx_codes),
+        )
 
     logger.info(
         "[스케줄] KRX 장마감 구독해지 완료 — 해지 %d종목, 실패 %d종목",

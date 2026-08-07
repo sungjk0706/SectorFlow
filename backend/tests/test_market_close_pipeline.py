@@ -188,80 +188,73 @@ class TestRemoveKrxOnlyStocks:
             assert result == {"removed": 0, "failed": 0, "skipped": False}
 
     @pytest.mark.asyncio
-    async def test_remove_with_ack_success(self):
+    async def test_remove_success_clears_subscribed(self):
+        """연결 관리자 위임 성공 시 _subscribed 제거 + removed 집계."""
         mock_ws = MagicMock()
         mock_ws.is_connected.return_value = True
-        mock_ws.supports_ack.return_value = True
+        mock_ws.unsubscribe_stocks = AsyncMock(return_value=True)
         mock_state = _mock_state(connector_manager=mock_ws)
         mock_state.master_stocks_cache = {"005930": {"_subscribed": True}}
         with patch("backend.app.services.engine_state.state", mock_state), \
-             patch("backend.app.services.market_close_pipeline._get_krx_only_codes", return_value=["005930"]), \
-             patch("backend.app.services.market_close_pipeline.get_ws_subscribe_code", side_effect=lambda x: x), \
-             patch("backend.app.services.market_close_pipeline.build_0b_remove_payloads", return_value=[{"test": True}]), \
-             patch("backend.app.services.engine_ws._ws_send_reg_unreg_and_wait_ack", new_callable=AsyncMock, return_value=(True, "")):
+             patch("backend.app.services.market_close_pipeline._get_krx_only_codes", return_value=["005930"]):
             result = await remove_krx_only_stocks()
             assert result["removed"] == 1
             assert result["failed"] == 0
             assert result["skipped"] is False
+            # 원본 6자리 코드 그대로 전달 (변환은 각 커넥터 담당)
+            mock_ws.unsubscribe_stocks.assert_awaited_once_with(["005930"])
+            # _subscribed 제거 확인
+            assert "_subscribed" not in mock_state.master_stocks_cache["005930"]
 
     @pytest.mark.asyncio
-    async def test_remove_without_ack_success(self):
+    async def test_remove_failure_keeps_subscribed(self):
+        """연결 관리자 위임 실패 시 _subscribed 유지 + failed 집계."""
         mock_ws = MagicMock()
         mock_ws.is_connected.return_value = True
-        mock_ws.supports_ack.return_value = False
+        mock_ws.unsubscribe_stocks = AsyncMock(return_value=False)
         mock_state = _mock_state(connector_manager=mock_ws)
         mock_state.master_stocks_cache = {"005930": {"_subscribed": True}}
         with patch("backend.app.services.engine_state.state", mock_state), \
-             patch("backend.app.services.market_close_pipeline._get_krx_only_codes", return_value=["005930"]), \
-             patch("backend.app.services.market_close_pipeline.get_ws_subscribe_code", side_effect=lambda x: x), \
-             patch("backend.app.services.market_close_pipeline.build_0b_remove_payloads", return_value=[{"test": True}]), \
-             patch("backend.app.services.engine_ws._ws_send_remove_fire_and_forget", new_callable=AsyncMock, return_value=True):
-            result = await remove_krx_only_stocks()
-            assert result["removed"] == 1
-            assert result["failed"] == 0
-
-    @pytest.mark.asyncio
-    async def test_remove_failure_counts_failed(self):
-        mock_ws = MagicMock()
-        mock_ws.is_connected.return_value = True
-        mock_ws.supports_ack.return_value = True
-        mock_state = _mock_state(connector_manager=mock_ws)
-        mock_state.master_stocks_cache = {"005930": {"_subscribed": True}}
-        with patch("backend.app.services.engine_state.state", mock_state), \
-             patch("backend.app.services.market_close_pipeline._get_krx_only_codes", return_value=["005930"]), \
-             patch("backend.app.services.market_close_pipeline.get_ws_subscribe_code", side_effect=lambda x: x), \
-             patch("backend.app.services.market_close_pipeline.build_0b_remove_payloads", return_value=[{"test": True}]), \
-             patch("backend.app.services.engine_ws._ws_send_reg_unreg_and_wait_ack", new_callable=AsyncMock, return_value=(False, "ERR")):
+             patch("backend.app.services.market_close_pipeline._get_krx_only_codes", return_value=["005930"]):
             result = await remove_krx_only_stocks()
             assert result["removed"] == 0
             assert result["failed"] == 1
+            # _subscribed 유지 확인
+            assert mock_state.master_stocks_cache["005930"].get("_subscribed") is True
 
     @pytest.mark.asyncio
     async def test_remove_exception_counts_failed(self):
+        """연결 관리자 예외 시 failed 집계 + _subscribed 유지."""
         mock_ws = MagicMock()
         mock_ws.is_connected.return_value = True
-        mock_ws.supports_ack.return_value = True
+        mock_ws.unsubscribe_stocks = AsyncMock(side_effect=Exception("boom"))
         mock_state = _mock_state(connector_manager=mock_ws)
         mock_state.master_stocks_cache = {"005930": {"_subscribed": True}}
         with patch("backend.app.services.engine_state.state", mock_state), \
-             patch("backend.app.services.market_close_pipeline._get_krx_only_codes", return_value=["005930"]), \
-             patch("backend.app.services.market_close_pipeline.get_ws_subscribe_code", side_effect=lambda x: x), \
-             patch("backend.app.services.market_close_pipeline.build_0b_remove_payloads", return_value=[{"test": True}]), \
-             patch("backend.app.services.engine_ws._ws_send_reg_unreg_and_wait_ack", new_callable=AsyncMock, side_effect=Exception("boom")):
+             patch("backend.app.services.market_close_pipeline._get_krx_only_codes", return_value=["005930"]):
             result = await remove_krx_only_stocks()
+            assert result["removed"] == 0
             assert result["failed"] == 1
+            assert mock_state.master_stocks_cache["005930"].get("_subscribed") is True
 
     @pytest.mark.asyncio
-    async def test_no_payloads_returns_empty(self):
+    async def test_remove_passes_original_codes_untransformed(self):
+        """원본 6자리 코드를 변환 없이 연결 관리자에 전달 (각 커넥터가 자사 규격으로 변환)."""
         mock_ws = MagicMock()
         mock_ws.is_connected.return_value = True
+        mock_ws.unsubscribe_stocks = AsyncMock(return_value=True)
         mock_state = _mock_state(connector_manager=mock_ws)
+        mock_state.master_stocks_cache = {
+            "005930": {"_subscribed": True},
+            "000660": {"_subscribed": True},
+        }
         with patch("backend.app.services.engine_state.state", mock_state), \
-             patch("backend.app.services.market_close_pipeline._get_krx_only_codes", return_value=["005930"]), \
-             patch("backend.app.services.market_close_pipeline.get_ws_subscribe_code", side_effect=lambda x: x), \
-             patch("backend.app.services.market_close_pipeline.build_0b_remove_payloads", return_value=[]):
+             patch("backend.app.services.market_close_pipeline._get_krx_only_codes", return_value=["005930", "000660"]):
             result = await remove_krx_only_stocks()
-            assert result == {"removed": 0, "failed": 0, "skipped": False}
+            assert result["removed"] == 2
+            mock_ws.unsubscribe_stocks.assert_awaited_once_with(["005930", "000660"])
+            assert "_subscribed" not in mock_state.master_stocks_cache["005930"]
+            assert "_subscribed" not in mock_state.master_stocks_cache["000660"]
 
 
 # ── execute_unified_rolling_and_save ──────────────────────────────────────────
