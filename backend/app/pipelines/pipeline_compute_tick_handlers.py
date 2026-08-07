@@ -175,29 +175,6 @@ async def _apply_01_price_to_positions(
     return _price_hit
 
 
-async def _check_01_auto_sell(nk_px: str, price_hit: bool) -> None:
-    """자동매도 조건 체크 — 보유종목 가격 갱신 시 매도 조건 평가."""
-    if not price_hit:
-        return
-    import backend.app.pipelines.pipeline_compute as _pc
-    from backend.app.core.trade_mode import is_test_mode
-    from backend.app.services import dry_run
-    from backend.app.services.auto_trading_effective import auto_sell_effective
-    from backend.app.services.engine_symbol_utils import _base_stk_cd
-
-    state = _pc.state
-    if not (state.auto_trade and auto_sell_effective(state.integrated_system_settings_cache) and state.access_token):
-        return
-    if is_test_mode(state.integrated_system_settings_cache):
-        _pos = await dry_run.get_position(nk_px)
-        if _pos:
-            await state.auto_trade.check_sell_conditions([_pos], state.integrated_system_settings_cache, state.access_token)
-    else:
-        _matched = [p for p in state.positions if _base_stk_cd(str(p.get("stk_cd", "") or "")) == nk_px]
-        if _matched:
-            await state.auto_trade.check_sell_conditions(_matched, state.integrated_system_settings_cache, state.access_token)
-
-
 async def _handle_real_01_tick(
     item: dict,
     vals: dict,
@@ -253,8 +230,16 @@ async def _handle_real_01_tick(
         rate = parse_change_rate_to_percent(_raw12) if _raw12 is not None and str(_raw12).strip() else None
         _price_hit = await _apply_01_price_to_positions(nk_px, raw_cd, last_px, diff, rate)
 
-        # ── 4. 자동매도 조건 체크 ──
-        await _check_01_auto_sell(nk_px, _price_hit)
+        # ── 4. 자동매도 조건 검사 요청 → 주문 실행 큐로 이동 (결정 3) ──
+        # 시세 처리 루프가 매도 주문·가상 체결(0.5초)에 블록되지 않도록
+        # 매도 조건 검사는 주문 실행 루프가 큐에서 꺼내 처리 (W1·W2)
+        if _price_hit:
+            from backend.app.services.core_queues import get_order_queue
+            try:
+                get_order_queue().put_nowait({"type": "sell_check", "codes": [nk_px]})
+            except asyncio.QueueFull:
+                # W1 무한 쌓기 방지 — 가득 시 경고 로그 + 드롭 (W8 폴백 금지, 명시적 드롭)
+                logger.warning("[연산] 주문 큐 가득 참 — 매도 조건 검사 요청 드롭 (종목코드=%s)", nk_px)
 
         # ── 5. 지연 측정 ──
         _check_realtime_latency(_ts)
