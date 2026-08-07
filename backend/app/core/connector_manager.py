@@ -105,7 +105,7 @@ class ConnectorManager:
         )
 
     async def _on_reconnect_success(self, broker_id: str) -> None:
-        """재연결 성공 후 구독 복원 — _master_stocks_cache의 "_subscribed" 키 기준으로 REG 재전송."""
+        """재연결 성공 후 구독 복원 — master_stocks_cache의 "_subscribed" 키 기준으로 REG 재전송."""
         logger.info("[연결] %s 재연결 성공 — 구독 복원 시작", BROKER_DISPLAY_NAMES.get(broker_id, broker_id.upper()))
         try:
             from backend.app.services import engine_ws_reg as _reg

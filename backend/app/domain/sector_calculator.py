@@ -35,7 +35,7 @@ async def compute_sector_scores(
 
     데이터 우선순위:
       현재가: trade_prices(REAL) > master_stocks_cache
-      거래대금: trade_amounts(FID29 합산 캐시) > master_stocks_cache trade_amount/acc_trde_prica
+      거래대금: trade_amounts(FID29 합산 캐시) > master_stocks_cache trade_amount
       등락률: master_stocks_cache
     """
     # dataclass import

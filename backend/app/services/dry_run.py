@@ -47,7 +47,7 @@ async def _refresh_positions_if_dirty() -> None:
     _positions_loaded = True
     from backend.app.services import trade_history
     computed = await trade_history.build_positions_from_trades("test")
-    # 비파생 필드 보존: cur_price, change, change_rate, bid_depth, ask_depth, stk_nm
+    # 비파생 필드 보존: cur_price, change, change_rate, bid_depth, ask_depth (stk_nm은 별도 처리)
     _preserve_fields = ("cur_price", "change", "change_rate", "bid_depth", "ask_depth")
     for cd, new_pos in computed.items():
         old = _test_positions.get(cd)

@@ -129,7 +129,7 @@ def encrypt_secret(plain: str) -> EncryptResult:
     - 빈 입력 → EMPTY
     - 키 상태 MISSING/INVALID → KEY_UNAVAILABLE (평문 노출 금지)
     - 암호화 성공 → ENCRYPTED + ciphertext
-    - 암호화 중 예외 → DECRYPT_FAILED (저장 계층이 차단하도록 실패 상태 전달)
+    - 암호화 중 예외 → DECRYPT_FAILED 상태 재사용 (저장 계층 차단용 실패 신호 — ENCRYPT_FAILED 별도 상태 없이 실패 전달)
     """
     if not plain or not plain.strip():
         return EncryptResult(state=SecretValueState.EMPTY)

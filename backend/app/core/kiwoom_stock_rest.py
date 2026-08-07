@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-개별종목시세 REST API — ka10086(일별주가).
+개별종목시세 REST API — ka10081(일별주가).
 
-- ka10086: 장마감 후 확정 종가·등락률·거래대금 조회 (종목별 개별 POST)
+- ka10081: 장마감 후 확정 종가·등락률·거래대금 조회 (종목별 개별 POST)
 - 실시간: 엔진 WebSocket REG·REAL(REST 반복 폴링 아님).
 """
 from __future__ import annotations

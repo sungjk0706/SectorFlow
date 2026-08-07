@@ -332,7 +332,7 @@ def _set_sector_summary(summary: "SectorSummary | None", source: str) -> None:
     참조 교체 방식(R5.6)을 유지한다.
 
     호출부 (운영 7곳):
-      - ``engine_lifecycle.reset_for_restart`` — 재기동 시 리셋
+      - ``engine_lifecycle.reset_broker_session_state`` — 재기동 시 리셋
       - ``daily_time_scheduler._on_pre_ws_subscribe`` — 07:58 사전 리셋
       - ``daily_time_scheduler._on_ws_subscribe_start`` — 구독 구간 내 시작 리셋
       - ``engine_initial_data._reset_realtime_fields`` — WS 구독 시작 시 리셋

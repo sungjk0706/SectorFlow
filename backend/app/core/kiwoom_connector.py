@@ -60,7 +60,7 @@ class _KiwoomSocket:
         self._recv_task = asyncio.get_running_loop().create_task(self._recv_loop())
 
     async def disconnect(self) -> None:
-        """수신루프/워커 취소 + 소켓 종료 (최대 30초)."""
+        """수신루프/워커 취소 + 소켓 종료 (최대 5초)."""
         self._stop_event.set()
         self.connected = False
         if self._recv_task and not self._recv_task.done():

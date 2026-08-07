@@ -31,7 +31,7 @@ let currentMaxScore = 1
 let currentMaxTargets = DEFAULT_SECTOR_MAX_TARGETS
 // 현재 선택 업종 (rowStyle 클로저가 참조)
 let currentSelected: string | null = null
-// 순위 변동 감지 도구 — 우측 패널(sector-stock.ts)과 같은 도구 공유 (W11 표현 통일 · W12 중복 제거)
+// 순위 변동 감지 도구 — 우측 패널(sector-stock-table Web Component)과 같은 도구 공유 (W11 표현 통일 · W12 중복 제거)
 let rankDetector: RankChangeDetector | null = null
 
 // 수신 대기 중 메시지 요소 (P21 투명성 — 임계값 미통과 시 표시)

@@ -210,7 +210,7 @@ function renderAvgAmtChip(chip: HTMLSpanElement, p: AvgAmtProgress): void {
   const eta = etaSec > 0 ? ` · 약 ${sec >= 60 ? `${Math.floor(sec / 60)}분 ${sec % 60}초` : `${sec}초`} 남음` : ''
   const finalMsg = msg + eta
 
-  // 로딩 중이거나 다운로드 중일 때는 프로그레스 바 적용
+  // 로딩 중이거나 다운로드 중, 상태 미확정(status 빈 문자열)일 때 프로그레스 바 적용
   if (['downloading', 'confirmed', 'partial'].includes(status) || status === '') {
     const fillColor = r.color + '30'
     chip.innerHTML = `

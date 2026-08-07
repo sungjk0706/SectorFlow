@@ -131,7 +131,7 @@ class BrokerRouter:
 
         검증 항목:
         1. 각 증권사의 자격증명 상태 확인 (B21-01 세션 5 — 복호화 상태 기반)
-        2. 주문-계좌 동일 증권사 경고
+        2. 동일 증권사 강제 쌍 검증 (현재 MUST_SAME_BROKER_PAIRS 빈 리스트 — 비활성)
         3. 미지원 증권사/기능 조합 (이미 _build에서 ValueError)
         """
         from backend.app.core.engine_settings import broker_credential_block_reason

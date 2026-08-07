@@ -80,7 +80,7 @@ export function destroyOrderRatioCells(): void {
   high5dCellMap.clear()
 }
 
-/* ── ColumnDef 배열 (12개 컬럼) ── */
+/* ── ColumnDef 배열 (13개 컬럼) ── */
 export const COLUMNS: ColumnDef<StockScore>[] = [
   { key: 'seq', label: '순번', align: 'center', type: 'seq', render: (_t, idx) => createSeqCell(idx + 1) },
   makeCodeColumn<StockScore>((t) => t.code),

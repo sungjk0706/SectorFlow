@@ -9,7 +9,7 @@ router = APIRouter(prefix="/api/ws-subscribe", tags=["ws-subscribe"])
 
 
 class SubscribeGroup(str, Enum):
-    sector = "sector"       # 하위 호환: industry 동시 제어
+    sector = "sector"       # sector와 industry 별도 제어
     industry = "industry"   # grp 5 (0U)
     quote = "quote"         # grp 4 (0B)
 

@@ -15,7 +15,7 @@ router = APIRouter(prefix="/api/ws", tags=["websocket"])
 @router.websocket("/settings")
 async def ws_settings(websocket: WebSocket, token: str = Query(...)):
     """설정/진행률 전용 WebSocket 엔드포인트."""
-    # TODO: 개발 완료 후 토큰 검증 재활성화
+    # 토큰 검증 비활성화 — 로컬 단일 사용자 환경에서 의도적 비활성화
     username = "dev"
 
     await websocket.accept()

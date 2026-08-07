@@ -273,7 +273,6 @@ async def restore_subscriptions_after_reconnect(broker_id: str) -> None:
     지수(0J)와 계좌(00/04) 구독도 함께 복원한다.
 
     Args:
-        es: engine_service 모듈 참조
         broker_id: 재연결된 증권사 ID
     """
     if not engine_state.state.login_ok:

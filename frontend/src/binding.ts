@@ -60,7 +60,7 @@ import { applyStockClassificationChanged } from './stores/stockClassificationSto
 import { showToast } from './components/common/toast'
 
 /**
- * WS 18개+ 이벤트 타입을 Store 액션에 바인딩한다.
+ * WS 36개 이벤트 핸들러를 Store 액션에 바인딩한다.
  * 채널 분리: prices(시세), settings(설정/진행률), orders(체결)
  * main.ts에서 앱 초기화 시 1회 호출.
  */

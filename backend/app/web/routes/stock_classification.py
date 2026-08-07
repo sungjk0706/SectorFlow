@@ -1,14 +1,17 @@
 # -*- coding: utf-8 -*-
 """업종분류 커스텀 REST API 라우터.
 
-8개 엔드포인트:
+10개 엔드포인트:
   GET  /api/stock-classification            — Merged_View 전체 조회
+  GET  /api/stock-classification/all-stocks — 전체 종목 조회
   POST /api/stock-classification/rename     — 업종명 변경
   POST /api/stock-classification/create     — 신규 업종 등록
   POST /api/stock-classification/delete     — 업종 삭제
   POST /api/stock-classification/move-stock — 종목 이동 (단건)
   POST /api/stock-classification/move-stocks — 종목 이동 (배치)
-  POST /api/stock-classification/delete-cache — 캐시 삭제
+  POST /api/stock-classification/trigger-confirmed-download — 확정시세 다운로드 트리거
+  POST /api/stock-classification/trigger-5d-download — 5일봉 다운로드 트리거
+  GET  /api/stock-classification/download-data-exists — 다운로드 데이터 존재 여부
 """
 from __future__ import annotations
 import asyncio
@@ -62,7 +65,7 @@ class MoveStocksRequest(BaseModel):
 async def broadcast_stock_classification_changed() -> None:
     """stock-classification-changed WS 이벤트 브로드캐스트.
 
-    메모리 캐시(_master_stocks_cache)에서 데이터를 조회하여 실시간 데이터 전송.
+    get_all_sector_stocks() SSOT 함수로 데이터를 조회하여 실시간 데이터 전송.
     """
     from backend.app.core.sector_mapping import get_merged_all_sectors
     from backend.app.web.ws_manager import ws_manager

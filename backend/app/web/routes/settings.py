@@ -175,13 +175,13 @@ async def reset_test_data(_: str = Depends(get_current_user)):
             settings.get("test_virtual_deposit", default_deposit) or default_deposit
         )
 
-        # 1~5. 테스트 매매 이력·가상 보유종목·예수금·정산엔진 초기화 + 이력 브로드캐스트
+        # 1. 테스트 매매 이력·가상 보유종목·예수금·정산엔진 초기화 + 이력 브로드캐스트
         await _reset_test_trades_and_deposit(default_deposit)
-        # 7. 보유종목 메모리 리스트 및 캐시 초기화 + 계좌 스냅샷 갱신 + WS account-update 발송
+        # 2. 보유종목 메모리 리스트 및 캐시 초기화 + 계좌 스냅샷 갱신 + WS account-update 발송
         await _reset_positions_and_account()
-        # 8. 일일매수 누적 상태·쿨다운·buy_targets 리셋 + WS buy-limit-status 발송
+        # 3. 일일매수 누적 상태·쿨다운·buy_targets 리셋 + WS buy-limit-status 발송
         await _reset_buy_state_and_broadcast()
-        # 10. 통합 초기화 완료 신호 (모든 클라이언트 일괄 동기화)
+        # 4. 통합 초기화 완료 신호 (모든 클라이언트 일괄 동기화)
         from backend.app.services.engine_account_notify import _broadcast
         await _broadcast("test-data-reset-completed", {"_v": 1})
 

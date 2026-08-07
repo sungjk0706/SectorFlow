@@ -167,7 +167,7 @@ async def _apply_virtual_balance_change(changed_keys: set[str]) -> None:
 
 
 async def _apply_time_schedule_change(changed_keys: set[str]) -> None:
-    """자동매매 시간 관련 설정 변경 시 타이머 재예약 + Connector 플래그 동기화."""
+    """자동매매 시간 관련 설정 변경 시 타이머 재예약."""
     _TIME_SCHEDULE_KEYS = {
         "time_scheduler_on", "auto_buy_on", "auto_sell_on",
         "buy_time_start", "buy_time_end", "sell_time_start", "sell_time_end",

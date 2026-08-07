@@ -1,7 +1,5 @@
 // frontend/src/pages/sell-position.ts
-// 보유종목 페이지 — 매수후보 코드 기반 최종본
-
-// frontend/src/pages/sell-position.ts
+// 보유종목(매도 포지션) 페이지
 
 import { createDataTable, type DataTableApi, type ColumnDef } from '../components/common/data-table'
 import { fixedTableOptions } from '../components/common/table-options'

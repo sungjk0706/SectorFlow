@@ -1,5 +1,5 @@
 // frontend/src/layout/shell.ts
-// 앱 전체 레이아웃 셸 — 100vh flex column: 헤더(40px) + 본문(사이드바 120px + 콘텐츠)
+// 앱 전체 레이아웃 셸 — 100vh flex column: 헤더(52px) + 본문(사이드바 120px + 콘텐츠)
 
 import { createHeader } from './header'
 import { createSidebar } from './sidebar'
