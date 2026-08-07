@@ -115,7 +115,7 @@ function _updateStatusLabel(
 // header.ts PHASE_STYLE의 "거래 가능(초록)" 그룹 중 "정규장 모드"에 해당하는 phase만 포함.
 // 시간외/NXT 전용 phase('장전 시간외', '장후 시간외', '프리마켓', '애프터마켓',
 // '시간외 종가매매 종료 + 시간외 단일가매매 개시')는 is_nxt_only 플래그로 우선 분리되므로 제외.
-// ⚠️ 동기화 주의: header.ts PHASE_STYLE에 신규 "정규장 모드" phase 추가 시 본 집합도 갱신 필요 (P10/P23).
+// 동기화 주의: header.ts PHASE_STYLE에 신규 "정규장 모드" phase 추가 시 본 집합도 갱신 필요 (P10/P23).
 const REGULAR_PHASES = new Set(['정규장', '시가 동시호가', '종가 동시호가', '메인마켓'])
 
 // 시간대별 KRX/NXT 수신률 바 표시/숨김 (P21 투명성 — 3상태: NXT 전용/정규장/그 외)
@@ -188,7 +188,7 @@ function createBonusSliderBlock(key: string, label: string | string[], infoText:
     rightColorLight: COLOR.upLight,
     onChange: v => { const orig = currentVals[key]; input.setValue(v); onNumChange(key, v, () => { currentVals[key] = orig; input.setValue(orig); slider?.setValue(orig); _updateMaxScoreDisplay() }); _updateMaxScoreDisplay() },
   })
-  // Row 1: 라벨(좌) + ⓘ + 숫자 입력란(우) — 우측 고정폭으로 아이콘/입력란 정렬 통일
+  // Row 1: 라벨(좌) + 정보 툴팁 + 숫자 입력란(우) — 우측 고정폭으로 아이콘/입력란 정렬 통일
   const labelRow = document.createElement('div')
   Object.assign(labelRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: ROW_PADDING.plain })
   const labelSpan = document.createElement('span')

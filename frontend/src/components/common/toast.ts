@@ -1,5 +1,6 @@
 // frontend/src/components/common/toast.ts — 공통 토스트 알림 시스템
 import { COLOR, hexToRgba, RADIUS, SHADOW, BLUR } from './ui-styles'
+import { createIcon, type IconName } from './icon'
 
 type ToastType = 'success' | 'error' | 'warning' | 'info'
 
@@ -23,25 +24,25 @@ const TYPE_CONFIG = {
     bg: hexToRgba(COLOR.successBg, 0.95),
     color: `${COLOR.success}`,
     border: hexToRgba(COLOR.success, 0.25),
-    icon: '✓'
+    icon: 'check' as IconName
   },
   error: {
     bg: hexToRgba(COLOR.upBg, 0.95),
     color: `${COLOR.up}`,
     border: hexToRgba(COLOR.up, 0.25),
-    icon: '✗'
+    icon: 'x' as IconName
   },
   warning: {
     bg: hexToRgba(COLOR.warningBg, 0.95),
     color: `${COLOR.warning}`,
     border: hexToRgba(COLOR.warning, 0.25),
-    icon: '⚠'
+    icon: 'alert-triangle' as IconName
   },
   info: {
     bg: hexToRgba(COLOR.downBg, 0.95),
     color: `${COLOR.down}`,
     border: hexToRgba(COLOR.down, 0.25),
-    icon: 'ℹ'
+    icon: 'info' as IconName
   }
 } as const
 
@@ -93,10 +94,10 @@ function addToast(t: Toast, duration?: number) {
     height: '18px',
     borderRadius: '50%',
     background: `${cfg.color}15`,
-    fontSize: '11px',
-    fontWeight: 'bold',
+    flexShrink: '0',
   })
-  iconSpan.textContent = cfg.icon
+  const iconEl = createIcon(cfg.icon, { size: 13, color: cfg.color })
+  iconSpan.appendChild(iconEl)
   div.appendChild(iconSpan)
 
   // 텍스트 영역

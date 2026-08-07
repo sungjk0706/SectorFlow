@@ -1,6 +1,7 @@
 // 공통 검색 입력 컴포넌트 — 이벤트 기반, 디바운스 없음 (워크룰 준수)
 
 import { COLOR, FONT_SIZE, FONT_WEIGHT, RADIUS } from './ui-styles'
+import { createIcon } from './icon'
 
 interface SearchInputOptions {
   placeholder?: string
@@ -62,7 +63,7 @@ export function createSearchInput(options: SearchInputOptions): {
     input.style.boxShadow = ''
   })
 
-  // 🔍 아이콘 (compact 모드에서는 미사용)
+  // 검색 아이콘 (compact 모드에서는 미사용)
   let icon: HTMLSpanElement | null = null
   if (!compact) {
     icon = document.createElement('span')
@@ -71,11 +72,12 @@ export function createSearchInput(options: SearchInputOptions): {
       left: '6px',
       top: '50%',
       transform: 'translateY(-50%)',
-      fontSize: '13px',
+      display: 'inline-flex',
+      alignItems: 'center',
       color: COLOR.disabled,
       pointerEvents: 'none',
     })
-    icon.textContent = '🔍'
+    icon.appendChild(createIcon('search', { size: 13, color: COLOR.disabled }))
   }
 
   // ✕ 클리어 버튼 (compact 모드에서는 미사용)
@@ -87,14 +89,14 @@ export function createSearchInput(options: SearchInputOptions): {
       right: '6px',
       top: '50%',
       transform: 'translateY(-50%)',
-      fontSize: '14px',
+      display: 'none',
+      alignItems: 'center',
       color: COLOR.disabled,
       cursor: 'pointer',
-      display: 'none',
       lineHeight: '1',
       userSelect: 'none',
     })
-    clearBtn.textContent = '✕'
+    clearBtn.appendChild(createIcon('x', { size: 14, color: COLOR.disabled }))
     clearBtn.addEventListener('click', () => {
       input.value = ''
       clearBtn!.style.display = 'none'
@@ -110,7 +112,7 @@ export function createSearchInput(options: SearchInputOptions): {
   // input 이벤트 — 즉시 콜백 (디바운스 없음) + 클리어 버튼 표시 토글
   input.addEventListener('input', () => {
     const val = input.value.trim()
-    if (clearBtn) clearBtn.style.display = val ? '' : 'none'
+    if (clearBtn) clearBtn.style.display = val ? 'inline-flex' : 'none'
     onSearch(val)
   })
 

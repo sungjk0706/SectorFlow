@@ -13,6 +13,7 @@ import { createElement } from 'lucide'
 import {
   BarChart3, Wallet, TrendingDown, TrendingUp, ClipboardList,
   Tag, Search, Settings, Newspaper, Activity, Package, Pin,
+  Check, X, TriangleAlert, Info, Download, CircleCheck, CircleX, Trash2,
 } from 'lucide'
 import type { IconNode } from 'lucide'
 
@@ -29,6 +30,14 @@ const ICON_MAP = {
   'activity': Activity,
   'package': Package,
   'pin': Pin,
+  'check': Check,
+  'x': X,
+  'alert-triangle': TriangleAlert,
+  'info': Info,
+  'download': Download,
+  'circle-check': CircleCheck,
+  'circle-x': CircleX,
+  'trash-2': Trash2,
 } as const
 
 export type IconName = keyof typeof ICON_MAP

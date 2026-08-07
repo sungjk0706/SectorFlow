@@ -7,6 +7,7 @@
 
 import { COLOR, FONT_SIZE, FONT_WEIGHT, RADIUS, ROW_PADDING, SHADOW, setDisabled } from './ui-styles'
 import { createInfoTooltip } from './info-tooltip'
+import { createIcon, type IconName } from './icon'
 import { RIGHT_WRAP_GAP, RIGHT_WRAP_MARGIN } from './setting-row'
 
 /* ── ON/OFF 토글 버튼 ──────────────────────────────────────── */
@@ -155,6 +156,8 @@ export function createSettingToggleRow(options: {
   extraDisableTargets?: HTMLElement[]
   togglePosition?: 'left' | 'right'
   rowStyle?: Partial<CSSStyleDeclaration>
+  /** 라벨 앞 아이콘 (이모지 → SVG 교체, label이 string일 때만 적용) */
+  icon?: IconName
 }): {
   el: HTMLElement
   toggle: ReturnType<typeof createToggleBtn>
@@ -182,7 +185,15 @@ export function createSettingToggleRow(options: {
   const labelLines = Array.isArray(options.label) ? options.label : [options.label]
   for (const t of labelLines) {
     const s = document.createElement('span')
-    s.textContent = t
+    if (options.icon && !Array.isArray(options.label)) {
+      s.style.display = 'inline-flex'
+      s.style.alignItems = 'center'
+      s.style.gap = '4px'
+      s.appendChild(createIcon(options.icon, { size: 13 }))
+      s.appendChild(document.createTextNode(t))
+    } else {
+      s.textContent = t
+    }
     labelBox.appendChild(s)
   }
 

@@ -24,28 +24,28 @@ describe('showToast', () => {
     const { showToast } = await import('../../src/components/common/toast')
     showToast('success', '성공')
     const container = document.getElementById('toast-container')!
-    expect(container.textContent).toContain('✓')
+    expect(container.querySelector('svg')).toBeTruthy()
   })
 
   it('renders error icon for error type', async () => {
     const { showToast } = await import('../../src/components/common/toast')
     showToast('error', '실패')
     const container = document.getElementById('toast-container')!
-    expect(container.textContent).toContain('✗')
+    expect(container.querySelector('svg')).toBeTruthy()
   })
 
   it('renders warning icon for warning type', async () => {
     const { showToast } = await import('../../src/components/common/toast')
     showToast('warning', '경고')
     const container = document.getElementById('toast-container')!
-    expect(container.textContent).toContain('⚠')
+    expect(container.querySelector('svg')).toBeTruthy()
   })
 
   it('renders info icon for info type', async () => {
     const { showToast } = await import('../../src/components/common/toast')
     showToast('info', '정보')
     const container = document.getElementById('toast-container')!
-    expect(container.textContent).toContain('ℹ')
+    expect(container.querySelector('svg')).toBeTruthy()
   })
 
   it('auto-removes toast after default duration', async () => {

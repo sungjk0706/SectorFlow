@@ -227,7 +227,8 @@ function buildBoostSection(root: HTMLElement): void {
   {
     boostNewsScoreInput = createNumInput({ value: 1.0, onChange: v => { const orig = Number(vals.boost_news_score); vals.boost_news_score = v; saveHelper!.autoSave('boost_news_score', v, () => { vals.boost_news_score = orig; boostNewsScoreInput!.setValue(orig) }) }, step: 1, min: 0, max: 100, suffix: '점', name: 'boost_news_score' })
     const r = createSettingToggleRow({
-      label: '📰 뉴스 호재',
+      label: '뉴스 호재',
+      icon: 'newspaper',
       infoText: '뉴스 호재 감지 시 매수 점수 가산. 0~100점',
       toggleOn: false,
       onToggle: next => { vals.boost_news_on = next; saveHelper!.saveImmediate({ boost_news_on: next }) },

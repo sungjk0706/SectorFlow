@@ -36,15 +36,17 @@ function buildHeaderLeft(): HTMLElement {
   Object.assign(buttonContainer.style, { display: 'flex', gap: '6px' })
 
   const btn1 = createSolidBtn({
-    label: '⬇️ 일봉차트 시세 다운로드',
+    label: '일봉차트 시세 다운로드',
     color: COLOR.success,
     hoverColor: COLOR.successHover,
+    icon: 'download',
     onClick: (e) => onTriggerConfirmedDownload(e),
   })
   const btn2 = createSolidBtn({
-    label: '⬇️ 5거래일 일봉차트 거래대금,고가 다운로드',
+    label: '5거래일 일봉차트 거래대금,고가 다운로드',
     color: COLOR.success,
     hoverColor: COLOR.successHover,
+    icon: 'download',
     onClick: (e) => onTrigger5dDownload(e),
   })
 

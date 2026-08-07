@@ -151,13 +151,13 @@ function buildApiSaveRow(state: GeneralSettingsState, fields: { key: string }[])
       if (res.ok) {
         await showAlertDialog({
           title: '저장 완료',
-          message: '✅ 저장이 완료되었습니다.',
+          message: '저장이 완료되었습니다.',
           confirmText: '확인',
         })
       } else {
         await showAlertDialog({
           title: '저장 실패',
-          message: `❌ 저장 실패: ${mapEncryptionErrorMessage(res.errorCode, res.error)}`,
+          message: `저장 실패: ${mapEncryptionErrorMessage(res.errorCode, res.error)}`,
           confirmText: '확인',
         })
       }

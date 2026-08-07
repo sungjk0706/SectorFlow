@@ -4,6 +4,7 @@
  */
 
 import { FONT_SIZE, FONT_WEIGHT, COLOR, FONT_FAMILY, RADIUS } from './ui-styles'
+import { createIcon, type IconName } from './icon'
 
 /* ── 액션 버튼 variant ── */
 
@@ -113,6 +114,8 @@ interface SolidButtonOptions {
   editControl?: boolean
   /** 호버 시 어둡게 할 컬러 (미지정 시 자동 계산 불가하므로 명시 필요) */
   hoverColor?: string
+  /** 라벨 앞 아이콘 (이모지 → SVG 교체) */
+  icon?: IconName
 }
 
 /**
@@ -127,13 +130,22 @@ export function createSolidBtn(options: SolidButtonOptions): HTMLButtonElement {
     disabled = false,
     editControl = false,
     hoverColor,
+    icon,
   } = options
 
   const btn = document.createElement('button')
   btn.type = 'button'
-  btn.textContent = label
-
   const isSm = size === 'sm'
+  if (icon) {
+    btn.style.display = 'inline-flex'
+    btn.style.alignItems = 'center'
+    btn.style.gap = '4px'
+    btn.appendChild(createIcon(icon, { size: isSm ? 12 : 13, color: COLOR.white }))
+    btn.appendChild(document.createTextNode(label))
+  } else {
+    btn.textContent = label
+  }
+
   const padding = isSm ? '4px 10px' : '6px 12px'
   const fontSize = isSm ? FONT_SIZE.small : FONT_SIZE.label
 

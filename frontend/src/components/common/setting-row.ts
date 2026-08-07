@@ -27,7 +27,7 @@ const SUFFIX_WIDTH = 24
 const CONTROL_WIDTH = INPUT_WIDTH + SPIN_BUTTON_WIDTH + SUFFIX_GAP + SUFFIX_WIDTH
 // select는 NumInput/MoneyInput과 동일한 오른쪽 끝 정렬을 유지 (P23 일관성)
 export const SELECT_WIDTH = CONTROL_WIDTH
-// rightWrap 간격 — ⓘ↔입력란↔suffix 그룹 내 통일 간격 (P23 일관성, P24 단순성)
+// rightWrap 간격 — 정보 툴팁↔입력란↔suffix 그룹 내 통일 간격 (P23 일관성, P24 단순성)
 export const RIGHT_WRAP_GAP = 2
 // rightWrap 우측 여백 — 패널 padding이 그룹 우측 여백을 제공 (P23 일관성)
 export const RIGHT_WRAP_MARGIN = 0
@@ -143,7 +143,7 @@ export function createSuffix(text: string): HTMLSpanElement {
 
 
 /* ── 설정 행: 레이블 왼쪽 — 입력란 오른쪽 (한 줄) ──────────── */
-// rangeText(입력란 좌측 안내) + infoText(입력란 좌측 ⓘ 툴팁) 옵션.
+// rangeText(입력란 좌측 안내) + infoText(입력란 좌측 정보 툴팁) 옵션.
 // 전부 툴팁 통일 방식에서는 infoText 사용, rangeText는 점진적 마이그레이션 위해 유지.
 export function createSettingRow(label: string | HTMLElement, child: HTMLElement, opts?: { disabled?: boolean; style?: Partial<CSSStyleDeclaration>; rangeText?: string; infoText?: string }): HTMLElement {
   const div = document.createElement('div')
@@ -169,7 +169,7 @@ export function createSettingRow(label: string | HTMLElement, child: HTMLElement
   }
   div.appendChild(labelSpan)
 
-  // infoText: 입력란 좌측에 ⓘ 툴팁 배치 — 그룹(ⓘ+입력란+suffix)을 우측 정렬 + 우측 여백 통일 (P23 일관성)
+  // infoText: 입력란 좌측에 정보 툴팁 배치 — 그룹(정보 툴팁+입력란+suffix)을 우측 정렬 + 우측 여백 통일 (P23 일관성)
   const rightWrap = document.createElement('span')
   if (opts?.infoText) {
     Object.assign(rightWrap.style, {

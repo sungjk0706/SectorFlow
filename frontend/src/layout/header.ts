@@ -9,6 +9,7 @@ import type { IndexData } from '../types'
 import { BROKER_LABELS } from '../components/common/broker-badge'
 import { COLOR, RADIUS, BLUR, SURFACE_ALPHA, FONT_WEIGHT } from '../components/common/ui-styles'
 import { isInTradeTimeWindow } from '../utils/order-block-status'
+import { createIcon } from '../components/common/icon'
 
 // ── 스타일 상수 ──
 
@@ -52,6 +53,16 @@ function createChipEl(): HTMLSpanElement {
   const span = document.createElement('span')
   span.style.cssText = CHIP_STYLE
   return span
+}
+
+// 경고 칩에 SVG 아이콘 + 텍스트 설정 (경고 이모지 → SVG 교체)
+function setAlertChip(chip: HTMLSpanElement, text: string): void {
+  chip.style.display = 'inline-flex'
+  chip.style.alignItems = 'center'
+  chip.style.gap = '4px'
+  chip.textContent = ''
+  chip.appendChild(createIcon('alert-triangle', { size: 11, color: chip.style.color }))
+  chip.appendChild(document.createTextNode(text))
 }
 
 function applyStatusChip(
@@ -146,7 +157,7 @@ function resolveAvgAmtMsg(p: AvgAmtProgress, status: string): { msg: string; bg:
       return { msg: '전종목 5거래일 고가 실패', bg: `${COLOR.upBg}`, color: `${COLOR.up}`, progressPct: 0 }
     case 'partial': {
       const failedCount = (p as Record<string, unknown>).failed_count as number || 0
-      return { msg: p.message || `⚠️ 다운로드 부분 완료 (${p.current.toLocaleString()}/${p.total.toLocaleString()}) — ${failedCount}종목 실패`, bg: `${COLOR.warningBg}`, color: `${COLOR.warning}`, progressPct: pct() }
+      return { msg: p.message || `다운로드 부분 완료 (${p.current.toLocaleString()}/${p.total.toLocaleString()}) — ${failedCount}종목 실패`, bg: `${COLOR.warningBg}`, color: `${COLOR.warning}`, progressPct: pct() }
     }
     case 'cache_deleted':
       return { msg: '전종목 5거래일 고가 재계산 중', bg: `${COLOR.warningBg}`, color: `${COLOR.warning}`, progressPct: 100 }
@@ -410,7 +421,7 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
         circuitBreakerChip.style.background = `${COLOR.upBg}`
         circuitBreakerChip.style.color = `${COLOR.up}`
         circuitBreakerChip.style.border = `1px solid ${COLOR.up}40`
-        circuitBreakerChip.textContent = `⚠ ${circuitBreakerOpen.message}`
+        setAlertChip(circuitBreakerChip, circuitBreakerOpen.message)
       } else {
         circuitBreakerChip.style.display = 'none'
       }
@@ -424,7 +435,7 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
         riskBlockChip.style.color = `${COLOR.up}`
         riskBlockChip.style.border = `1px solid ${COLOR.up}40`
         const sideLabel = riskBlockStatus.side === 'buy' ? '매수' : riskBlockStatus.side === 'sell' ? '매도' : '매매'
-        riskBlockChip.textContent = `⚠ 리스크 차단(${sideLabel}): ${riskBlockStatus.reason}`
+        setAlertChip(riskBlockChip, `리스크 차단(${sideLabel}): ${riskBlockStatus.reason}`)
       } else {
         riskBlockChip.style.display = 'none'
       }
@@ -438,7 +449,7 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
         testCashFailedChip.style.color = `${COLOR.warning}`
         testCashFailedChip.style.border = `1px solid ${COLOR.warning}40`
         const reasonText = testCashFailed.reason || '테스트 잔고 부족 — 매수 거부'
-        testCashFailedChip.textContent = `⚠ ${reasonText}`
+        setAlertChip(testCashFailedChip, reasonText)
       } else {
         testCashFailedChip.style.display = 'none'
       }
@@ -451,7 +462,7 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
         positionBuildFailedChip.style.background = `${COLOR.warningBg}`
         positionBuildFailedChip.style.color = `${COLOR.warning}`
         positionBuildFailedChip.style.border = `1px solid ${COLOR.warning}40`
-        positionBuildFailedChip.textContent = '⚠ 보유 종목 불러오기 실패 — 엔진은 계속 가동 중'
+        setAlertChip(positionBuildFailedChip, '보유 종목 불러오기 실패 — 엔진은 계속 가동 중')
       } else {
         positionBuildFailedChip.style.display = 'none'
       }
@@ -464,7 +475,7 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
         degradedModeChip.style.background = `${COLOR.upBg}`
         degradedModeChip.style.color = `${COLOR.up}`
         degradedModeChip.style.border = `1px solid ${COLOR.up}40`
-        degradedModeChip.textContent = '⚠ 감소 모드 기동 — 종목 데이터 불완전'
+        setAlertChip(degradedModeChip, '감소 모드 기동 — 종목 데이터 불완전')
       } else {
         degradedModeChip.style.display = 'none'
       }
@@ -505,7 +516,7 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
         krxAlertChip.style.background = `${COLOR.upBg}`
         krxAlertChip.style.color = `${COLOR.up}`
         krxAlertChip.style.border = `1px solid ${COLOR.up}40`
-        krxAlertChip.textContent = `⚠ ${alert}`
+        setAlertChip(krxAlertChip, alert)
       } else {
         krxAlertChip.style.display = 'none'
       }

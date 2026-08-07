@@ -184,7 +184,7 @@ export const COLUMNS: ColumnDef<StockScore>[] = [
       icon.style.flexShrink = '0'
       wrap.appendChild(icon)
       // 매칭된 호재 키워드 표시 — 백엔드가 매칭 단계에서 전달한 키워드 (P10 SSOT, P21 투명성).
-      // 키워드 부재 시(과거 데이터 등) 📰만 표시 — 툴팁으로 상세 확인.
+      // 키워드 부재 시(과거 데이터 등) 뉴스 호재 아이콘만 표시 — 툴팁으로 상세 확인.
       const keyword = t.news_boost_keyword || ''
       if (keyword) {
         const kw = document.createElement('span')

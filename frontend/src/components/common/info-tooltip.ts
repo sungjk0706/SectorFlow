@@ -1,34 +1,34 @@
 /**
- * 공통 ⓘ 툴팁 컴포넌트 — 설정 페이지 입력란 안내 통일 (P23 일관성, P21 투명성).
+ * 공통 정보 툴팁 컴포넌트 — 설정 페이지 입력란 안내 통일 (P23 일관성, P21 투명성).
  *
- * 범위·단위·OFF 동작·수수료 포함 등 부가 안내를 라벨 옆 ⓘ 아이콘 클릭/hover 시 말풍선으로 표시.
+ * 범위·단위·OFF 동작·수수료 포함 등 부가 안내를 라벨 옆 정보 아이콘 클릭/hover 시 말풍선으로 표시.
  * 라벨은 입력란 이름만 간결하게 유지 (1인 사용자 프로젝트 — P24 단순성).
  *
  * 재사용: clampPosition (context-popup.ts) — 뷰포트 경계 클램핑.
  *         outside-click 닫기 패턴 (createTimeDropdown) — 마우스 외부 클릭 시 닫기.
  */
 
-import { COLOR, FONT_SIZE, RADIUS, SHADOW } from './ui-styles'
+import { COLOR, RADIUS, SHADOW } from './ui-styles'
 import { clampPosition } from './context-popup'
+import { createIcon } from './icon'
 
 export function createInfoTooltip(text: string): HTMLElement {
   const icon = document.createElement('span')
   icon.setAttribute('role', 'button')
   icon.setAttribute('aria-label', '안내 정보')
   icon.setAttribute('tabindex', '0')
-  icon.textContent = 'ⓘ'
   Object.assign(icon.style, {
     display: 'inline-flex',
     alignItems: 'center',
     justifyContent: 'center',
     width: '16px',
     height: '16px',
-    fontSize: FONT_SIZE.small,
     color: COLOR.neutral,
     cursor: 'pointer',
     userSelect: 'none',
     flexShrink: '0',
   })
+  icon.appendChild(createIcon('info', { size: 14, color: COLOR.neutral }))
 
   let popup: HTMLElement | null = null
 

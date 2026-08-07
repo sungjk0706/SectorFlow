@@ -329,7 +329,7 @@ export function applyAccountSummaryUpdate(data: AccountSummaryUpdateEvent): void
  *   `hotStore.setState()`를 호출하지 않음 → 일반 `hotStore.subscribe()` 리스너 미발화.
  *   사유: setState 시 scheduleRender가 배열 참조 비교로 전체 재렌더 트리거 → 초저지연 저해.
  *   화면 갱신은 `real-data-tick` window 이벤트를 addEventListener로 수신한 페이지만 수행 (row-level).
- * - rAF 배칭: 변경 시 즉시 디스패치 ❌, dirty Set에 code 추가 후 다음 rAF 프레임에서 1회 디스패치.
+ * - rAF 배칭: 변경 시 즉시 디스패치 금지, dirty Set에 code 추가 후 다음 rAF 프레임에서 1회 디스패치.
  *   동일 code 여러 틱 → Set dedup → 1회 디스패치 (last-write-wins coalescing).
  *   초당 수십~수백 틱을 60fps로 묶어 메인 스레드 점유 최소화.
  * - 디스패치 조건: changed=true(실제 값 변경) 시에만. no-change 틱은 디스패치 안 함.
@@ -452,7 +452,7 @@ export function applyRealData(item: RealDataEvent): void {
 /* ── master-cache-delta: 마스터 캐시 부분 갱신 (호가·PGM) ── */
 /**
  * 마스터 캐시 delta 갱신 계약 (applyRealData와 동일 — in-place mutation + rAF 배칭):
- * - in-place mutation: masterStocks[code]의 일부 필드만 갱신. setState ❌ → subscribe 미발화.
+ * - in-place mutation: masterStocks[code]의 일부 필드만 갱신. setState 금지 → subscribe 미발화.
  *   사유: applyRealData와 동일 — setState 시 scheduleRender가 배열 참조 비교로 전체 재렌더 트리거.
  * - masterStocks에 없는 종목은 스킵 (old === undefined).
  * - no-change 시 디스패치 안 함.
@@ -611,7 +611,7 @@ export function applyBuyTargetsUpdate(data: { buy_targets: StockScore[]; freshne
 // P7: O(len(codes) * len(buyTargets)) — codes는 단일 뉴스 매칭 종목 수(소), buyTargets는
 //     매수후보 N(소). applyBuyTargetsDelta의 findIndex 패턴과 동일 (P23 일관성).
 // P20: codes/scores/boost_scores 누락 시 빈 배열로 명시적 처리 (폴백 아님). title 누락 시 빈 문자열.
-// P21: title을 buyTargets[i].news_boost_title에 보관 → 📰 툴팁으로 호재 정보 노출 (세션 4).
+// P21: title을 buyTargets[i].news_boost_title에 보관 → newspaper 아이콘 툴팁으로 호재 정보 노출 (세션 4).
 // P25: 미매칭 시 setState 미발화 (불필요한 리렌더 방지). 해당 종목만 in-place patch.
 export function applyNewsHit(data: { codes: string[]; scores: number[]; boost_scores?: number[]; title?: string; matched_keywords?: string[] }): void {
   const codes = data.codes ?? []
@@ -619,7 +619,7 @@ export function applyNewsHit(data: { codes: string[]; scores: number[]; boost_sc
   const boostScores = data.boost_scores ?? []
   const title = data.title ?? ''
   const matchedKeywords = data.matched_keywords ?? []
-  // 매칭된 키워드를 쉼표로 join — 📰 옆 표시용 (P21 투명성, 백엔드 매칭 결과 그대로 — P10 SSOT)
+  // 매칭된 키워드를 쉼표로 join — newspaper 아이콘 옆 표시용 (P21 투명성, 백엔드 매칭 결과 그대로 — P10 SSOT)
   const keyword = matchedKeywords.join(', ')
   if (codes.length === 0) return
   hotStore.setState((state) => {
@@ -674,7 +674,7 @@ export function applyBuyTargetsDelta(data: {
         if (idx >= 0) {
           // P10: news_boost/news_boost_title/news_boost_keyword은 news-hit 이벤트가 단일 전달 경로.
           //   백엔드 changed delta는 _BUY_TARGET_REALTIME_KEYS에 의해 news_boost를 pop 제거하므로
-          //   item에 해당 키가 없음. 객체 통째 교체 시 undefined로 소거되면 📰 표시가 사라짐 (P21 위반).
+          //   item에 해당 키가 없음. 객체 통째 교체 시 undefined로 소거되면 newspaper 아이콘 표시가 사라짐 (P21 위반).
           //   applyBuyTargetsUpdate prevTitleByCode 보존 패턴과 대칭 — 기존 값 보존 (P23 일관성).
           const prev = buyTargets[idx]
           buyTargets[idx] = {

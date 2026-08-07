@@ -44,7 +44,7 @@ function handleTradeMode(state: GeneralSettingsState, val: string): void {
     Object.assign(msg.style, { fontSize: FONT_SIZE.label, color: COLOR.code, lineHeight: '1.6' })
     msg.innerHTML = `실전투자 모드로 전환하시겠습니까?<br><span style="color:${COLOR.up};font-weight:500">실제 돈으로 매매가 실행됩니다.</span>`
     showCustomDialog({
-      title: '⚠️ 실전투자 모드 전환',
+      title: '실전투자 모드 전환',
       content: msg,
       actions: [
         { label: '취소', onClick: () => {} },
@@ -133,7 +133,7 @@ function buildTestVirtualResetWrap(): HTMLElement {
   const wrap = document.createElement('div')
   Object.assign(wrap.style, { borderTop: '1px solid ' + COLOR.borderLight, padding: GS.rowPad })
   const resetBtn = createActionButton({
-    label: '🔴 테스트 데이터 전체 초기화', variant: 'danger', padding: '8px 18px', borderRadius: RADIUS.xs, fontSize: GS.label,
+    label: '테스트 데이터 전체 초기화', variant: 'danger', padding: '8px 18px', borderRadius: RADIUS.xs, fontSize: GS.label,
     onClick: async () => {
       const confirmed = await showConfirmDialog({
         title: '테스트 데이터 초기화',
