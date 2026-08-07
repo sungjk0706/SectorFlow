@@ -61,77 +61,52 @@ class TestNormalizeSymbolOverrideMap:
 class TestValidateTimetableOrder:
     """타임테이블 시간 순서 검증 (P20/P22) — 2그룹 분리.
 
-    그룹1 (장 전 사전 준비): realtime_reset <= ws_prestart <= krx_pre_subscribe < "09:00"
-    그룹2 (장 후 확정 다운로드): confirmed_download > "20:00" (NXT 종료 이후만 허용)
+    그룹1 (개장 전): nxt_start < krx_start
+    그룹2 (장마감 후): krx_end < nxt_end < confirmed_download
     """
 
     @pytest.mark.asyncio
     async def test_valid_order(self):
-        # 07:58 <= 07:59 <= 08:59 < 09:00 → 통과
+        # 07:58 < 08:59 → 통과
         data = {
-            "timetable.realtime_reset": "07:58",
-            "timetable.ws_prestart": "07:59",
-            "timetable.krx_pre_subscribe": "08:59",
+            "timetable.nxt_start": "07:58",
+            "timetable.krx_start": "08:59",
         }
         await _validate_timetable_order(data, before={})  # 예외 없음
 
     @pytest.mark.asyncio
-    async def test_equal_values(self):
-        # 07:58 = 07:58 = 07:58 → 통과 (<= 조건)
-        data = {
-            "timetable.realtime_reset": "07:58",
-            "timetable.ws_prestart": "07:58",
-            "timetable.krx_pre_subscribe": "07:58",
-        }
-        await _validate_timetable_order(data, before={})
-
-    @pytest.mark.asyncio
     async def test_reverse_order(self):
-        # 08:59, 07:59, 07:58 → ValueError
+        # 08:59, 07:58 → ValueError (nxt_start < krx_start 위반)
         data = {
-            "timetable.realtime_reset": "08:59",
-            "timetable.ws_prestart": "07:59",
-            "timetable.krx_pre_subscribe": "07:58",
+            "timetable.nxt_start": "08:59",
+            "timetable.krx_start": "07:58",
         }
         with pytest.raises(ValueError, match="타임테이블 시간 순서 오류"):
             await _validate_timetable_order(data, before={})
 
     @pytest.mark.asyncio
-    async def test_krx_at_open(self):
-        # 08:59 = 09:00 → ValueError (< 09:00 엄격)
+    async def test_equal_values(self):
+        # 07:58 = 07:58 → ValueError (< 엄격, 동일 불가)
         data = {
-            "timetable.realtime_reset": "07:58",
-            "timetable.ws_prestart": "07:59",
-            "timetable.krx_pre_subscribe": "09:00",
-        }
-        with pytest.raises(ValueError, match="타임테이블 시간 순서 오류"):
-            await _validate_timetable_order(data, before={})
-
-    @pytest.mark.asyncio
-    async def test_krx_after_open(self):
-        # 09:30 → ValueError
-        data = {
-            "timetable.realtime_reset": "07:58",
-            "timetable.ws_prestart": "07:59",
-            "timetable.krx_pre_subscribe": "09:30",
+            "timetable.nxt_start": "07:58",
+            "timetable.krx_start": "07:58",
         }
         with pytest.raises(ValueError, match="타임테이블 시간 순서 오류"):
             await _validate_timetable_order(data, before={})
 
     @pytest.mark.asyncio
     async def test_missing_in_data_uses_before(self):
-        # data에 1개만, before에 나머지 2개 → 통과
-        data = {"timetable.ws_prestart": "07:59"}
+        # data에 1개만, before에 나머지 1개 → 통과
+        data = {"timetable.nxt_start": "07:58"}
         before = {
-            "timetable.realtime_reset": "07:58",
-            "timetable.krx_pre_subscribe": "08:59",
+            "timetable.krx_start": "08:59",
         }
         await _validate_timetable_order(data, before)
 
     @pytest.mark.asyncio
     async def test_missing_in_data_uses_default(self):
         # data에 1개만, before도 비어 있음 → DEFAULT_USER_SETTINGS 기본값 사용 → 통과
-        data = {"timetable.ws_prestart": "07:59"}
+        data = {"timetable.nxt_start": "07:58"}
         await _validate_timetable_order(data, before={})
 
     @pytest.mark.asyncio
@@ -140,32 +115,59 @@ class TestValidateTimetableOrder:
         data = {"broker": "kiwoom", "buy_time_start": "09:00"}
         await _validate_timetable_order(data, before={})
 
-    # ── 그룹2: 장 후 확정 다운로드 (timetable.confirmed_download > 20:00) ──
+    # ── 그룹2: 장마감 후 (krx_end < nxt_end < confirmed_download) ──
 
     @pytest.mark.asyncio
     async def test_post_close_valid(self):
-        # 20:40 > 20:00 → 통과
-        data = {"timetable.confirmed_download": "20:40"}
+        # 15:20 < 20:00 < 20:40 → 통과
+        data = {
+            "timetable.krx_end": "15:20",
+            "timetable.nxt_end": "20:00",
+            "timetable.confirmed_download": "20:40",
+        }
         await _validate_timetable_order(data, before={})  # 예외 없음
 
     @pytest.mark.asyncio
-    async def test_post_close_at_nxt_close_raises(self):
-        # 20:00 == 20:00 → ValueError (> 20:00 엄격, NXT 종료 시각과 동일 불가)
-        data = {"timetable.confirmed_download": "20:00"}
-        with pytest.raises(ValueError, match="타임테이블 시간 오류"):
+    async def test_post_close_nxt_end_equal_confirmed_raises(self):
+        # 15:20 < 20:00 = 20:00 → ValueError (nxt_end < confirmed_download 엄격)
+        data = {
+            "timetable.krx_end": "15:20",
+            "timetable.nxt_end": "20:00",
+            "timetable.confirmed_download": "20:00",
+        }
+        with pytest.raises(ValueError, match="타임테이블 시간 순서 오류"):
             await _validate_timetable_order(data, before={})
 
     @pytest.mark.asyncio
-    async def test_post_close_before_nxt_close_raises(self):
-        # 19:30 < 20:00 → ValueError
-        data = {"timetable.confirmed_download": "19:30"}
-        with pytest.raises(ValueError, match="타임테이블 시간 오류"):
+    async def test_post_close_krx_end_equal_nxt_end_raises(self):
+        # 20:00 = 20:00 < 20:40 → ValueError (krx_end < nxt_end 엄격)
+        data = {
+            "timetable.krx_end": "20:00",
+            "timetable.nxt_end": "20:00",
+            "timetable.confirmed_download": "20:40",
+        }
+        with pytest.raises(ValueError, match="타임테이블 시간 순서 오류"):
+            await _validate_timetable_order(data, before={})
+
+    @pytest.mark.asyncio
+    async def test_post_close_confirmed_before_nxt_end_raises(self):
+        # 15:20 < 20:40 < 20:00 → ValueError (순서 위반)
+        data = {
+            "timetable.krx_end": "15:20",
+            "timetable.nxt_end": "20:40",
+            "timetable.confirmed_download": "20:00",
+        }
+        with pytest.raises(ValueError, match="타임테이블 시간 순서 오류"):
             await _validate_timetable_order(data, before={})
 
     @pytest.mark.asyncio
     async def test_post_close_late_evening_valid(self):
-        # 23:50 > 20:00 → 통과 (상한선 없음 — 증권사 확정 데이터 준비 지연 대비)
-        data = {"timetable.confirmed_download": "23:50"}
+        # 15:20 < 20:00 < 23:50 → 통과 (상한선 없음 — 증권사 확정 데이터 준비 지연 대비)
+        data = {
+            "timetable.krx_end": "15:20",
+            "timetable.nxt_end": "20:00",
+            "timetable.confirmed_download": "23:50",
+        }
         await _validate_timetable_order(data, before={})
 
     @pytest.mark.asyncio
@@ -179,9 +181,10 @@ class TestValidateTimetableOrder:
     async def test_both_groups_independent(self):
         # 그룹1 + 그룹2 동시에 data에 있어도 각각 독립 검증 → 통과
         data = {
-            "timetable.realtime_reset": "07:58",
-            "timetable.ws_prestart": "07:59",
-            "timetable.krx_pre_subscribe": "08:59",
+            "timetable.nxt_start": "07:58",
+            "timetable.krx_start": "08:59",
+            "timetable.krx_end": "15:20",
+            "timetable.nxt_end": "20:00",
             "timetable.confirmed_download": "20:40",
         }
         await _validate_timetable_order(data, before={})
@@ -190,12 +193,13 @@ class TestValidateTimetableOrder:
     async def test_both_groups_violation_in_group2_only(self):
         # 그룹1 통과 + 그룹2 위반 → 그룹2에서만 ValueError
         data = {
-            "timetable.realtime_reset": "07:58",
-            "timetable.ws_prestart": "07:59",
-            "timetable.krx_pre_subscribe": "08:59",
-            "timetable.confirmed_download": "19:00",  # < 20:00 → 위반
+            "timetable.nxt_start": "07:58",
+            "timetable.krx_start": "08:59",
+            "timetable.krx_end": "15:20",
+            "timetable.nxt_end": "20:00",
+            "timetable.confirmed_download": "19:00",  # < nxt_end → 위반
         }
-        with pytest.raises(ValueError, match="타임테이블 시간 오류"):
+        with pytest.raises(ValueError, match="타임테이블 시간 순서 오류"):
             await _validate_timetable_order(data, before={})
 
 
@@ -339,26 +343,27 @@ class TestApplySettingsUpdates:
     async def test_timetable_order_violation_raises(self):
         """타임테이블 순서 위반 시 ValueError → 저장 차단 (P20/P22). 그룹1 검증."""
         before = {
-            "timetable.realtime_reset": "07:58",
-            "timetable.ws_prestart": "07:59",
-            "timetable.krx_pre_subscribe": "08:59",
+            "timetable.nxt_start": "07:58",
+            "timetable.krx_start": "08:59",
         }
         with patch("backend.app.core.settings_store.load_selected_settings", new=AsyncMock(return_value=before)), \
              patch("backend.app.core.settings_store.save_selected_settings", new=AsyncMock()) as mock_save:
             with pytest.raises(ValueError, match="타임테이블 시간 순서 오류"):
-                await apply_settings_updates({"timetable.krx_pre_subscribe": "07:00"})
+                await apply_settings_updates({"timetable.krx_start": "07:00"})
             # 저장이 호출되지 않아야 함 (검증에서 차단)
             mock_save.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_timetable_post_close_violation_raises(self):
-        """그룹2 위반 시 ValueError → 저장 차단 (P20/P22). confirmed_download <= 20:00."""
+        """그룹2 위반 시 ValueError → 저장 차단 (P20/P22). confirmed_download <= nxt_end."""
         before = {
+            "timetable.krx_end": "15:20",
+            "timetable.nxt_end": "20:00",
             "timetable.confirmed_download": "20:40",
         }
         with patch("backend.app.core.settings_store.load_selected_settings", new=AsyncMock(return_value=before)), \
              patch("backend.app.core.settings_store.save_selected_settings", new=AsyncMock()) as mock_save:
-            with pytest.raises(ValueError, match="타임테이블 시간 오류"):
+            with pytest.raises(ValueError, match="타임테이블 시간 순서 오류"):
                 await apply_settings_updates({"timetable.confirmed_download": "20:00"})
             mock_save.assert_not_called()
 
@@ -366,21 +371,22 @@ class TestApplySettingsUpdates:
     async def test_timetable_order_valid_saves(self):
         """정상 시각 → 저장 호출 확인. 그룹1."""
         before = {
-            "timetable.realtime_reset": "07:58",
-            "timetable.ws_prestart": "07:59",
-            "timetable.krx_pre_subscribe": "08:59",
+            "timetable.nxt_start": "07:58",
+            "timetable.krx_start": "08:59",
         }
         with patch("backend.app.core.settings_store.load_selected_settings", new=AsyncMock(return_value=before)), \
              patch("backend.app.core.settings_store.save_selected_settings", new=AsyncMock()) as mock_save:
-            result = await apply_settings_updates({"timetable.krx_pre_subscribe": "08:30"})
-            assert "timetable.krx_pre_subscribe" in result
+            result = await apply_settings_updates({"timetable.krx_start": "08:30"})
+            assert "timetable.krx_start" in result
             saved = mock_save.call_args[0][0]
-            assert saved["timetable.krx_pre_subscribe"] == "08:30"
+            assert saved["timetable.krx_start"] == "08:30"
 
     @pytest.mark.asyncio
     async def test_timetable_post_close_valid_saves(self):
-        """그룹2 정상 시각(> 20:00) → 저장 호출 확인."""
+        """그룹2 정상 시각(krx_end < nxt_end < confirmed_download) → 저장 호출 확인."""
         before = {
+            "timetable.krx_end": "15:20",
+            "timetable.nxt_end": "20:00",
             "timetable.confirmed_download": "20:40",
         }
         with patch("backend.app.core.settings_store.load_selected_settings", new=AsyncMock(return_value=before)), \
@@ -391,27 +397,27 @@ class TestApplySettingsUpdates:
             assert saved["timetable.confirmed_download"] == "21:00"
 
     @pytest.mark.asyncio
-    async def test_timetable_select_keys_includes_all_three(self):
-        """타임테이블 키 1개만 변경해도 3개 모두 load_selected_settings에 전달 (순서 검증용). 그룹1."""
+    async def test_timetable_select_keys_includes_all_pre_open(self):
+        """타임테이블 키 1개만 변경해도 그룹1 전체가 load_selected_settings에 전달 (순서 검증용)."""
         before = {
-            "timetable.realtime_reset": "07:58",
-            "timetable.ws_prestart": "07:59",
-            "timetable.krx_pre_subscribe": "08:59",
+            "timetable.nxt_start": "07:58",
+            "timetable.krx_start": "08:59",
             "broker": "kiwoom",
         }
         with patch("backend.app.core.settings_store.load_selected_settings", new=AsyncMock(return_value=before)) as mock_load, \
              patch("backend.app.core.settings_store.save_selected_settings", new=AsyncMock()):
-            await apply_settings_updates({"timetable.ws_prestart": "07:58"})
-            # load_selected_settings에 전달된 키 집합에 3개 모두 포함 확인
+            await apply_settings_updates({"timetable.nxt_start": "07:50"})
+            # load_selected_settings에 전달된 키 집합에 그룹1 전체 포함 확인
             called_keys = mock_load.call_args[0][0]
-            assert "timetable.realtime_reset" in called_keys
-            assert "timetable.ws_prestart" in called_keys
-            assert "timetable.krx_pre_subscribe" in called_keys
+            assert "timetable.nxt_start" in called_keys
+            assert "timetable.krx_start" in called_keys
 
     @pytest.mark.asyncio
     async def test_timetable_select_keys_includes_post_close(self):
-        """그룹2 키 변경 시에도 해당 키가 load_selected_settings에 전달됨 (순서 검증용)."""
+        """그룹2 키 변경 시에도 해당 그룹 전체가 load_selected_settings에 전달됨 (순서 검증용)."""
         before = {
+            "timetable.krx_end": "15:20",
+            "timetable.nxt_end": "20:00",
             "timetable.confirmed_download": "20:40",
             "broker": "kiwoom",
         }
@@ -420,6 +426,8 @@ class TestApplySettingsUpdates:
             await apply_settings_updates({"timetable.confirmed_download": "21:00"})
             called_keys = mock_load.call_args[0][0]
             assert "timetable.confirmed_download" in called_keys
+            assert "timetable.krx_end" in called_keys
+            assert "timetable.nxt_end" in called_keys
 
 
 # ── subscribe.max_0b_count 범위 검증 (apply_settings_updates) ──────────────────────

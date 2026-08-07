@@ -189,9 +189,10 @@ async def _apply_timetable_change(changed_keys: set[str]) -> None:
     - scheduler_market_close_on: 11번째 항목 스킵/추가 토글 (P16 살아있는 경로)
     """
     _TIMETABLE_KEYS = {
-        "timetable.realtime_reset",
-        "timetable.ws_prestart",
-        "timetable.krx_pre_subscribe",
+        "timetable.nxt_start",
+        "timetable.nxt_end",
+        "timetable.krx_start",
+        "timetable.krx_end",
         "timetable.confirmed_download",
         "scheduler_market_close_on",
     }

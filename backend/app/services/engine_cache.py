@@ -95,7 +95,7 @@ async def _load_caches_preboot(settings: dict) -> None:
         engine_state.state.preboot_cache_loaded = True
 
         # ── 기동 시 실시간 필드 초기화 — 사용자 설정 기반 초기화 구간 판정 (시간대 자의적 판정 제거) ──
-        # is_realtime_reset_window() (timetable.realtime_reset ~ timetable.confirmed_download) 기반.
+        # is_realtime_reset_window() (timetable.nxt_start ~ timetable.nxt_end) 기반.
         from backend.app.services.daily_time_scheduler import is_realtime_reset_window
         _in_reset_window = await is_realtime_reset_window(settings)
         if _in_reset_window:

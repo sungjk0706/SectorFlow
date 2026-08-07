@@ -499,15 +499,14 @@ def _parse_hm(hm_str: str) -> tuple[int, int]:
 def _realtime_reset_window_bounds(settings: dict) -> tuple[int, int]:
     """초기화 구간의 하한·상한(분 단위)을 설정에서 읽어 반환 (P10 SSOT).
 
-    하한: timetable.realtime_reset (기본 07:58) — REALTIME_FIELDS_RESET_TIME 상수와 동일 출처.
-    상한: timetable.confirmed_download (기본 20:40) — 확정 데이터 도착 시각.
-    새 상수를 임의로 만들지 않고 기존 타임테이블 설정 키를 재사용 (사전조사 약속).
+    하한: timetable.nxt_start (기본 07:58) — NXT 시작 시각.
+    상한: timetable.nxt_end (기본 20:00) — NXT 종료 시각.
     형식 오류/누락 시 DEFAULT_USER_SETTINGS 기본값으로 폴백하지 않고 ValueError (P20).
     """
     from backend.app.core.settings_defaults import DEFAULT_USER_SETTINGS
 
-    rt_str = settings.get("timetable.realtime_reset") or DEFAULT_USER_SETTINGS.get("timetable.realtime_reset")
-    cd_str = settings.get("timetable.confirmed_download") or DEFAULT_USER_SETTINGS.get("timetable.confirmed_download")
+    rt_str = settings.get("timetable.nxt_start") or DEFAULT_USER_SETTINGS.get("timetable.nxt_start")
+    cd_str = settings.get("timetable.nxt_end") or DEFAULT_USER_SETTINGS.get("timetable.nxt_end")
     if not rt_str or not cd_str:
         raise ValueError("초기화 구간 시각 누락 — 기본값 폴백 금지 (P20)")
     rt_h, rt_m = _parse_hm_tuple(str(rt_str))
@@ -516,11 +515,11 @@ def _realtime_reset_window_bounds(settings: dict) -> tuple[int, int]:
 
 
 async def is_realtime_reset_window(settings: dict | None = None) -> bool:
-    """현재 시각이 실시간 필드 초기화 구간(07:58~20:40)인지 판정.
+    """현재 시각이 실시간 필드 초기화 구간(nxt_start~nxt_end)인지 판정.
 
-    초기화 구간 = realtime_reset 이상, confirmed_download 미만.
-    20:00~20:40 공백 시간(실시간 수신은 끝, 확정 데이터는 도착 전)에 앱을 켜도
-    낡은 실시간 값을 비우기 위해 WS 구독 구간(20:00 종료)과 분리 (P22 데이터 정합성).
+    초기화 구간 = nxt_start 이상, nxt_end 미만.
+    nxt_end 이후 확정 데이터 도착 전 공백 시간에 앱을 켜도
+    낡은 실시간 값을 비우기 위해 확정 다운로드 시각과 분리 (P22 데이터 정합성).
     휴장일은 calc_timebased_market_phase()가 "휴장일"로 산정하므로 자동 차단.
     settings 미전달 시 integrated_system_settings_cache에서 음.
     """
@@ -753,8 +752,8 @@ async def retry_pipeline_catchup_after_bootstrap() -> None:
     # 전체 종목이 최신일 때만 캐시를 최신으로 인정 (한 종목이라도 오래됨이면 갱신).
     _cache_is_fresh = (_total > 0 and _stale_date == 0)
 
-    # ── 판단: 실시간 필드 초기화 구간(07:58~20:40) — is_realtime_reset_window() 기반 (P10 SSOT).
-    # 사용자 설정(timetable.realtime_reset ~ timetable.confirmed_download)을 직접 참조.
+    # ── 판단: 실시간 필드 초기화 구간(nxt_start~nxt_end) — is_realtime_reset_window() 기반 (P10 SSOT).
+    # 사용자 설정(timetable.nxt_start ~ timetable.nxt_end)을 직접 참조.
     # 초기화 구간 = 실시간 데이터가 살아있는 시간대 → 자동 다운로드 금지, 사용자 수동만 허용.
     # 초기화 구간 외(20:40 ~ 다음 거래일 07:58) = 실시간 데이터가 닫힌 시간대 → 데이터 불완정 시 자동 다운로드.
     in_reset_window = await is_realtime_reset_window(_settings)
@@ -1069,9 +1068,9 @@ def build_timetable_from_cache(settings: dict) -> list[dict]:
             raise ValueError(f"타임테이블 시각 누락: {key} — 기본값 폴백 금지 (P20)")
         return _to3(_parse_hm_tuple(v))
 
-    rt = _cache_time("timetable.realtime_reset")
-    ws = _cache_time("timetable.ws_prestart")
-    krx = _cache_time("timetable.krx_pre_subscribe")
+    rt = _cache_time("timetable.nxt_start")
+    ws = _cache_time("timetable.nxt_end")
+    krx = _cache_time("timetable.krx_start")
 
     entries: list[dict] = [
         {"time": rt,   "kind": "direct", "action": _on_realtime_fields_reset, "ctx": f"실시간 필드 초기화 ({_fmt_hms(rt)})"},

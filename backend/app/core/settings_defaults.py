@@ -138,11 +138,12 @@ DEFAULT_USER_SETTINGS: dict[str, Any] = {
      # UI 설정 — 실시간 현재가 플래시 효과 (기본값 True = 활성화)
      "ui_price_flash_on": True,
 
-     # 타임테이블 사용자 조정 시각 (장 시작 전 사전 준비 — P10 SSOT 기본값)
+     # 타임테이블 사용자 조정 시각 (NXT/KRX 시작·종료 + 확정 다운로드 — P10 SSOT 기본값)
      # 거래소 고정 7개 시간(08:00~20:00)은 코드 상수로 daily_time_scheduler.py:21-49에 유지.
-     "timetable.realtime_reset": "07:58",      # 실시간 항목 초기화
-     "timetable.ws_prestart": "07:59",         # WS 구독 사전 시작
-     "timetable.krx_pre_subscribe": "08:59",   # KRX 정규장 사전 구독
+     "timetable.nxt_start": "07:58",           # NXT 시작 (실시간 필드 초기화 → 토큰 발급 → 웹소켓 연결 → NXT 종목 구독)
+     "timetable.krx_start": "08:59",           # KRX 시작 (KRX 단독 종목 구독)
+     "timetable.krx_end": "15:20",             # KRX 종료 (KRX 단독 종목 구독해지, 실시간 체결 종료 시각)
+     "timetable.nxt_end": "20:00",             # NXT 종료 (NXT 종목 구독해지 → 웹소켓 연결 종료 → 토큰 폐기)
      "timetable.confirmed_download": "20:40",  # 장 후 확정 데이터 다운로드 (NXT 종료 이후)
 
      # 구독 한도 (종목 실시간 시세 0B 동시 구독 최대 개수, 기본 200)

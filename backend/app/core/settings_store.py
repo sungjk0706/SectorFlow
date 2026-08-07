@@ -37,14 +37,15 @@ def normalize_symbol_override_map(v: dict) -> dict:
 
 
 # 타임테이블 시간 순서 검증 대상 키 (P20/P22) — 2그룹 분리
-# 그룹1: 장 전 사전 준비 3개 키 (rt <= ws <= krx < 09:00)
+# 그룹1: 개장 전 2개 키 (nxt_start < krx_start)
 _TIMETABLE_PRE_OPEN_KEYS = (
-    "timetable.realtime_reset",
-    "timetable.ws_prestart",
-    "timetable.krx_pre_subscribe",
+    "timetable.nxt_start",
+    "timetable.krx_start",
 )
-# 그룹2: 장 후 확정 다운로드 1개 키 (confirmed_download > 20:00, NXT 종료 이후만 허용)
+# 그룹2: 장마감 후 3개 키 (krx_end < nxt_end < confirmed_download)
 _TIMETABLE_POST_CLOSE_KEYS = (
+    "timetable.krx_end",
+    "timetable.nxt_end",
     "timetable.confirmed_download",
 )
 # 하위 호환: 기존 _TIMETABLE_ORDER_KEYS 참조 유지 (전체 합집합)
@@ -80,44 +81,44 @@ def _check_no_missing(keys: tuple, values: dict[str, str]) -> None:
 
 
 def _validate_pre_open_order(data: dict, before: dict) -> None:
-    """그룹1: 장 전 사전 준비 3개 키 순서 검증 (rt <= ws <= krx < 09:00)."""
+    """그룹1: 개장 전 2개 키 순서 검증 (nxt_start < krx_start)."""
     values = _collect_timetable_values(_TIMETABLE_PRE_OPEN_KEYS, data, before)
     _check_no_missing(_TIMETABLE_PRE_OPEN_KEYS, values)
 
-    rt = _to_minutes(values["timetable.realtime_reset"])
-    ws = _to_minutes(values["timetable.ws_prestart"])
-    krx = _to_minutes(values["timetable.krx_pre_subscribe"])
-    open_min = 9 * 60  # 09:00
+    nxt_start = _to_minutes(values["timetable.nxt_start"])
+    krx_start = _to_minutes(values["timetable.krx_start"])
 
-    if not (rt <= ws <= krx < open_min):
+    if not (nxt_start < krx_start):
         raise ValueError(
             f"타임테이블 시간 순서 오류: "
-            f"실시간 초기화({values['timetable.realtime_reset']}) <= "
-            f"구독 시작({values['timetable.ws_prestart']}) <= "
-            f"정규장 사전 구독({values['timetable.krx_pre_subscribe']}) < 09:00 이어야 합니다"
+            f"NXT 시작({values['timetable.nxt_start']}) < "
+            f"KRX 시작({values['timetable.krx_start']}) 이어야 합니다"
         )
 
 
 def _validate_post_close_order(data: dict, before: dict) -> None:
-    """그룹2: 장 후 확정 다운로드 1개 키 하한선 검증 (cd > 20:00, NXT 종료 이후만 허용)."""
-    cd_values = _collect_timetable_values(_TIMETABLE_POST_CLOSE_KEYS, data, before)
-    _check_no_missing(_TIMETABLE_POST_CLOSE_KEYS, cd_values)
+    """그룹2: 장마감 후 3개 키 순서 검증 (krx_end < nxt_end < confirmed_download)."""
+    values = _collect_timetable_values(_TIMETABLE_POST_CLOSE_KEYS, data, before)
+    _check_no_missing(_TIMETABLE_POST_CLOSE_KEYS, values)
 
-    cd = _to_minutes(cd_values["timetable.confirmed_download"])
-    nxt_close_min = 20 * 60  # 20:00 (NXT 마켓 종료)
+    krx_end = _to_minutes(values["timetable.krx_end"])
+    nxt_end = _to_minutes(values["timetable.nxt_end"])
+    cd = _to_minutes(values["timetable.confirmed_download"])
 
-    if not (cd > nxt_close_min):
+    if not (krx_end < nxt_end < cd):
         raise ValueError(
-            f"타임테이블 시간 오류: 확정 데이터 다운로드({cd_values['timetable.confirmed_download']})는 "
-            f"20:00 이후여야 합니다 (NXT 마켓 종료 후 확정 데이터 준비)"
+            f"타임테이블 시간 순서 오류: "
+            f"KRX 종료({values['timetable.krx_end']}) < "
+            f"NXT 종료({values['timetable.nxt_end']}) < "
+            f"확정 데이터 다운로드({values['timetable.confirmed_download']}) 이어야 합니다"
         )
 
 
 async def _validate_timetable_order(data: dict, before: dict) -> None:
     """타임테이블 시간 순서 검증 (P20/P22) — 2그룹 분리 디스패처.
 
-    그룹1 (장 전 사전 준비): realtime_reset <= ws_prestart <= krx_pre_subscribe < "09:00"
-    그룹2 (장 후 확정 다운로드): confirmed_download > "20:00" (NXT 종료 이후만 허용)
+    그룹1 (개장 전): nxt_start < krx_start
+    그룹2 (장마감 후): krx_end < nxt_end < confirmed_download
     - data: 이번 요청에서 변경하려는 키/값
     - before: load_selected_settings()로 로드한 기존 DB 값 (나머지 키 보충용)
 
@@ -135,9 +136,10 @@ _TIME_RE = _re.compile(r"^\d{2}:\d{2}$")
 _TIME_FIELDS = frozenset({
     "buy_time_start", "buy_time_end",
     "sell_time_start", "sell_time_end",
-    "timetable.realtime_reset",
-    "timetable.ws_prestart",
-    "timetable.krx_pre_subscribe",
+    "timetable.nxt_start",
+    "timetable.nxt_end",
+    "timetable.krx_start",
+    "timetable.krx_end",
     "timetable.confirmed_download",
 })
 

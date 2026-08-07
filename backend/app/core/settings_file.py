@@ -266,6 +266,43 @@ def _migrate_remove_scheduler_5d_download_on(merged: dict) -> tuple[dict, bool]:
     return merged, dirty
 
 
+def _migrate_timetable_keys_to_nxt_krx(merged: dict) -> tuple[dict, bool]:
+    """타임테이블 키 재구성 마이그레이션 (토큰발급 기동분리 설계 결정 7).
+    기존 키 3개 → 새 키 4개 매핑:
+      - timetable.realtime_reset → timetable.nxt_start (07:58, ws_prestart는 1분 차이)
+      - timetable.krx_pre_subscribe → timetable.krx_start (08:59)
+      - timetable.ws_prestart → 제거 (nxt_start에 통합)
+    새 키가 이미 있으면 기존 키만 제거 (idempotent).
+    기존 키가 있으면 값을 새 키로 옮기고 기존 키 제거."""
+    dirty = False
+    old_realtime_reset = "timetable.realtime_reset"
+    old_ws_prestart = "timetable.ws_prestart"
+    old_krx_pre_subscribe = "timetable.krx_pre_subscribe"
+    new_nxt_start = "timetable.nxt_start"
+    new_krx_start = "timetable.krx_start"
+
+    # realtime_reset → nxt_start (값 이관)
+    if old_realtime_reset in merged:
+        if new_nxt_start not in merged:
+            merged[new_nxt_start] = merged[old_realtime_reset]
+        del merged[old_realtime_reset]
+        dirty = True
+
+    # ws_prestart → 제거 (nxt_start에 통합, 값 이관 없음)
+    if old_ws_prestart in merged:
+        del merged[old_ws_prestart]
+        dirty = True
+
+    # krx_pre_subscribe → krx_start (값 이관)
+    if old_krx_pre_subscribe in merged:
+        if new_krx_start not in merged:
+            merged[new_krx_start] = merged[old_krx_pre_subscribe]
+        del merged[old_krx_pre_subscribe]
+        dirty = True
+
+    return merged, dirty
+
+
 # 암호화 필드 목록 (단일 정의)
 _ENCRYPT_FIELDS: frozenset[str] = frozenset({
     "kiwoom_app_key", "kiwoom_app_secret",
@@ -499,7 +536,7 @@ def classify_secret_fields(merged: dict) -> dict[str, str]:
 
 
 async def _apply_all_migrations(merged: dict, db_data: dict) -> None:
-    """레거시 키 마이그레이션 16개 순차 적용. dirty 시 DB에 저장."""
+    """레거시 키 마이그레이션 17개 순차 적용. dirty 시 DB에 저장."""
     _keys_before = set(merged.keys())
     merged, dirty = _migrate_legacy_auto_trade_on(merged)
     merged, dirty_tm = _migrate_trade_mode(merged)
@@ -517,8 +554,9 @@ async def _apply_all_migrations(merged: dict, db_data: dict) -> None:
     merged, dirty_lo = _migrate_remove_legacy_order_keys(merged)
     merged, dirty_mdl = _migrate_remove_max_daily_loss_limit(merged)
     merged, dirty_5d = _migrate_remove_scheduler_5d_download_on(merged)
+    merged, dirty_ttk = _migrate_timetable_keys_to_nxt_krx(merged)
 
-    if dirty or dirty_tm or dirty_tr or dirty_si or dirty_bc or dirty_tg or dirty_krx or dirty_ws or dirty_wso or dirty_lv or dirty_td or dirty_mps or dirty_mt or dirty_lo or dirty_mdl or dirty_5d:
+    if dirty or dirty_tm or dirty_tr or dirty_si or dirty_bc or dirty_tg or dirty_krx or dirty_ws or dirty_wso or dirty_lv or dirty_td or dirty_mps or dirty_mt or dirty_lo or dirty_mdl or dirty_5d or dirty_ttk:
         _legacy_keys = list(_keys_before - set(merged.keys()))
         await save_settings(merged, delete_keys=_legacy_keys or None)
 

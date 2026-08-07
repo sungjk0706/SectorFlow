@@ -411,8 +411,8 @@ class TestApplySettingsChangeTimetableRebuild:
         _dts_mod._TIMETABLE = self._orig_timetable
 
     @pytest.mark.asyncio
-    async def test_realtime_reset_triggers_rebuild(self):
-        """timetable.realtime_reset 변경 → 재빌드 + 재예약 호출."""
+    async def test_nxt_start_triggers_rebuild(self):
+        """timetable.nxt_start 변경 → 재빌드 + 재예약 호출."""
         from backend.app.services.engine_service import apply_settings_change
         from backend.app.services import daily_time_scheduler as _dts_mod
 
@@ -438,19 +438,19 @@ class TestApplySettingsChangeTimetableRebuild:
                 "backend.app.services.daily_time_scheduler._schedule_next_timetable_event",
             ) as mock_sched,
         ):
-            await apply_settings_change({"timetable.realtime_reset"})
+            await apply_settings_change({"timetable.nxt_start"})
 
         mock_build.assert_called_once()
         mock_sched.assert_called_once()
         assert _dts_mod._TIMETABLE == dummy_built
 
     @pytest.mark.asyncio
-    async def test_ws_prestart_triggers_rebuild(self):
-        """timetable.ws_prestart 변경 → 재빌드 + 재예약 호출."""
+    async def test_nxt_end_triggers_rebuild(self):
+        """timetable.nxt_end 변경 → 재빌드 + 재예약 호출."""
         from backend.app.services.engine_service import apply_settings_change
         from backend.app.services import daily_time_scheduler as _dts_mod
 
-        dummy_built = [{"time": (7, 59), "kind": "direct", "ctx": "test"}]
+        dummy_built = [{"time": (20, 0), "kind": "direct", "ctx": "test"}]
         with (
             patch(
                 "backend.app.services.engine_service.refresh_engine_integrated_system_settings_cache",
@@ -472,15 +472,15 @@ class TestApplySettingsChangeTimetableRebuild:
                 "backend.app.services.daily_time_scheduler._schedule_next_timetable_event",
             ) as mock_sched,
         ):
-            await apply_settings_change({"timetable.ws_prestart"})
+            await apply_settings_change({"timetable.nxt_end"})
 
         mock_build.assert_called_once()
         mock_sched.assert_called_once()
         assert _dts_mod._TIMETABLE == dummy_built
 
     @pytest.mark.asyncio
-    async def test_krx_pre_subscribe_triggers_rebuild(self):
-        """timetable.krx_pre_subscribe 변경 → 재빌드 + 재예약 호출."""
+    async def test_krx_start_triggers_rebuild(self):
+        """timetable.krx_start 변경 → 재빌드 + 재예약 호출."""
         from backend.app.services.engine_service import apply_settings_change
         from backend.app.services import daily_time_scheduler as _dts_mod
 
@@ -506,7 +506,7 @@ class TestApplySettingsChangeTimetableRebuild:
                 "backend.app.services.daily_time_scheduler._schedule_next_timetable_event",
             ) as mock_sched,
         ):
-            await apply_settings_change({"timetable.krx_pre_subscribe"})
+            await apply_settings_change({"timetable.krx_start"})
 
         mock_build.assert_called_once()
         mock_sched.assert_called_once()
@@ -642,6 +642,6 @@ class TestApplySettingsChangeTimetableRebuild:
             ),
         ):
             # 예외 전파 없이 정상 반환해야 함
-            result = await apply_settings_change({"timetable.realtime_reset"})
+            result = await apply_settings_change({"timetable.nxt_start"})
 
         assert result is None

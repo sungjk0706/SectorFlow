@@ -907,8 +907,8 @@ class TestCalcCountdown:
 # ── is_realtime_reset_window ──────────────────────────────────────────────────
 
 _RESET_SETTINGS = {
-    "timetable.realtime_reset": "07:58",
-    "timetable.confirmed_download": "20:40",
+    "timetable.nxt_start": "07:58",
+    "timetable.nxt_end": "20:00",
 }
 
 
@@ -954,32 +954,32 @@ class TestIsRealtimeResetWindow:
             assert result is True
 
     @pytest.mark.asyncio
-    async def test_20_00_gap_returns_true(self):
-        """20:00 — 실시간 수신 종료 직후 공백 시간 → True (WS 구간과 분리 핵심)."""
+    async def test_19_59_returns_true(self):
+        """19:59 — 상한(20:00) 직전 → True."""
+        mock_state = MagicMock()
+        mock_state.market_phase = {"krx": "장마감", "nxt": "장마감"}
+        with patch("backend.app.services.engine_state.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(19, 59)):
+            result = await is_realtime_reset_window(_RESET_SETTINGS)
+            assert result is True
+
+    @pytest.mark.asyncio
+    async def test_at_nxt_end_returns_false(self):
+        """20:00 정각 — 상한(nxt_end) 미포함 → False (NXT 종료 시각부터는 초기화 안 함)."""
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "장마감", "nxt": "장마감"}
         with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(20, 0)):
             result = await is_realtime_reset_window(_RESET_SETTINGS)
-            assert result is True
+            assert result is False
 
     @pytest.mark.asyncio
-    async def test_20_39_returns_true(self):
-        """20:39 — 상한 직전 → True."""
+    async def test_after_confirmed_download_returns_false(self):
+        """21:00 — 구간 종료 후 → False."""
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "장마감", "nxt": "장마감"}
         with patch("backend.app.services.engine_state.state", mock_state), \
-             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(20, 39)):
-            result = await is_realtime_reset_window(_RESET_SETTINGS)
-            assert result is True
-
-    @pytest.mark.asyncio
-    async def test_at_confirmed_download_returns_false(self):
-        """20:40 정각 — 상한 미포함 → False (확정 데이터 도착 시각부터는 초기화 안 함)."""
-        mock_state = MagicMock()
-        mock_state.market_phase = {"krx": "장마감", "nxt": "장마감"}
-        with patch("backend.app.services.engine_state.state", mock_state), \
-             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(20, 40)):
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(21, 0)):
             result = await is_realtime_reset_window(_RESET_SETTINGS)
             assert result is False
 
@@ -1007,13 +1007,13 @@ class TestIsRealtimeResetWindow:
         """_realtime_reset_window_bounds — 설정에서 읽은 시각을 분 단위로 반환."""
         rt_min, cd_min = _realtime_reset_window_bounds(_RESET_SETTINGS)
         assert rt_min == 7 * 60 + 58
-        assert cd_min == 20 * 60 + 40
+        assert cd_min == 20 * 60
 
     def test_bounds_custom_values(self):
         """사용자가 시각을 변경한 경우 변경된 값 반영."""
         settings = {
-            "timetable.realtime_reset": "07:30",
-            "timetable.confirmed_download": "21:00",
+            "timetable.nxt_start": "07:30",
+            "timetable.nxt_end": "21:00",
         }
         rt_min, cd_min = _realtime_reset_window_bounds(settings)
         assert rt_min == 7 * 60 + 30
@@ -2172,9 +2172,9 @@ class TestTimetableBuilder:
     def test_build_with_cache_values_returns_27_items(self):
         """캐시에서 4개 direct 시각을 읽어 27항목 리스트 반환 (토글 ON, 09:00:30 + 16 countdown 포함 — 10초 제거)."""
         tt = build_timetable_from_cache({
-            "timetable.realtime_reset": "07:55",
-            "timetable.ws_prestart": "07:56",
-            "timetable.krx_pre_subscribe": "08:58",
+            "timetable.nxt_start": "07:55",
+            "timetable.nxt_end": "20:00",
+            "timetable.krx_start": "08:58",
             "timetable.confirmed_download": "20:40",
         })
         assert len(tt) == 27
@@ -2182,7 +2182,7 @@ class TestTimetableBuilder:
         assert tt[0]["time"] == (7, 55, 0)
         assert tt[0]["kind"] == "direct"
         assert tt[0]["action"] is _on_realtime_fields_reset
-        assert tt[1]["time"] == (7, 56, 0)
+        assert tt[1]["time"] == (20, 0, 0)
         assert tt[1]["kind"] == "direct"
         assert tt[1]["action"] is _on_ws_subscribe_start
         assert tt[3]["time"] == (8, 58, 0)
@@ -2204,34 +2204,34 @@ class TestTimetableBuilder:
         assert tt[25]["kind"] == "countdown"
 
     def test_build_with_empty_cache_falls_back_to_defaults(self):
-        """캐시에 키 없으면 DEFAULT_USER_SETTINGS 기본값(07:58/07:59/08:59/20:40) 사용."""
+        """캐시에 키 없으면 DEFAULT_USER_SETTINGS 기본값(07:58/20:00/08:59/20:40) 사용."""
         tt = build_timetable_from_cache({})
         assert tt[0]["time"] == (7, 58, 0)
-        assert tt[1]["time"] == (7, 59, 0)
+        assert tt[1]["time"] == (20, 0, 0)
         assert tt[3]["time"] == (8, 59, 0)
         assert tt[26]["time"] == (20, 40, 0)  # confirmed_download 기본값 (인덱스 26)
 
     def test_build_with_none_cache_value_falls_back_to_default(self):
         """캐시 값이 None/빈 문자열이면 DEFAULT_USER_SETTINGS 기본값 사용 (P20)."""
         tt = build_timetable_from_cache({
-            "timetable.realtime_reset": None,
-            "timetable.ws_prestart": "",
-            "timetable.krx_pre_subscribe": "08:55",
+            "timetable.nxt_start": None,
+            "timetable.nxt_end": "",
+            "timetable.krx_start": "08:55",
         })
         assert tt[0]["time"] == (7, 58, 0)  # None → 기본값
-        assert tt[1]["time"] == (7, 59, 0)  # 빈 문자열 → 기본값
+        assert tt[1]["time"] == (20, 0, 0)  # 빈 문자열 → 기본값
         assert tt[3]["time"] == (8, 55, 0)  # 캐시값 우선
 
     def test_build_ctx_string_includes_time(self):
         """ctx 문자열에 시각이 포함되어 사용자에게 의미 전달 (P21 투명성)."""
         tt = build_timetable_from_cache({
-            "timetable.realtime_reset": "07:55",
-            "timetable.ws_prestart": "07:56",
-            "timetable.krx_pre_subscribe": "08:58",
+            "timetable.nxt_start": "07:55",
+            "timetable.nxt_end": "20:00",
+            "timetable.krx_start": "08:58",
             "timetable.confirmed_download": "20:40",
         })
         assert "07:55" in tt[0]["ctx"]
-        assert "07:56" in tt[1]["ctx"]
+        assert "20:00" in tt[1]["ctx"]
         assert "08:58" in tt[3]["ctx"]
         assert "09:00:30" in tt[5]["ctx"]  # NXT 메인마켓 진입 (초 단위)
         assert "20:40" in tt[26]["ctx"]  # confirmed_download (인덱스 26)
@@ -2239,9 +2239,9 @@ class TestTimetableBuilder:
     def test_build_toggle_off_skips_confirmed_download(self):
         """scheduler_market_close_on=False 시 마지막 direct 항목 스킵 (P16 살아있는 경로)."""
         tt = build_timetable_from_cache({
-            "timetable.realtime_reset": "07:55",
-            "timetable.ws_prestart": "07:56",
-            "timetable.krx_pre_subscribe": "08:58",
+            "timetable.nxt_start": "07:55",
+            "timetable.nxt_end": "20:00",
+            "timetable.krx_start": "08:58",
             "timetable.confirmed_download": "20:40",
             "scheduler_market_close_on": False,
         })
@@ -2254,9 +2254,9 @@ class TestTimetableBuilder:
     def test_build_toggle_on_includes_confirmed_download(self):
         """scheduler_market_close_on=True 시 마지막 항목 포함 (명시적 True)."""
         tt = build_timetable_from_cache({
-            "timetable.realtime_reset": "07:55",
-            "timetable.ws_prestart": "07:56",
-            "timetable.krx_pre_subscribe": "08:58",
+            "timetable.nxt_start": "07:55",
+            "timetable.nxt_end": "20:00",
+            "timetable.krx_start": "08:58",
             "timetable.confirmed_download": "20:40",
             "scheduler_market_close_on": True,
         })
@@ -2307,9 +2307,9 @@ class TestTimetableScheduler:
         로컬 참조와 모듈 속성 모두 동일 리스트 객체를 가리키도록 일치 (P23 일관성).
         """
         _TIMETABLE[:] = build_timetable_from_cache({
-            "timetable.realtime_reset": "07:58",
-            "timetable.ws_prestart": "07:59",
-            "timetable.krx_pre_subscribe": "08:59",
+            "timetable.nxt_start": "07:58",
+            "timetable.nxt_end": "20:00",
+            "timetable.krx_start": "08:59",
             "timetable.confirmed_download": "20:40",
         })
 
