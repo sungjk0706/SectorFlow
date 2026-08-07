@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 
 async def _establish_realtime_connection() -> None:
-    """실시간 연결을 1회 시도한다 (시간 구간 판정 — 거래일 07:58~20:40에만 연결).
+    """실시간 연결을 1회 시도한다 (시간 구간 판정 — 거래일 nxt_start~nxt_end에만 연결).
 
     access_token이 있고 시간 구간 내이면 ConnectorManager를 생성·연결.
     구간 외이면 연결 안 됨 상태 유지 — 엔진 루프의 시간 판정 루프가 구간 진입 시 재호출.
@@ -63,7 +63,7 @@ async def _establish_realtime_connection() -> None:
 
 
 async def _disconnect_realtime_connection() -> None:
-    """실시간 연결을 해제한다 (시간 구간 종료 — 20:40 경과 시).
+    """실시간 연결을 해제한다 (시간 구간 종료 — nxt_end 경과 시).
 
     ConnectorManager가 있으면 disconnect_all + None 할당.
     구간 내에서는 호출되지 않음 — 시간 판정 루프가 구간 외 진입 시에만 호출.
@@ -79,6 +79,75 @@ async def _disconnect_realtime_connection() -> None:
         await _broadcast_engine_ws()
     except Exception as e:
         logger.error("[연결] 실시간 연결 해제 실패: %s", e, exc_info=True)
+
+
+async def _create_auto_trade_manager_if_needed() -> None:
+    """토큰 확보 시점에 자동매매 관리자 생성 (아직 없으면).
+
+    회복 루프의 2차 생성 패턴을 정규 경로로 승격 — 기동 시 고정 생성 제거 (설계 결정 3).
+    토큰 발급 성공 시점(기동 중간 기동·NXT 시작·회복 성공 모두)에서 호출.
+    """
+    if engine_state.state.auto_trade is not None:
+        return
+    from backend.app.services.engine_lifecycle import sync_sell_overrides as _sync_sell_overrides_from_settings
+    from backend.app.services.engine_config import _get_settings
+    engine_state.state.auto_trade = AutoTradeManager(
+        get_settings_fn=_get_settings,
+    )
+    _sync_sell_overrides_from_settings()
+    # 매수 한도 화면 갱신 — 관리자 생성 전에는 0원으로 표시되었으므로
+    # 생성 즉시 실제 거래내역 기반 값으로 갱신 (P21 사용자 투명성).
+    try:
+        from backend.app.services.engine_account import _broadcast_buy_limit_status
+        await _broadcast_buy_limit_status()
+    except Exception:
+        logger.warning("[연결] 자동매매 관리자 생성 후 매수 한도 브로드캐스트 실패", exc_info=True)
+
+
+async def _try_issue_token(router, broker_nm: str) -> str:
+    """토큰 발급을 1회 시도하고 결과를 state에 반영 (설계 결정 1·2·4).
+
+    반환: "success" | "transient" | "permanent"
+    - success: 토큰 확보 → access_token 설정
+    - transient: 일시 실패 → 회복 루프 진입 대상
+    - permanent: 영구 실패 → 사용자 액션 필요
+    """
+    await _get_all_tokens_async(router)
+    token = engine_state.state.broker_tokens.get(broker_nm)
+    if token:
+        engine_state.state.access_token = token
+        engine_state.state.token_failure_kind = None
+        return "success"
+    failure_kind = engine_state.state.token_failure_kind
+    if failure_kind == "permanent":
+        engine_state.state.access_token = None
+        engine_state.state.token_failure_kind = "permanent"
+        return "permanent"
+    engine_state.state.access_token = None
+    engine_state.state.token_failure_kind = "transient"
+    return "transient"
+
+
+async def _handle_token_issue_failure(router, broker_nm: str, result: str) -> None:
+    """토큰 발급 실패 시 결과별 분기 처리 (영구 실패 알림 / 일시 실패 회복 루프 진입).
+
+    설계 결정 4 — 회복 루프 진입 조건을 "기동 시 일시 실패"에서
+    "토큰 발급 시도 실패(기동 중간·NXT 시작·재연결 모두)"로 확장.
+    """
+    from backend.app.services.engine_lifecycle import log_message
+    broker_display = BROKER_DISPLAY_NAMES.get(broker_nm, broker_nm)
+    if result == "permanent":
+        from backend.app.services.engine_lifecycle import broadcast_engine_status
+        log_message(f" [연결] {broker_display} 토큰 발급 영구 실패. API 키 확인 필요. 연결 안됨 상태 유지.")
+        await broadcast_engine_status()
+    elif result == "transient":
+        if not engine_state.state.token_recovery_in_progress:
+            from backend.app.services.engine_lifecycle import schedule_engine_task
+            log_message(f" [연결] {broker_display} 토큰 발급 일시 실패. 백그라운드 회복 루프 시작. 연결 안됨 상태 유지.")
+            schedule_engine_task(
+                _token_recovery_loop(router, broker_nm),
+                context="token-recovery-loop",
+            )
 
 
 async def _cache_and_bootstrap(settings: dict) -> None:
@@ -233,22 +302,9 @@ async def _token_recovery_loop(router, broker_nm: str) -> None:
                 engine_state.state.access_token = token
                 engine_state.state.token_failure_kind = None
                 engine_state.state.token_recovery_in_progress = False
-                # ── 관리자 누락 방지 — 부팅 시 토큰이 없어 생성되지 않았던 관리자를 ──
-                # 회복 성공 시점에 생성 (부팅 시 이미 생성된 경우 중복 생성 방지).
-                if engine_state.state.auto_trade is None:
-                    from backend.app.services.engine_lifecycle import sync_sell_overrides as _sync_sell_overrides_from_settings
-                    from backend.app.services.engine_config import _get_settings
-                    engine_state.state.auto_trade = AutoTradeManager(
-                        get_settings_fn=_get_settings,
-                    )
-                    _sync_sell_overrides_from_settings()
-                    # 매수 한도 화면 갱신 — 관리자 생성 전에는 0원으로 표시되었으므로
-                    # 생성 즉시 실제 거래내역 기반 값으로 갱신 (P21 사용자 투명성).
-                    try:
-                        from backend.app.services.engine_account import _broadcast_buy_limit_status
-                        await _broadcast_buy_limit_status()
-                    except Exception:
-                        logger.warning("[연결] 토큰 회복 후 매수 한도 브로드캐스트 실패", exc_info=True)
+                # ── 관리자 누락 방지 — 토큰 확보 시점에 자동매매 관리자 생성 ──
+                # 회복 루프의 2차 생성 패턴을 정규 경로로 승격 (설계 결정 3).
+                await _create_auto_trade_manager_if_needed()
                 log_message(f" [연결] {broker_display} 토큰 회복 성공. 정상 모드 전환.")
                 # 토큰 회복 성공 시 실시간 연결 시도 (시간 구간 판정 — 구간 내면 연결).
                 # _establish_realtime_connection() 내부에서 is_realtime_reset_window() 판정.
@@ -377,12 +433,10 @@ async def run_engine_loop() -> None:
 
         # REST/토큰 발급은 기준 증권사(broker_nm) 기준 유지
 
-        # ── 병렬 초기화: 캐시+앱준비 / 토큰 발급 / 브로커 스펙 로드 ──
+        # ── 병렬 초기화: 캐시+앱준비 / 브로커 스펙 로드 ──
         _t_parallel_start = time.perf_counter()
 
-        # 3개 독립 파이프라인 병렬 실행 — broker_spec은 gather 완료 후 사용
-        # _get_all_tokens_async는 state.token_failure_kind를 설정 (5세션) — gather와 분리하여
-        # 테스트에서 _get_all_tokens_async를 직접 mock할 수 있도록 별도 await.
+        # 2개 독립 파이프라인 병렬 실행 — broker_spec은 gather 완료 후 사용
         async def _load_spec():
             engine_state.state.broker_spec = await _load_broker_spec_async(broker_nm, settings)
 
@@ -390,8 +444,23 @@ async def run_engine_loop() -> None:
             _cache_and_bootstrap(settings),
             _load_spec(),
         )
-        # 토큰 발급은 캐시 로드와 독립 — gather 이후 직접 실행 (state.token_failure_kind 설정)
-        await _get_all_tokens_async(router)
+        # 토큰 발급은 기동 시 수행하지 않음 — NXT 구간 내 기동 시에만 즉시 발급 (설계 결정 1·2)
+        # 구간 외 기동 시 발급 시도 없이 대기 — NXT 시작 시간 도달 시 스케줄러가 엔진 루프 각성
+
+        # ── 기동 시 토큰 발급: NXT 구간 내 기동 시에만 즉시 발급 (앱 중간 기동 보완) ──
+        from backend.app.services.daily_time_scheduler import is_realtime_reset_window
+        try:
+            _boot_in_window = await is_realtime_reset_window(settings)
+        except Exception:
+            logger.warning("[연산] 기동 시 구간 판정 실패 — 발급 시도 없이 대기", exc_info=True)
+            _boot_in_window = False
+        if _boot_in_window:
+            _boot_result = await _try_issue_token(router, broker_nm)
+            if _boot_result == "success":
+                await _create_auto_trade_manager_if_needed()
+            else:
+                await _handle_token_issue_failure(router, broker_nm, _boot_result)
+        # 구간 외 기동 시 — 발급 시도 없이 대기 (NXT 시작 시간 또는 구간 진입 시 발급)
 
         # 토큰 발급 phase 완료 시그널 — WS 유니캐스트가 stale broker_statuses를
         # 전송하지 않도록 보장 (token_ready_event.wait()에서 대기 중인 태스크가 깨어남)
@@ -418,33 +487,6 @@ async def run_engine_loop() -> None:
             acnt_no = settings.get(f"{broker_nm}_account_no", "")
             from backend.app.services.engine_lifecycle import log_message
             log_message(f"[연산] 설정 로딩 — TR {len(engine_state.state.broker_spec)}개, 계좌: {acnt_no or '미설정'}")
-
-        # ── token 결과 반영 (실패 종류별 분기 — 5세션) ──
-        token = engine_state.state.broker_tokens.get(broker_nm)
-        _failure_kind = engine_state.state.token_failure_kind
-        if token:
-            engine_state.state.access_token = token
-            engine_state.state.token_failure_kind = None
-        elif _failure_kind == "permanent":
-            # 영구 실패 — 회복 루프 진입 없이 즉시 연결 안됨 상태 (사용자 액션 유도)
-            from backend.app.services.engine_lifecycle import log_message, broadcast_engine_status
-            engine_state.state.access_token = None
-            engine_state.state.token_failure_kind = "permanent"
-            log_message(f" [연결] {BROKER_DISPLAY_NAMES.get(broker_nm, broker_nm)} 토큰 발급 영구 실패. API 키 확인 필요. 연결 안됨 상태로 기동.")
-            await broadcast_engine_status()
-        else:
-            # 일시 실패 — 백그라운드 회복 루프 진입
-            from backend.app.services.engine_lifecycle import log_message
-            engine_state.state.access_token = None
-            engine_state.state.token_failure_kind = "transient"
-            # 중복 루프 방지 — 이미 회복 루프 진행 중이면 추가 생성 금지 (P17 단일 소스)
-            if not engine_state.state.token_recovery_in_progress:
-                from backend.app.services.engine_lifecycle import schedule_engine_task
-                log_message(f" [연결] {BROKER_DISPLAY_NAMES.get(broker_nm, broker_nm)} 토큰 발급 일시 실패. 백그라운드 회복 루프 시작. 연결 안됨 상태로 기동.")
-                schedule_engine_task(
-                    _token_recovery_loop(router, broker_nm),
-                    context="token-recovery-loop",
-                )
 
         # ── 계좌 조회용 REST = Router의 AuthProvider에서 REST 실시간 인스턴스 공유 ──
         _auth_provider = router.auth
@@ -478,13 +520,8 @@ async def run_engine_loop() -> None:
         _real_warn     = " ★ 실제 자금 투입 ★" if not _is_test_flag else ""
         logger.info("[연산] 엔진 기동 — %s %s / 계좌: %s%s", _broker_str, _mode_str, _acnt_disp, _real_warn)
 
-        if engine_state.state.access_token:
-            from backend.app.services.engine_lifecycle import sync_sell_overrides as _sync_sell_overrides_from_settings
-            from backend.app.services.engine_config import _get_settings
-            engine_state.state.auto_trade = AutoTradeManager(
-                get_settings_fn=_get_settings,
-            )
-            _sync_sell_overrides_from_settings()
+        # 자동매매 관리자는 토큰 확보 시점에 생성 — 기동 시 고정 생성 제거 (설계 결정 3)
+        # _try_issue_token 성공 시 _create_auto_trade_manager_if_needed()에서 생성.
 
         from backend.app.services.engine_account import _broadcast_buy_limit_status
         try:
@@ -504,7 +541,7 @@ async def run_engine_loop() -> None:
         await start_compute_loop()
 
         # ── 실시간 연결 시간 판정 루프 ──
-        # 거래일 07:58~20:40 구간에만 웹소켓 연결. 구간 외에는 연결 안 함.
+        # 거래일 nxt_start~nxt_end 구간에만 웹소켓 연결. 구간 외에는 연결 안 함.
         # 판정 기준: is_realtime_reset_window() (사용자 설정 기반, 비거래일 자동 차단).
         # 스케줄러가 시간 도달 시 ws_window_changed_event.set()으로 루프를 즉시 각성 (P16).
         engine_state.state.engine_stop_event.clear()
@@ -515,11 +552,19 @@ async def run_engine_loop() -> None:
             try:
                 _settings = engine_state.state.integrated_system_settings_cache
                 from backend.app.services.daily_time_scheduler import is_realtime_reset_window
-                _should_connect = await is_realtime_reset_window(_settings) if engine_state.state.access_token else False
+                _should_connect = await is_realtime_reset_window(_settings)
 
                 if _should_connect:
-                    # 구간 내 — 연결이 없으면 맺기
-                    if engine_state.state.connector_manager is None:
+                    # 구간 내 — 토큰이 없으면 발급 시도 (설계 결정 2·5)
+                    if not engine_state.state.access_token:
+                        _loop_result = await _try_issue_token(router, broker_nm)
+                        if _loop_result == "success":
+                            await _create_auto_trade_manager_if_needed()
+                            await _establish_realtime_connection()
+                        else:
+                            await _handle_token_issue_failure(router, broker_nm, _loop_result)
+                    elif engine_state.state.connector_manager is None:
+                        # 토큰 있고 연결 없음 — 연결 맺기
                         await _establish_realtime_connection()
                 else:
                     # 구간 외 — 연결이 있으면 해제

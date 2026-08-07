@@ -679,6 +679,7 @@ class TestRunEngineLoopInit:
             patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock),
             patch("backend.app.services.engine_config._get_settings"),
             patch("backend.app.services.daily_time_scheduler._init_ws_subscribe_state", new_callable=AsyncMock),
+            patch("backend.app.services.daily_time_scheduler.is_realtime_reset_window", new_callable=AsyncMock, return_value=True),
             patch.object(engine_loop, "AutoTradeManager"),
         ):
             await engine_loop.run_engine_loop()
@@ -717,6 +718,7 @@ class TestRunEngineLoopInit:
             patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock),
             patch("backend.app.services.engine_config._get_settings"),
             patch("backend.app.services.daily_time_scheduler._init_ws_subscribe_state", new_callable=AsyncMock),
+            patch("backend.app.services.daily_time_scheduler.is_realtime_reset_window", new_callable=AsyncMock, return_value=True),
         ):
             await engine_loop.run_engine_loop()
 
@@ -759,6 +761,7 @@ class TestRunEngineLoopInit:
             patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock),
             patch("backend.app.services.engine_config._get_settings"),
             patch("backend.app.services.daily_time_scheduler._init_ws_subscribe_state", new_callable=AsyncMock),
+            patch("backend.app.services.daily_time_scheduler.is_realtime_reset_window", new_callable=AsyncMock, return_value=True),
         ):
             await engine_loop.run_engine_loop()
 
@@ -1170,6 +1173,7 @@ class TestRunEngineLoopRestApi:
             patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock),
             patch("backend.app.services.engine_config._get_settings"),
             patch("backend.app.services.daily_time_scheduler._init_ws_subscribe_state", new_callable=AsyncMock),
+            patch("backend.app.services.daily_time_scheduler.is_realtime_reset_window", new_callable=AsyncMock, return_value=True),
             patch.object(engine_loop, "AutoTradeManager") as mock_atm_cls,
         ):
             await engine_loop.run_engine_loop()
