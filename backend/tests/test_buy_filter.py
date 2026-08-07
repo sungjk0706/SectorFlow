@@ -10,8 +10,6 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-import pytest
-
 from backend.app.domain.models import StockScore, SectorScore, SectorSummary
 from backend.app.domain.buy_filter import (
     calculate_boost_score,
@@ -20,6 +18,7 @@ from backend.app.domain.buy_filter import (
     apply_buy_block_guards,
     rank_buy_targets,
     build_buy_targets_from_settings,
+    apply_incremental_buy_target_update,
     compute_stock_boost_max,
 )
 from backend.app.domain.sector_calculator import select_top_sector_stocks
@@ -1034,3 +1033,226 @@ class TestComputeStockBoostMax:
             boost_news_on=True, boost_news_score=2.5,
         )
         assert actual == max_score
+
+
+# ── apply_incremental_buy_target_update ──────────────────────────────────────
+
+def _incremental_update(
+    summary: SectorSummary,
+    events: list[dict],
+    *,
+    settings=None,
+    held_codes=None,
+    bought_today_codes=None,
+) -> SectorSummary:
+    """apply_incremental_buy_target_update 어댑터 — engine_radar 캐시 getter patch."""
+    _s = settings if settings is not None else _settings()
+    with patch("backend.app.services.engine_radar.get_high_price_5d_cache", return_value={}), \
+         patch("backend.app.services.engine_radar.get_orderbook_cache", return_value={}), \
+         patch("backend.app.services.engine_radar.get_program_net_buy_cache", return_value={}), \
+         patch("backend.app.services.engine_radar.get_news_boost_cache", return_value={}):
+        return apply_incremental_buy_target_update(
+            summary, events, _s,
+            held_codes=held_codes, bought_today_codes=bought_today_codes,
+        )
+
+
+def _summary_with_targets(
+    sectors: list[SectorScore],
+    buy_target_codes: list[str],
+    blocked_target_codes: list[str] | None = None,
+) -> SectorSummary:
+    """섹터 stocks에서 코드로 BuyTarget을 구성해 SectorSummary 생성."""
+    from backend.app.domain.models import BuyTarget
+    stock_by_code: dict[str, StockScore] = {}
+    sector_by_name: dict[str, SectorScore] = {}
+    for sc in sectors:
+        sector_by_name[sc.sector] = sc
+        for s in sc.stocks:
+            stock_by_code[s.code] = s
+
+    buy_targets: list = []
+    for i, code in enumerate(buy_target_codes, 1):
+        s = stock_by_code[code]
+        sc = sector_by_name[s.sector]
+        buy_targets.append(BuyTarget(rank=i, sector_rank=sc.rank, stock=s))
+
+    blocked: list = []
+    for i, code in enumerate(blocked_target_codes or [], 1):
+        s = stock_by_code[code]
+        sc = sector_by_name[s.sector]
+        blocked.append(BuyTarget(rank=i, sector_rank=sc.rank, stock=s))
+
+    return SectorSummary(sectors=sectors, buy_targets=buy_targets, blocked_targets=blocked)
+
+
+class TestApplyIncrementalBuyTargetUpdate:
+    """apply_incremental_buy_target_update — 이벤트 기반 증분 갱신 (설계서 결정 3)."""
+
+    def test_cutoff_out_removes_sector_stocks(self):
+        """통과→탈락 전환 시 해당 업종 종목만 제거 (설계서 완료기준 5)."""
+        semi_stock = _stock("005930", sector="반도체")
+        auto_stock = _stock("005380", sector="자동차")
+        semi = _sector("반도체", rank=1, stocks=[semi_stock], is_cutoff_passed=True)
+        auto = _sector("자동차", rank=2, stocks=[auto_stock], is_cutoff_passed=True)
+        summary = _summary_with_targets([semi, auto], ["005930", "005380"])
+
+        events = [{"sector": "자동차", "action": "remove", "reason": "cutoff_out", "stock_codes": ["005380"]}]
+        result = _incremental_update(summary, events)
+
+        result_codes = {t.stock.code for t in result.buy_targets}
+        assert "005930" in result_codes  # 반도체 유지
+        assert "005380" not in result_codes  # 자동차 제거
+
+    def test_cutoff_in_adds_sector_stocks(self):
+        """탈락→통과 전환 시 해당 업종 종목만 추가 (설계서 완료기준 6)."""
+        semi_stock = _stock("005930", sector="반도체")
+        auto_stock = _stock("005380", sector="자동차")
+        semi = _sector("반도체", rank=1, stocks=[semi_stock], is_cutoff_passed=True)
+        auto = _sector("자동차", rank=2, stocks=[auto_stock], is_cutoff_passed=True)
+        # 기존: 반도체만 매수후보 (자동차는 이전에 탈락 상태였음)
+        summary = _summary_with_targets([semi, auto], ["005930"])
+
+        events = [{"sector": "자동차", "action": "add", "reason": "cutoff_in", "stock_codes": ["005380"]}]
+        result = _incremental_update(summary, events)
+
+        result_codes = {t.stock.code for t in result.buy_targets}
+        assert "005930" in result_codes  # 반도체 유지
+        assert "005380" in result_codes  # 자동차 추가
+
+    def test_top_n_in_adds_sector_stocks(self):
+        """상위 N개 진입 시 해당 업종 종목 추가 (설계서 완료기준 7)."""
+        semi_stock = _stock("005930", sector="반도체")
+        auto_stock = _stock("005380", sector="자동차")
+        semi = _sector("반도체", rank=1, stocks=[semi_stock], is_cutoff_passed=True)
+        auto = _sector("자동차", rank=2, stocks=[auto_stock], is_cutoff_passed=True)
+        summary = _summary_with_targets([semi, auto], ["005930"])
+
+        events = [{"sector": "자동차", "action": "add", "reason": "top_n_in", "stock_codes": ["005380"]}]
+        result = _incremental_update(summary, events)
+
+        result_codes = {t.stock.code for t in result.buy_targets}
+        assert "005380" in result_codes
+
+    def test_top_n_out_removes_sector_stocks(self):
+        """상위 N개 이탈 시 해당 업종 종목 제거 (설계서 완료기준 7)."""
+        semi_stock = _stock("005930", sector="반도체")
+        auto_stock = _stock("005380", sector="자동차")
+        semi = _sector("반도체", rank=1, stocks=[semi_stock], is_cutoff_passed=True)
+        auto = _sector("자동차", rank=2, stocks=[auto_stock], is_cutoff_passed=True)
+        summary = _summary_with_targets([semi, auto], ["005930", "005380"])
+
+        events = [{"sector": "자동차", "action": "remove", "reason": "top_n_out", "stock_codes": ["005380"]}]
+        result = _incremental_update(summary, events)
+
+        result_codes = {t.stock.code for t in result.buy_targets}
+        assert "005380" not in result_codes
+        assert "005930" in result_codes
+
+    def test_unchanged_sector_stocks_preserved(self):
+        """변경되지 않은 업종 종목은 그대로 유지 (설계서 완료기준 4)."""
+        semi_stock = _stock("005930", sector="반도체")
+        auto_stock = _stock("005380", sector="자동차")
+        ship_stock = _stock("005880", sector="조선")
+        semi = _sector("반도체", rank=1, stocks=[semi_stock], is_cutoff_passed=True)
+        auto = _sector("자동차", rank=2, stocks=[auto_stock], is_cutoff_passed=True)
+        ship = _sector("조선", rank=3, stocks=[ship_stock], is_cutoff_passed=True)
+        summary = _summary_with_targets([semi, auto, ship], ["005930", "005380", "005880"])
+
+        # 자동차만 제거 — 반도체·조선은 유지
+        events = [{"sector": "자동차", "action": "remove", "reason": "cutoff_out", "stock_codes": ["005380"]}]
+        result = _incremental_update(summary, events)
+
+        result_codes = {t.stock.code for t in result.buy_targets}
+        assert result_codes == {"005930", "005880"}
+
+    def test_multiple_events_batch(self):
+        """여러 이벤트 동시 처리 — 추가·제거 혼합 배치."""
+        semi_stock = _stock("005930", sector="반도체")
+        auto_stock = _stock("005380", sector="자동차")
+        ship_stock = _stock("005880", sector="조선")
+        semi = _sector("반도체", rank=1, stocks=[semi_stock], is_cutoff_passed=True)
+        auto = _sector("자동차", rank=2, stocks=[auto_stock], is_cutoff_passed=True)
+        ship = _sector("조선", rank=3, stocks=[ship_stock], is_cutoff_passed=True)
+        # 기존: 반도체 + 조선 (자동차는 탈락)
+        summary = _summary_with_targets([semi, auto, ship], ["005930", "005880"])
+
+        events = [
+            {"sector": "조선", "action": "remove", "reason": "cutoff_out", "stock_codes": ["005880"]},
+            {"sector": "자동차", "action": "add", "reason": "cutoff_in", "stock_codes": ["005380"]},
+        ]
+        result = _incremental_update(summary, events)
+
+        result_codes = {t.stock.code for t in result.buy_targets}
+        assert result_codes == {"005930", "005380"}  # 조선 제거, 자동차 추가, 반도체 유지
+
+    def test_rerank_after_update(self):
+        """갱신 후 재정렬 — rank가 1부터 순차 부여됨 (설계서 결정 4)."""
+        s1 = _stock("005930", sector="반도체", change_rate=5.0)
+        s2 = _stock("005380", sector="자동차", change_rate=3.0)
+        semi = _sector("반도체", rank=1, stocks=[s1], is_cutoff_passed=True)
+        auto = _sector("자동차", rank=2, stocks=[s2], is_cutoff_passed=True)
+        summary = _summary_with_targets([semi, auto], ["005930"])
+
+        events = [{"sector": "자동차", "action": "add", "reason": "cutoff_in", "stock_codes": ["005380"]}]
+        result = _incremental_update(summary, events, settings=_settings(sector_sort_keys=["change_rate"]))
+
+        # change_rate 내림차순 정렬 — 005930(5.0)이 1위, 005380(3.0)이 2위
+        codes_by_rank = [t.stock.code for t in result.buy_targets]
+        assert codes_by_rank[0] == "005930"
+        assert codes_by_rank[1] == "005380"
+        assert result.buy_targets[0].rank == 1
+        assert result.buy_targets[1].rank == 2
+
+    def test_sectors_preserved(self):
+        """증분 갱신 후 sectors는 기존 유지 (업종 점수는 업종순위 단계 역할)."""
+        semi_stock = _stock("005930", sector="반도체")
+        auto_stock = _stock("005380", sector="자동차")
+        semi = _sector("반도체", rank=1, stocks=[semi_stock], is_cutoff_passed=True)
+        auto = _sector("자동차", rank=2, stocks=[auto_stock], is_cutoff_passed=True)
+        summary = _summary_with_targets([semi, auto], ["005930"])
+
+        events = [{"sector": "자동차", "action": "remove", "reason": "cutoff_out", "stock_codes": ["005380"]}]
+        result = _incremental_update(summary, events)
+
+        assert result.sectors == [semi, auto]  # sectors 참조 유지
+
+    def test_empty_events_returns_reranked(self):
+        """빈 이벤트 리스트 — 기존 종목만으로 재정렬 (제거·추가 없음)."""
+        semi_stock = _stock("005930", sector="반도체")
+        semi = _sector("반도체", rank=1, stocks=[semi_stock], is_cutoff_passed=True)
+        summary = _summary_with_targets([semi], ["005930"])
+
+        result = _incremental_update(summary, [])
+
+        result_codes = {t.stock.code for t in result.buy_targets}
+        assert result_codes == {"005930"}
+
+    def test_add_sector_not_in_cache_skipped(self):
+        """추가 이벤트의 업종이 캐시 sectors에 없으면 스킵 (W8 폴백 금지 — 명시적 무시)."""
+        semi_stock = _stock("005930", sector="반도체")
+        semi = _sector("반도체", rank=1, stocks=[semi_stock], is_cutoff_passed=True)
+        summary = _summary_with_targets([semi], ["005930"])
+
+        events = [{"sector": "없는업종", "action": "add", "reason": "cutoff_in", "stock_codes": ["999999"]}]
+        result = _incremental_update(summary, events)
+
+        result_codes = {t.stock.code for t in result.buy_targets}
+        assert result_codes == {"005930"}  # 기존만 유지
+
+    def test_guard_applied_on_added_stocks(self):
+        """추가 종목에 가드 적용 — 등락률 초과 시 blocked_targets로 이동."""
+        semi_stock = _stock("005930", sector="반도체", change_rate=2.0)
+        # 8% 상승 → 상승률 차단 (block_rise_pct=7.0)
+        hot_stock = _stock("005380", sector="자동차", change_rate=8.0)
+        semi = _sector("반도체", rank=1, stocks=[semi_stock], is_cutoff_passed=True)
+        auto = _sector("자동차", rank=2, stocks=[hot_stock], is_cutoff_passed=True)
+        summary = _summary_with_targets([semi, auto], ["005930"])
+
+        events = [{"sector": "자동차", "action": "add", "reason": "cutoff_in", "stock_codes": ["005380"]}]
+        result = _incremental_update(summary, events)
+
+        buy_codes = {t.stock.code for t in result.buy_targets}
+        blocked_codes = {t.stock.code for t in result.blocked_targets}
+        assert "005930" in buy_codes  # 반도체는 통과 유지
+        assert "005380" in blocked_codes  # 자동차는 등락률 초과로 차단

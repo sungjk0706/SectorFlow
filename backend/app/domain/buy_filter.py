@@ -384,3 +384,106 @@ def build_buy_targets_from_settings(
         sector_scores=sector_scores,
         prev_targets_map=prev_targets_map,
     )
+
+
+def apply_incremental_buy_target_update(
+    summary: SectorSummary,
+    events: list[dict],
+    settings: dict,
+    *,
+    held_codes: set[str] | None = None,
+    bought_today_codes: set[str] | None = None,
+    prev_targets_map: dict[str, str] | None = None,
+) -> SectorSummary:
+    """이벤트 기반 증분 갱신 — 변경 업종 종목만 추가/제거 후 재정렬.
+
+    기존 매수후보에서 변경되지 않은 업종의 종목은 그대로 유지하고,
+    통과→탈락·상위 N개 이탈 업종의 종목만 제거,
+    탈락→통과·상위 N개 진입 업종의 종목만 추가한다 (설계서 결정 3).
+
+    기존 build_buy_targets_from_settings 전체 재생성은 콜드 스타트·설정 변경 경로에서 유지.
+    본 함수는 매수후보 갱신 루프(3단계)에서 이벤트 소비 시 호출.
+
+    Args:
+        summary: 기존 SectorSummary (캐시 — sectors + buy_targets + blocked_targets).
+        events: 매수후보 갱신 이벤트 리스트. 각 항목:
+            {"sector": 업종명, "action": "add"|"remove", "reason": str, "stock_codes": list[str]}
+        settings: 매수설정 (가드·가산점·정렬 기준).
+        held_codes: 보유 종목 코드 집합 (재매수 차단용).
+        bought_today_codes: 금일 매수 종목 코드 집합 (재매수 차단용).
+        prev_targets_map: code → 이전 reject_reason (보존용).
+
+    Returns:
+        갱신된 SectorSummary (sectors는 기존 유지, buy_targets·blocked_targets 재구성).
+    """
+    from backend.app.services.engine_radar import (
+        get_high_price_5d_cache,
+        get_orderbook_cache,
+        get_program_net_buy_cache,
+        get_news_boost_cache,
+    )
+
+    # 1. 제거·추가 업종 집합 추출
+    remove_sectors: set[str] = {e["sector"] for e in events if e["action"] == "remove"}
+    add_sectors: set[str] = {e["sector"] for e in events if e["action"] == "add"}
+
+    # 2. 업종명 → SectorScore 매핑 (캐시 sectors 기준)
+    sector_by_name: dict[str, object] = {sc.sector: sc for sc in summary.sectors}
+
+    # 3. 기존 buy_targets + blocked_targets에서 (stock, sector) 페어 재구성
+    #    제거 업종 종목은 제외 (설계서 결정 3 — 통과→탈락·상위 N개 이탈 종목 제거)
+    pairs: list = []
+    for target in list(summary.buy_targets) + list(summary.blocked_targets):
+        stock = target.stock
+        sector_name = getattr(stock, "sector", "")
+        if sector_name in remove_sectors:
+            continue
+        sc = sector_by_name.get(sector_name)
+        if sc is None:
+            # 업종이 캐시에서 사라진 경우 — 유지 불가, 스킵
+            continue
+        pairs.append((stock, sc))
+
+    # 4. 추가 업종 종목 페어 구성 + 가드 적용 (새 종목만)
+    #    탈락→통과·상위 N개 진입 업종의 종목을 매수후보에 추가 (설계서 결정 3)
+    add_pairs: list = []
+    for sector_name in add_sectors:
+        sc = sector_by_name.get(sector_name)
+        if sc is None:
+            continue
+        for s in sc.stocks:
+            add_pairs.append((s, sc))
+
+    if add_pairs:
+        apply_buy_block_guards(
+            add_pairs,
+            block_rise_on=bool(settings.get("buy_block_rise_on", True)),
+            block_rise_pct=float(settings.get("buy_block_rise_pct", 7.0)),
+            block_fall_on=bool(settings.get("buy_block_fall_on", True)),
+            block_fall_pct=float(settings.get("buy_block_fall_pct", -7.0)),
+            rebuy_block_on=bool(settings.get("rebuy_block_on", True)),
+            held_codes=held_codes,
+            bought_today_codes=bought_today_codes,
+        )
+        pairs.extend(add_pairs)
+
+    # 5. 재정렬 — rank_buy_targets 호출 (갱신 이벤트 시에만 재정렬 — 설계서 결정 4)
+    return rank_buy_targets(
+        pairs,
+        sort_keys=settings.get("sector_sort_keys") or None,
+        high_5d_cache=get_high_price_5d_cache(),
+        orderbook_cache=get_orderbook_cache(),
+        program_net_buy_cache=get_program_net_buy_cache(),
+        news_boost_cache=get_news_boost_cache(),
+        boost_high_on=bool(settings.get("boost_high_breakout_on", False)),
+        boost_high_score=float(settings.get("boost_high_breakout_score", 1.0)),
+        boost_order_ratio_on=bool(settings.get("boost_order_ratio_on", False)),
+        boost_order_ratio_pct=float(settings.get("boost_order_ratio_pct", 20.0)),
+        boost_order_ratio_score=float(settings.get("boost_order_ratio_score", 1.0)),
+        boost_program_net_buy_on=bool(settings.get("boost_program_net_buy_on", False)),
+        boost_program_net_buy_score=float(settings.get("boost_program_net_buy_score", 1.0)),
+        boost_news_on=bool(settings.get("boost_news_on", False)),
+        boost_news_score=float(settings.get("boost_news_score", 1.0)),
+        sector_scores=summary.sectors,
+        prev_targets_map=prev_targets_map,
+    )

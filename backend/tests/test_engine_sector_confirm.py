@@ -1291,3 +1291,349 @@ class TestDetectBuyTargetEvents:
         assert ("자동차", "add", "cutoff_in") in actions
         # 철강은 통과 유지 + 상위 N개 유지 → 이벤트 없음
         assert not any(e["sector"] == "철강" for e in events)
+
+
+# ── 매수후보 갱신 루프 (engine_buy_target_loop) ──────────────────────────────
+
+class TestProcessBuyTargetEvents:
+    """_process_buy_target_events — 증분 갱신 + 캐시 갱신 + 매수 요청 전달 + 후속 처리 (3단계)."""
+
+    @pytest.mark.asyncio
+    async def test_calls_notify_and_order_queue(self):
+        """이벤트 처리 후 화면 전송·매수 평가 큐 호출 (설계서 완료기준 9·10·12)."""
+        from backend.app.services.engine_buy_target_loop import _process_buy_target_events
+
+        mock_cache = MagicMock()
+        mock_cache.sectors = []
+        mock_cache.buy_targets = []
+        mock_new_summary = MagicMock()
+        mock_new_summary.buy_targets = []
+        mock_order_queue = MagicMock()
+
+        with patch("backend.app.services.engine_state.state") as mock_state, \
+             patch("backend.app.services.engine_account.get_held_codes", new=AsyncMock(return_value=set())), \
+             patch("backend.app.domain.buy_filter.apply_incremental_buy_target_update", return_value=mock_new_summary), \
+             patch("backend.app.services.engine_initial_data._set_sector_summary") as mock_set, \
+             patch("backend.app.services.engine_account_notify.notify_buy_targets_update", new=AsyncMock()) as mock_notify, \
+             patch("backend.app.services.engine_sector_confirm.are_buy_target_page_codes_changed", return_value=False), \
+             patch("backend.app.services.engine_sector_confirm._refresh_buy_target_page_subscriptions", new=AsyncMock()), \
+             patch("backend.app.services.engine_sector_confirm.are_buy_targets_changed", return_value=False), \
+             patch("backend.app.services.engine_sector_confirm.sync_dynamic_subscriptions"), \
+             patch("backend.app.services.core_queues.get_order_queue", return_value=mock_order_queue):
+            mock_state.sector_summary_cache = mock_cache
+            mock_state.integrated_system_settings_cache = {"sector_max_targets": 3}
+            mock_state.auto_trade = None
+
+            events = [{"sector": "자동차", "action": "add", "reason": "cutoff_in", "stock_codes": ["005380"]}]
+            await _process_buy_target_events(events)
+
+            mock_set.assert_called_once()
+            mock_notify.assert_awaited_once()
+            mock_order_queue.put_nowait.assert_called_once_with({"type": "buy_evaluate"})
+
+    @pytest.mark.asyncio
+    async def test_page_subscription_on_codes_changed(self):
+        """종목 코드 집합 변동 시 페이지 구독 갱신 호출 (설계서 완료기준 11)."""
+        from backend.app.services.engine_buy_target_loop import _process_buy_target_events
+
+        mock_cache = MagicMock()
+        mock_cache.sectors = []
+        mock_cache.buy_targets = []
+        mock_new_summary = MagicMock()
+        mock_new_summary.buy_targets = []
+        mock_new_summary.blocked_targets = []
+
+        with patch("backend.app.services.engine_state.state") as mock_state, \
+             patch("backend.app.services.engine_account.get_held_codes", new=AsyncMock(return_value=set())), \
+             patch("backend.app.domain.buy_filter.apply_incremental_buy_target_update", return_value=mock_new_summary), \
+             patch("backend.app.services.engine_initial_data._set_sector_summary"), \
+             patch("backend.app.services.engine_account_notify.notify_buy_targets_update", new=AsyncMock()), \
+             patch("backend.app.services.engine_sector_confirm.are_buy_target_page_codes_changed", return_value=True) as mock_codes_changed, \
+             patch("backend.app.services.engine_sector_confirm._refresh_buy_target_page_subscriptions", new=AsyncMock()) as mock_page_refresh, \
+             patch("backend.app.services.engine_sector_confirm.are_buy_targets_changed", return_value=False), \
+             patch("backend.app.services.engine_sector_confirm.sync_dynamic_subscriptions"), \
+             patch("backend.app.services.core_queues.get_order_queue", return_value=MagicMock()):
+            mock_state.sector_summary_cache = mock_cache
+            mock_state.integrated_system_settings_cache = {"sector_max_targets": 3}
+            mock_state.auto_trade = None
+
+            await _process_buy_target_events([{"sector": "자동차", "action": "add", "reason": "cutoff_in", "stock_codes": ["005380"]}])
+
+            mock_codes_changed.assert_called_once()
+            mock_page_refresh.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_page_subscription_skipped_when_codes_unchanged(self):
+        """종목 코드 집합 불변 시 페이지 구독 갱신 스킵 (불필요한 갱신 제거)."""
+        from backend.app.services.engine_buy_target_loop import _process_buy_target_events
+
+        mock_cache = MagicMock()
+        mock_cache.sectors = []
+        mock_cache.buy_targets = []
+        mock_new_summary = MagicMock()
+        mock_new_summary.buy_targets = []
+        mock_new_summary.blocked_targets = []
+
+        with patch("backend.app.services.engine_state.state") as mock_state, \
+             patch("backend.app.services.engine_account.get_held_codes", new=AsyncMock(return_value=set())), \
+             patch("backend.app.domain.buy_filter.apply_incremental_buy_target_update", return_value=mock_new_summary), \
+             patch("backend.app.services.engine_initial_data._set_sector_summary"), \
+             patch("backend.app.services.engine_account_notify.notify_buy_targets_update", new=AsyncMock()), \
+             patch("backend.app.services.engine_sector_confirm.are_buy_target_page_codes_changed", return_value=False), \
+             patch("backend.app.services.engine_sector_confirm._refresh_buy_target_page_subscriptions", new=AsyncMock()) as mock_page_refresh, \
+             patch("backend.app.services.engine_sector_confirm.are_buy_targets_changed", return_value=False), \
+             patch("backend.app.services.engine_sector_confirm.sync_dynamic_subscriptions"), \
+             patch("backend.app.services.core_queues.get_order_queue", return_value=MagicMock()):
+            mock_state.sector_summary_cache = mock_cache
+            mock_state.integrated_system_settings_cache = {"sector_max_targets": 3}
+            mock_state.auto_trade = None
+
+            await _process_buy_target_events([{"sector": "자동차", "action": "add", "reason": "cutoff_in", "stock_codes": ["005380"]}])
+
+            mock_page_refresh.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_sync_dynamic_on_guard_pass_changed(self):
+        """guard_pass 종목 집합 변동 시 동적 구독 갱신 호출 (설계서 완료기준 11)."""
+        from backend.app.services.engine_buy_target_loop import _process_buy_target_events
+
+        mock_cache = MagicMock()
+        mock_cache.sectors = []
+        mock_cache.buy_targets = []
+        mock_new_summary = MagicMock()
+        mock_new_summary.buy_targets = []
+
+        with patch("backend.app.services.engine_state.state") as mock_state, \
+             patch("backend.app.services.engine_account.get_held_codes", new=AsyncMock(return_value=set())), \
+             patch("backend.app.domain.buy_filter.apply_incremental_buy_target_update", return_value=mock_new_summary), \
+             patch("backend.app.services.engine_initial_data._set_sector_summary"), \
+             patch("backend.app.services.engine_account_notify.notify_buy_targets_update", new=AsyncMock()), \
+             patch("backend.app.services.engine_sector_confirm.are_buy_target_page_codes_changed", return_value=False), \
+             patch("backend.app.services.engine_sector_confirm._refresh_buy_target_page_subscriptions", new=AsyncMock()), \
+             patch("backend.app.services.engine_sector_confirm.are_buy_targets_changed", return_value=True) as mock_changed, \
+             patch("backend.app.services.engine_sector_confirm.sync_dynamic_subscriptions") as mock_sync, \
+             patch("backend.app.services.core_queues.get_order_queue", return_value=MagicMock()):
+            mock_state.sector_summary_cache = mock_cache
+            mock_state.integrated_system_settings_cache = {"sector_max_targets": 3}
+            mock_state.auto_trade = None
+
+            await _process_buy_target_events([{"sector": "자동차", "action": "add", "reason": "cutoff_in", "stock_codes": ["005380"]}])
+
+            mock_changed.assert_called_once()
+            mock_sync.assert_called_once_with(mock_new_summary.buy_targets)
+
+    @pytest.mark.asyncio
+    async def test_sync_dynamic_skipped_when_guard_pass_unchanged(self):
+        """guard_pass 종목 집합 불변 시 동적 구독 갱신 스킵."""
+        from backend.app.services.engine_buy_target_loop import _process_buy_target_events
+
+        mock_cache = MagicMock()
+        mock_cache.sectors = []
+        mock_cache.buy_targets = []
+        mock_new_summary = MagicMock()
+        mock_new_summary.buy_targets = []
+
+        with patch("backend.app.services.engine_state.state") as mock_state, \
+             patch("backend.app.services.engine_account.get_held_codes", new=AsyncMock(return_value=set())), \
+             patch("backend.app.domain.buy_filter.apply_incremental_buy_target_update", return_value=mock_new_summary), \
+             patch("backend.app.services.engine_initial_data._set_sector_summary"), \
+             patch("backend.app.services.engine_account_notify.notify_buy_targets_update", new=AsyncMock()), \
+             patch("backend.app.services.engine_sector_confirm.are_buy_target_page_codes_changed", return_value=False), \
+             patch("backend.app.services.engine_sector_confirm._refresh_buy_target_page_subscriptions", new=AsyncMock()), \
+             patch("backend.app.services.engine_sector_confirm.are_buy_targets_changed", return_value=False), \
+             patch("backend.app.services.engine_sector_confirm.sync_dynamic_subscriptions") as mock_sync, \
+             patch("backend.app.services.core_queues.get_order_queue", return_value=MagicMock()):
+            mock_state.sector_summary_cache = mock_cache
+            mock_state.integrated_system_settings_cache = {"sector_max_targets": 3}
+            mock_state.auto_trade = None
+
+            await _process_buy_target_events([{"sector": "자동차", "action": "add", "reason": "cutoff_in", "stock_codes": ["005380"]}])
+
+            mock_sync.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_skips_when_no_cache(self):
+        """캐시 없음 시 증분 갱신 스킵 (콜드 스타트 대기 — W8 폴백 금지, 명시적 무시)."""
+        from backend.app.services.engine_buy_target_loop import _process_buy_target_events
+
+        with patch("backend.app.services.engine_state.state") as mock_state, \
+             patch("backend.app.domain.buy_filter.apply_incremental_buy_target_update") as mock_update, \
+             patch("backend.app.services.engine_account_notify.notify_buy_targets_update", new=AsyncMock()) as mock_notify:
+            mock_state.sector_summary_cache = None
+
+            await _process_buy_target_events([{"sector": "자동차", "action": "add", "reason": "cutoff_in", "stock_codes": ["005380"]}])
+
+            mock_update.assert_not_called()
+            mock_notify.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_order_queue_full_drops_gracefully(self):
+        """주문 큐 가득 시 명시적 드롭 + 로깅 (W8 폴백 금지, W1 무한 쌓기 방지)."""
+        from backend.app.services.engine_buy_target_loop import _process_buy_target_events
+        import asyncio
+
+        mock_cache = MagicMock()
+        mock_cache.sectors = []
+        mock_cache.buy_targets = []
+        mock_new_summary = MagicMock()
+        mock_new_summary.buy_targets = []
+        mock_order_queue = MagicMock()
+        mock_order_queue.put_nowait.side_effect = asyncio.QueueFull()
+
+        with patch("backend.app.services.engine_state.state") as mock_state, \
+             patch("backend.app.services.engine_account.get_held_codes", new=AsyncMock(return_value=set())), \
+             patch("backend.app.domain.buy_filter.apply_incremental_buy_target_update", return_value=mock_new_summary), \
+             patch("backend.app.services.engine_initial_data._set_sector_summary"), \
+             patch("backend.app.services.engine_account_notify.notify_buy_targets_update", new=AsyncMock()), \
+             patch("backend.app.services.engine_sector_confirm.are_buy_target_page_codes_changed", return_value=False), \
+             patch("backend.app.services.engine_sector_confirm._refresh_buy_target_page_subscriptions", new=AsyncMock()), \
+             patch("backend.app.services.engine_sector_confirm.are_buy_targets_changed", return_value=False), \
+             patch("backend.app.services.engine_sector_confirm.sync_dynamic_subscriptions"), \
+             patch("backend.app.services.core_queues.get_order_queue", return_value=mock_order_queue):
+            mock_state.sector_summary_cache = mock_cache
+            mock_state.integrated_system_settings_cache = {"sector_max_targets": 3}
+            mock_state.auto_trade = None
+
+            # 예외 전파 없이 정상 종료 (격리된 실패)
+            await _process_buy_target_events([{"sector": "자동차", "action": "add", "reason": "cutoff_in", "stock_codes": ["005380"]}])
+
+    @pytest.mark.asyncio
+    async def test_bought_today_codes_passed_to_update(self):
+        """auto_trade._bought_today가 증분 갱신 함수에 전달됨 (재매수 차단)."""
+        from backend.app.services.engine_buy_target_loop import _process_buy_target_events
+
+        mock_cache = MagicMock()
+        mock_cache.sectors = []
+        mock_cache.buy_targets = []
+        mock_new_summary = MagicMock()
+        mock_new_summary.buy_targets = []
+        mock_auto_trade = MagicMock()
+        mock_auto_trade._bought_today = {"005940": True}
+
+        with patch("backend.app.services.engine_state.state") as mock_state, \
+             patch("backend.app.services.engine_account.get_held_codes", new=AsyncMock(return_value=set())), \
+             patch("backend.app.domain.buy_filter.apply_incremental_buy_target_update", return_value=mock_new_summary) as mock_update, \
+             patch("backend.app.services.engine_initial_data._set_sector_summary"), \
+             patch("backend.app.services.engine_account_notify.notify_buy_targets_update", new=AsyncMock()), \
+             patch("backend.app.services.engine_sector_confirm.are_buy_target_page_codes_changed", return_value=False), \
+             patch("backend.app.services.engine_sector_confirm._refresh_buy_target_page_subscriptions", new=AsyncMock()), \
+             patch("backend.app.services.engine_sector_confirm.are_buy_targets_changed", return_value=False), \
+             patch("backend.app.services.engine_sector_confirm.sync_dynamic_subscriptions"), \
+             patch("backend.app.services.core_queues.get_order_queue", return_value=MagicMock()):
+            mock_state.sector_summary_cache = mock_cache
+            mock_state.integrated_system_settings_cache = {"sector_max_targets": 3}
+            mock_state.auto_trade = mock_auto_trade
+
+            await _process_buy_target_events([{"sector": "자동차", "action": "add", "reason": "cutoff_in", "stock_codes": ["005380"]}])
+
+            # apply_incremental_buy_target_update 호출 시 bought_today_codes 전달 확인
+            _, kwargs = mock_update.call_args
+            assert kwargs.get("bought_today_codes") == {"005940"}
+
+
+class TestBuyTargetLoopConsume:
+    """매수후보 갱신 루프 — 큐 소비 동작 (3단계)."""
+
+    @pytest.mark.asyncio
+    async def test_loop_consumes_events_from_queue(self):
+        """루프가 큐에서 이벤트를 꺼내 _process_buy_target_events 호출 후 task_done."""
+        from backend.app.services import engine_buy_target_loop as loop_mod
+        import asyncio
+
+        queue: asyncio.Queue = asyncio.Queue()
+        queue.put_nowait({"sector": "자동차", "action": "add", "reason": "cutoff_in", "stock_codes": ["005380"]})
+
+        processed_events: list = []
+
+        async def fake_process(events):
+            processed_events.extend(events)
+
+        loop_mod._buy_target_running = True
+        try:
+            with patch("backend.app.services.core_queues.get_buy_target_update_queue", return_value=queue), \
+                 patch.object(loop_mod, "_process_buy_target_events", side_effect=fake_process):
+                # 루프를 짧게 실행 후 중단
+                task = asyncio.create_task(loop_mod._buy_target_loop_impl())
+                await asyncio.sleep(0.1)
+                loop_mod._buy_target_running = False
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+
+                assert len(processed_events) == 1
+                assert processed_events[0]["sector"] == "자동차"
+                assert queue.empty()  # 큐에서 꺼냄
+        finally:
+            loop_mod._buy_target_running = False
+
+    @pytest.mark.asyncio
+    async def test_loop_batches_multiple_events(self):
+        """큐에 쌓인 여러 이벤트를 한 번에 배치 처리."""
+        from backend.app.services import engine_buy_target_loop as loop_mod
+        import asyncio
+
+        queue: asyncio.Queue = asyncio.Queue()
+        queue.put_nowait({"sector": "자동차", "action": "add", "reason": "cutoff_in", "stock_codes": ["005380"]})
+        queue.put_nowait({"sector": "조선", "action": "remove", "reason": "cutoff_out", "stock_codes": ["005880"]})
+
+        batch_sizes: list = []
+
+        async def fake_process(events):
+            batch_sizes.append(len(events))
+
+        loop_mod._buy_target_running = True
+        try:
+            with patch("backend.app.services.core_queues.get_buy_target_update_queue", return_value=queue), \
+                 patch.object(loop_mod, "_process_buy_target_events", side_effect=fake_process):
+                task = asyncio.create_task(loop_mod._buy_target_loop_impl())
+                await asyncio.sleep(0.1)
+                loop_mod._buy_target_running = False
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+
+                # 2개 이벤트가 한 배치로 처리됨
+                assert batch_sizes == [2]
+        finally:
+            loop_mod._buy_target_running = False
+
+    @pytest.mark.asyncio
+    async def test_loop_event_exception_isolated(self):
+        """개별 이벤트 처리 예외 시 루프 중단 없이 계속 (W9 격리된 실패)."""
+        from backend.app.services import engine_buy_target_loop as loop_mod
+        import asyncio
+
+        queue: asyncio.Queue = asyncio.Queue()
+        queue.put_nowait({"sector": "자동차", "action": "add", "reason": "cutoff_in", "stock_codes": ["005380"]})
+
+        call_count = 0
+
+        async def fake_process(events):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                # 첫 배치 예외 후 두 번째 이벤트 추가 — 루프가 계속되는지 확인
+                queue.put_nowait({"sector": "조선", "action": "add", "reason": "cutoff_in", "stock_codes": ["005880"]})
+                raise RuntimeError("의도적 예외 — 격리 테스트")
+
+        loop_mod._buy_target_running = True
+        try:
+            with patch("backend.app.services.core_queues.get_buy_target_update_queue", return_value=queue), \
+                 patch.object(loop_mod, "_process_buy_target_events", side_effect=fake_process):
+                task = asyncio.create_task(loop_mod._buy_target_loop_impl())
+                await asyncio.sleep(0.2)
+                loop_mod._buy_target_running = False
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+
+                # 첫 배치 예외 후에도 루프가 중단되지 않고 두 번째 배치 처리
+                assert call_count >= 2
+        finally:
+            loop_mod._buy_target_running = False
