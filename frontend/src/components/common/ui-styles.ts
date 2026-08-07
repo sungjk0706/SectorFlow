@@ -9,10 +9,13 @@ export * from './ui-styles-columns'
 
 /* ── 폰트 ── */
 
-/** 기본 폰트 — macOS 시스템 폰트 우선 스택 (SF Pro → 폴백) */
+/** 기본 폰트 — 크로스 플랫폼 시스템 폰트 스택.
+ *  macOS: SF Pro Text/Display (-apple-system, BlinkMacSystemFont)
+ *  Windows: Segoe UI
+ *  Linux/기타: system-ui → sans-serif 폴백
+ *  각 운영체제의 시스템 폰트로 자연스럽게 렌더링 (P23 일관성). */
 export const FONT_FAMILY =
-  "-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', " +
-  "'Helvetica Neue', 'Segoe UI', system-ui, sans-serif"
+  "-apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif"
 
 /* ── 폰트 크기 ── */
 

@@ -10,7 +10,7 @@ import type { RouteConfig, PageModule } from './router'
 import { initToastContainer } from './components/common/toast'
 import { stockClassificationStore } from './stores/stockClassificationStore'
 import { api } from './api/client'
-import { COLOR } from './components/common/ui-styles'
+import { COLOR, FONT_FAMILY } from './components/common/ui-styles'
 // Import sector-stock Web Component to register custom element
 import './pages/sector-stock'
 
@@ -100,9 +100,9 @@ declare global {
 
 function main(): void {
   window.uiStore = uiStore
-  // 0. 전역 스타일 적용 (HTS 금융 표준 - ui-styles.ts 표준 준수)
+  // 0. 전역 스타일 적용 (크로스 플랫폼 시스템 폰트 - ui-styles.ts 표준 준수)
   Object.assign(document.body.style, {
-    fontFamily: "Tahoma, '굴림', Gulim, sans-serif",
+    fontFamily: FONT_FAMILY,
     fontSize: '13px',
     fontWeight: 'normal',
     color: COLOR.neutral,
@@ -110,20 +110,12 @@ function main(): void {
     lineHeight: '1.4',
   })
 
-  // HTS 숫자/기호 스타일 (고정폭, 우측 정렬 느낌)
+  // 금융 표시 스타일 (색상·기호·우측 정렬 — 폰트는 body 상속)
   const htsStyle = document.createElement('style')
   htsStyle.textContent = `
-    /* HTS 스타일 테이블 숫자 - 고정폭 + 우측 정렬감 */
-    td, th {
-      font-family: Tahoma, '굴림', Gulim, sans-serif;
-      font-size: 13px;
-      letter-spacing: 0.5px;
-    }
-    
-    /* 가격/거래대금 컬럼 (HTS처럼 깔끔하게) */
+    /* 가격/거래대금 컬럼 — 우측 정렬 */
     .price, .amount, .avg-amount {
       text-align: right;
-      font-family: Tahoma, '굴림', Gulim, sans-serif;
     }
     
     /* 상승/하락 색상 (HTS 전통) */
