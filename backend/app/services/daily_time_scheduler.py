@@ -67,8 +67,7 @@ NXT_AFT_CLOSE_COUNTDOWN_5M  = (19, 55)   # 19:55 에프터마켓 장마감 5분�
 NXT_AFT_CLOSE_COUNTDOWN_1M  = (19, 59)   # 19:59 에프터마켓 장마감 1분전
 
 # ── 사전 트리거 시각 (장 시작 전 사전 준비 — 안 D 4단계) ──────────────────────
-REALTIME_FIELDS_RESET_TIME = (7, 58)   # 07:58 실시간 필드 초기화 (WS 구독 1분 전)
-WS_SUBSCRIBE_PRESTART_TIME = (7, 59)   # 07:59 WS 구독 사전 시작 (NXT 프리마켓 1분 전)
+REALTIME_FIELDS_RESET_TIME = (7, 58)   # 07:58 실시간 필드 초기화 (WS 구독 1분 전) — 타임테이블 빈 값 안전장치
 NXT_MAINMARKET_START_SECOND = 30       # 09:00:30 NXT 메인마켓 시작 (초 단위 예외)
 NXT_MAINMARKET_START = (NXT_PREP_NONE_END[0], NXT_PREP_NONE_END[1], NXT_MAINMARKET_START_SECOND)  # 09:00:30 — 타임테이블 엔트리용 3-tuple (P10 SSOT 파생)
 
@@ -295,19 +294,26 @@ NXT_TRADEABLE_PHASES = frozenset({
 
 
 def _is_pre_subscribe_window() -> bool:
-    """07:59~08:00 사전 구독 구간 여부 (시간 기반 — 재시작 대응, P16 살아있는 경로).
+    """NXT 시작 시각 ~ NXT 거래 시작(08:00) 사전 구독 구간 여부 (시간 기반 — 재시작 대응, P16).
 
-    WS_SUBSCRIBE_PRESTART_TIME(07:59) ~ NXT_PREMARKET_START(08:00) 사이.
+    사용자 설정 timetable.nxt_start(기본 07:58) ~ NXT_PREMARKET_START(08:00) 사이.
+    이 구간에서는 KRX가 아직 개장 전이므로 NXT-only 구독 (KRX 단독 종목 제외).
     시간 기반 판정이므로 엔진 재시작 시에도 사전 구간이 누락되지 않음
     (플래그 기반 판정은 메모리 상주 → 재시작 시 False → 사전 구간 누락).
     휴장일은 calc_timebased_market_phase()가 "휴장일"로 산정하므로 자동 차단.
-    P10 SSOT: 기존 시간 상수(WS_SUBSCRIBE_PRESTART_TIME, NXT_PREMARKET_START) 재사용.
+    P10 SSOT: 하한은 사용자 설정 timetable.nxt_start, 상한은 거래소 고정 NXT_PREMARKET_START.
     """
+    settings = engine_state.state.integrated_system_settings_cache
+    if not settings:
+        return False
+    try:
+        rt_min, _ = _realtime_reset_window_bounds(settings)
+    except ValueError:
+        return False
     now = _kst_now()
     t = now.hour * 60 + now.minute
-    prestart_t = WS_SUBSCRIBE_PRESTART_TIME[0] * 60 + WS_SUBSCRIBE_PRESTART_TIME[1]
     market_t = NXT_PREMARKET_START[0] * 60 + NXT_PREMARKET_START[1]
-    if not (prestart_t <= t < market_t):
+    if not (rt_min <= t < market_t):
         return False
     mp = engine_state.state.market_phase
     if mp.get("nxt") == "휴장일" or mp.get("krx") == "휴장일":

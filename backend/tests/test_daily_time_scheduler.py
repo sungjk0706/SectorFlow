@@ -395,10 +395,11 @@ class TestIsNxtOnlyWindow:
             assert is_nxt_only_window() is True
 
     def test_pre_subscribe_window_nxt_only(self):
-        """07:59~08:00 사전 구간: KRX 장개시전(비활성) + NXT 장개시전(비활성) →
+        """nxt_start~08:00 사전 구간: KRX 장개시전(비활성) + NXT 장개시전(비활성) →
         시간 기반 사전 구간 판정으로 NXT-only True (KRX 단독 종목 제외 구독)."""
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "장개시전", "nxt": "장개시전"}
+        mock_state.integrated_system_settings_cache = {"timetable.nxt_start": "07:58", "timetable.nxt_end": "20:00"}
         with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(7, 59)):
             assert is_nxt_only_window() is True
@@ -408,36 +409,60 @@ class TestIsNxtOnlyWindow:
 
 
 class TestIsPreSubscribeWindow:
-    """_is_pre_subscribe_window() — 07:59~08:00 사전 구독 구간 시간 기반 판정 테스트."""
+    """_is_pre_subscribe_window() — nxt_start~08:00 사전 구독 구간 시간 기반 판정 테스트."""
+
+    def _mock_state_with_settings(self, phase: dict, settings: dict | None = None):
+        """설정 캐시 포함 mock_state 생성 (기본값: timetable.nxt_start=07:58)."""
+        mock_state = MagicMock()
+        mock_state.market_phase = phase
+        _settings = settings or {"timetable.nxt_start": "07:58", "timetable.nxt_end": "20:00"}
+        mock_state.integrated_system_settings_cache = _settings
+        return mock_state
 
     def test_in_pre_subscribe_window_returns_true(self):
-        """07:59~08:00 사이 + 거래일 → True."""
-        mock_state = MagicMock()
-        mock_state.market_phase = {"krx": "장개시전", "nxt": "장개시전"}
+        """07:58~08:00 사이 + 거래일 → True (nxt_start=07:58 기본값)."""
+        mock_state = self._mock_state_with_settings({"krx": "장개시전", "nxt": "장개시전"})
         with patch("backend.app.services.engine_state.state", mock_state), \
-             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(7, 59)):
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(7, 58)):
             assert _is_pre_subscribe_window() is True
 
     def test_at_0800_returns_false(self):
         """08:00 정각은 사전 구간 종료 (NXT_PREMARKET_START 상한 미만) → False."""
-        mock_state = MagicMock()
-        mock_state.market_phase = {"krx": "장전 대기", "nxt": "프리마켓"}
+        mock_state = self._mock_state_with_settings({"krx": "장전 대기", "nxt": "프리마켓"})
         with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(8, 0)):
             assert _is_pre_subscribe_window() is False
 
-    def test_before_0759_returns_false(self):
-        """07:58은 사전 구간 시작 전 → False."""
-        mock_state = MagicMock()
-        mock_state.market_phase = {"krx": "장개시전", "nxt": "장개시전"}
+    def test_before_nxt_start_returns_false(self):
+        """07:57은 사전 구간 시작 전 (nxt_start=07:58) → False."""
+        mock_state = self._mock_state_with_settings({"krx": "장개시전", "nxt": "장개시전"})
+        with patch("backend.app.services.engine_state.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(7, 57)):
+            assert _is_pre_subscribe_window() is False
+
+    def test_custom_nxt_start_0759_returns_true(self):
+        """사용자 설정 nxt_start=07:59 → 07:59는 사전 구간, 07:58은 사전 구간 외."""
+        mock_state = self._mock_state_with_settings(
+            {"krx": "장개시전", "nxt": "장개시전"},
+            settings={"timetable.nxt_start": "07:59", "timetable.nxt_end": "20:00"},
+        )
+        with patch("backend.app.services.engine_state.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(7, 59)):
+            assert _is_pre_subscribe_window() is True
+
+    def test_custom_nxt_start_0759_before_returns_false(self):
+        """사용자 설정 nxt_start=07:59 → 07:58은 사전 구간 시작 전 → False."""
+        mock_state = self._mock_state_with_settings(
+            {"krx": "장개시전", "nxt": "장개시전"},
+            settings={"timetable.nxt_start": "07:59", "timetable.nxt_end": "20:00"},
+        )
         with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(7, 58)):
             assert _is_pre_subscribe_window() is False
 
     def test_holiday_returns_false(self):
         """휴장일 시간 내라도 → False (calc_timebased_market_phase가 "휴장일" 산정)."""
-        mock_state = MagicMock()
-        mock_state.market_phase = {"krx": "휴장일", "nxt": "휴장일"}
+        mock_state = self._mock_state_with_settings({"krx": "휴장일", "nxt": "휴장일"})
         with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(7, 59)):
             assert _is_pre_subscribe_window() is False
