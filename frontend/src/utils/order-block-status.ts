@@ -72,6 +72,18 @@ export function isInTradeTimeWindow(settings: AppSettings, side: OrderSide): boo
 }
 
 /**
+ * NXT 구독 시간 창 판정 (P10 SSOT — 사용자 설정 timetable.nxt_start~nxt_end 기반).
+ * 헤더 자동매매 배지의 "대기중" 표시 여부 판단용 (P21 사용자 투명성).
+ * isInTradeTimeWindow와 동일 패턴 — 현재 KST 시각이 [nxt_start, nxt_end] 구간 내이면 true (P23 일관성).
+ */
+export function isInNxtTradeWindow(settings: AppSettings): boolean {
+  const nowKst = new Date().toLocaleTimeString('en-GB', { timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit' })
+  const start = String(settings['timetable.nxt_start'] ?? '07:58').slice(0, 5)
+  const end = String(settings['timetable.nxt_end'] ?? '20:00').slice(0, 5)
+  return nowKst >= start && nowKst <= end
+}
+
+/**
  * 주문 차단 상태 판정.
  * @param side 'buy' | 'sell'
  * @param uiState uiStore 현재 상태
