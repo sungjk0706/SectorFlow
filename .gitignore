@@ -70,6 +70,9 @@ backend/data/*.json
 # *.log  # Temporarily commented for log access investigation
 .env
 .env.local
+.env.*.local
+*.pem
+*.key
 
 # Test artifacts
 test-results/
