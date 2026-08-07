@@ -86,6 +86,111 @@ def extract_buy_target_page_codes(summary) -> set[str]:
     return codes
 
 
+def _extract_cutoff_map(sectors) -> dict[str, bool]:
+    """업종별 컷오프 통과 여부 맵 추출 (이벤트 감지용).
+
+    Args:
+        sectors: SectorScore 리스트 (또는 캐시의 .sectors).
+
+    Returns:
+        {업종명: is_cutoff_passed} 맵.
+    """
+    if not sectors:
+        return {}
+    result: dict[str, bool] = {}
+    for sc in sectors:
+        sector = getattr(sc, "sector", None)
+        if sector is None:
+            continue
+        result[str(sector)] = bool(getattr(sc, "is_cutoff_passed", True))
+    return result
+
+
+def _extract_top_n_sectors(sectors, max_sectors: int) -> set[str]:
+    """통과 업종 중 상위 N개 업종명 집합 추출 (이벤트 감지용).
+
+    sectors는 이미 final_score 내림차순 정렬된 상태여야 한다
+    (calculate_bonus_scores가 정렬 수행). 통과 업종 중 앞의 max_sectors개.
+
+    Args:
+        sectors: SectorScore 리스트 (final_score 내림차순 정렬).
+        max_sectors: 상위 N개 (설정값 sector_max_targets).
+
+    Returns:
+        상위 N개 통과 업종의 업종명 집합.
+    """
+    if not sectors or max_sectors <= 0:
+        return set()
+    passed: list[str] = []
+    for sc in sectors:
+        if getattr(sc, "is_cutoff_passed", True):
+            passed.append(str(getattr(sc, "sector", "")))
+            if len(passed) >= max_sectors:
+                break
+    return set(passed)
+
+
+def detect_buy_target_events(
+    prev_cutoff_map: dict[str, bool],
+    new_cutoff_map: dict[str, bool],
+    prev_top_n: set[str],
+    new_top_n: set[str],
+) -> list[dict]:
+    """매수후보 갱신 이벤트 감지 — 통과/탈락 전환 + 상위 N개 진입/이탈.
+
+    3가지 상태 변화를 이벤트로 정의 (설계서 결정 2):
+      - 통과→탈락 전환: 해당 업종 종목 제거
+      - 탈락→통과 전환: 해당 업종 종목 추가
+      - 상위 N개 진입/이탈: 진입 업종 종목 추가, 이탈 업종 종목 제거
+
+    Args:
+        prev_cutoff_map: 이전 업종별 통과/탈락 맵.
+        new_cutoff_map: 신규 업종별 통과/탈락 맵.
+        prev_top_n: 이전 상위 N개 업종 집합.
+        new_top_n: 신규 상위 N개 업종 집합.
+
+    Returns:
+        이벤트 딕셔너리 리스트. 각 이벤트:
+        {"sector": 업종명, "action": "add"|"remove", "reason": "cutoff_in"|"cutoff_out"|"top_n_in"|"top_n_out"}
+        빈 리스트 = 이벤트 없음 (매수후보 불변).
+    """
+    events: list[dict] = []
+    all_sectors = set(prev_cutoff_map) | set(new_cutoff_map)
+
+    # 1. 통과/탈락 전환 감지
+    for sector in all_sectors:
+        prev_passed = prev_cutoff_map.get(sector, False)
+        new_passed = new_cutoff_map.get(sector, False)
+        if prev_passed and not new_passed:
+            # 통과→탈락: 해당 업종 종목 제거
+            events.append({"sector": sector, "action": "remove", "reason": "cutoff_out"})
+        elif not prev_passed and new_passed:
+            # 탈락→통과: 해당 업종 종목 추가 (상위 N개 진입 여부는 아래서 별도 감지)
+            events.append({"sector": sector, "action": "add", "reason": "cutoff_in"})
+
+    # 2. 상위 N개 진입/이탈 감지 (통과 상태 유지하면서 순위 경계 변동)
+    top_n_entered = new_top_n - prev_top_n
+    top_n_exited = prev_top_n - new_top_n
+
+    for sector in top_n_entered:
+        # 통과→탈락으로 이미 위에서 감지된 경우는 제외 (중복 방지)
+        # 탈락→통과 전환으로 이미 "add" 이벤트가 발행된 경우도 제외
+        prev_passed = prev_cutoff_map.get(sector, False)
+        new_passed = new_cutoff_map.get(sector, False)
+        if prev_passed and new_passed:
+            # 통과 유지하면서 상위 N개 진입
+            events.append({"sector": sector, "action": "add", "reason": "top_n_in"})
+
+    for sector in top_n_exited:
+        prev_passed = prev_cutoff_map.get(sector, False)
+        new_passed = new_cutoff_map.get(sector, False)
+        if prev_passed and new_passed:
+            # 통과 유지하면서 상위 N개 이탈
+            events.append({"sector": sector, "action": "remove", "reason": "top_n_out"})
+
+    return events
+
+
 def _build_prev_targets_map(summary) -> dict[str, str]:
     """이전 SectorSummary에서 통과 종목의 reject_reason 맵 생성 (보존용).
 
@@ -135,13 +240,9 @@ async def _flush_sector_recompute_impl() -> None:
 
     try:
         from backend.app.services.sector_data_provider import get_sector_summary_inputs
-        from backend.app.domain.buy_filter import build_buy_targets_from_settings
         from backend.app.domain.sector_calculator import compute_sector_scores
         from backend.app.domain.sector_score import calculate_bonus_scores
-        from backend.app.services.engine_account_notify import (
-            notify_desktop_sector_scores,
-            notify_buy_targets_update,
-        )
+        from backend.app.services.engine_account_notify import notify_desktop_sector_scores
         from backend.app.core import sector_mapping
 
         existing = engine_state.state.sector_summary_cache
@@ -222,52 +323,61 @@ async def _flush_sector_recompute_impl() -> None:
             trade_amount_slider=int(engine_state.state.integrated_system_settings_cache["sector_bonus_trade_amount_slider"]),
         )
 
-        # 5. 매수 타겟 큐
-        # buy_targets 변경 감지를 위해 이전 값 저장
-        prev_targets = existing.buy_targets if hasattr(existing, 'buy_targets') else None
+        # ── 매수후보 갱신 이벤트 감지 (SEDA 패턴 — 설계서 결정 2) ──
+        # 이전 캐시에서 상태 추출 (증분 갱신 전)
+        prev_cutoff_map = _extract_cutoff_map(existing.sectors)
+        max_sectors = int(engine_state.state.integrated_system_settings_cache.get("sector_max_targets", 3))
+        prev_top_n = _extract_top_n_sectors(existing.sectors, max_sectors)
 
-        from backend.app.services import engine_account
-        _held = await engine_account.get_held_codes()
-        _bought_today: set[str] = set()
-        if engine_state.state.auto_trade is not None:
-            _bought_today = set(engine_state.state.auto_trade._bought_today.keys())
-        ss = build_buy_targets_from_settings(
-            merged,
-            engine_state.state.integrated_system_settings_cache,
-            held_codes=_held,
-            bought_today_codes=_bought_today,
-            prev_targets_map=_build_prev_targets_map(existing),
+        # 신규 결과에서 상태 추출 (calculate_bonus_scores 완료 후 — 정렬·컷오프 확정)
+        new_cutoff_map = _extract_cutoff_map(merged)
+        new_top_n = _extract_top_n_sectors(merged, max_sectors)
+
+        # 이전 vs 신규 비교 — 통과/탈락 전환 + 상위 N개 진입/이탈
+        events = detect_buy_target_events(
+            prev_cutoff_map, new_cutoff_map, prev_top_n, new_top_n
         )
 
         # 참조 교체 방식으로 캐시 갱신 (R5.6) — _set_sector_summary 단일 경로 (COUPLING-S1)
+        # 업종 점수 캐시는 업종순위 단계의 역할이므로 유지 — existing.sectors를 merged로 교체.
+        # 매수후보(buy_targets)는 이전 캐시의 값을 그대로 유지 — 증분 갱신은 매수후보 갱신 루프(3단계)에서 수행.
+        existing.sectors = merged
         from backend.app.services.engine_initial_data import _set_sector_summary
-        _set_sector_summary(ss, "engine_sector_confirm.incremental_recompute")
+        _set_sector_summary(existing, "engine_sector_confirm.incremental_recompute")
 
-        # 업종 점수 증분 전송 (내부에서 변경분만 비교)
+        # 업종 점수 증분 전송 (내부에서 변경분만 비교) — 업종순위 단계의 역할
         await notify_desktop_sector_scores()
-        await notify_buy_targets_update()
 
-        # 매수 후보 화면 downstream 구독 갱신 — 표시 종목 코드 집합 변동 시만.
-        # 증권사 구독은 추가하지 않고, 이미 수신한 real-data의 페이지 라우팅만 최신화한다.
-        if are_buy_target_page_codes_changed(existing, ss):
-            await _refresh_buy_target_page_subscriptions("업종 증분 재계산 — 매수 후보 화면 대상 갱신")
-
-        # 0D/PGM 동적 구독 갱신 — guard_pass 종목 집합 변동 시만.
-        if are_buy_targets_changed(prev_targets, ss.buy_targets):
-            sync_dynamic_subscriptions(ss.buy_targets)
-
-        # 매수 후보 평가 요청 → 주문 실행 큐로 이동 (결정 4)
-        # 업종 재계산 루프가 매수 주문·가상 체결(0.5초)에 블록되지 않도록
-        # 매수 후보 평가는 주문 실행 루프가 큐에서 꺼내 처리 (W1·W2)
-        # are_buy_targets_changed와 분리: 점수만 변해도 매수 기회 평가 (P11 이벤트 기반, P23 매도와 일관)
-        from backend.app.services.buy_order_executor import _cash_insufficient
-        from backend.app.services.core_queues import get_order_queue
-        if not _cash_insufficient:
-            try:
-                get_order_queue().put_nowait({"type": "buy_evaluate"})
-            except asyncio.QueueFull:
-                # W1 무한 쌓기 방지 — 가득 시 경고 로그 + 드롭 (W8 폴백 금지, 명시적 드롭)
-                logger.warning("[업종] 주문 큐 가득 참 — 매수 후보 평가 요청 드롭 (증분 재계산)")
+        # 매수후보 갱신 이벤트가 있으면 전용 큐에 발행 후 즉시 종료 (W1 논블로킹)
+        # 화면 전송(notify_buy_targets_update)·구독 갱신·매수 평가 큐 적재는
+        # 매수후보 갱신 루프(3단계)의 후속 처리로 이관 — 업종순위 단계에서 제거.
+        if events:
+            from backend.app.services.core_queues import get_buy_target_update_queue
+            buy_target_queue = get_buy_target_update_queue()
+            for event in events:
+                # 이벤트 페이로드: 업종명 + 이벤트 종류 + 종목 리스트 (3단계 소비 루프용)
+                # 종목 리스트는 신규 결과(merged)에서 해당 업종의 종목 코드 추출
+                sector_name = event["sector"]
+                sector_stocks = []
+                for sc in merged:
+                    if sc.sector == sector_name:
+                        sector_stocks = [stock.code for stock in sc.stocks]
+                        break
+                payload = {
+                    "sector": sector_name,
+                    "action": event["action"],  # "add" | "remove"
+                    "reason": event["reason"],  # "cutoff_in" | "cutoff_out" | "top_n_in" | "top_n_out"
+                    "stock_codes": sector_stocks,
+                }
+                try:
+                    buy_target_queue.put_nowait(payload)
+                except asyncio.QueueFull:
+                    # W1 무한 쌓기 방지 — 가득 시 경고 로그 + 드롭 (W8 폴백 금지, 명시적 드롭)
+                    logger.warning(
+                        "[업종] 매수후보 갱신 큐 가득 참 — 이벤트 드롭 (증분 재계산): %s",
+                        payload,
+                    )
+            logger.debug("[업종] 매수후보 갱신 이벤트 %d건 발행 (증분 재계산)", len(events))
 
         # 업종 요약정보 생성 완료 이벤트 설정
         engine_state.state.sector_summary_ready_event.set()

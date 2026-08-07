@@ -21,6 +21,9 @@ from backend.app.services.engine_sector_confirm import (
     _full_recompute,
     sync_dynamic_subscriptions,
     _PENDING_UNREG_TIMERS,
+    _extract_cutoff_map,
+    _extract_top_n_sectors,
+    detect_buy_target_events,
 )
 
 
@@ -432,7 +435,7 @@ class TestFlushSectorRecomputeImpl:
 
     @pytest.mark.asyncio
     async def test_incremental_happy_path(self):
-        """증분 재계산 정상 경로 — merge + notify + event set (L102-206)."""
+        """증분 재계산 정상 경로 — merge + 업종 점수 전송 + 이벤트 발행 (SEDA 2단계)."""
         request_sector_recompute("005930")
         existing_sector = _make_sector_score("자동차", rise_ratio=0.3)
         mock_cache = MagicMock()
@@ -440,9 +443,7 @@ class TestFlushSectorRecomputeImpl:
         mock_cache.buy_targets = []
 
         new_sector = _make_sector_score("반도체", rise_ratio=0.8)
-        mock_result = MagicMock()
-        mock_result.sectors = [existing_sector, new_sector]
-        mock_result.buy_targets = []
+        mock_buy_target_queue = MagicMock()
 
         with patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.services.sector_data_provider.get_sector_summary_inputs", new=AsyncMock(return_value={
@@ -454,14 +455,8 @@ class TestFlushSectorRecomputeImpl:
              ])), \
              patch("backend.app.domain.sector_calculator.compute_sector_scores", new=AsyncMock(return_value=[new_sector])), \
              patch("backend.app.domain.sector_score.calculate_bonus_scores") as mock_bonus, \
-             patch("backend.app.domain.buy_filter.build_buy_targets_from_settings", return_value=mock_result), \
-             patch("backend.app.services.engine_account.get_held_codes", new=AsyncMock(return_value=set())), \
              patch("backend.app.services.engine_account_notify.notify_desktop_sector_scores", new=AsyncMock()) as mock_notify_scores, \
-             patch("backend.app.services.engine_account_notify.notify_buy_targets_update", new=AsyncMock()) as mock_notify_targets, \
-             patch("backend.app.services.engine_sector_confirm._refresh_buy_target_page_subscriptions", new=AsyncMock()) as mock_page_refresh, \
-             patch("backend.app.services.engine_sector_confirm.are_buy_targets_changed", return_value=False), \
-             patch("backend.app.services.core_queues.get_order_queue") as mock_get_queue, \
-             patch("backend.app.services.buy_order_executor._cash_insufficient", False):
+             patch("backend.app.services.core_queues.get_buy_target_update_queue", return_value=mock_buy_target_queue):
             mock_state.sector_summary_cache = mock_cache
             mock_state.integrated_system_settings_cache = {
                 "sector_min_trade_amt": 0.0,
@@ -469,6 +464,7 @@ class TestFlushSectorRecomputeImpl:
                 "sector_bonus_rise_ratio_slider": 0,
                 "sector_bonus_relative_strength_slider": 0,
                 "sector_bonus_trade_amount_slider": 0,
+                "sector_max_targets": 3,
             }
             mock_state.auto_trade = None
             mock_state.sector_summary_ready_event = MagicMock()
@@ -477,10 +473,11 @@ class TestFlushSectorRecomputeImpl:
 
             mock_bonus.assert_called_once()
             mock_notify_scores.assert_called_once()
-            mock_notify_targets.assert_called_once()
-            mock_page_refresh.assert_not_awaited()
             mock_state.sector_summary_ready_event.set.assert_called_once()
-            assert mock_state.sector_summary_cache == mock_result
+            # 캐시는 existing 객체 그대로 유지 (sectors만 merged로 교체)
+            assert mock_state.sector_summary_cache == mock_cache
+            # 새 업종(반도체)이 추가되어 merged에 포함
+            assert any(sc.sector == "반도체" for sc in mock_cache.sectors)
 
     @pytest.mark.asyncio
     async def test_all_flag_expands_to_all_codes(self):
@@ -568,16 +565,28 @@ class TestFlushSectorRecomputeImpl:
             assert fail_sector.is_cutoff_passed is False
 
     @pytest.mark.asyncio
-    async def test_buy_targets_changed_triggers_sync_and_evaluate(self):
-        """buy_targets 변경 → sync_dynamic_subscriptions + evaluate_buy_candidates (L199-203)."""
+    async def test_buy_targets_changed_triggers_event_publish(self):
+        """통과/탈락 전환 감지 → 매수후보 갱신 큐에 이벤트 발행 (SEDA 2단계).
+
+        기존: buy_targets 변경 → sync_dynamic_subscriptions + buy_evaluate
+        신규: 통과/탈락 전환 감지 → 매수후보 갱신 큐에 이벤트 put
+        """
         request_sector_recompute("005930")
-        existing_sector = _make_sector_score("반도체")
+        # 기존: 자동차 통과, 반도체 탈락
+        existing_pass = _make_sector_score("자동차", rise_ratio=0.8)
+        existing_pass.is_cutoff_passed = True
+        existing_fail = _make_sector_score("반도체", rise_ratio=0.1)
+        existing_fail.is_cutoff_passed = False
         mock_cache = MagicMock()
-        mock_cache.sectors = [existing_sector]
+        mock_cache.sectors = [existing_pass, existing_fail]
         mock_cache.buy_targets = []
-        mock_result = MagicMock()
-        mock_result.sectors = [existing_sector]
-        mock_result.buy_targets = [_make_buy_target("005930")]
+
+        # 신규: 자동차 탈락, 반도체 통과 (통과/탈락 전환)
+        new_pass = _make_sector_score("반도체", rise_ratio=0.9)
+        new_pass.is_cutoff_passed = True
+        new_fail = _make_sector_score("자동차", rise_ratio=0.05)
+        new_fail.is_cutoff_passed = False
+        mock_buy_target_queue = MagicMock()
 
         with patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.services.sector_data_provider.get_sector_summary_inputs", new=AsyncMock(return_value={
@@ -587,17 +596,10 @@ class TestFlushSectorRecomputeImpl:
                  {"005930": "반도체"},
                  {"005930": "반도체"},
              ])), \
-             patch("backend.app.domain.sector_calculator.compute_sector_scores", new=AsyncMock(return_value=[existing_sector])), \
+             patch("backend.app.domain.sector_calculator.compute_sector_scores", new=AsyncMock(return_value=[new_pass, new_fail])), \
              patch("backend.app.domain.sector_score.calculate_bonus_scores"), \
-             patch("backend.app.domain.buy_filter.build_buy_targets_from_settings", return_value=mock_result), \
-             patch("backend.app.services.engine_account.get_held_codes", new=AsyncMock(return_value=set())), \
              patch("backend.app.services.engine_account_notify.notify_desktop_sector_scores", new=AsyncMock()), \
-             patch("backend.app.services.engine_account_notify.notify_buy_targets_update", new=AsyncMock()), \
-             patch("backend.app.services.engine_sector_confirm._refresh_buy_target_page_subscriptions", new=AsyncMock()) as mock_page_refresh, \
-             patch("backend.app.services.engine_sector_confirm.are_buy_targets_changed", return_value=True), \
-             patch("backend.app.services.engine_sector_confirm.sync_dynamic_subscriptions") as mock_sync, \
-             patch("backend.app.services.core_queues.get_order_queue") as mock_get_queue, \
-             patch("backend.app.services.buy_order_executor._cash_insufficient", False):
+             patch("backend.app.services.core_queues.get_buy_target_update_queue", return_value=mock_buy_target_queue):
             mock_state.sector_summary_cache = mock_cache
             mock_state.integrated_system_settings_cache = {
                 "sector_min_trade_amt": 0.0,
@@ -605,27 +607,36 @@ class TestFlushSectorRecomputeImpl:
                 "sector_bonus_rise_ratio_slider": 0,
                 "sector_bonus_relative_strength_slider": 0,
                 "sector_bonus_trade_amount_slider": 0,
+                "sector_max_targets": 3,
             }
             mock_state.auto_trade = None
             mock_state.sector_summary_ready_event = MagicMock()
 
             await _flush_sector_recompute_impl()
 
-            mock_page_refresh.assert_awaited_once()
-            mock_sync.assert_called_once()
-            mock_get_queue.return_value.put_nowait.assert_called_once_with({"type": "buy_evaluate"})
+            # 매수후보 갱신 큐에 이벤트 발행 확인
+            assert mock_buy_target_queue.put_nowait.call_count >= 1
+            # 화면 전송(notify_buy_targets_update)·구독 갱신·매수 평가 큐는 호출되지 않음
+            # (매수후보 갱신 루프 3단계로 이관)
 
     @pytest.mark.asyncio
-    async def test_cash_insufficient_skips_evaluate(self):
-        """_cash_insufficient True → evaluate_buy_candidates 스킵 (L202)."""
+    async def test_no_event_no_queue_publish(self):
+        """통과/탈락·상위 N개 변동 없음 → 매수후보 갱신 큐에 발행 안 함 (SEDA 2단계).
+
+        업종 점수만 변하고 통과/탈락 상태·상위 N개 순위가 불변이면 이벤트 없음.
+        """
         request_sector_recompute("005930")
-        existing_sector = _make_sector_score("반도체")
+        # 기존: 반도체 통과 (상위 N개 내)
+        existing_sector = _make_sector_score("반도체", rise_ratio=0.8)
+        existing_sector.is_cutoff_passed = True
         mock_cache = MagicMock()
         mock_cache.sectors = [existing_sector]
         mock_cache.buy_targets = []
-        mock_result = MagicMock()
-        mock_result.sectors = [existing_sector]
-        mock_result.buy_targets = [_make_buy_target("005930")]
+
+        # 신규: 반도체 여전히 통과 (점수만 약간 변동, 상태 불변)
+        new_sector = _make_sector_score("반도체", rise_ratio=0.85)
+        new_sector.is_cutoff_passed = True
+        mock_buy_target_queue = MagicMock()
 
         with patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.services.sector_data_provider.get_sector_summary_inputs", new=AsyncMock(return_value={
@@ -635,16 +646,10 @@ class TestFlushSectorRecomputeImpl:
                  {"005930": "반도체"},
                  {"005930": "반도체"},
              ])), \
-             patch("backend.app.domain.sector_calculator.compute_sector_scores", new=AsyncMock(return_value=[existing_sector])), \
+             patch("backend.app.domain.sector_calculator.compute_sector_scores", new=AsyncMock(return_value=[new_sector])), \
              patch("backend.app.domain.sector_score.calculate_bonus_scores"), \
-             patch("backend.app.domain.buy_filter.build_buy_targets_from_settings", return_value=mock_result), \
-             patch("backend.app.services.engine_account.get_held_codes", new=AsyncMock(return_value=set())), \
              patch("backend.app.services.engine_account_notify.notify_desktop_sector_scores", new=AsyncMock()), \
-             patch("backend.app.services.engine_account_notify.notify_buy_targets_update", new=AsyncMock()), \
-             patch("backend.app.services.engine_sector_confirm.are_buy_targets_changed", return_value=True), \
-             patch("backend.app.services.engine_sector_confirm.sync_dynamic_subscriptions"), \
-             patch("backend.app.services.buy_order_executor.evaluate_buy_candidates", new=AsyncMock()) as mock_eval, \
-             patch("backend.app.services.buy_order_executor._cash_insufficient", True):
+             patch("backend.app.services.core_queues.get_buy_target_update_queue", return_value=mock_buy_target_queue):
             mock_state.sector_summary_cache = mock_cache
             mock_state.integrated_system_settings_cache = {
                 "sector_min_trade_amt": 0.0,
@@ -652,13 +657,15 @@ class TestFlushSectorRecomputeImpl:
                 "sector_bonus_rise_ratio_slider": 0,
                 "sector_bonus_relative_strength_slider": 0,
                 "sector_bonus_trade_amount_slider": 0,
+                "sector_max_targets": 3,
             }
             mock_state.auto_trade = None
             mock_state.sector_summary_ready_event = MagicMock()
 
             await _flush_sector_recompute_impl()
 
-            mock_eval.assert_not_called()
+            # 이벤트 없음 → 매수후보 갱신 큐에 발행 안 함
+            mock_buy_target_queue.put_nowait.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_exception_logged(self):
@@ -672,16 +679,23 @@ class TestFlushSectorRecomputeImpl:
             await _flush_sector_recompute_impl()
 
     @pytest.mark.asyncio
-    async def test_auto_trade_provides_bought_today(self):
-        """state.auto_trade가 None이 아닌 경우 _bought_today 추출 (L182-183)."""
+    async def test_auto_trade_state_accepted(self):
+        """state.auto_trade가 None이 아닌 경우에도 증분 재계산 정상 수행 (SEDA 2단계).
+
+        기존: build_buy_targets_from_settings에 bought_today_codes 전달 검증
+        신규: auto_trade 설정 시에도 증분 재계산·이벤트 감지 정상 수행
+        (bought_today_codes 전달은 3단계 매수후보 갱신 루프로 이관)
+        """
         request_sector_recompute("005930")
-        existing_sector = _make_sector_score("반도체")
+        existing_sector = _make_sector_score("반도체", rise_ratio=0.8)
+        existing_sector.is_cutoff_passed = True
         mock_cache = MagicMock()
         mock_cache.sectors = [existing_sector]
         mock_cache.buy_targets = []
-        mock_result = MagicMock()
-        mock_result.sectors = [existing_sector]
-        mock_result.buy_targets = []
+
+        new_sector = _make_sector_score("반도체", rise_ratio=0.85)
+        new_sector.is_cutoff_passed = True
+        mock_buy_target_queue = MagicMock()
 
         mock_auto_trade = MagicMock()
         mock_auto_trade._bought_today = {"005940": True}
@@ -694,13 +708,10 @@ class TestFlushSectorRecomputeImpl:
                  {"005930": "반도체"},
                  {"005930": "반도체"},
              ])), \
-             patch("backend.app.domain.sector_calculator.compute_sector_scores", new=AsyncMock(return_value=[existing_sector])), \
+             patch("backend.app.domain.sector_calculator.compute_sector_scores", new=AsyncMock(return_value=[new_sector])), \
              patch("backend.app.domain.sector_score.calculate_bonus_scores"), \
-             patch("backend.app.domain.buy_filter.build_buy_targets_from_settings", return_value=mock_result) as mock_build, \
-             patch("backend.app.services.engine_account.get_held_codes", new=AsyncMock(return_value=set())), \
              patch("backend.app.services.engine_account_notify.notify_desktop_sector_scores", new=AsyncMock()), \
-             patch("backend.app.services.engine_account_notify.notify_buy_targets_update", new=AsyncMock()), \
-             patch("backend.app.services.engine_sector_confirm.are_buy_targets_changed", return_value=False):
+             patch("backend.app.services.core_queues.get_buy_target_update_queue", return_value=mock_buy_target_queue):
             mock_state.sector_summary_cache = mock_cache
             mock_state.integrated_system_settings_cache = {
                 "sector_min_trade_amt": 0.0,
@@ -708,14 +719,16 @@ class TestFlushSectorRecomputeImpl:
                 "sector_bonus_rise_ratio_slider": 0,
                 "sector_bonus_relative_strength_slider": 0,
                 "sector_bonus_trade_amount_slider": 0,
+                "sector_max_targets": 3,
             }
             mock_state.auto_trade = mock_auto_trade
             mock_state.sector_summary_ready_event = MagicMock()
 
             await _flush_sector_recompute_impl()
 
-            call_kwargs = mock_build.call_args
-            assert call_kwargs.kwargs["bought_today_codes"] == {"005940"}
+            # 통과 유지·상위 N개 불변 → 이벤트 없음 → 큐 발행 안 함
+            mock_buy_target_queue.put_nowait.assert_not_called()
+            mock_state.sector_summary_ready_event.set.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_dirty_codes_for_calc_empty(self):
@@ -726,9 +739,7 @@ class TestFlushSectorRecomputeImpl:
         mock_cache = MagicMock()
         mock_cache.sectors = [existing_sector]
         mock_cache.buy_targets = []
-        mock_result = MagicMock()
-        mock_result.sectors = []
-        mock_result.buy_targets = []
+        mock_buy_target_queue = MagicMock()
 
         with patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.services.sector_data_provider.get_sector_summary_inputs", new=AsyncMock(return_value={
@@ -740,11 +751,8 @@ class TestFlushSectorRecomputeImpl:
              ])), \
              patch("backend.app.domain.sector_calculator.compute_sector_scores", new=AsyncMock(return_value=[])), \
              patch("backend.app.domain.sector_score.calculate_bonus_scores"), \
-             patch("backend.app.domain.buy_filter.build_buy_targets_from_settings", return_value=mock_result), \
-             patch("backend.app.services.engine_account.get_held_codes", new=AsyncMock(return_value=set())), \
              patch("backend.app.services.engine_account_notify.notify_desktop_sector_scores", new=AsyncMock()), \
-             patch("backend.app.services.engine_account_notify.notify_buy_targets_update", new=AsyncMock()), \
-             patch("backend.app.services.engine_sector_confirm.are_buy_targets_changed", return_value=False):
+             patch("backend.app.services.core_queues.get_buy_target_update_queue", return_value=mock_buy_target_queue):
             mock_state.sector_summary_cache = mock_cache
             mock_state.integrated_system_settings_cache = {
                 "sector_min_trade_amt": 0.0,
@@ -752,13 +760,15 @@ class TestFlushSectorRecomputeImpl:
                 "sector_bonus_rise_ratio_slider": 0,
                 "sector_bonus_relative_strength_slider": 0,
                 "sector_bonus_trade_amount_slider": 0,
+                "sector_max_targets": 3,
             }
             mock_state.auto_trade = None
             mock_state.sector_summary_ready_event = MagicMock()
 
             await _flush_sector_recompute_impl()
             # dirty_codes_for_calc = [] (000660 not in 반도체) → new_map = {} (L143)
-            assert mock_state.sector_summary_cache == mock_result
+            # 캐시는 existing 객체 유지 (sectors만 merged로 교체)
+            assert mock_state.sector_summary_cache == mock_cache
 
     @pytest.mark.asyncio
     async def test_sector_disappeared_from_new_map(self):
@@ -769,9 +779,7 @@ class TestFlushSectorRecomputeImpl:
         mock_cache = MagicMock()
         mock_cache.sectors = [existing_sector]
         mock_cache.buy_targets = []
-        mock_result = MagicMock()
-        mock_result.sectors = []
-        mock_result.buy_targets = []
+        mock_buy_target_queue = MagicMock()
 
         with patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.services.sector_data_provider.get_sector_summary_inputs", new=AsyncMock(return_value={
@@ -783,11 +791,8 @@ class TestFlushSectorRecomputeImpl:
              ])), \
              patch("backend.app.domain.sector_calculator.compute_sector_scores", new=AsyncMock(return_value=[])), \
              patch("backend.app.domain.sector_score.calculate_bonus_scores"), \
-             patch("backend.app.domain.buy_filter.build_buy_targets_from_settings", return_value=mock_result), \
-             patch("backend.app.services.engine_account.get_held_codes", new=AsyncMock(return_value=set())), \
              patch("backend.app.services.engine_account_notify.notify_desktop_sector_scores", new=AsyncMock()), \
-             patch("backend.app.services.engine_account_notify.notify_buy_targets_update", new=AsyncMock()), \
-             patch("backend.app.services.engine_sector_confirm.are_buy_targets_changed", return_value=False):
+             patch("backend.app.services.core_queues.get_buy_target_update_queue", return_value=mock_buy_target_queue):
             mock_state.sector_summary_cache = mock_cache
             mock_state.integrated_system_settings_cache = {
                 "sector_min_trade_amt": 0.0,
@@ -795,6 +800,7 @@ class TestFlushSectorRecomputeImpl:
                 "sector_bonus_rise_ratio_slider": 0,
                 "sector_bonus_relative_strength_slider": 0,
                 "sector_bonus_trade_amount_slider": 0,
+                "sector_max_targets": 3,
             }
             mock_state.auto_trade = None
             mock_state.sector_summary_ready_event = MagicMock()
@@ -802,7 +808,9 @@ class TestFlushSectorRecomputeImpl:
             await _flush_sector_recompute_impl()
             # compute_sector_scores returns [] → new_map = {} (L141)
             # "자동차" in dirty_sectors → replacement = None → excluded (L150->147)
-            assert mock_state.sector_summary_cache == mock_result
+            # 캐시는 existing 객체 유지 (sectors만 merged로 교체 — 자동차 제외됨)
+            assert mock_state.sector_summary_cache == mock_cache
+            assert all(sc.sector != "자동차" for sc in mock_cache.sectors)
 
 
 # ── _full_recompute ────────────────────────────────────────────────
@@ -1105,3 +1113,181 @@ class TestSyncDynamicSubscriptionsReg:
             assert "005935" not in _PENDING_UNREG_TIMERS
             assert "005940" not in _PENDING_UNREG_TIMERS
         _PENDING_UNREG_TIMERS.clear()
+
+
+# ── 매수후보 갱신 이벤트 감지 (SEDA 2단계) ──────────────────────────
+
+class TestExtractCutoffMap:
+    """_extract_cutoff_map — 업종별 통과/탈락 맵 추출."""
+
+    def test_empty_sectors(self):
+        assert _extract_cutoff_map([]) == {}
+        assert _extract_cutoff_map(None) == {}
+
+    def test_passed_sectors(self):
+        s1 = _make_sector_score("반도체")
+        s1.is_cutoff_passed = True
+        s2 = _make_sector_score("자동차")
+        s2.is_cutoff_passed = True
+        result = _extract_cutoff_map([s1, s2])
+        assert result == {"반도체": True, "자동차": True}
+
+    def test_mixed_pass_fail(self):
+        s1 = _make_sector_score("반도체")
+        s1.is_cutoff_passed = True
+        s2 = _make_sector_score("자동차")
+        s2.is_cutoff_passed = False
+        result = _extract_cutoff_map([s1, s2])
+        assert result == {"반도체": True, "자동차": False}
+
+    def test_default_passed_when_attr_missing(self):
+        """is_cutoff_passed 속성이 없으면 기본값 True."""
+        s = MagicMock()
+        s.sector = "반도체"
+        # is_cutoff_passed 속성 명시적 설정 안 함 → getattr 기본값 True
+        del s.is_cutoff_passed
+        result = _extract_cutoff_map([s])
+        assert result == {"반도체": True}
+
+
+class TestExtractTopNSectors:
+    """_extract_top_n_sectors — 통과 업종 중 상위 N개 추출."""
+
+    def test_empty_sectors(self):
+        assert _extract_top_n_sectors([], 3) == set()
+        assert _extract_top_n_sectors(None, 3) == set()
+
+    def test_max_sectors_zero(self):
+        s1 = _make_sector_score("반도체")
+        s1.is_cutoff_passed = True
+        assert _extract_top_n_sectors([s1], 0) == set()
+
+    def test_all_passed_within_n(self):
+        s1 = _make_sector_score("반도체")
+        s1.is_cutoff_passed = True
+        s2 = _make_sector_score("자동차")
+        s2.is_cutoff_passed = True
+        result = _extract_top_n_sectors([s1, s2], 3)
+        assert result == {"반도체", "자동차"}
+
+    def test_only_passed_sectors(self):
+        """탈락 업종은 상위 N개에서 제외."""
+        s1 = _make_sector_score("반도체")
+        s1.is_cutoff_passed = True
+        s2 = _make_sector_score("자동차")
+        s2.is_cutoff_passed = False
+        s3 = _make_sector_score("철강")
+        s3.is_cutoff_passed = True
+        result = _extract_top_n_sectors([s1, s2, s3], 3)
+        assert result == {"반도체", "철강"}
+
+    def test_limit_to_n(self):
+        """통과 업종이 N개 초과 시 앞의 N개만."""
+        sectors = []
+        for name in ["반도체", "자동차", "철강", "화학", "의약"]:
+            s = _make_sector_score(name)
+            s.is_cutoff_passed = True
+            sectors.append(s)
+        result = _extract_top_n_sectors(sectors, 3)
+        # 정렬 순서대로 앞의 3개 (final_score 내림차순 가정)
+        assert len(result) == 3
+
+
+class TestDetectBuyTargetEvents:
+    """detect_buy_target_events — 통과/탈락 전환 + 상위 N개 진입/이탈 감지."""
+
+    def test_no_change_no_events(self):
+        """상태 불변 → 이벤트 없음."""
+        prev_cutoff = {"반도체": True, "자동차": False}
+        new_cutoff = {"반도체": True, "자동차": False}
+        prev_top_n = {"반도체"}
+        new_top_n = {"반도체"}
+        events = detect_buy_target_events(prev_cutoff, new_cutoff, prev_top_n, new_top_n)
+        assert events == []
+
+    def test_pass_to_fail_cutoff_out(self):
+        """통과→탈락 전환 → remove 이벤트 (cutoff_out)."""
+        prev_cutoff = {"반도체": True}
+        new_cutoff = {"반도체": False}
+        events = detect_buy_target_events(prev_cutoff, new_cutoff, set(), set())
+        assert len(events) == 1
+        assert events[0]["sector"] == "반도체"
+        assert events[0]["action"] == "remove"
+        assert events[0]["reason"] == "cutoff_out"
+
+    def test_fail_to_pass_cutoff_in(self):
+        """탈락→통과 전환 → add 이벤트 (cutoff_in)."""
+        prev_cutoff = {"자동차": False}
+        new_cutoff = {"자동차": True}
+        events = detect_buy_target_events(prev_cutoff, new_cutoff, set(), {"자동차"})
+        assert len(events) == 1
+        assert events[0]["sector"] == "자동차"
+        assert events[0]["action"] == "add"
+        assert events[0]["reason"] == "cutoff_in"
+
+    def test_top_n_entry(self):
+        """상위 N개 진입 (통과 유지하면서 순위 경계 진입) → add 이벤트 (top_n_in)."""
+        prev_cutoff = {"반도체": True, "자동차": True, "철강": True}
+        new_cutoff = {"반도체": True, "자동차": True, "철강": True}
+        # 철강이 상위 N개에 새로 진입
+        prev_top_n = {"반도체", "자동차"}
+        new_top_n = {"반도체", "자동차", "철강"}
+        events = detect_buy_target_events(prev_cutoff, new_cutoff, prev_top_n, new_top_n)
+        assert len(events) == 1
+        assert events[0]["sector"] == "철강"
+        assert events[0]["action"] == "add"
+        assert events[0]["reason"] == "top_n_in"
+
+    def test_top_n_exit(self):
+        """상위 N개 이탈 (통과 유지하면서 순위 경계 이탈) → remove 이벤트 (top_n_out)."""
+        prev_cutoff = {"반도체": True, "자동차": True, "철강": True}
+        new_cutoff = {"반도체": True, "자동차": True, "철강": True}
+        # 철강이 상위 N개에서 이탈
+        prev_top_n = {"반도체", "자동차", "철강"}
+        new_top_n = {"반도체", "자동차"}
+        events = detect_buy_target_events(prev_cutoff, new_cutoff, prev_top_n, new_top_n)
+        assert len(events) == 1
+        assert events[0]["sector"] == "철강"
+        assert events[0]["action"] == "remove"
+        assert events[0]["reason"] == "top_n_out"
+
+    def test_new_sector_appears(self):
+        """신규 업종 등장 (이전에 없던 업종이 통과로 등장) → add 이벤트 (cutoff_in)."""
+        prev_cutoff = {"반도체": True}
+        new_cutoff = {"반도체": True, "자동차": True}
+        prev_top_n = {"반도체"}
+        new_top_n = {"반도체", "자동차"}
+        events = detect_buy_target_events(prev_cutoff, new_cutoff, prev_top_n, new_top_n)
+        # 자동차: 이전 False(기본값) → 신규 True → cutoff_in
+        # 자동차: 상위 N개 진입이지만 cutoff_in으로 이미 감지됨 → top_n_in 중복 안 함
+        assert len(events) == 1
+        assert events[0]["sector"] == "자동차"
+        assert events[0]["reason"] == "cutoff_in"
+
+    def test_sector_disappears(self):
+        """업종 사라짐 (이전 통과 → 신규에 없음) → remove 이벤트 (cutoff_out)."""
+        prev_cutoff = {"반도체": True, "자동차": True}
+        new_cutoff = {"반도체": True}
+        prev_top_n = {"반도체", "자동차"}
+        new_top_n = {"반도체"}
+        events = detect_buy_target_events(prev_cutoff, new_cutoff, prev_top_n, new_top_n)
+        # 자동차: 이전 True → 신규 False(기본값) → cutoff_out
+        assert len(events) == 1
+        assert events[0]["sector"] == "자동차"
+        assert events[0]["reason"] == "cutoff_out"
+
+    def test_multiple_events(self):
+        """여러 이벤트 동시 발생."""
+        prev_cutoff = {"반도체": True, "자동차": False, "철강": True}
+        new_cutoff = {"반도체": False, "자동차": True, "철강": True}
+        # 반도체: 통과→탈락 (cutoff_out)
+        # 자동차: 탈락→통과 (cutoff_in), 상위 N개 진입이지만 cutoff_in으로 감지
+        # 철강: 통과 유지, 상위 N개 유지 → 이벤트 없음
+        prev_top_n = {"반도체", "철강"}
+        new_top_n = {"자동차", "철강"}
+        events = detect_buy_target_events(prev_cutoff, new_cutoff, prev_top_n, new_top_n)
+        actions = {(e["sector"], e["action"], e["reason"]) for e in events}
+        assert ("반도체", "remove", "cutoff_out") in actions
+        assert ("자동차", "add", "cutoff_in") in actions
+        # 철강은 통과 유지 + 상위 N개 유지 → 이벤트 없음
+        assert not any(e["sector"] == "철강" for e in events)
