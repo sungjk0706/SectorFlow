@@ -304,9 +304,9 @@ function buildHeader(root: HTMLElement): void {
   // 매수상태 배지 통합: 주문가능금액 + 매수상태 → 1개 (P21 모순 표시 제거, P24 중복 제거)
   // 매도 페이지(sell-position.ts)는 본질 다른 관심사(보유 종목 기반)라 통합 제외 — P23 일관성 위반 아님
   const badgeRow = createBadgeRow()
-  const combinedBadge = createBadge('🚦 매수상태', '원')
-  const dailyBadge = createBadge('💰 일일 매수', '원')
-  const holdingBadge = createBadge('📦 보유 종목', '종목')
+  const combinedBadge = createBadge('매수상태', '원', 'activity')
+  const dailyBadge = createBadge('일일 매수', '원', 'wallet')
+  const holdingBadge = createBadge('보유 종목', '종목', 'package')
   badgeRow.appendChild(combinedBadge.el)
   badgeRow.appendChild(dailyBadge.el)
   badgeRow.appendChild(holdingBadge.el)

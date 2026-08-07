@@ -15,6 +15,7 @@ import {
   FONT_WEIGHT,
   COLOR,
 } from '../components/common/ui-styles'
+import { createIcon } from '../components/common/icon'
 import type { StockScore } from '../types'
 import { hotStore, normalizeStockCode } from '../stores/hotStore'
 
@@ -171,7 +172,7 @@ export const COLUMNS: ColumnDef<StockScore>[] = [
     },
   },
   {
-    key: 'news_boost', label: '📰뉴스', align: 'center', type: 'news', maxWidth: 100,
+    key: 'news_boost', label: '뉴스', align: 'center', type: 'news', maxWidth: 100,
     render: (t) => {
       const newsScore = Number(t.news_boost) || 0
       if (newsScore <= 0) return ''
@@ -179,11 +180,8 @@ export const COLUMNS: ColumnDef<StockScore>[] = [
       wrap.style.display = 'inline-flex'
       wrap.style.alignItems = 'center'
       wrap.style.gap = '2px'
-      const icon = document.createElement('span')
-      icon.textContent = '📰'
-      icon.style.color = COLOR.up
-      icon.style.fontSize = FONT_SIZE.body
-      icon.style.fontWeight = FONT_WEIGHT.bold
+      const icon = createIcon('newspaper', { size: 13, color: COLOR.up })
+      icon.style.flexShrink = '0'
       wrap.appendChild(icon)
       // 매칭된 호재 키워드 표시 — 백엔드가 매칭 단계에서 전달한 키워드 (P10 SSOT, P21 투명성).
       // 키워드 부재 시(과거 데이터 등) 📰만 표시 — 툴팁으로 상세 확인.

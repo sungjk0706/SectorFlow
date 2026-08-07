@@ -13,6 +13,7 @@ import { createActionButton } from '../components/common/button'
 import { createSearchInput } from '../components/common/search-input'
 import { createMarketCountRow, type MarketCountRowHandle } from '../components/common/market-count-row'
 import { FONT_SIZE, FONT_WEIGHT, COLOR, RADIUS } from '../components/common/ui-styles'
+import { createIcon } from '../components/common/icon'
 import { createFrameScheduler, type FrameScheduler } from '../components/common/frame-scheduler'
 import { createRankChangeDetector, type RankChangeDetector } from '../components/common/rank-change-detector'
 import { type MasterStock, DEFAULT_SECTOR_MAX_TARGETS } from '../types'
@@ -157,7 +158,21 @@ class SectorStockTable extends HTMLElement {
       if (selected) {
         this.filterBadge.style.display = 'flex'
         const label = this.filterBadge.querySelector('.badge-label') as HTMLElement
-        if (label) label.textContent = `📌 ${selected}`
+        if (label) {
+          // 기존 아이콘 + 텍스트 구조에서 텍스트 노드만 갱신 (SVG 재생성 방지)
+          const existingIcon = label.firstElementChild
+          const existingText = existingIcon?.nextSibling
+          if (existingIcon && existingIcon.tagName === 'svg' && existingText && existingText.nodeType === Node.TEXT_NODE) {
+            if (existingText.textContent !== selected) existingText.textContent = selected
+          } else {
+            label.textContent = ''
+            const icon = createIcon('pin', { size: 12 })
+            icon.style.verticalAlign = 'middle'
+            icon.style.marginRight = '4px'
+            label.appendChild(icon)
+            label.appendChild(document.createTextNode(selected))
+          }
+        }
       } else {
         this.filterBadge.style.display = 'none'
       }

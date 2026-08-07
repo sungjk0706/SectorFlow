@@ -12,6 +12,8 @@
  */
 
 import { FONT_SIZE, FONT_WEIGHT, COLOR, RADIUS } from './ui-styles'
+import { createIcon } from './icon'
+import type { IconName } from './icon'
 
 export type BadgeStatus = 'normal' | 'near' | 'hit' | 'warn'
 
@@ -64,7 +66,7 @@ export function createBadgeRow(): HTMLElement {
  * - label/unit은 생성 시 1회만 세팅
  * - value/status는 updateBadge()로 textContent만 갱신
  */
-export function createBadge(label: string, unit: string): BadgeHandle {
+export function createBadge(label: string, unit: string, icon?: IconName): BadgeHandle {
   const el = document.createElement('span')
   Object.assign(el.style, {
     display: 'inline-flex',
@@ -85,7 +87,15 @@ export function createBadge(label: string, unit: string): BadgeHandle {
   const labelEl = document.createElement('span')
   labelEl.style.color = COLOR.code
   labelEl.style.fontSize = FONT_SIZE.code
-  labelEl.textContent = label
+  if (icon) {
+    const iconEl = createIcon(icon, { size: 12 })
+    iconEl.style.verticalAlign = 'middle'
+    iconEl.style.marginRight = '4px'
+    labelEl.appendChild(iconEl)
+    labelEl.appendChild(document.createTextNode(label))
+  } else {
+    labelEl.textContent = label
+  }
   el.appendChild(labelEl)
 
   const valueEl = document.createElement('span')

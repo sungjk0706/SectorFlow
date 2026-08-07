@@ -6,6 +6,7 @@
 import { CELL_BORDER, COLOR, FONT_SIZE, FONT_WEIGHT, FONT_FAMILY } from './ui-styles'
 import { CELL_PADDING } from './table-config'
 import { createFrameScheduler } from './frame-scheduler'
+import { createIcon } from './icon'
 import {
   type ColumnDef,
   type GroupRow,
@@ -128,7 +129,11 @@ export function createFixedMode<T extends object>(
       rankSpan.textContent = `${g.rank}.`
       td.appendChild(rankSpan)
     }
-    td.appendChild(document.createTextNode(`📊 ${g.label}`))
+    const groupIcon = createIcon('bar-chart', { size: 14 })
+    groupIcon.style.verticalAlign = 'middle'
+    groupIcon.style.marginRight = '4px'
+    td.appendChild(groupIcon)
+    td.appendChild(document.createTextNode(g.label))
     if (g.score != null) {
       const span = document.createElement('span')
       Object.assign(span.style, {
@@ -363,13 +368,16 @@ export function createFixedMode<T extends object>(
             }
 
             // ── 업종명 텍스트 갱신 ──
-            const newLabel = `📊 ${row.label}`
-            const labelNode = rankSpan ? rankSpan.nextSibling : td.firstChild
+            const newLabel = row.label
+            // 아이콘 SVG 요소 다음의 텍스트 노드를 찾아 갱신
+            const iconEl = rankSpan ? rankSpan.nextElementSibling : td.firstElementChild
+            const labelNode = iconEl ? iconEl.nextSibling : null
             if (labelNode && labelNode.nodeType === Node.TEXT_NODE) {
               if (labelNode.textContent !== newLabel) labelNode.textContent = newLabel
             } else {
               const tn = document.createTextNode(newLabel)
-              if (rankSpan) rankSpan.after(tn)
+              if (iconEl) iconEl.after(tn)
+              else if (rankSpan) rankSpan.after(tn)
               else td.insertBefore(tn, td.firstChild)
             }
 

@@ -7,6 +7,7 @@ import { CELL_BORDER, COLOR, FONT_SIZE, FONT_WEIGHT, FONT_FAMILY } from './ui-st
 import { CELL_PADDING } from './table-config'
 import { createVirtualScroller } from '../virtual-scroller'
 import { createFrameScheduler } from './frame-scheduler'
+import { createIcon } from './icon'
 import {
   type ColumnDef,
   type TableRow,
@@ -215,7 +216,11 @@ export function createVirtualScrollMode<T extends object>(
           rankSpan.textContent = `${row.rank}.`
           cell.appendChild(rankSpan)
         }
-        cell.appendChild(document.createTextNode(`📊 ${row.label}`))
+        const groupIcon = createIcon('bar-chart', { size: 14 })
+        groupIcon.style.verticalAlign = 'middle'
+        groupIcon.style.marginRight = '4px'
+        cell.appendChild(groupIcon)
+        cell.appendChild(document.createTextNode(row.label))
         if (row.score != null) {
           const span = document.createElement('span')
           Object.assign(span.style, {
@@ -322,14 +327,17 @@ export function createVirtualScrollMode<T extends object>(
         }
 
         // ── 업종명 텍스트 갱신 ──
-        const newLabel = `📊 ${row.label}`
-        const labelNode = rankSpan ? rankSpan.nextSibling : cell.firstChild
+        const newLabel = row.label
+        // 아이콘 SVG 요소 다음의 텍스트 노드를 찾아 갱신
+        const iconEl = rankSpan ? rankSpan.nextElementSibling : cell.firstElementChild
+        const labelNode = iconEl ? iconEl.nextSibling : null
         if (labelNode && labelNode.nodeType === Node.TEXT_NODE) {
           if (labelNode.textContent !== newLabel) labelNode.textContent = newLabel
         } else {
-          // 텍스트 노드가 없으면 rank span(또는 cell 선두) 다음에 삽입
+          // 텍스트 노드가 없으면 아이콘(또는 rank span, cell 선두) 다음에 삽입
           const tn = document.createTextNode(newLabel)
-          if (rankSpan) rankSpan.after(tn)
+          if (iconEl) iconEl.after(tn)
+          else if (rankSpan) rankSpan.after(tn)
           else cell.insertBefore(tn, cell.firstChild)
         }
 
