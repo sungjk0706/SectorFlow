@@ -640,11 +640,10 @@ async def _on_krx_pre_subscribe() -> None:
 
 
 async def _on_krx_closing_auction_start() -> None:
-    """15:20 종가 동시호가 전환 콜백 — 업종 종합점수 재계산 + KRX 단독 종목 구독해지.
+    """15:20 종가 동시호가 전환 콜백 — 업종 종합점수 재계산.
 
-    KRX 정규장 종료(15:20) 시점에 KRX 단독 종목(nxt_enable=False) WS 구독 해지.
-    시장가 주문만 사용하므로 종가 동시호가 구간(15:20~15:30) 체결이 불가하여 구독 유지 불필요.
-    NXT-enabled 종목은 NXT 거래(20:00까지)가 가능하므로 구독 유지.
+    KRX 단독 종목 구독해지는 krx_end direct 엔트리(_on_krx_end)로 이관됨.
+    본 함수는 phase 감지용으로 유지 — 업종 재계산만 수행.
     recompute_sector_summary_now() 내부에서 notify 3종이 이미 호출되므로 중복 호출을 제거한다.
     _broadcast_market_phase() 내 페이즈 변경 감지 시 자동 트리거된다 (수정 8 통합).
     """
@@ -653,26 +652,14 @@ async def _on_krx_closing_auction_start() -> None:
         today = _kst_now().date()
         if today.weekday() >= 5 or not is_trading_day(today):
             return
-        logger.info("[작업실행] KRX 단독 종목 구독 해지 시작 (15:20 — 종가 동시호가)")
+        logger.info("[작업실행] KRX 종가 동시호가 — 업종 재계산 시작 (15:20)")
         from backend.app.services.engine_initial_data import _reset_program_net_buy_only
         await _reset_program_net_buy_only()
         from backend.app.services.sector_data_provider import recompute_sector_summary_now
         await recompute_sector_summary_now()
         logger.info("[작업실행] 업종 재계산 종료 (15:20 종가 동시호가)")
-
-        # KRX 단독 종목 장마감 구독해지
-        if not engine_state.state.krx_remove_done:
-            engine_state.state.krx_remove_done = True
-            from backend.app.services.market_close_pipeline import remove_krx_only_stocks
-            result = await remove_krx_only_stocks()
-            if result.get("skipped"):
-                engine_state.state.krx_remove_done = False
-                logger.debug("[작업실행] KRX 단독 종목 구독 해지 생략 — 플래그 복원 (앱준비 후 재시도 가능)")
-            else:
-                logger.info("[작업실행] KRX 단독 종목 구독 해지 — 해지 %d종목, 실패 %d종목 (15:20 — 종가 동시호가)", result.get("removed", 0), result.get("failed", 0))
     except Exception as e:
-        engine_state.state.krx_remove_done = False
-        logger.warning("[작업실행] KRX 단독 종목 구독 해지 콜백 오류: %s", e, exc_info=True)
+        logger.warning("[작업실행] KRX 종가 동시호가 콜백 오류: %s", e, exc_info=True)
 
 
 def _fire_unified_confirmed_fetch() -> None:
@@ -755,15 +742,15 @@ async def retry_pipeline_catchup_after_bootstrap() -> None:
     # ── 판단: 실시간 필드 초기화 구간(nxt_start~nxt_end) — is_realtime_reset_window() 기반 (P10 SSOT).
     # 사용자 설정(timetable.nxt_start ~ timetable.nxt_end)을 직접 참조.
     # 초기화 구간 = 실시간 데이터가 살아있는 시간대 → 자동 다운로드 금지, 사용자 수동만 허용.
-    # 초기화 구간 외(20:40 ~ 다음 거래일 07:58) = 실시간 데이터가 닫힌 시간대 → 데이터 불완정 시 자동 다운로드.
+    # 초기화 구간 외(nxt_end ~ 다음 거래일 nxt_start) = 실시간 데이터가 닫힌 시간대 → 데이터 불완정 시 자동 다운로드.
     in_reset_window = await is_realtime_reset_window(_settings)
 
     if in_reset_window:
-        # 실시간 데이터가 살아있는 구간 (07:58~20:40) — 자동 다운로드 금지
+        # 실시간 데이터가 살아있는 구간 (nxt_start~nxt_end) — 자동 다운로드 금지
         logger.debug("[스케줄] 실시간 필드 초기화 구간 기동 — 실시간 데이터 살아있음, 다운로드 대기/생략")
         return
 
-    # 실시간 데이터가 닫힌 구간 (20:40 ~ 다음 거래일 07:58) — 데이터 완전성 기반 자동 다운로드
+    # 실시간 데이터가 닫힌 구간 (nxt_end ~ 다음 거래일 nxt_start) — 데이터 완전성 기반 자동 다운로드
     if not _cache_is_fresh and not engine_state.state.confirmed_done:
         logger.info(
             "[스케줄] 단절 구간 기동 — 전체 종목 최신성 미충족 (정상 %d/오래됨 %d, 기준일=%s) → 확정 데이터 자동 다운로드 트리거",
@@ -789,10 +776,10 @@ def _apply_market_phase(phase: dict) -> None:
 
     페이즈 변경 감지 시 부작용 트리거 (수정 8 — 타이머 3개 통합):
       - NXT "프리마켓" 진입 → _on_nxt_premarket_start() (08:00, KRX 단독 종목 제외)
-      - NXT "프리마켓" 진입 → _on_ws_subscribe_start() (08:00, WS 연결 + 실시간 필드 초기화)
+      - NXT "프리마켓" 진입 → _on_ws_subscribe_start() (08:00, 실시간 필드 초기화 + WS 연결)
       - KRX "정규장" 진입 → _on_krx_market_open() (09:00, 업종 재계산)
-      - KRX "종가 동시호가" 진입 → _on_krx_closing_auction_start() (15:20, KRX 단독 종목 구독해지)
-      - NXT "장마감" 진입 → _on_ws_subscribe_end() (20:00, WS 연결 해제 + 구독 해지)
+      - KRX "종가 동시호가" 진입 → _on_krx_closing_auction_start() (15:20, 업종 재계산 — 구독해지는 krx_end direct)
+      - NXT "장마감" 진입 → _on_ws_subscribe_end() (20:00, 메모리 정리 — 구독해지·연결종료·토큰폐기는 nxt_end direct)
 
     페이즈 변경 시 countdown override 초기화 (P10 SSOT · P16 살아있는 경로):
       JIF 경로는 _handle_jif에서 페이즈 전환 전 override를 초기화하지만, 타임테이블 보완 경로는
@@ -839,9 +826,9 @@ def _apply_market_phase(phase: dict) -> None:
             if new_krx == "정규장" and prev_krx != "정규장":
                 schedule_engine_task(_on_krx_market_open(), context="KRX 정규장 진입")
             if new_krx == "종가 동시호가" and prev_krx != "종가 동시호가":
-                schedule_engine_task(_on_krx_closing_auction_start(), context="KRX 종가 동시호가 — 구독 해지")
+                schedule_engine_task(_on_krx_closing_auction_start(), context="KRX 종가 동시호가 — 업종 재계산")
             if new_nxt == "장마감" and prev_nxt != "장마감":
-                schedule_engine_task(_on_ws_subscribe_end(), context="WS 구독 종료")
+                schedule_engine_task(_on_ws_subscribe_end(), context="NXT 장마감 — 메모리 정리")
             # 시장 시간대 전환 시 화면별 구독 대상 갱신 + 활성 연결 갱신 (태스크 2세션).
             # 페이즈 전환에 따라 실시간 대상 정책이 바뀌므로 업종 순위·매수 후보 대상 최신화.
             from backend.app.services.page_subscription_targets import refresh_active_connections
@@ -927,48 +914,44 @@ async def _on_realtime_fields_reset() -> None:
 
 
 async def _on_ws_subscribe_start() -> None:
-    """WS 구독 시작 — WS 구독 구간 진입 상태 전환 + 엔진 루프 통지.
+    """NXT 시작 시각 도달 — 실시간 필드 초기화 → 토큰 발급 신호 → 웹소켓 연결 → NXT 종목 구독.
 
-    07:59 사전 트리거 (타임테이블) 또는 08:00 phase 변경 감지 (_apply_market_phase)로 호출.
-    날짜 기반 멱등성 가드: 같은 날 중복 실행 방지.
-    데이터 준비(GC 비활성화 + 필드 초기화 + 게이트 리셋 + 캐시 초기화)는
-    _on_realtime_fields_reset()에서 07:58에 사전 실행 (통합). 사전 실행 누락 시 보완.
+    nxt_start 하나로 통합 — 기존 _on_realtime_fields_reset()의 초기화 로직을 선행 수행.
+    07:58 타임테이블 direct 또는 08:00 phase 변경 감지 (_apply_market_phase)로 호출.
+    날짜 기반 멱등성 가드: 같은 날 중복 실행 방지 (P22 데이터 정합성).
     """
     try:
         today = _kst_now()
         today_str = today.strftime("%Y%m%d")
         if engine_state.state.last_ws_subscribe_start_date == today_str:
-            logger.debug("[작업실행] NXT 종목 구독 신청 생략 (이미 실행됨 — %s)", today_str)
+            logger.debug("[작업실행] NXT 시작 생략 (이미 실행됨 — %s)", today_str)
             return
         if today.weekday() >= 5:
             return
         from backend.app.core.trading_calendar import is_trading_day
         if not is_trading_day(today.date()):
             return
-        logger.info("[작업실행] NXT 종목 구독 신청 (사전 — 07:59)")
+        logger.info("[작업실행] NXT 시작 — 실시간 필드 초기화 + 구독 신청")
         engine_state.state.last_ws_subscribe_start_date = today_str
-        # ── 데이터 준비는 07:58 사전 실행됨 (_on_realtime_fields_reset — GC+필드+게이트+캐시 통합) ──
-        #    사전 실행 누락 시 여기서 보완 (멱등성 — last_realtime_reset_date 체크, P16 살아있는 경로)
-        if engine_state.state.last_realtime_reset_date != today_str:
-            logger.info("[스케줄] 사전 데이터 초기화 누락 — 보완 (실시간 필드 초기화 + GC 비활성화)")
-            await _on_realtime_fields_reset()
-        # market-phase WS 브로드캐스트 (WS 구독 시작 = 07:59 또는 08:00 전환 시점)
+        # 1. 실시간 필드 초기화 선행 (기존 _on_realtime_fields_reset 통합 — 멱등성 가드 내장)
+        await _on_realtime_fields_reset()
+        # 2. market-phase WS 브로드캐스트 (NXT 시작 시각 또는 08:00 전환 시점)
         _broadcast_market_phase()
-        # 엔진 루프 각성 — 시간 판정 루프가 구간 진입 감지하여 연결 맺기 (P16 살아있는 경로)
+        # 3. 엔진 루프 각성 — 시간 판정 루프가 구간 진입 감지하여 토큰 발급 + 연결 맺기 (P16 살아있는 경로)
         engine_state.state.ws_window_changed_event.set()
-        logger.info("[작업실행] NXT 종목 구독 신청 — 엔진 루프에 연결 통지 (사전 — 07:59)")
+        logger.info("[작업실행] NXT 시작 — 엔진 루프에 연결 통지")
     except Exception as e:
-        logger.warning("[작업실행] NXT 종목 구독 신청 콜백 오류: %s", e, exc_info=True)
+        logger.warning("[작업실행] NXT 시작 콜백 오류: %s", e, exc_info=True)
 
 
 async def _on_ws_subscribe_end() -> None:
-    """WS 구독 종료 시각(20:00) 자동 실행 — 실시간 수신 중단 + 업종 재계산.
+    """WS 구독 종료 시각(20:00) phase 전환 콜백 — 장마감 후 메모리 정리 + 상태 정리.
 
-    구독 해지만 수행. 실시간 연결 해제는 엔진 루프의 시간 판정 루프가 20:40 경과 시 수행.
-    20:00~20:40 구간은 연결이 유지됨 (확정 다운로드 준비, 단순성).
+    NXT 종목 구독해지는 nxt_end direct 엔트리(_on_nxt_end)로 이관됨.
+    본 함수는 phase 감지용으로 유지 — GC 정상화·메모리 정리·게이트 해제만 수행.
     """
     try:
-        logger.info("[작업실행] NXT 종목 구독 해지 + 장마감 시작 (20:00 — 장마감)")
+        logger.info("[작업실행] NXT 장마감 — 메모리 정리 + 상태 정리 (20:00 — 장마감)")
         # 장마감 후 GC 정상화 및 메모리 정리
         gc.enable()
         gc.collect()
@@ -982,18 +965,94 @@ async def _on_ws_subscribe_end() -> None:
         from backend.app.pipelines.pipeline_compute import mark_sector_threshold_passed
         mark_sector_threshold_passed()
         engine_state.state.confirmed_done = False  # 오후 8시 구독 종료 → 8시 30분 확정 갱신 허용
-        await _trigger_unreg_all()
         # 구독 상태 전체 false + WS 브로드캐스트
         from backend.app.services.ws_subscribe_control import _set_status
         _set_status(quote=False)
         # market-phase WS 브로드캐스트 (구독 종료 시각 기준 상태 반영)
         _broadcast_market_phase()
-        # ── 연결 해제는 엔진 루프의 시간 판정 루프가 20:40 경과 시 수행 ──
-        # 20:00~20:40 구간은 연결 유지 (확정 다운로드 준비).
-        # ── 확정 데이터 다운로드는 타임테이블 11번째 항목(timetable.confirmed_download)이 담당 ──
-        # ws_subscribe_end와 분리하여 증권사 확정 데이터 준비 시간 확보 (기본값 20:40)
+        # ── NXT 종목 구독해지 + 연결 종료 + 토큰 폐기는 nxt_end direct 엔트리(_on_nxt_end)가 담당 ──
+        # ── 확정 데이터 다운로드는 타임테이블 confirmed_download 항목이 담당 (기본값 20:40) ──
     except Exception as e:
-        logger.warning("[작업실행] NXT 종목 구독 해지 + 장마감 콜백 오류: %s", e, exc_info=True)
+        logger.warning("[작업실행] NXT 장마감 콜백 오류: %s", e, exc_info=True)
+
+
+async def _on_nxt_end() -> None:
+    """NXT 종료 시각 도달 — NXT 종목 구독해지 → 웹소켓 연결 종료 → 토큰 폐기.
+
+    순서: 구독해지 → 연결 종료 → 토큰 폐기 (P22 데이터 정합성).
+    토큰 폐기 후에도 20:40 확정 다운로드는 별도 토큰 발급 경로(Lazy Auth)를 사용하므로 영향 없음.
+    날짜 기반 멱등성 가드: 같은 날 중복 실행 방지 (P22).
+    """
+    try:
+        from backend.app.core.trading_calendar import is_trading_day
+        today = _kst_now()
+        today_str = today.strftime("%Y%m%d")
+        if engine_state.state.last_nxt_end_date == today_str:
+            logger.debug("[작업실행] NXT 종료 생략 (이미 실행됨 — %s)", today_str)
+            return
+        if today.weekday() >= 5 or not is_trading_day(today.date()):
+            return
+        logger.info("[작업실행] NXT 종료 — NXT 종목 구독해지 + 연결 종료 + 토큰 폐기 (20:00)")
+        engine_state.state.last_nxt_end_date = today_str
+
+        # 1. NXT 종목 구독해지 (KRX 단독 종목은 krx_end에서 이미 해지됨)
+        from backend.app.services.market_close_pipeline import remove_nxt_stocks
+        result = await remove_nxt_stocks()
+        if result.get("skipped"):
+            logger.debug("[작업실행] NXT 종목 구독해지 생략 — 실시간 미연결")
+        else:
+            logger.info("[작업실행] NXT 종목 구독해지 — 해지 %d종목, 실패 %d종목", result.get("removed", 0), result.get("failed", 0))
+
+        # 2. 웹소켓 연결 종료 (지연 임포트 — 순환 참조 회피)
+        from backend.app.services.engine_loop import _disconnect_realtime_connection
+        await _disconnect_realtime_connection()
+
+        # 3. 토큰 폐기 — 증권사별 per-broker 격리 (P25)
+        for _broker_id, _rest_api in engine_state.state.broker_rest_apis.items():
+            try:
+                await _rest_api.revoke_token()
+            except Exception as e:
+                from backend.app.core.broker_urls import BROKER_DISPLAY_NAMES
+                logger.warning("[작업실행] %s 토큰 폐기 실패: %s", BROKER_DISPLAY_NAMES.get(_broker_id, _broker_id), e, exc_info=True)
+
+        # 4. market-phase WS 브로드캐스트 (phase 감지용 phase 엔트리와 동시각 중복 시 보완)
+        _broadcast_market_phase()
+        logger.info("[작업실행] NXT 종료 완료 — 구독해지 + 연결 종료 + 토큰 폐기")
+    except Exception as e:
+        logger.warning("[작업실행] NXT 종료 콜백 오류: %s", e, exc_info=True)
+
+
+async def _on_krx_end() -> None:
+    """KRX 종료 시각 도달 — KRX 단독 종목 구독해지.
+
+    NXT 구독·웹소켓 연결·토큰은 유지 (NXT 거래는 20:00까지 가능).
+    기존 _on_krx_closing_auction_start()에서 구독해지 부분을 이관받음.
+    날짜 기반 멱등성 가드: krx_remove_done 플래그로 중복 실행 방지 (P22).
+    """
+    try:
+        from backend.app.core.trading_calendar import is_trading_day
+        today = _kst_now()
+        today_str = today.strftime("%Y%m%d")
+        if engine_state.state.last_krx_end_date == today_str:
+            logger.debug("[작업실행] KRX 종료 생략 (이미 실행됨 — %s)", today_str)
+            return
+        if today.weekday() >= 5 or not is_trading_day(today.date()):
+            return
+        logger.info("[작업실행] KRX 종료 — KRX 단독 종목 구독해지 (15:20)")
+        engine_state.state.last_krx_end_date = today_str
+
+        if not engine_state.state.krx_remove_done:
+            engine_state.state.krx_remove_done = True
+            from backend.app.services.market_close_pipeline import remove_krx_only_stocks
+            result = await remove_krx_only_stocks()
+            if result.get("skipped"):
+                engine_state.state.krx_remove_done = False
+                logger.debug("[작업실행] KRX 단독 종목 구독해지 생략 — 플래그 복원 (앱준비 후 재시도 가능)")
+            else:
+                logger.info("[작업실행] KRX 단독 종목 구독해지 — 해지 %d종목, 실패 %d종목 (15:20)", result.get("removed", 0), result.get("failed", 0))
+    except Exception as e:
+        engine_state.state.krx_remove_done = False
+        logger.warning("[작업실행] KRX 종료 콜백 오류: %s", e, exc_info=True)
 
 
 async def _on_confirmed_download() -> None:
@@ -1050,14 +1109,14 @@ def build_timetable_from_cache(settings: dict) -> list[dict]:
     """설정 캐시 기반으로 타임테이블 리스트 빌드 (P10 SSOT · P13 메모리 상주).
 
     인자: engine_state.state.integrated_system_settings_cache 스냅샷
-    반환: dict 리스트 (11~12항목) — time 필드는 모두 (h, m, s) 3-tuple (P23 일관성)
-          - 3~4개 direct: 시각을 캐시에서 읽음 (없으면 DEFAULT_USER_SETTINGS 기본값)
-          - 8개 phase:    시각을 코드 상수(21-49)에서 읽음 (거래소 고정, 09:00:30 포함)
+    반환: dict 리스트 (28항목) — time 필드는 모두 (h, m, s) 3-tuple (P23 일관성)
+          - 5개 direct: 시각을 캐시에서 읽음 (nxt_start, krx_start, krx_end, nxt_end, confirmed_download)
+          - 7개 phase:   시각을 코드 상수에서 읽음 (거래소 고정, 09:00:30 포함)
+          - 16개 countdown: 카운트다운 갱신 (JIF 미수신 공백 보조)
 
-    P16 (살아있는 경로): scheduler_market_close_on OFF 시 마지막 항목 스킵 —
-        dead path(콜백 호출 후 아무 동작 없음) 제거.
-        09:00:30 NXT 메인마켓 phase 엔트리 추가 — JIF 미수신 시 시간표 보완 경로가 전환 수행.
-    P24 단순성: 함수 50줄 이하, 복잡도 O(n) n=12.
+    direct 엔트리는 phase 엔트리보다 선행 배치 — 동시각 충돌 시 direct가 우선 실행 (P22).
+    P16 (살아있는 경로): scheduler_market_close_on OFF 시 마지막 항목 스킵.
+    P24 단순성: 함수 50줄 이하, 복잡도 O(n) n=28.
     P20 폴백 금지: 캐시에 키가 없으면 DEFAULT_USER_SETTINGS 기본값 (이것도 없으면 ValueError).
     """
     from backend.app.core.settings_defaults import DEFAULT_USER_SETTINGS
@@ -1068,15 +1127,19 @@ def build_timetable_from_cache(settings: dict) -> list[dict]:
             raise ValueError(f"타임테이블 시각 누락: {key} — 기본값 폴백 금지 (P20)")
         return _to3(_parse_hm_tuple(v))
 
-    rt = _cache_time("timetable.nxt_start")
-    ws = _cache_time("timetable.nxt_end")
-    krx = _cache_time("timetable.krx_start")
+    nxt_start = _cache_time("timetable.nxt_start")
+    krx_start = _cache_time("timetable.krx_start")
+    krx_end = _cache_time("timetable.krx_end")
+    nxt_end = _cache_time("timetable.nxt_end")
 
     entries: list[dict] = [
-        {"time": rt,   "kind": "direct", "action": _on_realtime_fields_reset, "ctx": f"실시간 필드 초기화 ({_fmt_hms(rt)})"},
-        {"time": ws,   "kind": "direct", "action": _on_ws_subscribe_start,    "ctx": f"WS 구독 사전 시작 ({_fmt_hms(ws)})"},
+        # ── direct 엔트리 (사용자 설정 시각 — 구독 시작/해지 직접 실행) ──
+        {"time": nxt_start, "kind": "direct", "action": _on_ws_subscribe_start, "ctx": f"NXT 시작 — 실시간 초기화 + 구독 ({_fmt_hms(nxt_start)})"},
+        {"time": krx_start, "kind": "direct", "action": _on_krx_pre_subscribe,  "ctx": f"KRX 시작 — 단독 종목 구독 ({_fmt_hms(krx_start)})"},
+        {"time": krx_end,   "kind": "direct", "action": _on_krx_end,             "ctx": f"KRX 종료 — 단독 종목 구독해지 ({_fmt_hms(krx_end)})"},
+        {"time": nxt_end,   "kind": "direct", "action": _on_nxt_end,             "ctx": f"NXT 종료 — 구독해지 + 연결종료 + 토큰폐기 ({_fmt_hms(nxt_end)})"},
+        # ── phase 엔트리 (거래소 고정 시각 — 감지용, 구독해지 액션 없음) ──
         {"time": _to3(NXT_PREMARKET_START),  "kind": "phase",  "ctx": "NXT 프리마켓 진입 감지 (08:00)"},
-        {"time": krx,  "kind": "direct", "action": _on_krx_pre_subscribe,     "ctx": f"KRX 사전 구독 ({_fmt_hms(krx)})"},
         {"time": _to3(KRX_REGULAR_START),    "kind": "phase",  "ctx": "KRX 정규장 진입 감지 (09:00)"},
         {"time": NXT_MAINMARKET_START,       "kind": "phase",  "ctx": "NXT 메인마켓 진입 감지 (09:00:30)"},
         {"time": _to3(KRX_REGULAR_END),      "kind": "phase",  "ctx": "KRX 종가 동시호가 진입 감지 (15:20)"},
@@ -1264,9 +1327,9 @@ async def _init_ws_subscribe_state() -> None:
     """
     엔진 재기동 시 실시간 처리 준비 상태로 초기화 (시간 구간 판정).
 
-    거래일 07:58~20:40 구간 내에 기동한 경우에만 "실시간 구간 내" 처리 수행 —
+    거래일 nxt_start~nxt_end 구간 내에 기동한 경우에만 "실시간 구간 내" 처리 수행 —
     GC 비활성화·필드 초기화·게이트 리셋·캐시 초기화.
-    구간 외 기동 시에는 처리하지 않고 대기 — 07:58 도달 시 _on_realtime_fields_reset() + _on_ws_subscribe_start()가 수행.
+    구간 외 기동 시에는 처리하지 않고 대기 — nxt_start 도달 시 _on_ws_subscribe_start()가 수행.
     실시간 연결 자체는 엔진 루프의 시간 판정 루프가 담당.
     """
     settings = engine_state.state.integrated_system_settings_cache

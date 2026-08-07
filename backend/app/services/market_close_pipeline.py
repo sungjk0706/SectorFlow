@@ -174,6 +174,72 @@ async def remove_krx_only_stocks() -> dict:
 
 
 # ---------------------------------------------------------------------------
+# NXT 종목 REMOVE (NXT 종료 시 — krx_end 대칭 구조)
+# ---------------------------------------------------------------------------
+
+
+def _get_nxt_subscribed_codes() -> list[str]:
+    """전종목 마스터 캐시에서 NXT 종목(nxt_enable=True) 중 구독 중인 것만 추출.
+
+    Returns:
+        6자리 정규화된 NXT 종목코드 리스트 (중복 없음).
+    """
+    result: list[str] = []
+    seen: set[str] = set()
+
+    subscribed_codes = {cd for cd, entry in engine_state.state.master_stocks_cache.items() if entry.get("_subscribed", False)}
+    for raw_cd in subscribed_codes:
+        base = _base_stk_cd(raw_cd)
+        if not base or base in seen:
+            continue
+        seen.add(base)
+        if is_nxt_enabled(base):
+            result.append(base)
+
+    return result
+
+
+async def remove_nxt_stocks() -> dict:
+    """NXT 종목(nxt_enable=True)만 선택적 REMOVE.
+
+    remove_krx_only_stocks()와 대칭 구조 (P23 일관성).
+    NXT 종료 시각에 호출 — KRX 단독 종목은 krx_end에서 이미 해지됨.
+
+    Returns:
+        {"removed": int, "failed": int, "skipped": bool}
+    """
+    ws = engine_state.state.connector_manager
+    if not ws or not ws.is_connected():
+        logger.warning("[스케줄] NXT 종료 구독해지 생략 — 실시간 미연결")
+        return {"removed": 0, "failed": 0, "skipped": True}
+
+    nxt_codes = _get_nxt_subscribed_codes()
+    if not nxt_codes:
+        logger.info("[스케줄] NXT 종료 구독해지 대상 없음")
+        return {"removed": 0, "failed": 0, "skipped": False}
+
+    try:
+        ok = await ws.unsubscribe_stocks(nxt_codes)
+    except Exception as exc:
+        logger.warning("[스케줄] NXT 종료 구독해지 오류: %s", exc, exc_info=True)
+        return {"removed": 0, "failed": len(nxt_codes), "skipped": False}
+
+    if ok:
+        for cd in nxt_codes:
+            if cd in engine_state.state.master_stocks_cache:
+                engine_state.state.master_stocks_cache[cd].pop("_subscribed", None)
+        removed = len(nxt_codes)
+        failed = 0
+    else:
+        removed = 0
+        failed = len(nxt_codes)
+        logger.warning("[스케줄] NXT 종료 구독해지 실패 — %d종목 유지", len(nxt_codes))
+
+    logger.info("[스케줄] NXT 종료 구독해지 완료 — 해지 %d종목, 실패 %d종목", removed, failed)
+    return {"removed": removed, "failed": failed, "skipped": False}
+
+
+# ---------------------------------------------------------------------------
 # 단일 벌크 트랜잭션 헬퍼 함수
 # ---------------------------------------------------------------------------
 

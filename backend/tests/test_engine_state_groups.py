@@ -71,6 +71,8 @@ GROUP_D_SCHEDULER = {
     "last_ws_subscribe_start_date",
     "last_krx_pre_subscribe_date",
     "last_confirmed_download_date",
+    "last_krx_end_date",
+    "last_nxt_end_date",
 }
 GROUP_E_EVENT_LOCK = {
     "data_ready_event",
@@ -121,22 +123,22 @@ ALL_GROUPS = {
 
 # ── 1. 그룹 분류 계약 ──────────────────────────────────────────────────────────
 class TestGroupClassification:
-    """68개 속성이 6개 그룹으로 정확히 분류되었는지 검증."""
+    """72개 속성이 6개 그룹으로 정확히 분류되었는지 검증."""
 
     def test_group_sizes_match_docstring(self):
         """docstring에 명시된 그룹별 속성 수와 일치."""
-        expected_sizes = {"A": 5, "B": 12, "C": 8, "D": 13, "E": 17, "F": 15}
+        expected_sizes = {"A": 5, "B": 12, "C": 8, "D": 15, "E": 17, "F": 15}
         for name, group in ALL_GROUPS.items():
             assert len(group) == expected_sizes[name], (
                 f"그룹 {name} 속성 수 불일치: 예상 {expected_sizes[name]}, 실제 {len(group)}"
             )
 
     def test_total_attribute_count_is_68(self):
-        """6개 그룹 합계 = 70 (누락/중복 없음). 종료 수명 관리 상태 포함."""
+        """6개 그룹 합계 = 72 (누락/중복 없음). 종료 수명 관리 상태 포함."""
         all_attrs = set()
         for group in ALL_GROUPS.values():
             all_attrs |= group
-        assert len(all_attrs) == 70, f"전체 속성 수: {len(all_attrs)} (예상 70)"
+        assert len(all_attrs) == 72, f"전체 속성 수: {len(all_attrs)} (예상 72)"
 
     def test_no_overlap_between_groups(self):
         """어떤 속성도 두 그룹에 중복 분류되지 않음."""

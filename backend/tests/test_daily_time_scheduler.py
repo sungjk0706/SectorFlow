@@ -56,6 +56,8 @@ from backend.app.services.daily_time_scheduler import (  # noqa: E402
     _on_krx_closing_auction_start,
     _on_ws_subscribe_start,
     _on_ws_subscribe_end,
+    _on_nxt_end,
+    _on_krx_end,
     _on_confirmed_download,
     _init_ws_subscribe_state,
     _trigger_reg_pipeline,
@@ -1135,7 +1137,7 @@ class TestBroadcastMarketPhase:
             assert any("KRX 정규장 진입" in ctx for ctx in contexts)
 
     def test_triggers_krx_closing_auction_on_phase_change(self):
-        """KRX '종가 동시호가' 전환 시 _on_krx_closing_auction_start() 트리거 (15:20 구독 해지)."""
+        """KRX '종가 동시호가' 전환 시 _on_krx_closing_auction_start() 트리거 (15:20 업종 재계산)."""
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "정규장", "nxt": "메인마켓"}
         with patch("backend.app.services.engine_state.state", mock_state), \
@@ -1144,10 +1146,10 @@ class TestBroadcastMarketPhase:
              patch("backend.app.services.daily_time_scheduler.schedule_engine_task", side_effect=_close_coro) as mock_sched:
             _broadcast_market_phase()
             contexts = [c.kwargs.get("context", "") for c in mock_sched.call_args_list]
-            assert any("KRX 종가 동시호가 — 구독 해지" in ctx for ctx in contexts)
+            assert any("KRX 종가 동시호가 — 업종 재계산" in ctx for ctx in contexts)
 
     def test_triggers_ws_subscribe_end_on_nxt_close(self):
-        """NXT '장마감' 전환 시 _on_ws_subscribe_end() 트리거 (Step 2)."""
+        """NXT '장마감' 전환 시 _on_ws_subscribe_end() 트리거 (메모리 정리)."""
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "장마감", "nxt": "애프터마켓"}
         with patch("backend.app.services.engine_state.state", mock_state), \
@@ -1156,7 +1158,7 @@ class TestBroadcastMarketPhase:
              patch("backend.app.services.daily_time_scheduler.schedule_engine_task", side_effect=_close_coro) as mock_sched:
             _broadcast_market_phase()
             contexts = [c.kwargs.get("context", "") for c in mock_sched.call_args_list]
-            assert any("WS 구독 종료" in ctx for ctx in contexts)
+            assert any("NXT 장마감 — 메모리 정리" in ctx for ctx in contexts)
 
     def test_no_recompute_trigger_when_phase_unchanged(self):
         """페이즈 변경 없을 시 재계산 트리거 없음 (중복 방지, 수정 8)."""
@@ -1307,9 +1309,9 @@ class TestOnKrxClosingAuctionStart:
                 mock_recompute.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_trading_day_recomputes_and_removes_krx(self):
+    async def test_trading_day_recomputes_only(self):
+        """15:20 종가 동시호가 — 업종 재계산만 수행 (구독해지는 krx_end direct 이관)."""
         mock_state = MagicMock()
-        mock_state.krx_remove_done = False
         events = []
         reset_program = AsyncMock(side_effect=lambda: events.append("program_reset"))
         recompute = AsyncMock(side_effect=lambda: events.append("recompute"))
@@ -1317,25 +1319,11 @@ class TestOnKrxClosingAuctionStart:
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(15, 20)), \
              patch("backend.app.core.trading_calendar.is_trading_day", return_value=True), \
              patch("backend.app.services.engine_initial_data._reset_program_net_buy_only", reset_program), \
-             patch("backend.app.services.sector_data_provider.recompute_sector_summary_now", recompute), \
-             patch("backend.app.services.market_close_pipeline.remove_krx_only_stocks", new_callable=AsyncMock, return_value={"removed": 5, "failed": 0}):
+             patch("backend.app.services.sector_data_provider.recompute_sector_summary_now", recompute):
             await _on_krx_closing_auction_start()
-            assert mock_state.krx_remove_done is True
             reset_program.assert_awaited_once()
             recompute.assert_awaited_once()
             assert events == ["program_reset", "recompute"]
-
-    @pytest.mark.asyncio
-    async def test_remove_skipped_resets_flag(self):
-        mock_state = MagicMock()
-        mock_state.krx_remove_done = False
-        with patch("backend.app.services.engine_state.state", mock_state), \
-             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(15, 20)), \
-             patch("backend.app.core.trading_calendar.is_trading_day", return_value=True), \
-             patch("backend.app.services.sector_data_provider.recompute_sector_summary_now", new_callable=AsyncMock), \
-             patch("backend.app.services.market_close_pipeline.remove_krx_only_stocks", new_callable=AsyncMock, return_value={"skipped": True}):
-            await _on_krx_closing_auction_start()
-            assert mock_state.krx_remove_done is False
 
 
 # ── _on_ws_subscribe_start ────────────────────────────────────────────────────
@@ -1354,7 +1342,7 @@ class TestOnWsSubscribeStart:
     async def test_trading_day_starts_subscription(self):
         mock_state = MagicMock()
         mock_state.integrated_system_settings_cache = {"timetable.confirmed_download": "20:40"}
-        # 멱등성 가드 통과: 빈 문자열이어야 실행됨 (4단계)
+        # 멱등성 가드 통과: 빈 문자열이어야 실행됨
         mock_state.last_ws_subscribe_start_date = ""
         mock_state.last_realtime_reset_date = ""
         mock_state.ws_window_changed_event = MagicMock()
@@ -1363,6 +1351,9 @@ class TestOnWsSubscribeStart:
              patch("backend.app.core.trading_calendar.is_trading_day", return_value=True), \
              patch("backend.app.services.daily_time_scheduler.gc"), \
              patch("backend.app.services.engine_initial_data._reset_realtime_fields", new_callable=AsyncMock), \
+             patch("backend.app.services.engine_initial_data._mark_realtime_reset_done"), \
+             patch("backend.app.services.engine_initial_data._set_sector_summary"), \
+             patch("backend.app.pipelines.pipeline_compute.reset_sector_threshold"), \
              patch("backend.app.services.engine_account_notify.notify_cache"), \
              patch("backend.app.services.daily_time_scheduler._broadcast_market_phase"):
             await _on_ws_subscribe_start()
@@ -1524,10 +1515,10 @@ class TestOnKrxPreSubscribe:
             await _on_krx_pre_subscribe()
 
 
-# ── _on_ws_subscribe_start 멱등성 + 보완 경로 (4단계) ──────────────────────────
+# ── _on_ws_subscribe_start 멱등성 + 선행 통합 (2단계) ──────────────────────────
 
 class TestOnWsSubscribeStartIdempotency:
-    """_on_ws_subscribe_start() 멱등성 + 보완 경로 테스트."""
+    """_on_ws_subscribe_start() 멱등성 + 선행 통합 테스트."""
 
     @pytest.mark.asyncio
     async def test_skips_if_already_started_today(self):
@@ -1543,41 +1534,47 @@ class TestOnWsSubscribeStartIdempotency:
             mock_reset.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_compensates_missing_fields_reset(self):
+    async def test_calls_fields_reset_first(self):
+        """NXT 시작 시 _on_realtime_fields_reset()을 선행 호출 (2단계 통합)."""
         mock_state = MagicMock()
         mock_state.integrated_system_settings_cache = {"timetable.confirmed_download": "20:40"}
         mock_state.last_ws_subscribe_start_date = ""        # WS 구독 미실행
-        mock_state.last_realtime_reset_date = ""            # 데이터 준비도 미실행 → 보완 경로
+        mock_state.last_realtime_reset_date = ""            # 필드 초기화도 미실행
+        mock_state.ws_window_changed_event = MagicMock()
         with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(8, 0)), \
              patch("backend.app.core.trading_calendar.is_trading_day", return_value=True), \
              patch("backend.app.services.daily_time_scheduler._on_realtime_fields_reset", new_callable=AsyncMock) as mock_reset, \
              patch("backend.app.services.daily_time_scheduler._broadcast_market_phase"):
             await _on_ws_subscribe_start()
-            # 보완 경로 — _on_realtime_fields_reset() 호출 (GC+필드+게이트+캐시 통합)
+            # 선행 호출 — _on_realtime_fields_reset() 무조건 호출 (내부 멱등성 가드가 중복 방지)
             mock_reset.assert_awaited_once()
+            mock_state.ws_window_changed_event.set.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_skips_fields_reset_if_already_done(self):
+    async def test_calls_fields_reset_even_if_already_done(self):
+        """필드 초기화가 이미 실행됐어도 _on_realtime_fields_reset() 호출 — 내부 가드가 스킵."""
         mock_state = MagicMock()
         mock_state.integrated_system_settings_cache = {"timetable.confirmed_download": "20:40"}
         mock_state.last_ws_subscribe_start_date = ""        # WS 구독 미실행
-        mock_state.last_realtime_reset_date = "20250106"    # 데이터 준비 이미 실행 → 보완 스킵
+        mock_state.last_realtime_reset_date = "20250106"    # 필드 초기화 이미 실행
+        mock_state.ws_window_changed_event = MagicMock()
         with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(8, 0)), \
              patch("backend.app.core.trading_calendar.is_trading_day", return_value=True), \
              patch("backend.app.services.daily_time_scheduler._on_realtime_fields_reset", new_callable=AsyncMock) as mock_reset, \
              patch("backend.app.services.daily_time_scheduler._broadcast_market_phase"):
             await _on_ws_subscribe_start()
-            # 보완 스킵 — _on_realtime_fields_reset() 호출 없음
-            mock_reset.assert_not_awaited()
+            # 선행 호출 — _on_realtime_fields_reset() 호출 (내부 가드가 실제 작업 스킵)
+            mock_reset.assert_awaited_once()
 
 
 # ── _on_ws_subscribe_end ──────────────────────────────────────────────────────
 
 class TestOnWsSubscribeEnd:
     @pytest.mark.asyncio
-    async def test_end_sets_flags_and_triggers_unreg(self):
+    async def test_end_sets_flags_and_cleans_memory(self):
+        """20:00 장마감 — 메모리 정리 + 상태 정리 (구독해지·연결종료는 nxt_end direct)."""
         mock_state = MagicMock()
         mock_mgr = MagicMock()
         mock_mgr.disconnect_all = AsyncMock()
@@ -1588,17 +1585,108 @@ class TestOnWsSubscribeEnd:
              patch("backend.app.core.memory_monitor.start_memory_monitor"), \
              patch("backend.app.core.memory_monitor.log_memory_snapshot"), \
              patch("backend.app.core.memory_monitor.stop_memory_monitor"), \
-             patch("backend.app.services.daily_time_scheduler._trigger_unreg_all", new_callable=AsyncMock), \
+             patch("backend.app.pipelines.pipeline_compute.mark_sector_threshold_passed"), \
              patch("backend.app.services.ws_subscribe_control._set_status"), \
-             patch("backend.app.services.daily_time_scheduler._broadcast_market_phase"), \
-             patch("backend.app.services.engine_lifecycle.broadcast_engine_status", new_callable=AsyncMock):
+             patch("backend.app.services.daily_time_scheduler._broadcast_market_phase"):
             await _on_ws_subscribe_end()
             assert mock_state.confirmed_done is False
-            # 20:00에는 구독 해지만 수행 — 연결은 유지 (20:40에 엔진 루프가 해제)
+            # 구독해지·연결종료는 nxt_end direct가 담당 — 본 함수는 메모리 정리만
             mock_mgr.disconnect_all.assert_not_awaited()
             assert mock_state.connector_manager is mock_mgr
-            # 20:00에는 엔진 루프 각성 이벤트 set 없음 — 연결 해제는 20:40 루프가 담당
             mock_state.ws_window_changed_event.set.assert_not_called()
+
+
+# ── _on_nxt_end (NXT 종료 — 구독해지 + 연결종료 + 토큰폐기) ─────────────────────
+
+class TestOnNxtEnd:
+    """_on_nxt_end() — NXT 종료 시각 도달 시 구독해지 + 연결종료 + 토큰폐기 테스트."""
+
+    @pytest.mark.asyncio
+    async def test_weekend_skips(self):
+        with patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(20, 0, weekday=5)):
+            with patch("backend.app.services.market_close_pipeline.remove_nxt_stocks", new_callable=AsyncMock) as mock_remove:
+                await _on_nxt_end()
+                mock_remove.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_skips_if_already_run_today(self):
+        mock_state = MagicMock()
+        mock_state.last_nxt_end_date = "20250106"
+        with patch("backend.app.services.engine_state.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(20, 0)), \
+             patch("backend.app.services.market_close_pipeline.remove_nxt_stocks", new_callable=AsyncMock) as mock_remove:
+            await _on_nxt_end()
+            mock_remove.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_full_nxt_end_sequence(self):
+        """NXT 종료 — 구독해지 → 연결종료 → 토큰폐기 순서 실행."""
+        mock_state = MagicMock()
+        mock_state.last_nxt_end_date = ""
+        mock_state.broker_rest_apis = {"ls": MagicMock(revoke_token=AsyncMock())}
+        with patch("backend.app.services.engine_state.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(20, 0)), \
+             patch("backend.app.core.trading_calendar.is_trading_day", return_value=True), \
+             patch("backend.app.services.market_close_pipeline.remove_nxt_stocks", new_callable=AsyncMock, return_value={"removed": 10, "failed": 0}) as mock_remove, \
+             patch("backend.app.services.engine_loop._disconnect_realtime_connection", new_callable=AsyncMock) as mock_disconnect, \
+             patch("backend.app.services.daily_time_scheduler._broadcast_market_phase"):
+            await _on_nxt_end()
+            mock_remove.assert_awaited_once()
+            mock_disconnect.assert_awaited_once()
+            mock_state.broker_rest_apis["ls"].revoke_token.assert_awaited_once()
+            assert mock_state.last_nxt_end_date == "20250106"
+
+
+# ── _on_krx_end (KRX 종료 — KRX 단독 종목 구독해지) ───────────────────────────
+
+class TestOnKrxEnd:
+    """_on_krx_end() — KRX 종료 시각 도달 시 KRX 단독 종목 구독해지 테스트."""
+
+    @pytest.mark.asyncio
+    async def test_weekend_skips(self):
+        with patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(15, 20, weekday=5)):
+            with patch("backend.app.services.market_close_pipeline.remove_krx_only_stocks", new_callable=AsyncMock) as mock_remove:
+                await _on_krx_end()
+                mock_remove.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_skips_if_already_run_today(self):
+        mock_state = MagicMock()
+        mock_state.last_krx_end_date = "20250106"
+        with patch("backend.app.services.engine_state.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(15, 20)), \
+             patch("backend.app.services.market_close_pipeline.remove_krx_only_stocks", new_callable=AsyncMock) as mock_remove:
+            await _on_krx_end()
+            mock_remove.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_triggers_krx_remove(self):
+        """KRX 종료 — KRX 단독 종목 구독해지 실행."""
+        mock_state = MagicMock()
+        mock_state.last_krx_end_date = ""
+        mock_state.krx_remove_done = False
+        with patch("backend.app.services.engine_state.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(15, 20)), \
+             patch("backend.app.core.trading_calendar.is_trading_day", return_value=True), \
+             patch("backend.app.services.market_close_pipeline.remove_krx_only_stocks", new_callable=AsyncMock, return_value={"removed": 5, "failed": 0}) as mock_remove:
+            await _on_krx_end()
+            mock_remove.assert_awaited_once()
+            assert mock_state.krx_remove_done is True
+            assert mock_state.last_krx_end_date == "20250106"
+
+    @pytest.mark.asyncio
+    async def test_skipped_resets_flag(self):
+        """구독해지 생략 시 krx_remove_done 플래그 복원."""
+        mock_state = MagicMock()
+        mock_state.last_krx_end_date = ""
+        mock_state.krx_remove_done = False
+        with patch("backend.app.services.engine_state.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(15, 20)), \
+             patch("backend.app.core.trading_calendar.is_trading_day", return_value=True), \
+             patch("backend.app.services.market_close_pipeline.remove_krx_only_stocks", new_callable=AsyncMock, return_value={"skipped": True}) as mock_remove:
+            await _on_krx_end()
+            mock_remove.assert_awaited_once()
+            assert mock_state.krx_remove_done is False
 
 
 # ── _on_confirmed_download ────────────────────────────────────────────────────
@@ -2167,49 +2255,54 @@ class TestRetryPipelineCatchup:
 # ── 타임테이블 스케줄러 (10초 루프 대체) ──────────────────────────────────────
 
 class TestTimetableBuilder:
-    """build_timetable_from_cache 단위 테스트 — 캐시 기반 동적 빌드 (Step 2 + 4세션 통합)."""
+    """build_timetable_from_cache 단위 테스트 — 캐시 기반 동적 빌드 (2단계 재구성)."""
 
-    def test_build_with_cache_values_returns_27_items(self):
-        """캐시에서 4개 direct 시각을 읽어 27항목 리스트 반환 (토글 ON, 09:00:30 + 16 countdown 포함 — 10초 제거)."""
+    def test_build_with_cache_values_returns_28_items(self):
+        """캐시에서 5개 direct 시각을 읽어 28항목 리스트 반환 (토글 ON, 09:00:30 + 16 countdown 포함)."""
         tt = build_timetable_from_cache({
             "timetable.nxt_start": "07:55",
             "timetable.nxt_end": "20:00",
             "timetable.krx_start": "08:58",
+            "timetable.krx_end": "15:20",
             "timetable.confirmed_download": "20:40",
         })
-        assert len(tt) == 27
-        # 4개 direct 항목 — 캐시 시각 반영 (time 필드는 3-tuple)
+        assert len(tt) == 28
+        # 4개 direct 항목 (사용자 설정 시각) — 캐시 시각 반영 (time 필드는 3-tuple)
         assert tt[0]["time"] == (7, 55, 0)
         assert tt[0]["kind"] == "direct"
-        assert tt[0]["action"] is _on_realtime_fields_reset
-        assert tt[1]["time"] == (20, 0, 0)
+        assert tt[0]["action"] is _on_ws_subscribe_start
+        assert tt[1]["time"] == (8, 58, 0)
         assert tt[1]["kind"] == "direct"
-        assert tt[1]["action"] is _on_ws_subscribe_start
-        assert tt[3]["time"] == (8, 58, 0)
+        assert tt[1]["action"] is _on_krx_pre_subscribe
+        assert tt[2]["time"] == (15, 20, 0)
+        assert tt[2]["kind"] == "direct"
+        assert tt[2]["action"] is _on_krx_end
+        assert tt[3]["time"] == (20, 0, 0)
         assert tt[3]["kind"] == "direct"
-        assert tt[3]["action"] is _on_krx_pre_subscribe
-        # 마지막 direct 항목 — 확정 데이터 다운로드 (인덱스 26)
-        assert tt[26]["time"] == (20, 40, 0)
-        assert tt[26]["kind"] == "direct"
-        assert tt[26]["action"] is _on_confirmed_download
-        # 7개 phase 항목 — 코드 상수 유지 (3-tuple 정규화, 18:00 엔트리 제거)
-        assert tt[2]["time"] == _to3(NXT_PREMARKET_START)
-        assert tt[4]["time"] == _to3(KRX_REGULAR_START)
-        assert tt[5]["time"] == NXT_MAINMARKET_START  # 09:00:30 신규 엔트리
-        assert tt[5]["kind"] == "phase"
-        assert "09:00:30" in tt[5]["ctx"]
-        assert tt[9]["time"] == _to3(NXT_AFTERMARKET_END)  # 18:00 제거로 인덱스 10→9
-        # 16개 countdown 항목 — 인덱스 10~25 (10초 엔트리 6개 제거)
-        assert tt[10]["kind"] == "countdown"
-        assert tt[25]["kind"] == "countdown"
+        assert tt[3]["action"] is _on_nxt_end
+        # 마지막 direct 항목 — 확정 데이터 다운로드 (인덱스 27)
+        assert tt[27]["time"] == (20, 40, 0)
+        assert tt[27]["kind"] == "direct"
+        assert tt[27]["action"] is _on_confirmed_download
+        # 7개 phase 항목 — 코드 상수 유지 (3-tuple 정규화)
+        assert tt[4]["time"] == _to3(NXT_PREMARKET_START)
+        assert tt[5]["time"] == _to3(KRX_REGULAR_START)
+        assert tt[6]["time"] == NXT_MAINMARKET_START  # 09:00:30
+        assert tt[6]["kind"] == "phase"
+        assert "09:00:30" in tt[6]["ctx"]
+        assert tt[10]["time"] == _to3(NXT_AFTERMARKET_END)
+        # 16개 countdown 항목 — 인덱스 11~26
+        assert tt[11]["kind"] == "countdown"
+        assert tt[26]["kind"] == "countdown"
 
     def test_build_with_empty_cache_falls_back_to_defaults(self):
-        """캐시에 키 없으면 DEFAULT_USER_SETTINGS 기본값(07:58/20:00/08:59/20:40) 사용."""
+        """캐시에 키 없으면 DEFAULT_USER_SETTINGS 기본값(07:58/08:59/15:20/20:00/20:40) 사용."""
         tt = build_timetable_from_cache({})
         assert tt[0]["time"] == (7, 58, 0)
-        assert tt[1]["time"] == (20, 0, 0)
-        assert tt[3]["time"] == (8, 59, 0)
-        assert tt[26]["time"] == (20, 40, 0)  # confirmed_download 기본값 (인덱스 26)
+        assert tt[1]["time"] == (8, 59, 0)
+        assert tt[2]["time"] == (15, 20, 0)
+        assert tt[3]["time"] == (20, 0, 0)
+        assert tt[27]["time"] == (20, 40, 0)  # confirmed_download 기본값 (인덱스 27)
 
     def test_build_with_none_cache_value_falls_back_to_default(self):
         """캐시 값이 None/빈 문자열이면 DEFAULT_USER_SETTINGS 기본값 사용 (P20)."""
@@ -2219,8 +2312,8 @@ class TestTimetableBuilder:
             "timetable.krx_start": "08:55",
         })
         assert tt[0]["time"] == (7, 58, 0)  # None → 기본값
-        assert tt[1]["time"] == (20, 0, 0)  # 빈 문자열 → 기본값
-        assert tt[3]["time"] == (8, 55, 0)  # 캐시값 우선
+        assert tt[3]["time"] == (20, 0, 0)  # 빈 문자열 → 기본값
+        assert tt[1]["time"] == (8, 55, 0)  # 캐시값 우선
 
     def test_build_ctx_string_includes_time(self):
         """ctx 문자열에 시각이 포함되어 사용자에게 의미 전달 (P21 투명성)."""
@@ -2228,13 +2321,15 @@ class TestTimetableBuilder:
             "timetable.nxt_start": "07:55",
             "timetable.nxt_end": "20:00",
             "timetable.krx_start": "08:58",
+            "timetable.krx_end": "15:20",
             "timetable.confirmed_download": "20:40",
         })
         assert "07:55" in tt[0]["ctx"]
-        assert "20:00" in tt[1]["ctx"]
-        assert "08:58" in tt[3]["ctx"]
-        assert "09:00:30" in tt[5]["ctx"]  # NXT 메인마켓 진입 (초 단위)
-        assert "20:40" in tt[26]["ctx"]  # confirmed_download (인덱스 26)
+        assert "08:58" in tt[1]["ctx"]
+        assert "15:20" in tt[2]["ctx"]
+        assert "20:00" in tt[3]["ctx"]
+        assert "09:00:30" in tt[6]["ctx"]  # NXT 메인마켓 진입 (초 단위)
+        assert "20:40" in tt[27]["ctx"]  # confirmed_download (인덱스 27)
 
     def test_build_toggle_off_skips_confirmed_download(self):
         """scheduler_market_close_on=False 시 마지막 direct 항목 스킵 (P16 살아있는 경로)."""
@@ -2242,12 +2337,13 @@ class TestTimetableBuilder:
             "timetable.nxt_start": "07:55",
             "timetable.nxt_end": "20:00",
             "timetable.krx_start": "08:58",
+            "timetable.krx_end": "15:20",
             "timetable.confirmed_download": "20:40",
             "scheduler_market_close_on": False,
         })
-        assert len(tt) == 26  # confirmed_download 항목 스킵 (27 - 1)
+        assert len(tt) == 27  # confirmed_download 항목 스킵 (28 - 1)
         # 마지막 항목은 countdown — confirmed_download direct 없음
-        assert tt[25]["kind"] == "countdown"
+        assert tt[26]["kind"] == "countdown"
         # confirmed_download action을 가진 항목 없음
         assert not any(e.get("action") is _on_confirmed_download for e in tt)
 
@@ -2257,11 +2353,12 @@ class TestTimetableBuilder:
             "timetable.nxt_start": "07:55",
             "timetable.nxt_end": "20:00",
             "timetable.krx_start": "08:58",
+            "timetable.krx_end": "15:20",
             "timetable.confirmed_download": "20:40",
             "scheduler_market_close_on": True,
         })
-        assert len(tt) == 27
-        assert tt[26]["action"] is _on_confirmed_download
+        assert len(tt) == 28
+        assert tt[27]["action"] is _on_confirmed_download
 
     def test_parse_hm_tuple_valid(self):
         """정상 HH:MM → (h, m) 튜플."""
@@ -2310,6 +2407,7 @@ class TestTimetableScheduler:
             "timetable.nxt_start": "07:58",
             "timetable.nxt_end": "20:00",
             "timetable.krx_start": "08:59",
+            "timetable.krx_end": "15:20",
             "timetable.confirmed_download": "20:40",
         })
 
@@ -2442,12 +2540,12 @@ class TestTimetableScheduler:
 
     @pytest.mark.asyncio
     async def test_direct_event_idempotency_guard_no_op(self):
-        """같은 날 direct 이벤트 중복 실행 시 _on_realtime_fields_reset 내 가드로 no-op."""
+        """같은 날 direct 이벤트 중복 실행 시 _on_ws_subscribe_start 내 가드로 no-op."""
         mock_state = MagicMock()
         mock_state.integrated_system_settings_cache = {"timetable.confirmed_download": "20:40"}
-        mock_state.last_realtime_reset_date = "20250106"  # 이미 오늘 실행됨
-        # _TIMETABLE 의 07:58 direct 항목 — 실제 _on_realtime_fields_reset 사용
-        entry = next(e for e in _TIMETABLE if e["ctx"].startswith("실시간 필드 초기화"))
+        mock_state.last_ws_subscribe_start_date = "20250106"  # 이미 오늘 실행됨
+        # _TIMETABLE 의 nxt_start direct 항목 — 실제 _on_ws_subscribe_start 사용
+        entry = next(e for e in _TIMETABLE if e["ctx"].startswith("NXT 시작"))
         with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(7, 58)), \
              patch("backend.app.services.daily_time_scheduler._schedule_next_timetable_event"), \

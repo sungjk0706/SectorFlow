@@ -15,12 +15,13 @@
   C. 업종 분석 (8)      — sector_summary_cache, master_stocks_cache, index_data_cache,
                          market_phase, krx_circuit_breaker_active,
                          news_keywords_cache, news_boost_score, news_boost_ttl_sec
-  D. 스케줄러 (13)      — last_reset_date, krx_remove_done, confirmed_done,
+  D. 스케줄러 (15)      — last_reset_date, krx_remove_done, confirmed_done,
                          auto_trade_timer_handles, midnight_timer_handle,
                          timetable_timer_handle, last_jif_received_at,
                          krx_countdown_override, nxt_countdown_override,
                          last_realtime_reset_date, last_ws_subscribe_start_date,
-                         last_krx_pre_subscribe_date, last_confirmed_download_date
+                         last_krx_pre_subscribe_date, last_confirmed_download_date,
+                         last_krx_end_date, last_nxt_end_date
   E. 이벤트/락/상수 (17) — data_ready_event, token_ready_event, ws_reg_pipeline_done,
                          bootstrap_event, sector_summary_ready_event, engine_ready_event,
                          server_ready_event, preboot_ready_event, engine_stop_event,
@@ -210,6 +211,8 @@ class EngineState:
         self.last_ws_subscribe_start_date: str = ""    # WS 구독 시작 실행 날짜 (YYYYMMDD)
         self.last_krx_pre_subscribe_date: str = ""     # KRX 사전 구독 실행 날짜 (YYYYMMDD)
         self.last_confirmed_download_date: str = ""    # 확정 데이터 다운로드 실행 날짜 (YYYYMMDD)
+        self.last_krx_end_date: str = ""               # KRX 종료(구독해지) 실행 날짜 (YYYYMMDD)
+        self.last_nxt_end_date: str = ""               # NXT 종료(구독해지+연결종료+토큰폐기) 실행 날짜 (YYYYMMDD)
 
     async def on_filter_settings_changed(self) -> None:
         """필터 설정 변경 시 처리 (engine_sector 모듈 위임)."""
