@@ -134,7 +134,7 @@ function buildSellTimeRow(state: GeneralSettingsState): HTMLElement {
   return wrapTimeRowWithWarn(r.el, warnEl)
 }
 
-function buildTimetableRow(state: GeneralSettingsState, labelText: string, key: 'timetable.realtime_reset' | 'timetable.ws_prestart' | 'timetable.krx_pre_subscribe', defaultTime: string, infoText?: string): HTMLElement {
+function buildTimetableRow(state: GeneralSettingsState, labelText: string, key: 'timetable.nxt_start' | 'timetable.nxt_end' | 'timetable.krx_start' | 'timetable.krx_end', defaultTime: string, infoText?: string): HTMLElement {
   const row = document.createElement('div')
   Object.assign(row.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, paddingLeft: '20px', borderBottom: GS.rowBorder })
   const labelWrap = document.createElement('span')
@@ -153,9 +153,10 @@ function buildTimetableRow(state: GeneralSettingsState, labelText: string, key: 
   })
   row.appendChild(slot)
   // 모듈 상태 업데이트 (키별)
-  if (key === 'timetable.realtime_reset') { state.timetableResetSlot = slot }
-  else if (key === 'timetable.ws_prestart') { state.timetableWsSlot = slot }
-  else if (key === 'timetable.krx_pre_subscribe') { state.timetableKrxSlot = slot }
+  if (key === 'timetable.nxt_start') { state.timetableNxtStartSlot = slot }
+  else if (key === 'timetable.nxt_end') { state.timetableNxtEndSlot = slot }
+  else if (key === 'timetable.krx_start') { state.timetableKrxStartSlot = slot }
+  else if (key === 'timetable.krx_end') { state.timetableKrxEndSlot = slot }
   return row
 }
 
@@ -251,12 +252,13 @@ export function renderTimeSettingsTab(state: GeneralSettingsState, container: HT
   container.appendChild(buildSellTimeRow(state))
   container.appendChild(createDescText('자동매매 토글로 시간 기반 자동매매를 켜고 끕니다. 자동매수/자동매도 시간 우측 토글로 각각 켜고 끌 수 있으며, 토글이 꺼져 있어도 시간은 미리 설정할 수 있습니다. 거래일 설정시간 내에서만 실행되며, 공휴일·주말에는 자동매매가 항상 차단됩니다.'))
 
-  // 사전 준비 시간 설정 (타임테이블 사용자 조정 3개) — P21 투명성
-  container.appendChild(sectionTitle('사전 준비 시간 설정'))
-  container.appendChild(createDescText('너무 늦으면 실시간 데이터가 누락될 수 있습니다.'))
-  container.appendChild(buildTimetableRow(state, '실시간 데이터 필드 초기화', 'timetable.realtime_reset', '07:58', '장 시작 전 필드를 비워 새 데이터를 받을 준비를 합니다'))
-  container.appendChild(buildTimetableRow(state, 'NXT 종목 구독 신청', 'timetable.ws_prestart', '07:59', 'NXT 프리마켓 시작 전 구독을 미리 신청합니다'))
-  container.appendChild(buildTimetableRow(state, 'KRX 종목 추가 구독', 'timetable.krx_pre_subscribe', '08:59', 'KRX 정규장 시작 전 KRX 단독 종목 구독을 추가합니다'))
+  // 구독 시간 설정 (타임테이블 사용자 조정 4개 — NXT/KRX 시작·종료) — P21 투명성
+  container.appendChild(sectionTitle('구독 시간 설정'))
+  container.appendChild(createDescText('NXT와 KRX의 시작·종료 시간을 각각 설정합니다. 너무 늦으면 실시간 데이터가 누락될 수 있습니다.'))
+  container.appendChild(buildTimetableRow(state, 'NXT 시작', 'timetable.nxt_start', '07:58', '토큰 발급 → 실시간 연결 → NXT 종목 구독 순서로 진행됩니다'))
+  container.appendChild(buildTimetableRow(state, 'NXT 종료', 'timetable.nxt_end', '20:00', 'NXT 종목 구독해지 → 실시간 연결 종료 → 토큰 폐기 순서로 진행됩니다'))
+  container.appendChild(buildTimetableRow(state, 'KRX 시작', 'timetable.krx_start', '08:59', 'KRX 정규장 시작 전 KRX 단독 종목 구독을 추가합니다'))
+  container.appendChild(buildTimetableRow(state, 'KRX 종료', 'timetable.krx_end', '15:20', 'KRX 단독 종목 구독만 해지합니다. NXT 구독·연결·토큰은 유지됩니다'))
 
   // 일봉차트 자동다운로드 (토글 + 시간 슬롯) — 단일 항목이라 섹션 제목 생략 (P24)
   container.appendChild(buildConfirmedDownloadRow(state))
@@ -271,7 +273,7 @@ export function renderTimeSettingsTab(state: GeneralSettingsState, container: HT
 }
 
 /* ── 시간 설정 탭 동기화 ── */
-// 마스터 토글 + 확정 시세 다운로드 시간 + 자동다운로드 토글 + 타임테이블 3슬롯 + 구독 한도 + 자동매수/매도 토글·시간쌍
+// 마스터 토글 + 확정 시세 다운로드 시간 + 자동다운로드 토글 + 타임테이블 4슬롯 + 구독 한도 + 자동매수/매도 토글·시간쌍
 export function syncTimeSettingsTab(r: Record<string, unknown>): void {
   // 마스터 토글 (time_scheduler_on)
   state.masterToggle?.setOn(!!r.time_scheduler_on)
@@ -284,13 +286,15 @@ export function syncTimeSettingsTab(r: Record<string, unknown>): void {
   state.confirmedDlToggle?.setOn(dlOn)
   if (state.confirmedDlSlot) setDisabled(state.confirmedDlSlot.parentElement as HTMLElement, !dlOn)
 
-  // 타임테이블 3슬롯
-  const [trh, trm] = parseHM(String(r['timetable.realtime_reset'] ?? '07:58'))
-  if (state.timetableResetSlot) updateTimeSlotDisplay(state.timetableResetSlot, trh, trm)
-  const [twh, twm] = parseHM(String(r['timetable.ws_prestart'] ?? '07:59'))
-  if (state.timetableWsSlot) updateTimeSlotDisplay(state.timetableWsSlot, twh, twm)
-  const [tkh, tkm] = parseHM(String(r['timetable.krx_pre_subscribe'] ?? '08:59'))
-  if (state.timetableKrxSlot) updateTimeSlotDisplay(state.timetableKrxSlot, tkh, tkm)
+  // 타임테이블 4슬롯 (NXT/KRX 시작·종료)
+  const [nsh, nsm] = parseHM(String(r['timetable.nxt_start'] ?? '07:58'))
+  if (state.timetableNxtStartSlot) updateTimeSlotDisplay(state.timetableNxtStartSlot, nsh, nsm)
+  const [neh, nem] = parseHM(String(r['timetable.nxt_end'] ?? '20:00'))
+  if (state.timetableNxtEndSlot) updateTimeSlotDisplay(state.timetableNxtEndSlot, neh, nem)
+  const [ksh, ksm] = parseHM(String(r['timetable.krx_start'] ?? '08:59'))
+  if (state.timetableKrxStartSlot) updateTimeSlotDisplay(state.timetableKrxStartSlot, ksh, ksm)
+  const [keh, kem] = parseHM(String(r['timetable.krx_end'] ?? '15:20'))
+  if (state.timetableKrxEndSlot) updateTimeSlotDisplay(state.timetableKrxEndSlot, keh, kem)
 
   // 구독 한도
   state.subscribeMaxInput?.setValue(Number(r['subscribe.max_0b_count'] ?? 200) || 200)

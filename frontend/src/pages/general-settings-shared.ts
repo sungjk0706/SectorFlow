@@ -100,10 +100,11 @@ export interface GeneralSettingsState {
   confirmedDlH: string
   confirmedDlM: string
 
-  // 장 시작 전 사전 준비 시간 (타임테이블 사용자 조정 3개 슬롯)
-  timetableResetSlot: HTMLElement | null
-  timetableWsSlot: HTMLElement | null
-  timetableKrxSlot: HTMLElement | null
+  // 타임테이블 사용자 조정 4개 슬롯 (NXT 시작/종료, KRX 시작/종료)
+  timetableNxtStartSlot: HTMLElement | null
+  timetableNxtEndSlot: HTMLElement | null
+  timetableKrxStartSlot: HTMLElement | null
+  timetableKrxEndSlot: HTMLElement | null
   savingTimetable: boolean
 
   // 구독 한도
@@ -187,9 +188,10 @@ function createState(): GeneralSettingsState {
     confirmedDlH: '20',
     confirmedDlM: '40',
 
-    timetableResetSlot: null,
-    timetableWsSlot: null,
-    timetableKrxSlot: null,
+    timetableNxtStartSlot: null,
+    timetableNxtEndSlot: null,
+    timetableKrxStartSlot: null,
+    timetableKrxEndSlot: null,
     savingTimetable: false,
 
     subscribeMaxInput: null,
@@ -236,12 +238,12 @@ export function updateHolidayBadges(): void {
   for (const el of state.holidayBadgeEls) el.style.display = show ? 'inline' : 'none'
 }
 
-// 타임테이블 4개 키 저장 — 변경된 키만 전송 (P10 SSOT, P24 단순성)
+// 타임테이블 5개 키 저장 — 변경된 키만 전송 (P10 SSOT, P24 단순성)
 // 백엔드 _validate_timetable_order()가 나머지 키를 DB에서 보충해 순서 검증
 // 422 응답 시 api/client.ts가 detail 필드 추출 → toastResult가 검증 에러 메시지 토스트 (P21)
 // onFail: 저장 실패 시 호출 (호출처에서 시간 슬롯 표시를 원래 값으로 복원 — P22/P23)
 export function scheduleTimetableSave(
-  key: 'timetable.realtime_reset' | 'timetable.ws_prestart' | 'timetable.krx_pre_subscribe' | 'timetable.confirmed_download',
+  key: 'timetable.nxt_start' | 'timetable.nxt_end' | 'timetable.krx_start' | 'timetable.krx_end' | 'timetable.confirmed_download',
   newVal: string,
   onFail?: () => void,
 ): void {
