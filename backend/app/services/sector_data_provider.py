@@ -324,7 +324,7 @@ async def recompute_sector_summary_now() -> None:
     """
     from backend.app.domain.sector_calculator import compute_full_sector_summary
     from backend.app.domain.buy_filter import build_buy_targets_from_settings
-    from backend.app.services.engine_sector_confirm import cancel_sector_recompute
+    from backend.app.services.engine_sector_confirm import cancel_sector_recompute, _build_prev_targets_map
     from backend.app.services.engine_lifecycle import is_engine_running
     from backend.app.services.engine_account_notify import notify_desktop_sector_scores, notify_buy_targets_update, notify_desktop_sector_stocks_refresh
 
@@ -356,6 +356,7 @@ async def recompute_sector_summary_now() -> None:
             engine_state.state.integrated_system_settings_cache,
             held_codes=_held,
             bought_today_codes=_bought_today,
+            prev_targets_map=_build_prev_targets_map(engine_state.state.sector_summary_cache),
         )
         # 부적합 자료만 있는 경우 업종 순위·매수 후보가 정상 결과처럼 보이지 않도록
         # 자료 상태를 계산 가능 (설계서 4.4·4.7, 세션 5) — master_stocks_cache 기반 즉시 산출.
@@ -410,6 +411,7 @@ async def recompute_buy_targets_only() -> None:
     from backend.app.services.engine_lifecycle import is_engine_running
     from backend.app.services.engine_account_notify import notify_buy_targets_update
     from backend.app.services.engine_initial_data import _set_sector_summary
+    from backend.app.services.engine_sector_confirm import _build_prev_targets_map
 
     logger.info("[매수후보] 경량 재순위 진입, 실행중=%s", is_engine_running())
     if not is_engine_running():
@@ -430,6 +432,7 @@ async def recompute_buy_targets_only() -> None:
             engine_state.state.integrated_system_settings_cache,
             held_codes=_held,
             bought_today_codes=_bought_today,
+            prev_targets_map=_build_prev_targets_map(_cached),
         )
         _set_sector_summary(_ss, "sector_data_provider.recompute_buy_targets_only")
         await notify_buy_targets_update()

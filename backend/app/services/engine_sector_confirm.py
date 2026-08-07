@@ -86,6 +86,27 @@ def extract_buy_target_page_codes(summary) -> set[str]:
     return codes
 
 
+def _build_prev_targets_map(summary) -> dict[str, str]:
+    """이전 SectorSummary에서 통과 종목의 reject_reason 맵 생성 (보존용).
+
+    rank_buy_targets가 BuyTarget을 새로 생성할 때 기존 reject_reason을 보존하도록
+    전달하는 딕셔너리. 통과(guard_pass=True) 종목만 추출 — 차단 종목은 guard_reason이
+    guard_pass 전환 시 재설정되므로 보존 대상이 아님 (P21 투명성, P23 일관성).
+    """
+    if not summary:
+        return {}
+    prev: dict[str, str] = {}
+    targets = getattr(summary, "buy_targets", None)
+    if not isinstance(targets, (list, tuple, set)):
+        return prev
+    for target in targets:
+        stock = getattr(target, "stock", None)
+        code = getattr(stock, "code", None)
+        if code:
+            prev[str(code)] = getattr(target, "reject_reason", "") or ""
+    return prev
+
+
 def are_buy_target_page_codes_changed(prev_summary, new_summary) -> bool:
     """매수 후보 페이지의 downstream 종목 코드 집합 변경 여부를 비교한다."""
     return extract_buy_target_page_codes(prev_summary) != extract_buy_target_page_codes(new_summary)
@@ -215,6 +236,7 @@ async def _flush_sector_recompute_impl() -> None:
             engine_state.state.integrated_system_settings_cache,
             held_codes=_held,
             bought_today_codes=_bought_today,
+            prev_targets_map=_build_prev_targets_map(existing),
         )
 
         # 참조 교체 방식으로 캐시 갱신 (R5.6) — _set_sector_summary 단일 경로 (COUPLING-S1)
@@ -292,6 +314,7 @@ async def _full_recompute(codes_snapshot: set[str] | None = None) -> None:
         engine_state.state.integrated_system_settings_cache,
         held_codes=_held,
         bought_today_codes=_bought_today,
+        prev_targets_map=_build_prev_targets_map(_prev_cache),
     )
 
     # 참조 교체 방식으로 캐시 갱신 (R5.6) — _set_sector_summary 단일 경로 (COUPLING-S1)

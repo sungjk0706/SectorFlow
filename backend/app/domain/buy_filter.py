@@ -229,6 +229,7 @@ def rank_buy_targets(
     boost_news_on: bool = False,
     boost_news_score: float = 1.0,
     sector_scores: list | None = None,  # list[SectorScore] — SectorSummary.sectors 원본
+    prev_targets_map: dict[str, str] | None = None,  # code → 이전 reject_reason (보존용)
 ) -> SectorSummary:
     """
     종목 단위 순위·생성.
@@ -292,8 +293,10 @@ def rank_buy_targets(
     blocked_targets: list = []
     pass_rank = 1
     blocked_rank = 1
+    _prev = prev_targets_map or {}
     for stock, sc in stock_sector_pairs:
         if not stock.guard_pass:
+            # 차단 종목: guard_reason 사용. 보유중/금일매수 등 가드 사유는 guard_pass 전환 시 재설정되므로 보존하지 않음.
             target = BuyTarget(
                 rank=blocked_rank,
                 sector_rank=sc.rank,
@@ -303,11 +306,15 @@ def rank_buy_targets(
             blocked_targets.append(target)
             blocked_rank += 1
         else:
+            # 통과 종목: 이전 reject_reason 보존 (업종 재계산으로 인한 리셋 방지 — P21 투명성, P23 일관성).
+            # 보존 조건: 같은 code의 이전 BuyTarget이 통과 상태였을 때의 reject_reason.
+            # guard_pass가 차단→통과로 바뀐 종목은 _prev에 없거나 이전이 차단 사유였으므로 빈칸으로 시작.
+            _preserved = _prev.get(stock.code, "")
             target = BuyTarget(
                 rank=pass_rank,
                 sector_rank=sc.rank,
                 stock=stock,
-                reject_reason="",
+                reject_reason=_preserved,
             )
             buy_targets.append(target)
             pass_rank += 1
@@ -328,6 +335,7 @@ def build_buy_targets_from_settings(
     *,
     held_codes: set[str] | None = None,
     bought_today_codes: set[str] | None = None,
+    prev_targets_map: dict[str, str] | None = None,
 ) -> SectorSummary:
     """설정 → 3단계 순차 호출 배선 (어댑터).
     (1) select_top_sector_stocks: 업종 단위 선택,
@@ -374,4 +382,5 @@ def build_buy_targets_from_settings(
         boost_news_on=bool(settings.get("boost_news_on", False)),
         boost_news_score=float(settings.get("boost_news_score", 1.0)),
         sector_scores=sector_scores,
+        prev_targets_map=prev_targets_map,
     )
