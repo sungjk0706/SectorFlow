@@ -214,12 +214,21 @@ async def start_compute_loop() -> None:
         if t.exception() else None
     )
 
+    # 주문 실행 루프 시작 — 시세/업종 루프와 분리된 주문·체결·잔고 처리 (W2 파이프라인 분리)
+    from backend.app.services.engine_order_loop import start_order_loop
+    await start_order_loop()
+
 
 async def stop_compute_loop() -> None:
     """Compute Engine 루프 종료."""
     global _compute_running, _compute_task, _sector_recompute_task
 
     _compute_running = False
+
+    # 주문 실행 루프 종료 — 시세/업종 루프 종료 전 주문 루프 먼저 정지
+    from backend.app.services.engine_order_loop import stop_order_loop
+    await stop_order_loop()
+
     if _sector_recompute_task:
         _sector_recompute_task.cancel()
         try:
