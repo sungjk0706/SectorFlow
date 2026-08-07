@@ -94,17 +94,17 @@ describe('computeColWidths — 유효 샘플 필터링 (간헐·동적 컬럼)',
   })
 
   it('유효 샘플이 없는 뉴스 컬럼은 라벨 + 공통 패딩 + news type 캡으로 계산된다', () => {
-    // news type 캡: minWidth=50, maxWidth=70
+    // news type 캡: minWidth=60, maxWidth=80
     const label = '뉴스'
     const labelWidth = estimateTextWidth(label, FONT_SIZE)
     const w = widthOf({ label, samples: [], minWidth: COLUMN_WIDTH.news.minWidth, maxWidth: COLUMN_WIDTH.news.maxWidth })
-    // rawWidth = labelWidth + 8, 캡 [50, 70] 교집합 → max(36,50)=50, min(240,70)=70
+    // rawWidth = labelWidth + 8, 캡 [60, 80] 교집합 → max(36,60)=60, min(240,80)=80
     const raw = labelWidth + CELL_HORIZONTAL_PADDING
-    const expected = Math.max(50, Math.min(raw, 70))
+    const expected = Math.max(60, Math.min(raw, 80))
     expect(w).toBe(expected)
-    // 라벨 폭이 작아도 news type 최소 50 보장
-    expect(w).toBeGreaterThanOrEqual(50)
-    expect(w).toBeLessThanOrEqual(70)
+    // 라벨 폭이 작아도 news type 최소 60 보장
+    expect(w).toBeGreaterThanOrEqual(60)
+    expect(w).toBeLessThanOrEqual(80)
   })
 
   it('유효 샘플이 부족한 프.순.매(program_net)는 기존 페이지 캡을 유지한다', () => {

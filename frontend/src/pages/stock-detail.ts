@@ -134,6 +134,7 @@ function makeHighColumn(idx: number, label: HTMLElement): ColumnDef<StockDetail5
     label,
     align: 'right',
     type: 'high',
+    maxWidth: 100,
     render: (row) => fmtHigh(row.bars[idx]?.high_price ?? null),
   }
 }

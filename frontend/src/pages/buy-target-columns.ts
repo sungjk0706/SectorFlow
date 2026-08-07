@@ -119,7 +119,7 @@ export const COLUMNS: ColumnDef<StockScore>[] = [
     (t) => getMasterStock(t.code)?.sign,
   ),
   {
-    key: 'order_ratio', label: '호가잔량비(%)', align: 'right', type: 'order_ratio', maxWidth: 88,
+    key: 'order_ratio', label: '호가잔량비(%)', align: 'right', type: 'order_ratio', maxWidth: 80,
     render: (t) => {
       const ms = getMasterStock(t.code)
       const orderRatio = ms?.order_ratio
@@ -150,7 +150,7 @@ export const COLUMNS: ColumnDef<StockScore>[] = [
     },
   },
   {
-    key: 'program_net_buy', label: '프.순.매(백)', align: 'right', type: 'program_net', minWidth: 76, maxWidth: 76,
+    key: 'program_net_buy', label: '프.순.매(백)', align: 'right', type: 'program_net', minWidth: 72, maxWidth: 72,
     render: (t) => {
       const ms = getMasterStock(t.code)
       const programNetBuy = ms?.program_net_buy
@@ -172,7 +172,7 @@ export const COLUMNS: ColumnDef<StockScore>[] = [
     },
   },
   {
-    key: 'news_boost', label: '뉴스', align: 'center', type: 'news', maxWidth: 100,
+    key: 'news_boost', label: '뉴스', align: 'center', type: 'news', minWidth: 60, maxWidth: 100,
     render: (t) => {
       const newsScore = Number(t.news_boost) || 0
       if (newsScore <= 0) return ''
@@ -204,7 +204,7 @@ export const COLUMNS: ColumnDef<StockScore>[] = [
     },
   },
   {
-    key: 'high_5d', label: '5일고가', align: 'right', type: 'high', maxWidth: 98,
+    key: 'high_5d', label: '5일고가', align: 'right', type: 'high', minWidth: 80, maxWidth: 130,
     render: (t) => {
       const value = Number(t.high_5d) || 0
       // M-08: 종목코드별 요소 재사용 — 값 변경 시에만 textContent 갱신
@@ -250,7 +250,7 @@ export const COLUMNS: ColumnDef<StockScore>[] = [
     },
   },
   {
-    key: 'reject_reason', label: '원인', align: 'left', type: 'reject_reason', cellStyle: { color: COLOR.tertiary },
+    key: 'reject_reason', label: '원인', align: 'left', type: 'reject_reason', minWidth: 95, maxWidth: 115, cellStyle: { color: COLOR.tertiary },
     render: (t) => {
       const r = t.reject_reason || ''
       if (r === '보유중' || r === '금일매수') {
