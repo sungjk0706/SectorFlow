@@ -624,6 +624,203 @@ $(git diff --name-only HEAD~1 HEAD 2>/dev/null)"
     fi
 }
 
+# ─── 핵심 로직 변경 자동 감지 (하네스 강화 — 위험도 판정 자동화) ───
+# 이번 세션에서 변경된 파일 목록을 보고 매매·주문·엔진·리스크 관련 파일이 포함되면
+# 자동으로 "핵심 로직 변경"으로 판정. 에이전트가 위험도를 자발적으로 판정하지 않고
+# 스크립트가 기계적으로 판정 — "핵심 로직인데 독립 검증 생략" 회피 방지.
+# 패턴: Deterministic Guardrails (agentpatterns.ai) — "에이전트에게 판단을 맡기지 않고
+# 스크립트가 결정론적으로 판정". P24 단순성 부합 — 에이전트가 위험도를 고를 필요 없음.
+#
+# 출력: 핵심 로직 감지 시 CORE_LOGIC=1, 감지 안 되면 CORE_LOGIC=0
+# 감지된 파일 목록은 CORE_LOGIC_FILES에 저장.
+CORE_LOGIC=0
+CORE_LOGIC_FILES=""
+detect_core_logic() {
+    local SNAPSHOT=".devin/state/session_changes_snapshot.txt"
+
+    # 이번 세션 변경 파일 수집 (run_auto와 동일 방식)
+    local current
+    current=$({
+        git diff --name-only HEAD 2>/dev/null
+        git ls-files --others --exclude-standard 2>/dev/null
+    } | sort -u)
+
+    local session_changes
+    if [ -f "$SNAPSHOT" ]; then
+        session_changes=$(comm -23 \
+            <(printf '%s\n' "$current" | sort -u) \
+            <(sort -u "$SNAPSHOT" 2>/dev/null) \
+            2>/dev/null)
+    else
+        session_changes="$current"
+    fi
+
+    # 핵심 로직 파일 패턴 — 매매·주문·엔진·리스크·매수후보·업종점수·토큰발급
+    # 파일 경로로 판정 (에이전트 판단 개입 제거 — P24 단순성)
+    local CORE_PATTERN='trading\.py|engine_loop\.py|engine_lifecycle\.py|engine_buy_target|engine_order_loop|risk_|buy_filter|pipeline_compute|pipeline_screening|pipeline_ranking|daily_time_scheduler|broker_|ls_connector|kiwoom_connector|connector_manager|token_|settings_store|settings_defaults|core_queues'
+
+    CORE_LOGIC_FILES=$(printf '%s\n' "$session_changes" \
+        | grep -E "$CORE_PATTERN" \
+        | grep -E '^backend/' \
+        2>/dev/null || true)
+
+    if [ -n "$CORE_LOGIC_FILES" ]; then
+        CORE_LOGIC=1
+        echo "[pre-complete] [핵심 로직 감지] 매매·주문·엔진·리스크 관련 파일 변경 감지:"
+        printf '%s\n' "$CORE_LOGIC_FILES" | sed 's/^/  - /'
+        echo "[pre-complete]    → 독립 검증 도구(independent-verify) 실행 필수 (위험도 높음 — 생략 불가)"
+    fi
+}
+
+# ─── 검증 도구 실행 증거 확인 (하네스 강화 — 이관 후 실행 보장) ───
+# 독립 검증·커밋 전 검토 도구가 이관된 후 실행 보장 장치가 없어 한 번도 실행되지 않은
+# 문제 해결. "에이전트가 알아서 따라야 하는 절차"에서 "안 하면 진행 불가" 방식으로 전환.
+#
+# 패턴 출처:
+#   - Pre-completion Checklists (agentpatterns.ai) — "체크리스트는 제안이 아니라 게이트다"
+#   - Evidence before claims (OpenAI superpowers) — "검증 명령을 실행하지 않았으면 통과라고 주장 불가"
+#   - Stop 훅 강제 (harnesswright/Tautline) — "에이전트의 완료는 주장이지 사실이 아니다"
+#   - Deterministic Guardrails (agentpatterns.ai) — "가드레일은 매번 실행되고 추론으로 우회 불가"
+#
+# 확인 방식: 도구 실행 후 결과 파일(.devin/state/verify-results/)이 생성되었는지 결정론적 확인.
+# 파일 존재 여부로 판정 — 에이전트 자기 보고가 아닌 파일 시스템 증거로 확인 (self-attested
+# verification 차단 — tianpan.co "검증은 런타임에서, 모델 출력이 아닌").
+#
+# 위험도 계층 (수정안 4 자동 감지 결과 사용):
+#   - CORE_LOGIC=1 (핵심 로직) → pre-commit-review + independent-verify 둘 다 필수
+#   - 코드 변경 있으나 핵심 아님 → pre-commit-review 필수, independent-verify 권장(생략 가능)
+#   - 코드 변경 없음 (docs 모드) → 둘 다 생략
+check_verification_tools() {
+    local VERIFY_DIR=".devin/state/verify-results"
+    local SNAPSHOT=".devin/state/session_changes_snapshot.txt"
+
+    # 이번 세션 변경 파일 수집
+    local current
+    current=$({
+        git diff --name-only HEAD 2>/dev/null
+        git ls-files --others --exclude-standard 2>/dev/null
+    } | sort -u)
+
+    local session_changes
+    if [ -f "$SNAPSHOT" ]; then
+        session_changes=$(comm -23 \
+            <(printf '%s\n' "$current" | sort -u) \
+            <(sort -u "$SNAPSHOT" 2>/dev/null) \
+            2>/dev/null)
+    else
+        session_changes="$current"
+    fi
+
+    # 코드 변경 여부 확인
+    local has_code_change
+    has_code_change=$(printf '%s\n' "$session_changes" \
+        | grep -E '^(backend/|frontend/|main\.py$)' \
+        | head -1)
+
+    if [ -z "$has_code_change" ]; then
+        echo "[pre-complete] ℹ️ 검증 도구 실행 검사 생략 — 코드 변경 없음 (문서 전용)"
+        return 0
+    fi
+
+    echo "[pre-complete] [검증 도구 실행 증거 확인]"
+
+    # ── pre-commit-review 도구 실행 증거 확인 (모든 코드 변경 시 필수) ──
+    local pcr_found=false
+    if [ -d "$VERIFY_DIR" ]; then
+        # 이번 세션 커밋 해시 또는 미커밋 변경에 대한 증거 파일 확인
+        # 증거 파일명 패턴: pre-commit-review-*.md
+        local pcr_files
+        pcr_files=$(ls -1 "$VERIFY_DIR"/pre-commit-review-*.md 2>/dev/null || true)
+        if [ -n "$pcr_files" ]; then
+            # 가장 최근 파일의 수정 시각이 이번 세션 시작 이후인지 확인
+            local snapshot_mtime=0
+            if [ -f "$SNAPSHOT" ]; then
+                snapshot_mtime=$(stat -f %m "$SNAPSHOT" 2>/dev/null || stat -c %Y "$SNAPSHOT" 2>/dev/null)
+            fi
+            local newest_pcr=0
+            while IFS= read -r pf; do
+                [ -z "$pf" ] && continue
+                local m
+                m=$(stat -f %m "$pf" 2>/dev/null || stat -c %Y "$pf" 2>/dev/null)
+                if [ -n "$m" ] && [ "$m" -gt "$newest_pcr" ] 2>/dev/null; then
+                    newest_pcr="$m"
+                fi
+            done <<< "$pcr_files"
+            # 스냅샷이 있으면 스냅샷 이후, 없으면 최근 1시간 이내
+            if [ "$snapshot_mtime" -gt 0 ]; then
+                if [ "$newest_pcr" -ge "$snapshot_mtime" ] 2>/dev/null; then
+                    pcr_found=true
+                fi
+            else
+                local now
+                now=$(date +%s)
+                local one_hour_ago=$((now - 3600))
+                if [ "$newest_pcr" -ge "$one_hour_ago" ] 2>/dev/null; then
+                    pcr_found=true
+                fi
+            fi
+        fi
+    fi
+
+    if ! $pcr_found; then
+        echo "[pre-complete] ❌ 커밋 전 검토 도구(pre-commit-review) 실행 증거 없음"
+        echo "[pre-complete]    코드 변경 시 커밋 전 검토 도구 실행 필수 — 방금 바뀐 부분 안전·의도·회귀 점검"
+        echo "[pre-complete]    실행 방법: pre-commit-review 스킬 호출 → 결과를 .devin/state/verify-results/ 에 저장"
+        echo "[pre-complete]    패턴: Evidence before claims — 검증 없이 완료 주장 불가"
+        FAILED=$((FAILED + 1))
+    else
+        echo "[pre-complete] ✅ 커밋 전 검토 도구 실행 증거 확인"
+    fi
+
+    # ── independent-verify 도구 실행 증거 확인 (핵심 로직 변경 시 필수) ──
+    if [ "$CORE_LOGIC" -eq 1 ]; then
+        local iv_found=false
+        if [ -d "$VERIFY_DIR" ]; then
+            local iv_files
+            iv_files=$(ls -1 "$VERIFY_DIR"/independent-verify-*.md 2>/dev/null || true)
+            if [ -n "$iv_files" ]; then
+                local snapshot_mtime=0
+                if [ -f "$SNAPSHOT" ]; then
+                    snapshot_mtime=$(stat -f %m "$SNAPSHOT" 2>/dev/null || stat -c %Y "$SNAPSHOT" 2>/dev/null)
+                fi
+                local newest_iv=0
+                while IFS= read -r vf; do
+                    [ -z "$vf" ] && continue
+                    local m
+                    m=$(stat -f %m "$vf" 2>/dev/null || stat -c %Y "$vf" 2>/dev/null)
+                    if [ -n "$m" ] && [ "$m" -gt "$newest_iv" ] 2>/dev/null; then
+                        newest_iv="$m"
+                    fi
+                done <<< "$iv_files"
+                if [ "$snapshot_mtime" -gt 0 ]; then
+                    if [ "$newest_iv" -ge "$snapshot_mtime" ] 2>/dev/null; then
+                        iv_found=true
+                    fi
+                else
+                    local now
+                    now=$(date +%s)
+                    local one_hour_ago=$((now - 3600))
+                    if [ "$newest_iv" -ge "$one_hour_ago" ] 2>/dev/null; then
+                        iv_found=true
+                    fi
+                fi
+            fi
+        fi
+
+        if ! $iv_found; then
+            echo "[pre-complete] ❌ 독립 검증 도구(independent-verify) 실행 증거 없음 — 핵심 로직 변경 시 필수"
+            echo "[pre-complete]    매매·주문·엔진·리스크 관련 파일 변경 감지 — 독립 검증 생략 불가"
+            echo "[pre-complete]    실행 방법: independent-verify 스킬 호출(별도 작업창) → 결과를 .devin/state/verify-results/ 에 저장"
+            echo "[pre-complete]    패턴: Generator-Critic Separation — 작성자=검증자 편향 차단"
+            FAILED=$((FAILED + 1))
+        else
+            echo "[pre-complete] ✅ 독립 검증 도구 실행 증거 확인 (핵심 로직 변경 — 필수 충족)"
+        fi
+    else
+        echo "[pre-complete] ℹ️ 독립 검증 도구 검사 생략 — 핵심 로직 변경 아님 (위험도 낮음, 생략 가능)"
+    fi
+}
+
 # ─── 실행 ───
 case "$TARGET" in
     auto)     run_auto ;;
@@ -644,6 +841,15 @@ check_handover_update
 # 조사·보고 세션의 추측 보고를 기계적으로 차단 (사건 재발 방지).
 check_fact_grounding
 
+# 핵심 로직 변경 자동 감지 — 위험도 판정 자동화 (수정안 4)
+# 도구 실행 증거 확인(아래)보다 먼저 실행 — CORE_LOGIC 변수 설정.
+detect_core_logic
+
+# 검증 도구 실행 증거 확인 — 이관 후 실행 보장 (수정안 1)
+# 코드 변경 시 pre-commit-review 필수, 핵심 로직 시 independent-verify 필수.
+# 증거 파일(.devin/state/verify-results/) 존재 여부로 결정론적 판정.
+check_verification_tools
+
 echo "[pre-complete] ------------------------------------------------"
 if [ "$FAILED" -gt 0 ]; then
     echo "[pre-complete] ❌ 검증 실패 — ${FAILED}건 실패"
@@ -656,5 +862,5 @@ echo "[pre-complete] ✅ 모든 기계적 검증 통과 — 완료 보고 진행
 echo "[pre-complete] 주의: 기계적 검증 통과만으로 완료 아님 —"
 echo "[pre-complete]   의미적 검증(태스크 항목/원칙/설계/부작용) +"
 echo "[pre-complete]   요청 의도 사후 확인(Intent layer) +"
-echo "[pre-complete]   독립 검증자(거래·핵심 로직 시)도 통과해야 완료"
+echo "[pre-complete]   검증 도구 실행 증거(pre-commit-review·independent-verify)도 통과해야 완료"
 exit 0
