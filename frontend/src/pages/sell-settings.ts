@@ -88,7 +88,7 @@ function buildSellTypeSection(root: HTMLElement): void {
   {
     const r = createSettingToggleRow({
       label: '익절 (상승률)',
-      infoText: '종목 상승률이 이 값 이상이면 익절 매도. 0~100%',
+      infoText: '종목 상승률이 이 값 이상이면 익절 매도.\n범위: 0~100%',
       toggleOn: false,
       onToggle: next => { vals.tp_apply = next; saveHelper!.saveImmediate({ tp_apply: next }) },
       disableControlsOnToggle: true,
@@ -103,7 +103,7 @@ function buildSellTypeSection(root: HTMLElement): void {
   {
     const r = createSettingToggleRow({
       label: '손절 (하락률)',
-      infoText: '종목 손익률이 이 값 이하이면 손절 매도. -100%~0%, 기본 -5%',
+      infoText: '종목 손익률이 이 값 이하이면 손절 매도.\n범위: -100%~0%, 기본 -5%',
       toggleOn: false,
       onToggle: next => { vals.loss_apply = next; saveHelper!.saveImmediate({ loss_apply: next }) },
       disableControlsOnToggle: true,
@@ -116,11 +116,11 @@ function buildSellTypeSection(root: HTMLElement): void {
   // 추적 매도 (토글 + 시작값 한 줄, 하락값 별도 행)
   tsStartValInput = createNumInput({ value: 0, onChange: v => { const orig = Number(vals.ts_start_val); vals.ts_start_val = v; saveHelper!.autoSave('ts_start_val', v, () => { vals.ts_start_val = orig; tsStartValInput!.setValue(orig) }) }, step: 0.1, min: 0, max: 100, suffix: '%', name: 'ts_start_val' })
   tsDropValInput = createNumInput({ value: 0, onChange: v => { const orig = Number(vals.ts_drop_val); vals.ts_drop_val = v; saveHelper!.autoSave('ts_drop_val', v, () => { vals.ts_drop_val = orig; tsDropValInput!.setValue(orig) }) }, step: 0.1, min: -100, max: 0, suffix: '%', name: 'ts_drop_val' })
-  tsDropRow = createSettingRow('추적 고점대비 하락률', tsDropValInput.el, { infoText: '추적 시작 후 고점 대비 하락률이 이 값 이하이면 매도. -100%~0%, 기본 -2%' })
+  tsDropRow = createSettingRow('추적 고점대비 하락률', tsDropValInput.el, { infoText: '추적 시작 후 고점 대비 하락률이 이 값 이하이면 매도.\n범위: -100%~0%, 기본 -2%' })
   {
     const r = createSettingToggleRow({
       label: ['고점추적매도', '(시작상승률)'],
-      infoText: '고점 대비 하락 추적 매도. 시작 상승률 도달 시 추적 시작. 0~100%',
+      infoText: '고점 대비 하락 추적 매도.\n시작 상승률 도달 시 추적 시작.\n범위: 0~100%',
       toggleOn: false,
       onToggle: next => { vals.ts_apply = next; saveHelper!.saveImmediate({ ts_apply: next }) },
       disableControlsOnToggle: true,
@@ -139,7 +139,7 @@ function buildSellIntervalSection(root: HTMLElement): void {
     sellIntervalInput = createNumInput({ value: 30, onChange: v => { const orig = Number(vals.sell_interval_sec); vals.sell_interval_sec = v; saveHelper!.autoSave('sell_interval_sec', v, () => { vals.sell_interval_sec = orig; sellIntervalInput!.setValue(orig) }) }, step: 1, min: 1, max: 300, suffix: '초', name: 'sell_interval_sec' })
     const r = createSettingToggleRow({
       label: '주문 간격',
-      infoText: '매도 주문 사이 대기 시간. 1초 단위, 1~300초, 기본 30초. 손절 포함 모든 매도에 적용.',
+      infoText: '매도 주문 사이 대기 시간.\n1초 단위, 범위: 1~300초, 기본 30초.\n손절 포함 모든 매도에 적용.',
       toggleOn: false,
       onToggle: next => { vals.sell_interval_on = next; saveHelper!.saveImmediate({ sell_interval_on: next }) },
       disableControlsOnToggle: true,

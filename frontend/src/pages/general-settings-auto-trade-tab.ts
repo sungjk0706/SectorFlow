@@ -45,7 +45,7 @@ function buildDailyLossRow(state: GeneralSettingsState): void {
   })
   const r = createSettingToggleRow({
     label: '일일 손실 한도',
-    infoText: '당일 누적 손실이 이 값 이하이면 매매 중단. -100,000~0만원(=-10억~0원), 기본 -50만원.',
+    infoText: '당일 누적 손실이 이 값 이하이면 매매 중단.\n범위: -100,000~0만원(=-10억~0원), 기본 -50만원.',
     toggleOn: true,
     disableControlsOnToggle: true,
     controls: [state.dailyLossInput.el],
@@ -74,7 +74,7 @@ function buildDailyLossRateRow(state: GeneralSettingsState): void {
   })
   const r = createSettingToggleRow({
     label: '일일 손실률 한도',
-    infoText: '당일 누적 손실률이 이 값 이하이면 매매 중단. -100%~0%, 기본 -5%.',
+    infoText: '당일 누적 손실률이 이 값 이하이면 매매 중단.\n범위: -100%~0%, 기본 -5%.',
     toggleOn: false,
     disableControlsOnToggle: true,
     controls: [state.dailyLossRateInput.el],
@@ -103,7 +103,7 @@ function buildConsecLossRow(state: GeneralSettingsState): void {
   })
   const r = createSettingToggleRow({
     label: '연속 손실 횟수 한도',
-    infoText: '연속 손실 횟수가 이 값 이상이면 매매 중단. 1~100회, 기본 3회.',
+    infoText: '연속 손실 횟수가 이 값 이상이면 매매 중단.\n범위: 1~100회, 기본 3회.',
     toggleOn: false,
     disableControlsOnToggle: true,
     controls: [state.consecLossInput.el],
@@ -180,7 +180,7 @@ function buildMarketGuardKospiRow(state: GeneralSettingsState): void {
   })
   const r = createSettingToggleRow({
     label: '코스피 급락 가드',
-    infoText: '코스피 등락률이 이 값 이하이면 매매 차단. -100%~0%, 기본 -5%.',
+    infoText: '코스피 등락률이 이 값 이하이면 매매 차단.\n범위: -100%~0%, 기본 -5%.',
     toggleOn: false,
     disableControlsOnToggle: true,
     controls: [state.marketGuardKospiInput.el],
@@ -209,7 +209,7 @@ function buildMarketGuardKosdaqRow(state: GeneralSettingsState): void {
   })
   const r = createSettingToggleRow({
     label: '코스닥 급락 가드',
-    infoText: '코스닥 등락률이 이 값 이하이면 매매 차단. -100%~0%, 기본 -5%.',
+    infoText: '코스닥 등락률이 이 값 이하이면 매매 차단.\n범위: -100%~0%, 기본 -5%.',
     toggleOn: false,
     disableControlsOnToggle: true,
     controls: [state.marketGuardKosdaqInput.el],

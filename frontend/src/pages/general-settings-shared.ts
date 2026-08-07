@@ -100,11 +100,9 @@ export interface GeneralSettingsState {
   confirmedDlH: string
   confirmedDlM: string
 
-  // 타임테이블 사용자 조정 4개 슬롯 (NXT 시작/종료, KRX 시작/종료)
-  timetableNxtStartSlot: HTMLElement | null
-  timetableNxtEndSlot: HTMLElement | null
-  timetableKrxStartSlot: HTMLElement | null
-  timetableKrxEndSlot: HTMLElement | null
+  // 타임테이블 사용자 조정 시간쌍 핸들 (NXT/KRX 시작~종료 1행 통합)
+  timetableNxtHandle: TimePairInputHandle | null
+  timetableKrxHandle: TimePairInputHandle | null
   savingTimetable: boolean
 
   // 구독 한도
@@ -188,10 +186,8 @@ function createState(): GeneralSettingsState {
     confirmedDlH: '20',
     confirmedDlM: '40',
 
-    timetableNxtStartSlot: null,
-    timetableNxtEndSlot: null,
-    timetableKrxStartSlot: null,
-    timetableKrxEndSlot: null,
+    timetableNxtHandle: null,
+    timetableKrxHandle: null,
     savingTimetable: false,
 
     subscribeMaxInput: null,

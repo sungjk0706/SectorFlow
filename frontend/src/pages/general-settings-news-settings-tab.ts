@@ -58,7 +58,7 @@ function buildNewsTtlRow(state: GeneralSettingsState): HTMLElement {
     },
   })
   return createSettingRow('뉴스 가산점 유지 시간', state.newsTtlInput.el, {
-    infoText: '뉴스 호재 감지 시 부여된 매수 가산점이 유지되는 시간. 0~3600초, 기본 300초(5분).',
+    infoText: '뉴스 호재 감지 시 부여된 매수 가산점이 유지되는 시간.\n범위: 0~3600초, 기본 300초(5분).',
   })
 }
 

@@ -142,7 +142,8 @@ export function createRadioGroup(options: {
 
 /* ── 설정 행 — 라벨 + (컨트롤) + 토글 ───────────────────────── */
 // 토글 위치/간격 통일용 (P23 일관성)
-// togglePosition: 'left'  → [토글][라벨]      [info][controls][extras]
+// togglePosition: 'left'  → [토글][라벨]      [info][extras][controls] (extrasBeforeControls 시)
+// togglePosition: 'left'  → [토글][라벨]      [info][controls][extras] (기본)
 // togglePosition: 'right' → [라벨]      [info][controls][extras][토글]
 export function createSettingToggleRow(options: {
   label: string | string[]
@@ -156,6 +157,8 @@ export function createSettingToggleRow(options: {
   extraDisableTargets?: HTMLElement[]
   togglePosition?: 'left' | 'right'
   rowStyle?: Partial<CSSStyleDeclaration>
+  /** extras(배지 등)를 controls 우측이 아닌 좌측에 배치 (P23 일관성) */
+  extrasBeforeControls?: boolean
   /** 라벨 앞 아이콘 (이모지 → SVG 교체, label이 string일 때만 적용) */
   icon?: IconName
 }): {
@@ -213,12 +216,16 @@ export function createSettingToggleRow(options: {
     right.appendChild(createInfoTooltip(options.infoText))
   }
 
+  if (options.extrasBeforeControls && options.extras && options.extras.length > 0) {
+    right.appendChild(extras)
+  }
+
   if (options.controls) {
     for (const c of options.controls) controls.appendChild(c)
     right.appendChild(controls)
   }
 
-  if (options.extras && options.extras.length > 0) {
+  if (!options.extrasBeforeControls && options.extras && options.extras.length > 0) {
     right.appendChild(extras)
   }
 

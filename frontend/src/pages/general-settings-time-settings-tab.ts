@@ -9,11 +9,10 @@
 
 import { createNumInput, createSettingRow, createSettingToggleRow } from '../components/common/setting-row'
 import { sectionTitle, createDescText, parseHM, createTimeSlot, updateTimeSlotDisplay } from '../components/common/settings-common'
-import { createInfoTooltip } from '../components/common/info-tooltip'
 import { createTimePairInput } from '../components/common/time-pair-input'
 import { FONT_SIZE, FONT_WEIGHT, COLOR, RADIUS, setDisabled } from '../components/common/ui-styles'
 import { toastResult } from '../components/common/toast'
-import { type GeneralSettingsState, GS, scheduleTimetableSave, createHolidayBadge, state } from './general-settings-shared'
+import { type GeneralSettingsState, scheduleTimetableSave, createHolidayBadge, state } from './general-settings-shared'
 
 // 자동매매 마스터 토글 (time_scheduler_on) — 시간 기반 스케줄러 전체 스위치
 // 자동매수/매도 시간·토글과 동일 탭에 배치하여 시간 기반 자동매매 설정 통합 (P24 단순성)
@@ -26,9 +25,14 @@ async function handleMasterToggle(state: GeneralSettingsState): Promise<void> {
 }
 
 function buildMasterToggleRow(state: GeneralSettingsState): HTMLElement {
+  // 자동매수 시간 행의 시간쌍 입력란과 동일 폭의 투명 스페이서 — 비거래일 배지 세로 정렬용 (P23 일관성)
+  const spacer = createTimePairInput('09:00', '15:20', () => {})
+  Object.assign(spacer.el.style, { visibility: 'hidden', pointerEvents: 'none' })
   const r = createSettingToggleRow({
     label: '자동매매',
     toggleOn: false,
+    controls: [spacer.el],
+    extrasBeforeControls: true,
     extras: [createHolidayBadge()],
     onToggle: () => handleMasterToggle(state),
   })
@@ -82,6 +86,7 @@ function buildBuyTimeRow(state: GeneralSettingsState): HTMLElement {
     toggleOn: !!state.vals.auto_buy_on,
     disableControlsOnToggle: false,
     controls: [tpWrap],
+    extrasBeforeControls: true,
     extras: [createHolidayBadge()],
     onToggle: async next => {
       state.vals.auto_buy_on = next
@@ -122,6 +127,7 @@ function buildSellTimeRow(state: GeneralSettingsState): HTMLElement {
     toggleOn: !!state.vals.auto_sell_on,
     disableControlsOnToggle: false,
     controls: [tpWrap],
+    extrasBeforeControls: true,
     extras: [createHolidayBadge()],
     onToggle: async next => {
       state.vals.auto_sell_on = next
@@ -134,30 +140,42 @@ function buildSellTimeRow(state: GeneralSettingsState): HTMLElement {
   return wrapTimeRowWithWarn(r.el, warnEl)
 }
 
-function buildTimetableRow(state: GeneralSettingsState, labelText: string, key: 'timetable.nxt_start' | 'timetable.nxt_end' | 'timetable.krx_start' | 'timetable.krx_end', defaultTime: string, infoText?: string): HTMLElement {
-  const row = document.createElement('div')
-  Object.assign(row.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, paddingLeft: '20px', borderBottom: GS.rowBorder })
-  const labelWrap = document.createElement('span')
-  Object.assign(labelWrap.style, { display: 'inline-flex', alignItems: 'center', gap: '4px' })
-  const label = document.createElement('span')
-  Object.assign(label.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
-  label.textContent = labelText
-  labelWrap.appendChild(label)
-  if (infoText) labelWrap.appendChild(createInfoTooltip(infoText))
-  row.appendChild(labelWrap)
-  const [h, m] = parseHM(String(state.vals[key] ?? defaultTime))
-  const slot = createTimeSlot(h, m, (nh, nm) => {
-    updateTimeSlotDisplay(slot, nh, nm)
-    const [origH, origM] = parseHM(String(state.vals[key] ?? defaultTime))
-    scheduleTimetableSave(key, `${nh}:${nm}`, () => updateTimeSlotDisplay(slot, origH, origM))
-  })
-  row.appendChild(slot)
-  // 모듈 상태 업데이트 (키별)
-  if (key === 'timetable.nxt_start') { state.timetableNxtStartSlot = slot }
-  else if (key === 'timetable.nxt_end') { state.timetableNxtEndSlot = slot }
-  else if (key === 'timetable.krx_start') { state.timetableKrxStartSlot = slot }
-  else if (key === 'timetable.krx_end') { state.timetableKrxEndSlot = slot }
-  return row
+function buildTimetablePairRow(
+  state: GeneralSettingsState,
+  labelText: string,
+  startKey: 'timetable.nxt_start' | 'timetable.krx_start',
+  endKey: 'timetable.nxt_end' | 'timetable.krx_end',
+  defaultStart: string,
+  defaultEnd: string,
+  infoText?: string,
+): HTMLElement {
+  // 시간쌍 순서 위반 경고 메시지 영역 (P21 투명성)
+  const warnEl = createTimeOrderWarnEl()
+  const startVal = String(state.vals[startKey] ?? defaultStart)
+  const endVal = String(state.vals[endKey] ?? defaultEnd)
+  const { el: tpWrap, handle } = createTimePairInput(startVal, endVal, (s, e) => {
+    warnEl.textContent = ''
+    if (state.settingsMgr) {
+      const origS = String(state.vals[startKey] ?? defaultStart)
+      const origE = String(state.vals[endKey] ?? defaultEnd)
+      const dirty: Record<string, unknown> = {}
+      if (s !== state.vals[startKey]) dirty[startKey] = s
+      if (e !== state.vals[endKey]) dirty[endKey] = e
+      if (Object.keys(dirty).length > 0) {
+        state.settingsMgr.saveSection(dirty).then(res => {
+          toastResult(res)
+          if (res.ok) Object.assign(state.vals, dirty)
+          else handle.setValue(origS, origE)
+        })
+      }
+    }
+  }, (msg) => { warnEl.textContent = msg })
+  // 모듈 상태 업데이트 (NXT/KRX별)
+  if (startKey === 'timetable.nxt_start') { state.timetableNxtHandle = handle }
+  else { state.timetableKrxHandle = handle }
+  // 공통 설정 행 컴포넌트 사용 (P23 일관성, P24 단순성)
+  const row = createSettingRow(labelText, tpWrap, { infoText })
+  return wrapTimeRowWithWarn(row, warnEl)
 }
 
 function buildConfirmedDownloadRow(state: GeneralSettingsState): HTMLElement {
@@ -242,7 +260,7 @@ function buildSubscribeMaxRow(state: GeneralSettingsState): HTMLElement {
     },
   })
   return createSettingRow('종목 동시 구독 최대 개수', state.subscribeMaxInput.el, {
-    infoText: '종목 실시간 시세를 동시에 구독할 최대 개수. 보유 종목을 우선 등록한 뒤 남은 자리만큼 필터 통과 종목이 추가 등록됩니다. 1~1000, 기본 200.',
+    infoText: '종목 실시간 시세를 동시에 구독할 최대 개수.\n보유 종목을 우선 등록한 뒤 남은 자리만큼 필터 통과 종목이 추가 등록됩니다.\n범위: 1~1000, 기본 200.',
   })
 }
 
@@ -252,13 +270,11 @@ export function renderTimeSettingsTab(state: GeneralSettingsState, container: HT
   container.appendChild(buildSellTimeRow(state))
   container.appendChild(createDescText('자동매매 토글로 시간 기반 자동매매를 켜고 끕니다. 자동매수/자동매도 시간 우측 토글로 각각 켜고 끌 수 있으며, 토글이 꺼져 있어도 시간은 미리 설정할 수 있습니다. 거래일 설정시간 내에서만 실행되며, 공휴일·주말에는 자동매매가 항상 차단됩니다.'))
 
-  // 구독 시간 설정 (타임테이블 사용자 조정 4개 — NXT/KRX 시작·종료) — P21 투명성
+  // 구독 시간 설정 (타임테이블 사용자 조정 — NXT/KRX 시작·종료 시간쌍) — P21 투명성
   container.appendChild(sectionTitle('구독 시간 설정'))
   container.appendChild(createDescText('NXT와 KRX의 시작·종료 시간을 각각 설정합니다. 너무 늦으면 실시간 데이터가 누락될 수 있습니다.'))
-  container.appendChild(buildTimetableRow(state, 'NXT 시작', 'timetable.nxt_start', '07:58', '토큰 발급 → 실시간 연결 → NXT 종목 구독 순서로 진행됩니다'))
-  container.appendChild(buildTimetableRow(state, 'NXT 종료', 'timetable.nxt_end', '20:00', 'NXT 종목 구독해지 → 실시간 연결 종료 → 토큰 폐기 순서로 진행됩니다'))
-  container.appendChild(buildTimetableRow(state, 'KRX 시작', 'timetable.krx_start', '08:59', 'KRX 정규장 시작 전 KRX 단독 종목 구독을 추가합니다'))
-  container.appendChild(buildTimetableRow(state, 'KRX 종료', 'timetable.krx_end', '15:20', 'KRX 단독 종목 구독만 해지합니다. NXT 구독·연결·토큰은 유지됩니다'))
+  container.appendChild(buildTimetablePairRow(state, 'NXT 시간 설정', 'timetable.nxt_start', 'timetable.nxt_end', '07:58', '20:00', '시작: 실시간 필드 초기화 → 토큰 발급 → 실시간 연결 → NXT 종목 구독 순서로 진행됩니다.\n종료: NXT 종목 구독해지 → 실시간 연결 종료 → 토큰 폐기 순서로 진행됩니다.'))
+  container.appendChild(buildTimetablePairRow(state, 'KRX 시간 설정', 'timetable.krx_start', 'timetable.krx_end', '08:59', '15:20', '시작: KRX 정규장 시작 전 KRX 단독 종목 구독을 추가합니다.\n종료: KRX 단독 종목 구독만 해지합니다. NXT 구독·연결·토큰은 유지됩니다.'))
 
   // 일봉차트 자동다운로드 (토글 + 시간 슬롯) — 단일 항목이라 섹션 제목 생략 (P24)
   container.appendChild(buildConfirmedDownloadRow(state))
@@ -286,15 +302,9 @@ export function syncTimeSettingsTab(r: Record<string, unknown>): void {
   state.confirmedDlToggle?.setOn(dlOn)
   if (state.confirmedDlSlot) setDisabled(state.confirmedDlSlot.parentElement as HTMLElement, !dlOn)
 
-  // 타임테이블 4슬롯 (NXT/KRX 시작·종료)
-  const [nsh, nsm] = parseHM(String(r['timetable.nxt_start'] ?? '07:58'))
-  if (state.timetableNxtStartSlot) updateTimeSlotDisplay(state.timetableNxtStartSlot, nsh, nsm)
-  const [neh, nem] = parseHM(String(r['timetable.nxt_end'] ?? '20:00'))
-  if (state.timetableNxtEndSlot) updateTimeSlotDisplay(state.timetableNxtEndSlot, neh, nem)
-  const [ksh, ksm] = parseHM(String(r['timetable.krx_start'] ?? '08:59'))
-  if (state.timetableKrxStartSlot) updateTimeSlotDisplay(state.timetableKrxStartSlot, ksh, ksm)
-  const [keh, kem] = parseHM(String(r['timetable.krx_end'] ?? '15:20'))
-  if (state.timetableKrxEndSlot) updateTimeSlotDisplay(state.timetableKrxEndSlot, keh, kem)
+  // 타임테이블 시간쌍 (NXT/KRX 시작~종료)
+  if (state.timetableNxtHandle) state.timetableNxtHandle.setValue(String(r['timetable.nxt_start'] ?? '07:58'), String(r['timetable.nxt_end'] ?? '20:00'))
+  if (state.timetableKrxHandle) state.timetableKrxHandle.setValue(String(r['timetable.krx_start'] ?? '08:59'), String(r['timetable.krx_end'] ?? '15:20'))
 
   // 구독 한도
   state.subscribeMaxInput?.setValue(Number(r['subscribe.max_0b_count'] ?? 200) || 200)

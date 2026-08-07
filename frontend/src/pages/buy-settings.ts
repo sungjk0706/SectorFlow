@@ -179,7 +179,7 @@ function buildBuyBlockSection(root: HTMLElement): void {
   {
     const r = createSettingToggleRow({
       label: '종목 상승률 매수차단',
-      infoText: '종목 상승률이 이 값 이상이면 매수를 차단합니다. 0~100%',
+      infoText: '종목 상승률이 이 값 이상이면 매수를 차단합니다.\n범위: 0~100%',
       toggleOn: true,
       onToggle: next => { vals.buy_block_rise_on = next; saveHelper!.saveImmediate({ buy_block_rise_on: next }) },
       disableControlsOnToggle: true,
@@ -194,7 +194,7 @@ function buildBuyBlockSection(root: HTMLElement): void {
   {
     const r = createSettingToggleRow({
       label: '종목 하락률 매수차단',
-      infoText: '종목 하락률이 이 값 이하이면 매수를 차단합니다. -100%~0%, 기본 -7%',
+      infoText: '종목 하락률이 이 값 이하이면 매수를 차단합니다.\n범위: -100%~0%, 기본 -7%',
       toggleOn: true,
       onToggle: next => { vals.buy_block_fall_on = next; saveHelper!.saveImmediate({ buy_block_fall_on: next }) },
       disableControlsOnToggle: true,
@@ -213,7 +213,7 @@ function buildBoostSection(root: HTMLElement): void {
     boostHighScoreInput = createNumInput({ value: 1.0, onChange: v => { const orig = Number(vals.boost_high_breakout_score); vals.boost_high_breakout_score = v; saveHelper!.autoSave('boost_high_breakout_score', v, () => { vals.boost_high_breakout_score = orig; boostHighScoreInput!.setValue(orig) }) }, step: 1, min: 0, max: 100, suffix: '점', name: 'boost_high_breakout_score' })
     const r = createSettingToggleRow({
       label: '5거래일 고가 돌파',
-      infoText: '5거래일 고가 돌파 시 매수 점수 가산. 0~100점',
+      infoText: '5거래일 고가 돌파 시 매수 점수 가산.\n범위: 0~100점',
       toggleOn: false,
       onToggle: next => { vals.boost_high_breakout_on = next; saveHelper!.saveImmediate({ boost_high_breakout_on: next }) },
       disableControlsOnToggle: true,
@@ -229,7 +229,7 @@ function buildBoostSection(root: HTMLElement): void {
     const r = createSettingToggleRow({
       label: '뉴스 호재',
       icon: 'newspaper',
-      infoText: '뉴스 호재 감지 시 매수 점수 가산. 0~100점',
+      infoText: '뉴스 호재 감지 시 매수 점수 가산.\n범위: 0~100점',
       toggleOn: false,
       onToggle: next => { vals.boost_news_on = next; saveHelper!.saveImmediate({ boost_news_on: next }) },
       disableControlsOnToggle: true,
@@ -244,7 +244,7 @@ function buildBoostSection(root: HTMLElement): void {
     boostProgramScoreInput = createNumInput({ value: 1.0, onChange: v => { const orig = Number(vals.boost_program_net_buy_score); vals.boost_program_net_buy_score = v; saveHelper!.autoSave('boost_program_net_buy_score', v, () => { vals.boost_program_net_buy_score = orig; boostProgramScoreInput!.setValue(orig) }) }, step: 1, min: 0, max: 100, suffix: '점', name: 'boost_program_net_buy_score' })
     const r = createSettingToggleRow({
       label: '프로그램 순매수',
-      infoText: '프로그램 순매수 발생 시 매수 점수 가산. 0~100점',
+      infoText: '프로그램 순매수 발생 시 매수 점수 가산.\n범위: 0~100점',
       toggleOn: false,
       onToggle: next => { vals.boost_program_net_buy_on = next; saveHelper!.saveImmediate({ boost_program_net_buy_on: next }) },
       disableControlsOnToggle: true,
@@ -290,7 +290,7 @@ function buildBoostOrderBlock(root: HTMLElement): void {
   boostOrderScoreInput = createNumInput({ value: 1.0, onChange: v => { const orig = Number(vals.boost_order_ratio_score); vals.boost_order_ratio_score = v; saveHelper!.autoSave('boost_order_ratio_score', v, () => { vals.boost_order_ratio_score = orig; boostOrderScoreInput!.setValue(orig) }) }, step: 1, min: 0, max: 100, suffix: '점', name: 'boost_order_ratio_score' })
   const r = createSettingToggleRow({
     label: '매수/매도호가 잔량비율',
-    infoText: '호가 잔량비율 조건 충족 시 매수 점수 가산. 0~100점',
+    infoText: '호가 잔량비율 조건 충족 시 매수 점수 가산.\n범위: 0~100점',
     toggleOn: false,
     onToggle: next => { vals.boost_order_ratio_on = next; saveHelper!.saveImmediate({ boost_order_ratio_on: next }) },
     disableControlsOnToggle: true,
@@ -316,7 +316,7 @@ function buildBuyAmountSection(root: HTMLElement): void {
   {
     const r = createSettingToggleRow({
       label: '전체 일일 한도',
-      infoText: '전체 일일 누적 한도. 수수료 포함. OFF 시 제한 없음.',
+      infoText: '전체 일일 누적 한도. 수수료 포함.\nOFF 시 제한 없음.',
       toggleOn: false,
       onToggle: next => { vals.max_daily_total_buy_on = next; saveHelper!.saveImmediate({ max_daily_total_buy_on: next }) },
       disableControlsOnToggle: true,
@@ -331,7 +331,7 @@ function buildBuyAmountSection(root: HTMLElement): void {
   {
     const r = createSettingToggleRow({
       label: '최대 동시 보유종목수',
-      infoText: '동시 보유 최대 종목 수. 0~100개',
+      infoText: '동시 보유 최대 종목 수.\n범위: 0~100개',
       toggleOn: true,
       onToggle: next => { vals.max_stock_cnt_on = next; saveHelper!.saveImmediate({ max_stock_cnt_on: next }) },
       disableControlsOnToggle: true,
@@ -350,7 +350,7 @@ function buildRebuySection(root: HTMLElement): void {
   {
     const r = createSettingToggleRow({
       label: '종목당 1회 매수금액',
-      infoText: '1회 매수 시 금액. 수수료 포함. OFF 시 한도 없음, 주문가능금액 전체로 매수 시도. 같은 종목 재매수는 "재매수 차단" 설정이 담당.',
+      infoText: '1회 매수 시 금액. 수수료 포함.\nOFF 시 한도 없음, 주문가능금액 전체로 매수 시도.\n같은 종목 재매수는 "재매수 차단" 설정이 담당.',
       toggleOn: true,
       onToggle: next => { vals.buy_amt_on = next; saveHelper!.saveImmediate({ buy_amt_on: next }) },
       disableControlsOnToggle: true,
@@ -377,7 +377,7 @@ function buildRebuySection(root: HTMLElement): void {
     })
     const r = createSettingToggleRow({
       label: '재매수 차단',
-      infoText: '매도 후 같은 종목 재매수를 지정 기간 동안 차단.',
+      infoText: '매도 후 같은 종목 재매수를 지정 기간 동안 차단합니다.',
       toggleOn: true,
       onToggle: next => { vals.rebuy_block_on = next; saveHelper!.saveImmediate({ rebuy_block_on: next }) },
       disableControlsOnToggle: true,
@@ -394,7 +394,7 @@ function buildBuyIntervalSection(root: HTMLElement): void {
     buyIntervalInput = createNumInput({ value: 30, onChange: v => { const orig = Number(vals.buy_interval_sec); vals.buy_interval_sec = v; saveHelper!.autoSave('buy_interval_sec', v, () => { vals.buy_interval_sec = orig; buyIntervalInput!.setValue(orig) }) }, step: 1, min: 1, max: 300, suffix: '초', name: 'buy_interval_sec' })
     const r = createSettingToggleRow({
       label: '주문 간격',
-      infoText: '매수 주문 사이 대기 시간. 1초 단위, 1~300초, 기본 30초',
+      infoText: '매수 주문 사이 대기 시간.\n1초 단위, 범위: 1~300초, 기본 30초',
       toggleOn: false,
       onToggle: next => { vals.buy_interval_on = next; saveHelper!.saveImmediate({ buy_interval_on: next }) },
       disableControlsOnToggle: true,
