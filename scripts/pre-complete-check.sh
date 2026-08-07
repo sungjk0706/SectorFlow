@@ -279,6 +279,188 @@ run_frontend() {
     fi
 }
 
+# ─── 사실 보고 근거 검증 (하네스 강화 — 추측 보고 차단 + 2-게이트 패턴) ───
+# 이번 세션에서 생성/수정된 보고서(조사보고서/설계서/태스크)에 근거 표기가 있는지 확인.
+# 3계층 검증 (인터넷 검증 패턴 취합 — 2-게이트 + Phantom Grounding 방지):
+#   게이트 1 (cite-check): 단정 표현이 있는데 근거 표기가 0개면 차단 (기존)
+#   게이트 2 (근접성 검사): 단정이 있는 문단(빈 줄로 구분)에 근거가 없으면 차단 (신규 — 1단계)
+#   게이트 3 (근거 존재 확인): 근거로 적힌 파일 경로가 실제 파일 시스템에 없으면 차단 (신규 — 2단계)
+# 선언된 추측("가정/가능성/추측/예상")은 허용 — 가정 선언 의무 규칙 준수.
+# 사건 재발 방지: 2026-08-07 추측 보고 사건 (코드 안 읽고 구조 단언 → 사용자 추궁 후 정정).
+# 패턴 출처:
+#   - a builder's codex "claim-verify-gate" 2-게이트 (cite-check + claim-verify)
+#   - Agent Patterns 카탈로그 "Hallucinated Sources" fail-closed 검증
+#   - 학술 연구 LedgerMind "Phantom Grounding" — 인용은 있으나 인용이 단정을 지지하지 않는 실패
+check_fact_grounding() {
+    local SNAPSHOT=".devin/state/session_changes_snapshot.txt"
+
+    # 이번 세션에서 새로 바뀐 파일 수집 (run_auto와 동일 방식)
+    local current
+    current=$({
+        git diff --name-only HEAD 2>/dev/null
+        git ls-files --others --exclude-standard 2>/dev/null
+    } | sort -u)
+
+    local session_changes
+    if [ -f "$SNAPSHOT" ]; then
+        session_changes=$(comm -23 \
+            <(printf '%s\n' "$current" | sort -u) \
+            <(sort -u "$SNAPSHOT" 2>/dev/null) \
+            2>/dev/null)
+    else
+        session_changes="$current"
+    fi
+
+    # 보고서 파일만 추출 (조사보고서/설계서/태스크 — 사실 단언이 담기는 문서)
+    local report_files
+    report_files=$(printf '%s\n' "$session_changes" | grep -E '^docs/(조사보고서|설계서|태스크)/.*\.md$')
+
+    if [ -z "$report_files" ]; then
+        echo "[pre-complete] ℹ️ 사실 보고 근거 검사 생략 — 이번 세션 보고서 파일 없음"
+        return 0
+    fi
+
+    echo "[pre-complete] [사실 보고 근거 검증] 이번 세션 보고서 파일:"
+    printf '%s\n' "$report_files" | sed 's/^/  - /'
+
+    # 근거 표기 정규식 (게이트 1·2·3 공용)
+    local EVIDENCE_RE='[a-zA-Z_][a-zA-Z0-9_/]+\.(py|ts|js|tsx|jsx):[0-9]+|코드 위치|로그|trading_[0-9]|\.log|`[a-zA-Z_]+\.(py|ts|js)'
+    # 단정 표현 정규식 (게이트 1·2 공용)
+    local ASSERTION_RE='확정|단언|사실|틀린|맞음|준수|위반|확인됨|검증됨|실제로는|실제 원인'
+    # 선언된 추측 표현 (가정 선언 의무 준수 시)
+    local HEDGED_RE='가정|가능성|추측|예상|추정|수 있|것으로'
+    # 근거에서 파일 경로만 추출 (게이트 3용) — 파일:라인 형식에서 파일 부분
+    local FILEPATH_RE='[a-zA-Z_][a-zA-Z0-9_/]+\.(py|ts|js|tsx|jsx)'
+
+    while IFS= read -r rf; do
+        [ -z "$rf" ] && continue
+        [ -f "$rf" ] || continue
+
+        # ── 파일 전체 개수 집계 (게이트 1 — 기존 로직 유지) ──
+        local has_evidence
+        has_evidence=$(grep -cE "$EVIDENCE_RE" "$rf" 2>/dev/null || true)
+        [ -z "$has_evidence" ] && has_evidence=0
+
+        local has_assertion
+        has_assertion=$(grep -cE "$ASSERTION_RE" "$rf" 2>/dev/null || true)
+        [ -z "$has_assertion" ] && has_assertion=0
+
+        local has_hedged
+        has_hedged=$(grep -cE "$HEDGED_RE" "$rf" 2>/dev/null || true)
+        [ -z "$has_hedged" ] && has_hedged=0
+
+        # 게이트 1: 단정이 있는데 근거 표기가 0개면 차단 (기존)
+        if [ "$has_assertion" -gt 0 ] && [ "$has_evidence" -eq 0 ]; then
+            echo "[pre-complete] ❌ 사실 보고 근거 누락 (게이트 1) — $rf"
+            echo "[pre-complete]    단정 표현(${has_assertion}개)이 있으나 코드/로그 근거 표기가 없음"
+            echo "[pre-complete]    → 코드를 먼저 직접 읽고 근거(파일:라인 또는 로그)를 보고서에 포함 후 재시도"
+            echo "[pre-complete]    사건 재발 방지: 2026-08-07 추측 보고 (코드 안 읽고 구조 단언 → 사용자 추궁 후 정정)"
+            echo "[pre-complete]    더 자세한 내용: AGENTS.md 섹션3 규칙 0(사전조사·가정 선언) + 규칙 0-8(사용자 보고 의무)"
+            FAILED=$((FAILED + 1))
+            continue
+        fi
+
+        # 선언된 추측만 있고 단정이 없으면 통과 (기존)
+        if [ "$has_hedged" -gt 0 ] && [ "$has_assertion" -eq 0 ]; then
+            echo "[pre-complete] ✅ $rf — 선언된 추측만 존재 (가정 선언 의무 준수)"
+            continue
+        fi
+
+        # 단정 표현이 없으면 검사 대상 아님 (기존)
+        if [ "$has_assertion" -eq 0 ]; then
+            echo "[pre-complete] ✅ $rf — 단정 표현 없음 (검사 대상 아님)"
+            continue
+        fi
+
+        # ── 게이트 2: 근거-단정 근접성 검사 (신규 — 1단계) ──
+        # 보고서를 빈 줄로 문단 분할, 단정이 포함된 문단에 근거가 같이 있는지 확인.
+        # 무관한 곳에 근거를 흩뿌려 통과하는 우회 차단 (Phantom Grounding 방지).
+        # 패턴: a builder's codex "근접성 휴리스틱" — 단정과 가장 가까운 근거 매핑.
+        local para_assertion_count=0
+        local para_ungrounded_count=0
+        local current_para=""
+        local para_has_assertion=false
+        local para_has_evidence=false
+        local para_line=0
+        local ungrounded_details=""
+
+        while IFS= read -r line; do
+            para_line=$((para_line + 1))
+            # 빈 줄(공백만) = 문단 구분자
+            if [ -z "$(printf '%s' "$line" | tr -d '[:space:]')" ]; then
+                # 문단 종료 — 판정
+                if $para_has_assertion && ! $para_has_evidence; then
+                    para_ungrounded_count=$((para_ungrounded_count + 1))
+                fi
+                if $para_has_assertion; then
+                    para_assertion_count=$((para_assertion_count + 1))
+                fi
+                current_para=""
+                para_has_assertion=false
+                para_has_evidence=false
+                continue
+            fi
+            current_para="${current_para}${line}"$'\n'
+            if echo "$line" | grep -qE "$ASSERTION_RE"; then
+                para_has_assertion=true
+            fi
+            if echo "$line" | grep -qE "$EVIDENCE_RE"; then
+                para_has_evidence=true
+            fi
+        done < "$rf"
+        # 마지막 문단 처리 (파일 끝에 빈 줄이 없는 경우)
+        if $para_has_assertion && ! $para_has_evidence; then
+            para_ungrounded_count=$((para_ungrounded_count + 1))
+        fi
+        if $para_has_assertion; then
+            para_assertion_count=$((para_assertion_count + 1))
+        fi
+
+        if [ "$para_ungrounded_count" -gt 0 ]; then
+            echo "[pre-complete] ❌ 사실 보고 근거 근접성 위반 (게이트 2) — $rf"
+            echo "[pre-complete]    단정이 포함된 문단 ${para_assertion_count}개 중 ${para_ungrounded_count}개에 근거 표기 없음"
+            echo "[pre-complete]    → 단정과 같은 문단에 근거(파일:라인 또는 로그)를 함께 배치 후 재시도"
+            echo "[pre-complete]    패턴: 2-게이트 근접성 휴리스틱 — 무관한 곳에 근거 흩뿌려 통과 차단"
+            FAILED=$((FAILED + 1))
+            # 게이트 2 실패 시 게이트 3은 건너뜀 (이미 차단)
+            continue
+        fi
+
+        # ── 게이트 3: 근거 파일 실제 존재 확인 (신규 — 2단계) ──
+        # 근거로 적힌 파일 경로(.py/.ts/.js 등)를 추출해 실제 파일 시스템에 존재하는지 확인.
+        # 존재하지 않는 파일 경로를 근거로 적는 환각 차단 (Hallucinated Sources 방지).
+        # 패턴: Agent Patterns "fail-closed 검증" + CitationStore "source 존재 확인".
+        local missing_files=""
+        local checked_paths=""
+        local extracted_paths
+        extracted_paths=$(grep -oE "$FILEPATH_RE" "$rf" 2>/dev/null | sort -u || true)
+
+        if [ -n "$extracted_paths" ]; then
+            while IFS= read -r fp; do
+                [ -z "$fp" ] && continue
+                # 프로젝트 루트 상대경로로 확인 (이 스크립트는 git root에서 실행)
+                if [ ! -f "$fp" ]; then
+                    missing_files="${missing_files}  ${fp}"$'\n'
+                fi
+                checked_paths="${checked_paths} ${fp}"
+            done <<< "$extracted_paths"
+        fi
+
+        if [ -n "$missing_files" ]; then
+            echo "[pre-complete] ❌ 사실 보고 근거 파일 미존재 (게이트 3) — $rf"
+            echo "[pre-complete]    보고서에 적힌 근거 파일 경로가 실제로 존재하지 않음:"
+            printf '%s' "$missing_files" | sed 's/^/      /'
+            echo "[pre-complete]    → 실제 코드를 읽고 존재하는 파일 경로를 근거로 기재 후 재시도"
+            echo "[pre-complete]    패턴: Hallucinated Sources fail-closed — 존재하지 않는 출처 인용 차단"
+            FAILED=$((FAILED + 1))
+            continue
+        fi
+
+        # 3계층 전부 통과
+        echo "[pre-complete] ✅ $rf — 3계층 통과 (단정 ${has_assertion}·근거 ${has_evidence}·문단 근접성 OK·근거 파일 존재 OK)"
+    done <<< "$report_files"
+}
+
 # ─── 핸드오버 갱신 여부 확인 (완료 보고 누락 방지) ───
 # 코드를 수정했는데 다음 세션 인계 문서(HANDOVER.md)를 갱신하지 않고
 # "완료" 보고하는 것을 차단. 코드 변경이 없는 문서 전용 작업은 예외(규칙 0-6-2).
@@ -350,6 +532,10 @@ esac
 
 # 핸드오버 갱신 확인은 대상과 무관하게 항상 실행 (코드 변경 있을 때만 실제 판정)
 check_handover_update
+
+# 사실 보고 근거 검증 — 보고서 파일이 이번 세션에 생성/수정됐을 때만 실제 판정.
+# 조사·보고 세션의 추측 보고를 기계적으로 차단 (사건 재발 방지).
+check_fact_grounding
 
 echo "[pre-complete] ------------------------------------------------"
 if [ "$FAILED" -gt 0 ]; then
