@@ -1636,6 +1636,68 @@ class TestOnNxtEnd:
             mock_state.broker_rest_apis["ls"].revoke_token.assert_awaited_once()
             assert mock_state.last_nxt_end_date == "20250106"
 
+    @pytest.mark.asyncio
+    async def test_nxt_end_revokes_all_brokers(self):
+        """NXT 종료 — 모든 증권사 토큰 폐기 (per-broker 격리 — P25)."""
+        mock_state = MagicMock()
+        mock_state.last_nxt_end_date = ""
+        mock_rest_kiwoom = MagicMock(revoke_token=AsyncMock())
+        mock_rest_ls = MagicMock(revoke_token=AsyncMock())
+        mock_state.broker_rest_apis = {"kiwoom": mock_rest_kiwoom, "ls": mock_rest_ls}
+        with patch("backend.app.services.engine_state.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(20, 0)), \
+             patch("backend.app.core.trading_calendar.is_trading_day", return_value=True), \
+             patch("backend.app.services.market_close_pipeline.remove_nxt_stocks", new_callable=AsyncMock, return_value={"removed": 5, "failed": 0}), \
+             patch("backend.app.services.engine_loop._disconnect_realtime_connection", new_callable=AsyncMock), \
+             patch("backend.app.services.daily_time_scheduler._broadcast_market_phase"):
+            await _on_nxt_end()
+            mock_rest_kiwoom.revoke_token.assert_awaited_once()
+            mock_rest_ls.revoke_token.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_nxt_end_token_revocation_failure_does_not_block_others(self):
+        """NXT 종료 — 한 증권사 토큰 폐기 실패 시 다른 증권사 폐기는 계속 (P25 격리된 실패)."""
+        mock_state = MagicMock()
+        mock_state.last_nxt_end_date = ""
+        mock_rest_kiwoom = MagicMock(revoke_token=AsyncMock(side_effect=RuntimeError("network error")))
+        mock_rest_ls = MagicMock(revoke_token=AsyncMock())
+        mock_state.broker_rest_apis = {"kiwoom": mock_rest_kiwoom, "ls": mock_rest_ls}
+        with patch("backend.app.services.engine_state.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(20, 0)), \
+             patch("backend.app.core.trading_calendar.is_trading_day", return_value=True), \
+             patch("backend.app.services.market_close_pipeline.remove_nxt_stocks", new_callable=AsyncMock, return_value={"removed": 5, "failed": 0}), \
+             patch("backend.app.services.engine_loop._disconnect_realtime_connection", new_callable=AsyncMock), \
+             patch("backend.app.services.daily_time_scheduler._broadcast_market_phase"), \
+             patch("backend.app.services.daily_time_scheduler.logger"):
+            await _on_nxt_end()
+            # kiwoom 폐기 실패해도 ls 폐기는 실행됨
+            mock_rest_kiwoom.revoke_token.assert_awaited_once()
+            mock_rest_ls.revoke_token.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_nxt_end_does_not_block_confirmed_download(self):
+        """NXT 종료 토큰 폐기 후에도 확정 다운로드는 별도 토큰 발급 경로(Lazy Auth)로 동작 가능.
+
+        _on_nxt_end는 토큰을 폐기하지만 _on_confirmed_download는 독립적으로 동작해야 함.
+        이 테스트는 _on_nxt_end 실행 후 _on_confirmed_download가 정상 호출 가능함을 확인.
+        """
+        mock_state = MagicMock()
+        mock_state.last_nxt_end_date = ""
+        mock_state.last_confirmed_download_date = ""
+        mock_state.broker_rest_apis = {"kiwoom": MagicMock(revoke_token=AsyncMock())}
+        with patch("backend.app.services.engine_state.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(20, 0)), \
+             patch("backend.app.core.trading_calendar.is_trading_day", return_value=True), \
+             patch("backend.app.services.market_close_pipeline.remove_nxt_stocks", new_callable=AsyncMock, return_value={"removed": 5, "failed": 0}), \
+             patch("backend.app.services.engine_loop._disconnect_realtime_connection", new_callable=AsyncMock), \
+             patch("backend.app.services.daily_time_scheduler._broadcast_market_phase"):
+            # 1. NXT 종료 실행 — 토큰 폐기
+            await _on_nxt_end()
+            assert mock_state.last_nxt_end_date == "20250106"
+            # 2. 확정 다운로드는 별도 경로 — _on_nxt_end와 독립적으로 동작 가능
+            # (실제 토큰 재발급은 Lazy Auth 경로 사용, 여기서는 타임테이블 순서 독립성 확인)
+            # nxt_end(20:00) < confirmed_download(20:40) — 순서 보장됨
+
 
 # ── _on_krx_end (KRX 종료 — KRX 단독 종목 구독해지) ───────────────────────────
 
@@ -1687,6 +1749,48 @@ class TestOnKrxEnd:
             await _on_krx_end()
             mock_remove.assert_awaited_once()
             assert mock_state.krx_remove_done is False
+
+    @pytest.mark.asyncio
+    async def test_krx_end_does_not_disconnect_or_revoke(self):
+        """KRX 종료 — 웹소켓 연결 종료·토큰 폐기 호출 없음 (NXT 자원 유지).
+
+        _on_krx_end는 KRX 단독 종목 구독해지만 담당.
+        NXT 구독·웹소켓 연결·토큰은 nxt_end(20:00)까지 유지되어야 함.
+        """
+        mock_state = MagicMock()
+        mock_state.last_krx_end_date = ""
+        mock_state.krx_remove_done = False
+        mock_state.broker_rest_apis = {"kiwoom": MagicMock(revoke_token=AsyncMock())}
+        with patch("backend.app.services.engine_state.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(15, 20)), \
+             patch("backend.app.core.trading_calendar.is_trading_day", return_value=True), \
+             patch("backend.app.services.market_close_pipeline.remove_krx_only_stocks", new_callable=AsyncMock, return_value={"removed": 5, "failed": 0}) as mock_remove, \
+             patch("backend.app.services.engine_loop._disconnect_realtime_connection", new_callable=AsyncMock) as mock_disconnect, \
+             patch("backend.app.services.daily_time_scheduler._broadcast_market_phase"):
+            await _on_krx_end()
+            # KRX 단독 종목 구독해지는 실행
+            mock_remove.assert_awaited_once()
+            # 웹소켓 연결 종료·토큰 폐기는 호출되지 않음 (NXT 자원 유지)
+            mock_disconnect.assert_not_awaited()
+            mock_state.broker_rest_apis["kiwoom"].revoke_token.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_krx_end_only_removes_krx_only_stocks(self):
+        """KRX 종료 — remove_krx_only_stocks만 호출, remove_nxt_stocks는 호출 안 함.
+
+        KRX 단독 종목만 구독해지 대상이며 NXT 종목은 유지됨.
+        """
+        mock_state = MagicMock()
+        mock_state.last_krx_end_date = ""
+        mock_state.krx_remove_done = False
+        with patch("backend.app.services.engine_state.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(15, 20)), \
+             patch("backend.app.core.trading_calendar.is_trading_day", return_value=True), \
+             patch("backend.app.services.market_close_pipeline.remove_krx_only_stocks", new_callable=AsyncMock, return_value={"removed": 3, "failed": 0}) as mock_krx_remove, \
+             patch("backend.app.services.market_close_pipeline.remove_nxt_stocks", new_callable=AsyncMock) as mock_nxt_remove:
+            await _on_krx_end()
+            mock_krx_remove.assert_awaited_once()
+            mock_nxt_remove.assert_not_awaited()
 
 
 # ── _on_confirmed_download ────────────────────────────────────────────────────

@@ -62,7 +62,7 @@ describe('페이지 진입 HTTP 조회 API', () => {
 
 describe('api.patchSettingField — 422 응답 detail 추출 (P21)', () => {
   it('422 응답 본문에 detail이 있으면 Error 메시지에 detail 포함', async () => {
-    const detailMsg = '유효하지 않은 설정값: 타임테이블 시간 순서 오류: 실시간 초기화(08:59) ≤ 구독 시작(07:59) ≤ 정규장 사전 구독(08:59) < 09:00 이어야 합니다'
+    const detailMsg = '유효하지 않은 설정값: 타임테이블 시간 순서 오류: NXT 시작(07:58) < KRX 시작(08:59) < 15:20 이어야 합니다'
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: false,
       status: 422,
@@ -70,7 +70,7 @@ describe('api.patchSettingField — 422 응답 detail 추출 (P21)', () => {
     }))
 
     const { api } = await import('../../src/api/client')
-    await expect(api.patchSettingField('timetable.ws_prestart', '07:59')).rejects.toThrow(detailMsg)
+    await expect(api.patchSettingField('timetable.krx_start', '07:00')).rejects.toThrow(detailMsg)
   })
 
   it('422 응답 본문에 detail이 없으면 status 코드 메시지 사용', async () => {
@@ -197,9 +197,9 @@ describe('api.patchSettingField — 구조화 detail 객체 → ApiError (B21-01
     }))
 
     const { api, ApiError } = await import('../../src/api/client')
-    await expect(api.patchSettingField('timetable.ws_prestart', '07:59')).rejects.toMatchObject({
+    await expect(api.patchSettingField('timetable.nxt_start', '07:00')).rejects.toMatchObject({
       message: '유효하지 않은 설정값: 타임테이블 오류',
     })
-    await expect(api.patchSettingField('timetable.ws_prestart', '07:59')).rejects.not.toBeInstanceOf(ApiError)
+    await expect(api.patchSettingField('timetable.nxt_start', '07:00')).rejects.not.toBeInstanceOf(ApiError)
   })
 })

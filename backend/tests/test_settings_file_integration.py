@@ -28,6 +28,7 @@ from backend.app.core.settings_file import (
     _decrypt_encrypt_fields,
     _encrypt_field_or_raise,
     classify_secret_fields,
+    _migrate_timetable_keys_to_nxt_krx,
 )
 
 
@@ -678,3 +679,99 @@ class TestSaveSelectedSettingsEncryptionPolicy:
         )
         row = await cursor.fetchone()
         assert row["value"] == "gAAAAnewcipher"
+
+
+class TestMigrateTimetableKeysToNxtKrx:
+    """_migrate_timetable_keys_to_nxt_krx — 옛 timetable 키 → 새 키 마이그레이션 (토큰발급 기동분리 설계 결정 7).
+
+    매핑 규칙:
+      - timetable.realtime_reset → timetable.nxt_start (값 이관)
+      - timetable.krx_pre_subscribe → timetable.krx_start (값 이관)
+      - timetable.ws_prestart → 제거 (nxt_start에 통합, 값 이관 없음)
+    """
+
+    def test_realtime_reset_migrated_to_nxt_start(self):
+        """realtime_reset 값이 nxt_start로 이관되고 기존 키 제거."""
+        merged = {"timetable.realtime_reset": "07:58"}
+        result, dirty = _migrate_timetable_keys_to_nxt_krx(merged)
+        assert result["timetable.nxt_start"] == "07:58"
+        assert "timetable.realtime_reset" not in result
+        assert dirty is True
+
+    def test_krx_pre_subscribe_migrated_to_krx_start(self):
+        """krx_pre_subscribe 값이 krx_start로 이관되고 기존 키 제거."""
+        merged = {"timetable.krx_pre_subscribe": "08:59"}
+        result, dirty = _migrate_timetable_keys_to_nxt_krx(merged)
+        assert result["timetable.krx_start"] == "08:59"
+        assert "timetable.krx_pre_subscribe" not in result
+        assert dirty is True
+
+    def test_ws_prestart_removed_without_value_transfer(self):
+        """ws_prestart는 제거만, 값 이관 없음 (nxt_start에 통합)."""
+        merged = {"timetable.ws_prestart": "07:59"}
+        result, dirty = _migrate_timetable_keys_to_nxt_krx(merged)
+        assert "timetable.ws_prestart" not in result
+        assert "timetable.nxt_start" not in result
+        assert dirty is True
+
+    def test_all_three_old_keys_migrated_at_once(self):
+        """옛 키 3개 동시 존재 시 한 번에 마이그레이션."""
+        merged = {
+            "timetable.realtime_reset": "07:58",
+            "timetable.ws_prestart": "07:59",
+            "timetable.krx_pre_subscribe": "08:59",
+        }
+        result, dirty = _migrate_timetable_keys_to_nxt_krx(merged)
+        assert result["timetable.nxt_start"] == "07:58"
+        assert result["timetable.krx_start"] == "08:59"
+        assert "timetable.realtime_reset" not in result
+        assert "timetable.ws_prestart" not in result
+        assert "timetable.krx_pre_subscribe" not in result
+        assert dirty is True
+
+    def test_new_key_already_exists_old_key_only_removed(self):
+        """새 키가 이미 있으면 옛 키만 제거 (idempotent — 값 덮어쓰기 없음)."""
+        merged = {
+            "timetable.realtime_reset": "07:58",
+            "timetable.nxt_start": "07:30",
+            "timetable.krx_pre_subscribe": "08:59",
+            "timetable.krx_start": "08:55",
+        }
+        result, dirty = _migrate_timetable_keys_to_nxt_krx(merged)
+        assert result["timetable.nxt_start"] == "07:30"
+        assert result["timetable.krx_start"] == "08:55"
+        assert "timetable.realtime_reset" not in result
+        assert "timetable.krx_pre_subscribe" not in result
+        assert dirty is True
+
+    def test_no_old_keys_returns_unchanged_not_dirty(self):
+        """옛 키가 없으면 변경 없음, dirty=False."""
+        merged = {
+            "timetable.nxt_start": "07:58",
+            "timetable.nxt_end": "20:00",
+            "timetable.krx_start": "08:59",
+            "timetable.krx_end": "15:20",
+        }
+        result, dirty = _migrate_timetable_keys_to_nxt_krx(merged)
+        assert result == merged
+        assert dirty is False
+
+    def test_empty_dict_returns_unchanged_not_dirty(self):
+        """빈 딕셔너리 — 변경 없음, dirty=False."""
+        result, dirty = _migrate_timetable_keys_to_nxt_krx({})
+        assert result == {}
+        assert dirty is False
+
+    def test_other_keys_preserved(self):
+        """마이그레이션 대상 외 키는 보존."""
+        merged = {
+            "timetable.realtime_reset": "07:58",
+            "timetable.confirmed_download": "20:40",
+            "buy_amt": 500000,
+        }
+        result, dirty = _migrate_timetable_keys_to_nxt_krx(merged)
+        assert result["timetable.nxt_start"] == "07:58"
+        assert result["timetable.confirmed_download"] == "20:40"
+        assert result["buy_amt"] == 500000
+        assert "timetable.realtime_reset" not in result
+        assert dirty is True

@@ -122,7 +122,7 @@ describe('createSettingsManager.saveSection — 422 detail 전파 (P21)', () => 
   }
 
   it('422 응답 detail이 SaveResult.error로 전파됨', async () => {
-    const detailMsg = '유효하지 않은 설정값: 타임테이블 시간 순서 오류: 실시간 초기화(07:58) ≤ 구독 시작(07:59) ≤ 정규장 사전 구독(09:30) < 09:00 이어야 합니다'
+    const detailMsg = '유효하지 않은 설정값: 타임테이블 시간 순서 오류: NXT 시작(07:58) < KRX 시작(09:30) < 15:20 이어야 합니다'
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: false,
       status: 422,
@@ -130,7 +130,7 @@ describe('createSettingsManager.saveSection — 422 detail 전파 (P21)', () => 
     }))
 
     const mgr = createSettingsManager(makeMockStore())
-    const res = await mgr.saveSection({ 'timetable.krx_pre_subscribe': '09:30' })
+    const res = await mgr.saveSection({ 'timetable.krx_start': '09:30' })
     expect(res.ok).toBe(false)
     expect(res.error).toBe(detailMsg)
   })
@@ -243,9 +243,9 @@ describe('createSettingsManager.saveSection — 구조화 오류 전파 (B21-01 
       json: async () => ({ detail: '유효하지 않은 설정값: 타임테이블 오류' }),
     }))
 
-    const { store, setStateSpy } = makeMockStoreWithSettings({ 'timetable.ws_prestart': '07:58' })
+    const { store, setStateSpy } = makeMockStoreWithSettings({ 'timetable.nxt_start': '07:58' })
     const mgr = createSettingsManager(store)
-    const res = await mgr.saveSection({ 'timetable.ws_prestart': '07:59' })
+    const res = await mgr.saveSection({ 'timetable.nxt_start': '07:59' })
     expect(res.ok).toBe(false)
     expect(res.errorCode).toBeUndefined()
     expect(res.errorField).toBeUndefined()
