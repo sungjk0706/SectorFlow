@@ -662,7 +662,8 @@ class TestStartComputeLoop:
         mock_task2 = MagicMock()
         mock_loop.create_task.side_effect = [mock_task1, mock_task2]
         with patch("asyncio.get_running_loop", return_value=mock_loop), \
-             patch("backend.app.services.engine_order_loop.start_order_loop", new_callable=AsyncMock):
+             patch("backend.app.services.engine_order_loop.start_order_loop", new_callable=AsyncMock), \
+             patch("backend.app.services.engine_buy_target_loop.start_buy_target_loop", new_callable=AsyncMock):
             await start_compute_loop()
             for call in mock_loop.create_task.call_args_list:
                 for arg in call.args:
@@ -682,7 +683,8 @@ class TestStopComputeLoop:
         compute_mod._compute_running = True
         compute_mod._compute_task = None
         compute_mod._sector_recompute_task = None
-        with patch("backend.app.services.engine_order_loop.stop_order_loop", new_callable=AsyncMock):
+        with patch("backend.app.services.engine_order_loop.stop_order_loop", new_callable=AsyncMock), \
+             patch("backend.app.services.engine_buy_target_loop.stop_buy_target_loop", new_callable=AsyncMock):
             await stop_compute_loop()
         assert compute_mod._compute_running is False
 
@@ -700,7 +702,8 @@ class TestStopComputeLoop:
         mock_task2 = AwaitableTask()
         compute_mod._compute_task = mock_task2
         compute_mod._sector_recompute_task = mock_task1
-        with patch("backend.app.services.engine_order_loop.stop_order_loop", new_callable=AsyncMock):
+        with patch("backend.app.services.engine_order_loop.stop_order_loop", new_callable=AsyncMock), \
+             patch("backend.app.services.engine_buy_target_loop.stop_buy_target_loop", new_callable=AsyncMock):
             await stop_compute_loop()
         assert compute_mod._compute_running is False
         mock_task1.cancel.assert_called_once()
@@ -721,7 +724,8 @@ class TestStopComputeLoop:
         mock_task = CancelledTask()
         compute_mod._compute_task = mock_task
         compute_mod._sector_recompute_task = None
-        with patch("backend.app.services.engine_order_loop.stop_order_loop", new_callable=AsyncMock):
+        with patch("backend.app.services.engine_order_loop.stop_order_loop", new_callable=AsyncMock), \
+             patch("backend.app.services.engine_buy_target_loop.stop_buy_target_loop", new_callable=AsyncMock):
             await stop_compute_loop()
         assert compute_mod._compute_running is False
         compute_mod._compute_task = None

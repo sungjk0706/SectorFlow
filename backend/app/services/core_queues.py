@@ -7,6 +7,7 @@ HTS급 실시간 처리를 위한 4개 코어 큐:
 - broadcast_queue: 화면 전송 전용
 - control_queue: 사용자 설정 제어 전용 (최우선순위)
 - order_queue: 주문 실행 요청 전용 (매도 조건 검사·매수 후보 평가 요청을 시세/업종 루프에서 주문 실행 루프로 전달)
+- buy_target_update_queue: 매수후보 갱신 전용 (업종순위 단계에서 통과/탈락·상위 N개 진입/이탈 이벤트를 매수후보 갱신 루프로 전달)
 
 외부 브로커(Redis 등) 미사용 - 순수 asyncio.Queue 기반 프로세스 내 배관.
 """
@@ -22,6 +23,7 @@ TICK_QUEUE_MAXSIZE = 20000  # 시세 수신 전용 (누락 정책 적용)
 BROADCAST_QUEUE_MAXSIZE = 2000  # 화면 전송 전용
 CONTROL_QUEUE_MAXSIZE = 500  # 제어 전용 (최우선순위)
 ORDER_QUEUE_MAXSIZE = 100  # 주문 실행 요청 전용 (매도 조건 검사·매수 후보 평가)
+BUY_TARGET_UPDATE_QUEUE_MAXSIZE = 100  # 매수후보 갱신 전용 (이벤트 빈도 낮음 — 통과/탈락·상위 N개 진입/이탈 시만)
 
 
 # ── 전역 큐 인스턴스 ───────────────────────────────────────────────────────────
@@ -29,11 +31,12 @@ _tick_queue: Optional[asyncio.Queue] = None
 _broadcast_queue: Optional[asyncio.Queue] = None
 _control_queue: Optional[asyncio.PriorityQueue] = None
 _order_queue: Optional[asyncio.Queue] = None
+_buy_target_update_queue: Optional[asyncio.Queue] = None
 
 
 def initialize_queues() -> None:
     """전역 큐 인스턴스 초기화 (엔진 기동 시 1회 호출)."""
-    global _tick_queue, _broadcast_queue, _control_queue, _order_queue
+    global _tick_queue, _broadcast_queue, _control_queue, _order_queue, _buy_target_update_queue
 
     if _tick_queue is not None:
         return
@@ -42,12 +45,13 @@ def initialize_queues() -> None:
     _broadcast_queue = asyncio.Queue(maxsize=BROADCAST_QUEUE_MAXSIZE)
     _control_queue = asyncio.PriorityQueue(maxsize=CONTROL_QUEUE_MAXSIZE)
     _order_queue = asyncio.Queue(maxsize=ORDER_QUEUE_MAXSIZE)
+    _buy_target_update_queue = asyncio.Queue(maxsize=BUY_TARGET_UPDATE_QUEUE_MAXSIZE)
 
     logger.info(
         "[시스템] 초기화 완료 - "
         f"시세={TICK_QUEUE_MAXSIZE}, "
         f"전송={BROADCAST_QUEUE_MAXSIZE}, 제어={CONTROL_QUEUE_MAXSIZE}, "
-        f"주문={ORDER_QUEUE_MAXSIZE}"
+        f"주문={ORDER_QUEUE_MAXSIZE}, 매수후보갱신={BUY_TARGET_UPDATE_QUEUE_MAXSIZE}"
     )
 
 
@@ -79,6 +83,13 @@ def get_order_queue() -> asyncio.Queue:
     return _order_queue
 
 
+def get_buy_target_update_queue() -> asyncio.Queue:
+    """매수후보 갱신 전용 큐 반환."""
+    if _buy_target_update_queue is None:
+        raise RuntimeError("buy_target_update_queue가 초기화되지 않음 - initialize_queues() 먼저 호출")
+    return _buy_target_update_queue
+
+
 def clear_all_queues() -> None:
     """모든 큐 비우기 (엔진 정지 시 호출)."""
     if _tick_queue:
@@ -96,5 +107,8 @@ def clear_all_queues() -> None:
     if _order_queue:
         while not _order_queue.empty():
             _order_queue.get_nowait()
+    if _buy_target_update_queue:
+        while not _buy_target_update_queue.empty():
+            _buy_target_update_queue.get_nowait()
 
     logger.info("[시스템] 모든 큐 비우기")

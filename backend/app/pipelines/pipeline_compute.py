@@ -218,6 +218,10 @@ async def start_compute_loop() -> None:
     from backend.app.services.engine_order_loop import start_order_loop
     await start_order_loop()
 
+    # 매수후보 갱신 루프 시작 — 업종순위 단계와 매수후보 갱신을 큐로 분리 (W2 파이프라인 분리, SEDA 패턴)
+    from backend.app.services.engine_buy_target_loop import start_buy_target_loop
+    await start_buy_target_loop()
+
 
 async def stop_compute_loop() -> None:
     """Compute Engine 루프 종료."""
@@ -228,6 +232,10 @@ async def stop_compute_loop() -> None:
     # 주문 실행 루프 종료 — 시세/업종 루프 종료 전 주문 루프 먼저 정지
     from backend.app.services.engine_order_loop import stop_order_loop
     await stop_order_loop()
+
+    # 매수후보 갱신 루프 종료 — 주문 루프 종료 후 함께 정지
+    from backend.app.services.engine_buy_target_loop import stop_buy_target_loop
+    await stop_buy_target_loop()
 
     if _sector_recompute_task:
         _sector_recompute_task.cancel()
