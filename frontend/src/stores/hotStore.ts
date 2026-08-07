@@ -568,12 +568,14 @@ export function applyBuyTargetsUpdate(data: { buy_targets: StockScore[]; freshne
   if (data.freshness && !isFreshnessNewer(data.freshness)) return
   if (data.freshness) recordFreshness(data.freshness)
   const prev = hotStore.getState().buyTargets
-  // P22: news_boost_title은 백엔드 스냅샷에 없음 (news-hit 이벤트가 단일 소스, 세션 4).
+  // P22: news_boost_title/news_boost_keyword은 백엔드 스냅샷에 없음 (news-hit 이벤트가 단일 소스).
   //      전체 새로고침(buy-targets-update) 시 prev에서 보존 — news_boost > 0일 때만
-  //      (뉴스 활성 상태). news_boost가 0/undefined면 title도 소멸(만료 일관성).
+  //      (뉴스 활성 상태). news_boost가 0/undefined면 title/keyword도 소멸(만료 일관성).
   const prevTitleByCode = new Map<string, string>()
+  const prevKeywordByCode = new Map<string, string>()
   for (const t of prev) {
     if (t.news_boost_title) prevTitleByCode.set(normalizeStockCode(t.code), t.news_boost_title)
+    if (t.news_boost_keyword) prevKeywordByCode.set(normalizeStockCode(t.code), t.news_boost_keyword)
   }
   const incoming = (data.buy_targets ?? []).map(t => {
     const code = normalizeStockCode(t.code)
@@ -582,6 +584,8 @@ export function applyBuyTargetsUpdate(data: { buy_targets: StockScore[]; freshne
     if (newsBoost > 0) {
       const preservedTitle = prevTitleByCode.get(code)
       if (preservedTitle) base.news_boost_title = preservedTitle
+      const preservedKeyword = prevKeywordByCode.get(code)
+      if (preservedKeyword) base.news_boost_keyword = preservedKeyword
     }
     return base
   })
@@ -609,11 +613,14 @@ export function applyBuyTargetsUpdate(data: { buy_targets: StockScore[]; freshne
 // P20: codes/scores/boost_scores 누락 시 빈 배열로 명시적 처리 (폴백 아님). title 누락 시 빈 문자열.
 // P21: title을 buyTargets[i].news_boost_title에 보관 → 📰 툴팁으로 호재 정보 노출 (세션 4).
 // P25: 미매칭 시 setState 미발화 (불필요한 리렌더 방지). 해당 종목만 in-place patch.
-export function applyNewsHit(data: { codes: string[]; scores: number[]; boost_scores?: number[]; title?: string }): void {
+export function applyNewsHit(data: { codes: string[]; scores: number[]; boost_scores?: number[]; title?: string; matched_keywords?: string[] }): void {
   const codes = data.codes ?? []
   const scores = data.scores ?? []
   const boostScores = data.boost_scores ?? []
   const title = data.title ?? ''
+  const matchedKeywords = data.matched_keywords ?? []
+  // 매칭된 키워드를 쉼표로 join — 📰 옆 표시용 (P21 투명성, 백엔드 매칭 결과 그대로 — P10 SSOT)
+  const keyword = matchedKeywords.join(', ')
   if (codes.length === 0) return
   hotStore.setState((state) => {
     let buyTargets = state.buyTargets
@@ -631,6 +638,7 @@ export function applyNewsHit(data: { codes: string[]; scores: number[]; boost_sc
       if (idx >= 0) {
         if (!changed) { buyTargets = [...buyTargets]; changed = true }
         const patch: Partial<StockScore> = { news_boost: scores[k] ?? 0, news_boost_title: title }
+        if (keyword) patch.news_boost_keyword = keyword
         if (boostScores[k] != null) patch.boost_score = boostScores[k]
         buyTargets[idx] = { ...buyTargets[idx], ...patch }
       }
@@ -664,7 +672,7 @@ export function applyBuyTargetsDelta(data: {
       for (const item of changed) {
         const idx = buyTargets.findIndex((t: StockScore) => normalizeStockCode(t.code) === normalizeStockCode(item.code))
         if (idx >= 0) {
-          // P10: news_boost/news_boost_title은 news-hit 이벤트가 단일 전달 경로.
+          // P10: news_boost/news_boost_title/news_boost_keyword은 news-hit 이벤트가 단일 전달 경로.
           //   백엔드 changed delta는 _BUY_TARGET_REALTIME_KEYS에 의해 news_boost를 pop 제거하므로
           //   item에 해당 키가 없음. 객체 통째 교체 시 undefined로 소거되면 📰 표시가 사라짐 (P21 위반).
           //   applyBuyTargetsUpdate prevTitleByCode 보존 패턴과 대칭 — 기존 값 보존 (P23 일관성).
@@ -673,6 +681,7 @@ export function applyBuyTargetsDelta(data: {
             ...item,
             news_boost: prev.news_boost,
             news_boost_title: prev.news_boost_title,
+            news_boost_keyword: prev.news_boost_keyword,
           }
         }
       }

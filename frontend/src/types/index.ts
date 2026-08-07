@@ -66,6 +66,7 @@ export interface StockScore {
   high_5d?: number;  // 0 = 원천 부재/미다운로드 (5거래일 일봉 전), >0 = 유효 고가
   news_boost?: number;  // 뉴스 호재 가산점 (0 = 미부여, >0 = 부여됨)
   news_boost_title?: string;  // 뉴스 호재 제목 (📰 툴팁 표시용, applyNewsHit이 보관 — P10 SSOT)
+  news_boost_keyword?: string;  // 매칭된 호재 키워드 (📰 옆 표시용, 백엔드가 매칭 단계에서 전달 — P10 SSOT)
 }
 
 // 마스터 종목 캐시 프론트 표시 사본 — 백엔드 master_stocks_cache와 1:1 대응 (P10 SSOT).
@@ -377,6 +378,7 @@ export interface NewsHitEvent {
   scores: number[];
   boost_scores: number[];
   title: string;
+  matched_keywords?: string[];  // 매칭된 호재 키워드 (백엔드 매칭 단계에서 전달 — P10 SSOT)
 }
 
 export interface AccountUpdateEvent {

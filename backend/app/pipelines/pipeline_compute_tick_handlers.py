@@ -420,8 +420,8 @@ async def _handle_nws_news(item: dict) -> None:
         keywords = engine_state.state.news_keywords_cache
         if not keywords:
             return  # 키워드 미설정 시 가산점 부여 안 함 (P20 폴백 금지)
-        matched = any(kw in title for kw in keywords)
-        if not matched:
+        matched_keywords = [kw for kw in keywords if kw in title]
+        if not matched_keywords:
             return  # 호재 키워드 미포함 시 스킵 (자연스러운 경로, silent 아님)
 
         # 매수후보 테이블 내 종목만 가산점 부여 (수정안 1 — master_stocks_cache → buy_targets 기준)
@@ -464,6 +464,7 @@ async def _handle_nws_news(item: dict) -> None:
                 "scores": scores,
                 "boost_scores": boost_scores,
                 "title": title,
+                "matched_keywords": matched_keywords,
             })
 
     except Exception as e:
