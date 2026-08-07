@@ -83,8 +83,9 @@ export interface UIState {
    *  level: "nxt_only" (NXT 종목만 거래 가능) | "blocked" (거래 시간 외) */
   orderTimeBlocked: { level: 'nxt_only' | 'blocked'; reason: string } | null
 
-  /* ── 리스크 매니저 차단 상태 (손실 한도 도달 등) ── */
-  riskBlockStatus: { side: string; reason: string; partial?: boolean } | null
+  /* ── 리스크 매니저 차단 상태 (손실 한도 도달 등) ──
+   *  blocked_markets: 차단된 시장 코드 배열 (예: ["10"] = 코스닥만). 부분 차단 시 프론트에서 어느 시장이 열려있는지 판정 (P21). */
+  riskBlockStatus: { side: string; reason: string; partial?: boolean; blocked_markets?: string[] } | null
 
   /* ── 실시간 통신 지연 200ms 초과 상태 (매수/매도 공통 차단) ── */
   realtimeLatencyExceeded: boolean
@@ -233,12 +234,13 @@ export function clearOrderTimeBlocked(): void {
 }
 
 /* ── risk-block-status: 리스크 매니저 차단 상태 갱신 ── */
-export function applyRiskBlockStatus(data: { blocked?: boolean; side?: string; reason?: string; partial?: boolean }): void {
+export function applyRiskBlockStatus(data: { blocked?: boolean; side?: string; reason?: string; partial?: boolean; blocked_markets?: string[] }): void {
   if (data.blocked) {
     uiStore.setState({ riskBlockStatus: {
       side: data.side ?? 'unknown',
       reason: data.reason ?? '리스크 차단',
       partial: data.partial === true,
+      blocked_markets: Array.isArray(data.blocked_markets) ? data.blocked_markets : [],
     } })
   } else {
     uiStore.setState({ riskBlockStatus: null })

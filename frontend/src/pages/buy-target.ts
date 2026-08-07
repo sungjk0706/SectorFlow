@@ -126,7 +126,15 @@ function computeBadgeContext(): BadgeContext {
   const orderable = state.account?.orderable ?? 0
 
   // 1순위 통과 종목 — 주문가능금액 배지의 1위 종목 매수 가능 수량 계산용
-  const topTarget = [...state.buyTargets].sort(compareBuyTargets).find(t => t.guard_pass && t.reject_reason === '')
+  // 부분 차단 시 차단된 시장 종목은 제외 — 열린 시장의 1위 종목만 후보 (P21 투명성).
+  const riskBlock = uiState.riskBlockStatus
+  const partialBlock = riskBlock?.side === 'buy' && riskBlock?.partial === true
+  const blockedMarkets = riskBlock?.blocked_markets ?? []
+  const topTarget = [...state.buyTargets].sort(compareBuyTargets).find(t => {
+    if (!t.guard_pass || t.reject_reason !== '') return false
+    if (partialBlock && blockedMarkets.includes(t.market_type ?? '')) return false
+    return true
+  })
   // 1위 종목 현재가는 masterStocks(실시간 시세 SSOT)에서 조회 — buyTargets에 실시간 필드 없음 (P10).
   const topCode = topTarget ? normalizeStockCode(topTarget.code) : ''
   const topPrice = topCode ? state.masterStocks[topCode]?.cur_price : undefined
@@ -150,11 +158,29 @@ function computeBadgeContext(): BadgeContext {
   return { uiState, settings, maxDaily, maxStock, maxStockOn, holdingCnt, dailySpent, orderable, topName, qty }
 }
 
-/** 통합 매수상태 배지 — 하드 게이트 > 소프트 차단(예산 부족) > 정상 (P21 모순 표시 제거)
- *  하드 게이트 판정은 computeOrderBlockStatus()에 위임 (P10 SSOT — sell-position.ts와 공유)
- *  소프트 차단(예산 부족)은 매수 후보 1위 종목 가격이 필요해 이곳에서 판정
- *    → computeOrderBlockStatus 시그니처 확장 불가 (sell-position은 매수 후보 없음)
- *    → 매수 전용 override를 이곳에 배치 (P23 일관성 예외 — 매수 후보 데이터 의존성) */
+/** 시장 코드 → 표시명 (백엔드 risk_manager.py _MARKET_DISPLAY_NAMES과 동일, P10 SSOT) */
+const MARKET_DISPLAY: Record<string, string> = { '0': '코스피', '10': '코스닥' }
+const MARKET_ORDER = ['0', '10']
+
+/** 부분 차단 시 시장별 O/X 간결 표시 — "코스피 O · 코스닥 X(급락 차단)" 형태 (P21 투명성, P24 단순성).
+ *  reason은 _format_market_block_summary 출력 "코스닉 급락 차단 · 코스피 매수 가능" 형태 —
+ *  blockedMarkets로 막힌 시장을 판정하고, reason에서 해당 시장 사유만 추출. */
+function formatPartialBlockStatus(blockedMarkets: string[], reason: string): string {
+  const reasonParts = reason.split(' · ')
+  const parts: string[] = []
+  for (const code of MARKET_ORDER) {
+    const name = MARKET_DISPLAY[code] ?? code
+    if (blockedMarkets.includes(code)) {
+      const reasonPart = reasonParts.find(p => p.startsWith(name))
+      const shortReason = reasonPart ? reasonPart.replace(`${name} `, '') : '차단'
+      parts.push(`${name} X(${shortReason})`)
+    } else {
+      parts.push(`${name} O`)
+    }
+  }
+  return parts.join(' · ')
+}
+
 /** 통합 매수상태 판정 — 하드 게이트 > 소프트 차단(예산 부족) > 정상 (P21 모순 표시 제거)
  *  하드 게이트 판정은 computeOrderBlockStatus()에 위임 (P10 SSOT — sell-position.ts와 공유)
  *  소프트 차단(예산 부족)은 매수 후보 1위 종목 가격이 필요해 이곳에서 판정
@@ -175,7 +201,7 @@ function computeCombinedStatus(
     statusColor: COLOR.success,
   }
   try {
-    const { text: hardStatusText, blocked: hardBlocked, partial: hardPartial, holiday } =
+    const { text: hardStatusText, blocked: hardBlocked, partial: hardPartial, blockedMarkets: hardBlockedMarkets, holiday } =
       computeOrderBlockStatus('buy', uiState, settings)
     if (holiday) {
       // 휴장일 — 장 자체가 열리지 않으므로 주문가능금액 대신 휴장일 문구 표시.
@@ -183,8 +209,16 @@ function computeCombinedStatus(
       return { value: hardStatusText, unit: '', statusText: '', status: 'normal', statusColor: COLOR.disabled, valueColor: COLOR.disabled }
     }
     if (hardBlocked) {
-      // 위험/강제 차단 (서킷브레이커/리스크/자동매매 OFF 등) — 차단 범위와 사유를 화면에 표시 (빨간색)
-      return { value: hardPartial ? '부분 차단' : '차단', unit: '', statusText: ` · ${hardStatusText.replace(/^차단: /, '')}`, status: 'warn', statusColor: COLOR.up }
+      if (hardPartial) {
+        // 부분 차단 — 일부 시장만 막힘. 주문가능금액 유지 + 시장별 O/X 간결 표시 (P21 투명성).
+        // 열린 시장의 1위 종목이면 매수 가능 수량도 표시.
+        const blockedMarkets = hardBlockedMarkets ?? []
+        const marketStatus = formatPartialBlockStatus(blockedMarkets, hardStatusText.replace(/^차단: 리스크\(/, '').replace(/\)$/, ''))
+        const statusText = ` · ${marketStatus}${topName !== '' ? ` · 매수 가능 (1위 ${topName} ${qty}주)` : ''}`
+        return { ...base, statusText, status: 'warn', statusColor: COLOR.warning }
+      }
+      // 전면 차단 (서킷브레이커/리스크/자동매매 OFF 등) — 차단 사유 표시, 주문가능금액 숨김 (빨간색)
+      return { value: '차단', unit: '', statusText: ` · ${hardStatusText.replace(/^차단: /, '')}`, status: 'warn', statusColor: COLOR.up }
     }
     if (hardStatusText !== '매수 가능') {
       // 정보 상태 (NXT만 가능 / 거래 시간 외) — 주문가능금액 유지 + 정보 텍스트 (파란색, P21 투명성).

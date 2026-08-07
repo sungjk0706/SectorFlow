@@ -219,8 +219,21 @@ export const COLUMNS: ColumnDef<StockScore>[] = [
     key: 'guard', label: '제한', align: 'center', type: 'guard',
     render: (t) => {
       const span = document.createElement('span')
-      span.textContent = t.guard_pass ? '통과' : '차단'
-      span.style.color = t.guard_pass ? COLOR.success : COLOR.up
+      // 3단계 표시 (P21 사용자 투명성):
+      //   통과(초록) — guard_pass && reject_reason 빈칸: 개별 검사 통과 + 지금 바로 매수 가능
+      //   보류(주황) — guard_pass && reject_reason 있음: 개별 검사 통과했지만 전역 상태/잔액으로 매수 불가
+      //   차단(빨강) — !guard_pass: 개별 종목이 매수 조건 검사에서 걸림
+      if (!t.guard_pass) {
+        span.textContent = '차단'
+        span.style.color = COLOR.up
+      } else if (t.reject_reason) {
+        span.textContent = '보류'
+        span.style.color = COLOR.warning
+        span.style.fontWeight = '600'
+      } else {
+        span.textContent = '통과'
+        span.style.color = COLOR.success
+      }
       return span
     },
   },
@@ -233,6 +246,13 @@ export const COLUMNS: ColumnDef<StockScore>[] = [
         span.textContent = r
         span.style.color = COLOR.warning
         span.style.fontWeight = '600'
+        return span
+      }
+      // 보류 상태(guard_pass=true && reject_reason 있음) — 전역 차단 사유 주황색 표시 (P21, "보류" 라벨과 시각적 일치)
+      if (t.guard_pass && r) {
+        const span = document.createElement('span')
+        span.textContent = r
+        span.style.color = COLOR.warning
         return span
       }
       return r

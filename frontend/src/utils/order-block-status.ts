@@ -21,6 +21,8 @@ interface OrderBlockStatus {
   blocked: boolean
   /** 매수 가능한 시장이 남아 있는 부분 차단 여부 */
   partial?: boolean
+  /** 차단된 시장 코드 배열 (예: ["10"] = 코스닥만 차단). 부분 차단 시 호출부에서 간결 표시에 사용 (P21). */
+  blockedMarkets?: string[]
   /** 휴장일 여부 — 헤더 marketPhase.krx/nxt == '휴장일' 시 true.
    *  위험(서킷브레이커/리스크)이 아니라 정보 상태이므로 회색 표시를 위해 호출부에서 사용 (P21/P23). */
   holiday?: boolean
@@ -101,6 +103,7 @@ export function computeOrderBlockStatus(
       text: `차단: 리스크(${uiState.riskBlockStatus.reason})`,
       blocked: true,
       partial: side === 'buy' && uiState.riskBlockStatus.partial === true,
+      blockedMarkets: uiState.riskBlockStatus.blocked_markets ?? [],
     }
   }
   if (uiState.orderTimeBlocked) {

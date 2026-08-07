@@ -278,6 +278,7 @@ class RiskManager:
                 "side": side,
                 "reason": reason,
                 "partial": partial,
+                "blocked_markets": list(blocked_markets.keys()),
             })
             _notify_telegram(
                 f"🛑 [리스크차단] {side} 주문 차단 — {reason}",

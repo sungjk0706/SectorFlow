@@ -309,7 +309,7 @@ export function bindWSToStore(
 
   /* ── risk-block-status: 리스크 매니저 차단 상태 (손실 한도 도달 등) ── */
   pricesClient.onEvent('risk-block-status', (data) => {
-    applyRiskBlockStatus(data as { blocked?: boolean; side?: string; reason?: string; partial?: boolean })
+    applyRiskBlockStatus(data as { blocked?: boolean; side?: string; reason?: string; partial?: boolean; blocked_markets?: string[] })
   })
 
   /* ── buy-limit-status: 매수 한도 상태 실시간 갱신 ── */
