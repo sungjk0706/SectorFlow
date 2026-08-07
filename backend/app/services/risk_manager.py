@@ -251,7 +251,12 @@ class RiskManager:
         side: str,
         blocked_markets: dict[str, str],
     ) -> bool:
-        """시장별 가드 상태가 바뀐 경우에만 UI·텔레그램에 알림."""
+        """시장별 가드 상태가 바뀐 경우에만 UI 갱신.
+
+        로그·텔레그램은 차단↔해제 전환 시에만 출력 — 차단 상태가 유지되는 동안
+        사유만 바뀌는 것(예: 급락 차단 ↔ 자료 확인 불가)은 노이즈이므로 건너뛴다.
+        브로드캐스트는 사유 변경도 화면에 반영하도록 항상 전송.
+        """
         active = tuple(sorted(blocked_markets.items())) or None
         active_blocks = getattr(self, "_active_market_block", {"buy": None, "sell": None})
         previous = active_blocks.get(side)
@@ -260,10 +265,14 @@ class RiskManager:
         active_blocks[side] = active
         self._active_market_block = active_blocks
 
+        # 전환 여부 — 차단↔해제 경계를 넘을 때만 True (사유만 바뀐 차단→차단은 False)
+        transitioned = bool(previous) != bool(active)
+
         from backend.app.services.engine_account_notify import _safe_broadcast
         if not blocked_markets:
             await _safe_broadcast("risk-block-status", {"blocked": False, "side": side})
-            if previous:
+            if transitioned and previous:
+                logger.info("[매매] 시장 지수 가드 해제 — %s 주문을 다시 확인합니다.", side)
                 _notify_telegram(
                     f"✅ [자동매매 재개] 시장 지수 가드 해제 — {side} 주문을 다시 확인합니다.",
                     self._settings_cache(),
@@ -272,7 +281,13 @@ class RiskManager:
         else:
             reason = self._format_market_block_summary(blocked_markets, side)
             partial = side == "buy" and len(blocked_markets) < 2
-            logger.warning("[매매] 시장 지수 가드 차단 상태 변경 — %s", reason)
+            if transitioned:
+                logger.warning("[매매] 시장 지수 가드 차단 상태 변경 — %s", reason)
+                _notify_telegram(
+                    f"🛑 [리스크차단] {side} 주문 차단 — {reason}",
+                    self._settings_cache(),
+                    dedup_key=f"risk-{side}-market-{active}",
+                )
             await _safe_broadcast("risk-block-status", {
                 "blocked": True,
                 "side": side,
@@ -280,11 +295,6 @@ class RiskManager:
                 "partial": partial,
                 "blocked_markets": list(blocked_markets.keys()),
             })
-            _notify_telegram(
-                f"🛑 [리스크차단] {side} 주문 차단 — {reason}",
-                self._settings_cache(),
-                dedup_key=f"risk-{side}-market-{active}",
-            )
         return True
 
     def clear_market_block_state(self, side: str) -> None:

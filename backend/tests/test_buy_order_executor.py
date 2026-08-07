@@ -1194,7 +1194,8 @@ class TestMarketGuardPreGate:
     async def test_recovery_recomputes_once_on_state_change(self):
         with patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm, \
              patch("backend.app.services.buy_order_executor.invalidate_buy_snapshot") as mock_invalidate, \
-             patch("backend.app.services.core_queues.get_order_queue") as mock_get_queue:
+             patch("backend.app.services.core_queues.get_order_queue") as mock_get_queue, \
+             patch.dict("sys.modules", {"backend.app.pipelines.pipeline_compute": MagicMock(is_sector_threshold_passed=lambda: True)}):
             mock_rm.return_value.check_buy_market_guard = AsyncMock(return_value=MarketGuardStatus(
                 allowed=True,
                 changed=True,
@@ -1207,7 +1208,8 @@ class TestMarketGuardPreGate:
     async def test_recovery_does_not_recompute_without_state_change(self):
         with patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm, \
              patch("backend.app.services.buy_order_executor.invalidate_buy_snapshot") as mock_invalidate, \
-             patch("backend.app.services.buy_order_executor.evaluate_buy_candidates", new=AsyncMock()) as mock_evaluate:
+             patch("backend.app.services.buy_order_executor.evaluate_buy_candidates", new=AsyncMock()) as mock_evaluate, \
+             patch.dict("sys.modules", {"backend.app.pipelines.pipeline_compute": MagicMock(is_sector_threshold_passed=lambda: True)}):
             mock_rm.return_value.check_buy_market_guard = AsyncMock(return_value=MarketGuardStatus(
                 allowed=True,
                 changed=False,
@@ -1215,6 +1217,20 @@ class TestMarketGuardPreGate:
             await refresh_buy_market_guard_and_recompute()
         mock_invalidate.assert_not_called()
         mock_evaluate.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_recovery_skips_when_threshold_not_passed(self):
+        """수신율 임계값 통과 전에는 시장 가드 점검을 건너뛴다."""
+        with patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm, \
+             patch("backend.app.services.buy_order_executor.invalidate_buy_snapshot") as mock_invalidate, \
+             patch.dict("sys.modules", {"backend.app.pipelines.pipeline_compute": MagicMock(is_sector_threshold_passed=lambda: False)}):
+            mock_rm.return_value.check_buy_market_guard = AsyncMock(return_value=MarketGuardStatus(
+                allowed=True,
+                changed=True,
+            ))
+            await refresh_buy_market_guard_and_recompute()
+        mock_rm.return_value.check_buy_market_guard.assert_not_called()
+        mock_invalidate.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_market_block_applies_only_to_blocked_market(self, fresh_state, reset_cash_gate):

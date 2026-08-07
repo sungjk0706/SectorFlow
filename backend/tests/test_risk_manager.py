@@ -703,6 +703,32 @@ class TestMarketGuard:
         assert mock_broadcast.await_count == 1
 
     @pytest.mark.asyncio
+    async def test_buy_market_guard_no_log_on_reason_only_change(self, risk_manager):
+        """차단→차단(사유만 변경) 시 로그·텔레그램은 건너뛰고 브로드캐스트만 전송."""
+        risk_manager.risk_block_buy_on = True
+        risk_manager.market_guard_kospi_on = True
+        with patch("backend.app.services.engine_state.state") as mock_state, \
+             patch("backend.app.services.engine_account_notify._safe_broadcast", new=AsyncMock()) as mock_broadcast, \
+             patch("backend.app.services.risk_manager._notify_telegram") as mock_notify, \
+             patch.object(risk_manager, "_sync_thresholds", lambda: None):
+            mock_state.integrated_system_settings_cache = {}
+            mock_state.market_phase = {"krx": "정규장", "nxt": "메인마켓"}
+            # 1차: 급락 차단
+            mock_state.index_data_cache = {"001": {"drate": "-6.0"}}
+            first = await risk_manager.check_buy_market_guard()
+            # 2차: 지수 자료 사라짐 → 사유가 급락 → 자료 확인 불가로 변경 (차단 유지)
+            mock_state.index_data_cache = {}
+            second = await risk_manager.check_buy_market_guard()
+        assert first.changed is True
+        assert second.changed is True
+        # 텔레그램은 전환 시 1회만 — 사유만 바뀐 2차에는 미전송
+        assert mock_notify.call_count == 1
+        # 브로드캐스트는 사유 변경도 화면에 반영하도록 2회 전송
+        assert mock_broadcast.await_count == 2
+        second_payload = mock_broadcast.await_args_list[1].args[1]
+        assert "자료 확인 불가" in second_payload["reason"]
+
+    @pytest.mark.asyncio
     async def test_buy_market_guard_nxt_only_missing_data_allowed(self, risk_manager):
         """NXT 전용 시간대의 정상적인 지수 미수신은 매수 허용."""
         risk_manager.risk_block_buy_on = True

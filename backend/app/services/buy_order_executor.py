@@ -26,7 +26,15 @@ def invalidate_buy_snapshot() -> None:
 
 
 async def refresh_buy_market_guard_and_recompute() -> None:
-    """지수·장 상태 회복 시 매수 평가를 한 번 재개."""
+    """지수·장 상태 회복 시 매수 평가를 한 번 재개.
+
+    수신율 임계값 통과 전에는 시장 가드 점검을 건너뛴다 — 이 시점에는 지수 자료가
+    아직 충분히 수신되지 않았을 수 있어 "자료 확인 불가" 경고가 오해를 줄 수 있음.
+    임계값 통과 후(또는 비-WS 구간)에만 점검하여 의미 있는 경고만 출력.
+    """
+    from backend.app.pipelines.pipeline_compute import is_sector_threshold_passed
+    if not is_sector_threshold_passed():
+        return
     from backend.app.services.risk_manager import get_risk_manager
     status = await get_risk_manager().check_buy_market_guard()
     if not status.allowed or not status.changed:
