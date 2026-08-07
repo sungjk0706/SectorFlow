@@ -347,12 +347,16 @@ async def _apply_balance_realtime(item: dict, vals: dict) -> None:
             if "total_rate" in delta:
                 state.broker_rest_totals["total_rate"] = float(delta["total_rate"])
 
-    # ── 상태 게이트 회복: 실전투자 잔고 업데이트 시 매수 재평가 ──
+    # ── 상태 게이트 회복: 실전투자 잔고 업데이트 시 매수 재평가 → 주문 실행 큐로 이동 (결정 5) ──
     try:
-        from backend.app.services.buy_order_executor import _cash_insufficient, evaluate_buy_candidates, invalidate_buy_snapshot
+        from backend.app.services.buy_order_executor import _cash_insufficient, invalidate_buy_snapshot
+        from backend.app.services.core_queues import get_order_queue
         if _cash_insufficient:
             invalidate_buy_snapshot()
-            await evaluate_buy_candidates()
+            try:
+                get_order_queue().put_nowait({"type": "buy_evaluate"})
+            except asyncio.QueueFull:
+                logger.warning("[계좌] 주문 큐 가득 참 — 매수 후보 평가 요청 드롭 (잔고 회복 후)")
     except Exception:
         logger.warning("[계좌] 잔고 회복 후 매수 재평가 실패 — 사용자가 수동으로 매수 후보 확인 필요", exc_info=True)
 

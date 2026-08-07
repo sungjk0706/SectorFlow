@@ -234,11 +234,18 @@ async def _flush_sector_recompute_impl() -> None:
         if are_buy_targets_changed(prev_targets, ss.buy_targets):
             sync_dynamic_subscriptions(ss.buy_targets)
 
-        # 매수 시도 — 업종 점수/순위 변동 시 항상 호출 (간격은 check_order_interval이 판정)
+        # 매수 후보 평가 요청 → 주문 실행 큐로 이동 (결정 4)
+        # 업종 재계산 루프가 매수 주문·가상 체결(0.5초)에 블록되지 않도록
+        # 매수 후보 평가는 주문 실행 루프가 큐에서 꺼내 처리 (W1·W2)
         # are_buy_targets_changed와 분리: 점수만 변해도 매수 기회 평가 (P11 이벤트 기반, P23 매도와 일관)
-        from backend.app.services.buy_order_executor import evaluate_buy_candidates, _cash_insufficient
+        from backend.app.services.buy_order_executor import _cash_insufficient
+        from backend.app.services.core_queues import get_order_queue
         if not _cash_insufficient:
-            await evaluate_buy_candidates()
+            try:
+                get_order_queue().put_nowait({"type": "buy_evaluate"})
+            except asyncio.QueueFull:
+                # W1 무한 쌓기 방지 — 가득 시 경고 로그 + 드롭 (W8 폴백 금지, 명시적 드롭)
+                logger.warning("[업종] 주문 큐 가득 참 — 매수 후보 평가 요청 드롭 (증분 재계산)")
 
         # 업종 요약정보 생성 완료 이벤트 설정
         engine_state.state.sector_summary_ready_event.set()
@@ -304,10 +311,16 @@ async def _full_recompute(codes_snapshot: set[str] | None = None) -> None:
     if are_buy_targets_changed(prev_targets, ss.buy_targets):
         sync_dynamic_subscriptions(ss.buy_targets)
 
-    # 매수 시도 — 업종 점수/순위 변동 시 항상 호출 (간격은 check_order_interval이 판정)
+    # 매수 후보 평가 요청 → 주문 실행 큐로 이동 (결정 4)
+    # 업종 재계산 루프가 매수 주문·가상 체결(0.5초)에 블록되지 않도록
+    # 매수 후보 평가는 주문 실행 루프가 큐에서 꺼내 처리 (W1·W2)
     # are_buy_targets_changed와 분리: 점수만 변해도 매수 기회 평가 (P11 이벤트 기반, P23 매도와 일관)
-    from backend.app.services.buy_order_executor import evaluate_buy_candidates
-    await evaluate_buy_candidates()
+    from backend.app.services.core_queues import get_order_queue
+    try:
+        get_order_queue().put_nowait({"type": "buy_evaluate"})
+    except asyncio.QueueFull:
+        # W1 무한 쌓기 방지 — 가득 시 경고 로그 + 드롭 (W8 폴백 금지, 명시적 드롭)
+        logger.warning("[업종] 주문 큐 가득 참 — 매수 후보 평가 요청 드롭 (전체 재계산)")
 
     # 업종 요약정보 생성 완료 이벤트 설정
     engine_state.state.sector_summary_ready_event.set()

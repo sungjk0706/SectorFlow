@@ -13,6 +13,7 @@ Settlement Engine — 테스트모드 전용 누적투자금/주문가능금액 
     매수하면 줄고, 매도/충전하면 늘어남.
 """
 from __future__ import annotations
+import asyncio
 import logging
 from backend.app.core.constants import (
     BUY_COMMISSION,
@@ -120,12 +121,16 @@ async def on_sell_fill(price: int, qty: int, stk_cd: str, stk_nm: str) -> int:
     await _persist()
     await _broadcast_delta()
 
-    # ── 상태 게이트 회복: 매도 체결로 주문가능 금액 증가 시 매수 재평가 ──
+    # ── 상태 게이트 회복: 매도 체결로 주문가능 금액 증가 시 매수 재평가 → 주문 실행 큐로 이동 (결정 5) ──
     try:
-        from backend.app.services.buy_order_executor import _cash_insufficient, evaluate_buy_candidates, invalidate_buy_snapshot
+        from backend.app.services.buy_order_executor import _cash_insufficient, invalidate_buy_snapshot
+        from backend.app.services.core_queues import get_order_queue
         if _cash_insufficient:
             invalidate_buy_snapshot()
-            await evaluate_buy_candidates()
+            try:
+                get_order_queue().put_nowait({"type": "buy_evaluate"})
+            except asyncio.QueueFull:
+                logger.warning("[정산] 주문 큐 가득 참 — 매수 후보 평가 요청 드롭 (매도 체결 후)")
     except Exception as e:
         logger.warning("[정산] 상태 게이트 회복 실패 (매도 정산은 성공): %s", e, exc_info=True)
 

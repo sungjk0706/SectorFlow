@@ -459,7 +459,9 @@ class TestFlushSectorRecomputeImpl:
              patch("backend.app.services.engine_account_notify.notify_desktop_sector_scores", new=AsyncMock()) as mock_notify_scores, \
              patch("backend.app.services.engine_account_notify.notify_buy_targets_update", new=AsyncMock()) as mock_notify_targets, \
              patch("backend.app.services.engine_sector_confirm._refresh_buy_target_page_subscriptions", new=AsyncMock()) as mock_page_refresh, \
-             patch("backend.app.services.engine_sector_confirm.are_buy_targets_changed", return_value=False):
+             patch("backend.app.services.engine_sector_confirm.are_buy_targets_changed", return_value=False), \
+             patch("backend.app.services.core_queues.get_order_queue") as mock_get_queue, \
+             patch("backend.app.services.buy_order_executor._cash_insufficient", False):
             mock_state.sector_summary_cache = mock_cache
             mock_state.integrated_system_settings_cache = {
                 "sector_min_trade_amt": 0.0,
@@ -594,7 +596,7 @@ class TestFlushSectorRecomputeImpl:
              patch("backend.app.services.engine_sector_confirm._refresh_buy_target_page_subscriptions", new=AsyncMock()) as mock_page_refresh, \
              patch("backend.app.services.engine_sector_confirm.are_buy_targets_changed", return_value=True), \
              patch("backend.app.services.engine_sector_confirm.sync_dynamic_subscriptions") as mock_sync, \
-             patch("backend.app.services.buy_order_executor.evaluate_buy_candidates", new=AsyncMock()) as mock_eval, \
+             patch("backend.app.services.core_queues.get_order_queue") as mock_get_queue, \
              patch("backend.app.services.buy_order_executor._cash_insufficient", False):
             mock_state.sector_summary_cache = mock_cache
             mock_state.integrated_system_settings_cache = {
@@ -611,7 +613,7 @@ class TestFlushSectorRecomputeImpl:
 
             mock_page_refresh.assert_awaited_once()
             mock_sync.assert_called_once()
-            mock_eval.assert_called_once()
+            mock_get_queue.return_value.put_nowait.assert_called_once_with({"type": "buy_evaluate"})
 
     @pytest.mark.asyncio
     async def test_cash_insufficient_skips_evaluate(self):
@@ -829,7 +831,7 @@ class TestFullRecompute:
              patch("backend.app.services.engine_sector_confirm._refresh_buy_target_page_subscriptions", new=AsyncMock()) as mock_page_refresh, \
              patch("backend.app.services.engine_sector_confirm.are_buy_targets_changed", return_value=True), \
              patch("backend.app.services.engine_sector_confirm.sync_dynamic_subscriptions") as mock_sync, \
-             patch("backend.app.services.buy_order_executor.evaluate_buy_candidates", new=AsyncMock()) as mock_eval:
+             patch("backend.app.services.core_queues.get_order_queue") as mock_get_queue:
             mock_state.sector_summary_cache = None
             mock_state.integrated_system_settings_cache = {
                 "sector_min_trade_amt": 0.0,
@@ -848,7 +850,7 @@ class TestFullRecompute:
             mock_notify_targets.assert_called_once()
             mock_page_refresh.assert_awaited_once()
             mock_sync.assert_called_once()
-            mock_eval.assert_called_once()
+            mock_get_queue.return_value.put_nowait.assert_called_once_with({"type": "buy_evaluate"})
             mock_state.sector_summary_ready_event.set.assert_called_once()
 
     @pytest.mark.asyncio
@@ -873,7 +875,7 @@ class TestFullRecompute:
              patch("backend.app.services.engine_account_notify.notify_buy_targets_update", new=AsyncMock()), \
              patch("backend.app.services.engine_sector_confirm.are_buy_targets_changed", return_value=False), \
              patch("backend.app.services.engine_sector_confirm.sync_dynamic_subscriptions") as mock_sync, \
-             patch("backend.app.services.buy_order_executor.evaluate_buy_candidates", new=AsyncMock()) as mock_eval:
+             patch("backend.app.services.core_queues.get_order_queue") as mock_get_queue:
             mock_state.sector_summary_cache = prev_cache
             mock_state.integrated_system_settings_cache = {
                 "sector_min_trade_amt": 0.0,
@@ -889,8 +891,8 @@ class TestFullRecompute:
 
             # sync는 buy_targets 미변경 시 스킵
             mock_sync.assert_not_called()
-            # evaluate는 are_buy_targets_changed와 분리 — 업종 점수 변동 시 항상 호출
-            mock_eval.assert_called_once()
+            # 매수 후보 평가 요청은 are_buy_targets_changed와 분리 — 업종 점수 변동 시 항상 큐에 put
+            mock_get_queue.return_value.put_nowait.assert_called_once_with({"type": "buy_evaluate"})
 
     @pytest.mark.asyncio
     async def test_auto_trade_provides_bought_today(self):
@@ -912,7 +914,8 @@ class TestFullRecompute:
              patch("backend.app.services.engine_account.get_held_codes", new=AsyncMock(return_value=set())), \
              patch("backend.app.services.engine_account_notify.notify_desktop_sector_scores", new=AsyncMock()), \
              patch("backend.app.services.engine_account_notify.notify_buy_targets_update", new=AsyncMock()), \
-             patch("backend.app.services.engine_sector_confirm.are_buy_targets_changed", return_value=False):
+             patch("backend.app.services.engine_sector_confirm.are_buy_targets_changed", return_value=False), \
+             patch("backend.app.services.core_queues.get_order_queue"):
             mock_state.sector_summary_cache = None
             mock_state.integrated_system_settings_cache = {
                 "sector_min_trade_amt": 0.0,

@@ -5,6 +5,7 @@
 engine_lifecycle.py에서 업종 매수 관련 함수를 분리.
 """
 from __future__ import annotations
+import asyncio
 import logging
 from backend.app.core.trade_mode import is_test_mode
 from backend.app.services.auto_trading_effective import auto_buy_effective, auto_buy_reject_reason
@@ -31,7 +32,12 @@ async def refresh_buy_market_guard_and_recompute() -> None:
     if not status.allowed or not status.changed:
         return
     invalidate_buy_snapshot()
-    await evaluate_buy_candidates()
+    # 매수 후보 평가 요청 → 주문 실행 큐로 이동 (결정 5)
+    from backend.app.services.core_queues import get_order_queue
+    try:
+        get_order_queue().put_nowait({"type": "buy_evaluate"})
+    except asyncio.QueueFull:
+        logger.warning("[매수] 주문 큐 가득 참 — 매수 후보 평가 요청 드롭 (시장 가드 회복)")
 
 
 async def _mark_all_reject_reasons(ss, reason_code: str) -> None:
