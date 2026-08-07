@@ -28,6 +28,7 @@ from backend.app.services.engine_account_notify import (
     get_freshness,
     get_freshness_snapshot,
     _broadcast,
+    _apply_unaffordable_reject_reasons,
 )
 from backend.app.services.engine_account_broadcast import (
     _build_lightweight_payload_for_profit_overview,
@@ -850,4 +851,128 @@ class TestNotifyBuyTargetsUpdate:
                 mock_bc.assert_not_awaited()
         finally:
             notify_cache.prev_buy_targets_map = None
+
+
+# ── _apply_unaffordable_reject_reasons — 단가 초과 종목 "예수금 부족" 표시 ──────
+
+class TestApplyUnaffordableRejectReasons:
+    """단가 초과 종목에 "예수금 부족" 사유 설정 검증 (P21 투명성)."""
+
+    def _make_bt(self, code="005930", guard_pass=True, cur_price=70000, reject_reason=""):
+        from backend.app.domain.models import StockScore, BuyTarget
+        s = StockScore(
+            code=code, name="테스트", sector="반도체",
+            change_rate=1.0, trade_amount=1_000_000_000,
+            avg_amt_5d=40, strength=100.0,
+            cur_price=cur_price, change=700, market_type="0", nxt_enable=False,
+            guard_pass=guard_pass,
+        )
+        return BuyTarget(rank=1, sector_rank=1, stock=s, reject_reason=reject_reason)
+
+    def _make_ss(self, buy_targets=None):
+        from backend.app.domain.models import SectorSummary
+        if buy_targets is None:
+            buy_targets = [self._make_bt()]
+        return SectorSummary(sectors=[], buy_targets=buy_targets, blocked_targets=[], version=1)
+
+    def _default_settings(self, **overrides):
+        s = {
+            "test_mode_on": True,
+            "buy_amt": 1_000_000,
+            "buy_amt_on": True,
+            "max_daily_total_buy_amt": 0,
+            "max_daily_total_buy_on": False,
+        }
+        s.update(overrides)
+        return s
+
+    def test_unaffordable_sets_reject_reason(self):
+        """단가 초과 (available < price) → "예수금 부족" 설정."""
+        from unittest.mock import MagicMock
+        bt = self._make_bt(cur_price=70000, reject_reason="")
+        ss = self._make_ss([bt])
+        mock_state = MagicMock()
+        mock_state.sector_summary_cache = ss
+        mock_state.integrated_system_settings_cache = self._default_settings()
+        mock_state.auto_trade = MagicMock()
+        mock_state.auto_trade._daily_buy_spent = 0
+        with patch("backend.app.services.engine_state.state", mock_state), \
+             patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm, \
+             patch("backend.app.core.trade_mode.is_test_mode", return_value=True), \
+             patch("backend.app.services.dry_run.estimate_fill_price", side_effect=lambda p, s: p):
+            mock_rm.return_value.get_withdrawable_deposit.return_value = 50_000
+            _apply_unaffordable_reject_reasons()
+        assert bt.reject_reason == "예수금 부족"
+
+    def test_affordable_clears_reject_reason(self):
+        """잔액 회복 (available >= price) → "예수금 부족" 해제."""
+        from unittest.mock import MagicMock
+        from backend.app.services.trading import BUY_REJECT_REASON_TEXT, BUY_REJECT_RISK_CASH
+        bt = self._make_bt(cur_price=70000, reject_reason=BUY_REJECT_REASON_TEXT[BUY_REJECT_RISK_CASH])
+        ss = self._make_ss([bt])
+        mock_state = MagicMock()
+        mock_state.sector_summary_cache = ss
+        mock_state.integrated_system_settings_cache = self._default_settings()
+        mock_state.auto_trade = MagicMock()
+        mock_state.auto_trade._daily_buy_spent = 0
+        with patch("backend.app.services.engine_state.state", mock_state), \
+             patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm, \
+             patch("backend.app.core.trade_mode.is_test_mode", return_value=True), \
+             patch("backend.app.services.dry_run.estimate_fill_price", side_effect=lambda p, s: p):
+            mock_rm.return_value.get_withdrawable_deposit.return_value = 10_000_000
+            _apply_unaffordable_reject_reasons()
+        assert bt.reject_reason == ""
+
+    def test_existing_reason_not_overwritten(self):
+        """기존 다른 사유(시장 급락 등) 있으면 덮어쓰지 않음."""
+        from unittest.mock import MagicMock
+        bt = self._make_bt(cur_price=70000, reject_reason="시장 지수 급락")
+        ss = self._make_ss([bt])
+        mock_state = MagicMock()
+        mock_state.sector_summary_cache = ss
+        mock_state.integrated_system_settings_cache = self._default_settings()
+        mock_state.auto_trade = MagicMock()
+        mock_state.auto_trade._daily_buy_spent = 0
+        with patch("backend.app.services.engine_state.state", mock_state), \
+             patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm, \
+             patch("backend.app.core.trade_mode.is_test_mode", return_value=True), \
+             patch("backend.app.services.dry_run.estimate_fill_price", side_effect=lambda p, s: p):
+            mock_rm.return_value.get_withdrawable_deposit.return_value = 50_000
+            _apply_unaffordable_reject_reasons()
+        assert bt.reject_reason == "시장 지수 급락"
+
+    def test_guard_pass_false_skipped(self):
+        """guard_pass=False 종목은 건드리지 않음."""
+        from unittest.mock import MagicMock
+        bt = self._make_bt(guard_pass=False, cur_price=70000, reject_reason="")
+        ss = self._make_ss([bt])
+        mock_state = MagicMock()
+        mock_state.sector_summary_cache = ss
+        mock_state.integrated_system_settings_cache = self._default_settings()
+        mock_state.auto_trade = MagicMock()
+        mock_state.auto_trade._daily_buy_spent = 0
+        with patch("backend.app.services.engine_state.state", mock_state), \
+             patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm, \
+             patch("backend.app.core.trade_mode.is_test_mode", return_value=True), \
+             patch("backend.app.services.dry_run.estimate_fill_price", side_effect=lambda p, s: p):
+            mock_rm.return_value.get_withdrawable_deposit.return_value = 50_000
+            _apply_unaffordable_reject_reasons()
+        assert bt.reject_reason == ""
+
+    def test_zero_available_skips(self):
+        """주문가능금액 0 → evaluate_buy_candidates에서 일괄 처리하므로 여기서는 스킵."""
+        from unittest.mock import MagicMock
+        bt = self._make_bt(cur_price=70000, reject_reason="")
+        ss = self._make_ss([bt])
+        mock_state = MagicMock()
+        mock_state.sector_summary_cache = ss
+        mock_state.integrated_system_settings_cache = self._default_settings()
+        mock_state.auto_trade = MagicMock()
+        mock_state.auto_trade._daily_buy_spent = 0
+        with patch("backend.app.services.engine_state.state", mock_state), \
+             patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm, \
+             patch("backend.app.core.trade_mode.is_test_mode", return_value=True):
+            mock_rm.return_value.get_withdrawable_deposit.return_value = 0
+            _apply_unaffordable_reject_reasons()
+        assert bt.reject_reason == ""
 

@@ -426,6 +426,77 @@ async def notify_desktop_sector_stocks_refresh(*, force: bool = False) -> None:
             notify_cache.prev_sent[code] = {}
 
 
+def _apply_unaffordable_reject_reasons() -> None:
+    """단가 초과 종목에 "예수금 부족" 사유 설정 (P21 투명성).
+
+    notify_buy_targets_update 시작 시 호출 — 화면 갱신 시점에 사유를 설정하여
+    매수 평가 루프(evaluate_buy_candidates)와 분리. snapshot·깜빡임 문제 없음.
+
+    판정 기준 (buy_order_executor._refresh_buyable_prices와 동일 — P10 SSOT):
+      - guard_pass=True, 다른 차단 사유 없는 종목만 대상
+      - 주문가능금액으로 1주도 살 수 없으면 "예수금 부족" 설정
+      - 매수 가능하면 "예수금 부족" 해제 (잔액 회복 후)
+      - 기존에 다른 사유(시장 급락 등)가 있으면 건드리지 않음
+    """
+    from backend.app.services.engine_state import state
+    from backend.app.services import dry_run
+    from backend.app.services import settlement_engine
+    from backend.app.core.trade_mode import is_test_mode
+    from backend.app.services.trading import BUY_REJECT_REASON_TEXT, BUY_REJECT_RISK_CASH
+
+    ss = state.sector_summary_cache
+    if not ss:
+        return
+    _cash_short_text = BUY_REJECT_REASON_TEXT.get(BUY_REJECT_RISK_CASH, "")
+    if not _cash_short_text:
+        return
+    _available = 0
+    try:
+        from backend.app.services.risk_manager import get_risk_manager
+        _available = get_risk_manager().get_withdrawable_deposit()
+    except Exception:
+        logger.warning("[알림] 주문가능금액 조회 실패 — 단가 초과 사유 설정 생략", exc_info=True)
+        return
+    if _available <= 0:
+        return  # 잔액 0은 evaluate_buy_candidates에서 risk_cash로 일괄 처리
+    _is_test = is_test_mode(state.integrated_system_settings_cache)
+    _settings = state.integrated_system_settings_cache
+    _buy_amt = int(_settings.get("buy_amt", 0))
+    _buy_amt_on = bool(_settings.get("buy_amt_on", True))
+    _max_daily = int(_settings.get("max_daily_total_buy_amt", 0))
+    _max_daily_on = bool(_settings.get("max_daily_total_buy_on", False))
+    if _buy_amt_on:
+        if _max_daily_on and _max_daily > 0:
+            _daily_remain = _max_daily - (state.auto_trade._daily_buy_spent or 0)
+            _effective_buy_amt = min(_buy_amt, _daily_remain) if state.auto_trade else _buy_amt
+        else:
+            _effective_buy_amt = _buy_amt
+    else:
+        if _max_daily_on and _max_daily > 0 and state.auto_trade:
+            _effective_buy_amt = _max_daily - (state.auto_trade._daily_buy_spent or 0)
+        else:
+            _effective_buy_amt = None
+    for bt in ss.buy_targets:
+        s = bt.stock
+        if not s.guard_pass:
+            continue
+        # 기존에 다른 사유가 있으면 건드리지 않음
+        if bt.reject_reason and bt.reject_reason != _cash_short_text:
+            continue
+        _price = s.cur_price
+        if _price is None or _price <= 0:
+            continue
+        _est_price = dry_run.estimate_fill_price(_price, "BUY") if _is_test else _price
+        _max_for_code = min(_effective_buy_amt, _available) if _effective_buy_amt is not None else _available
+        _can_buy = settlement_engine.max_buy_qty_for_budget(_est_price, _max_for_code, _is_test) > 0
+        if not _can_buy:
+            if bt.reject_reason != _cash_short_text:
+                bt.reject_reason = _cash_short_text
+        else:
+            if bt.reject_reason == _cash_short_text:
+                bt.reject_reason = ""
+
+
 # 매수 후보 delta 비교 키 — 정적 필드만 포함 (실시간·이벤트 필드는 sectorStocks SSOT에서 파생).
 # P10(SSOT) + P22(데이터 정합성) + P23(일관성): 프론트 applyBuyTargetsUpdate same 비교 키와 동일 기준.
 # 실시간 필드(cur_price/change/change_rate/strength/trade_amount)는 매 틱마다 변하므로
@@ -453,6 +524,11 @@ async def notify_buy_targets_update() -> None:
       - 초기 상태(prev_buy_targets_map is None): buy-targets-update 전체 리스트 전송 (실시간 필드·news_boost 포함).
         이후 sector-stocks-refresh → 프론트 rebindBuyTargetsRealtime이 실시간 필드 정정.
     """
+    # 단가 초과 종목에 "예수금 부족" 사유 설정 (P21 투명성).
+    # 화면 갱신 시점에 실행하여 매수 평가 루프와 분리 — snapshot·깜빡임 문제 없음.
+    # 기존에 다른 사유(시장 급락 등)가 있으면 건드리지 않고, 빈 칸인 경우만 채운다.
+    _apply_unaffordable_reject_reasons()
+
     from backend.app.services.sector_data_provider import get_buy_targets_sector_stocks
 
     targets = await get_buy_targets_sector_stocks()
