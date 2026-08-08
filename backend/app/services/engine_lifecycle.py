@@ -243,11 +243,18 @@ async def on_trade_mode_switched() -> None:
     if not is_engine_running() or not ws or not ws.is_connected():
         return
 
+    # 구독 전환 실패 시 사용자 알림 전송 — 자동 롤백 금지 (설계서 결정 3 + 기각안).
+    # DB·캐시는 새 모드이나 구독이 이전 모드인 불일치 상태를 사용자가 인지하여 수동 대응하도록 알림만 전송 (W10 사용자 투명성).
+    _subscribe_failed_reason: str | None = None
     if _new_test:
         # 실전→테스트: 계좌 실시간 구독(00/04) 해제, 분석용 구독은 유지
         from backend.app.services.engine_ws_reg import _unreg_grp
-        await _unreg_grp("10")
-        logger.info("[구독] 테스트모드 전환 — 계좌 실시간 구독 해제")
+        try:
+            await _unreg_grp("10")
+            logger.info("[구독] 테스트모드 전환 — 계좌 실시간 구독 해제")
+        except Exception as e:
+            _subscribe_failed_reason = "unreg_failed"
+            logger.error("[구독] 테스트모드 전환 — 계좌 구독 해제 실패: %s", e, exc_info=True)
         # Settlement Engine: 상태 로드 (모드 전환 시 복원 목적) + 만료 항목 정리 + 타이머 재스케줄
         # load_state는 기동 시(로드)와 모드 전환 시(복원) 양쪽에 사용되는 dual-purpose 함수
         await settlement_engine.load_state()
@@ -257,9 +264,13 @@ async def on_trade_mode_switched() -> None:
         await settlement_engine.save_state()
         logger.info("[연산] 실전투자 전환 — 정산 엔진 상태 저장")
         # 테스트→실전: 계좌 실시간 구독(00/04) + 보유종목 실시간(0B) 등록
-        await _subscribe_account_realtime()
-        await _subscribe_positions_stocks_realtime()
-        logger.info("[구독] 실전투자 전환 — 계좌 + 보유종목 실시간 구독")
+        try:
+            await _subscribe_account_realtime()
+            await _subscribe_positions_stocks_realtime()
+            logger.info("[구독] 실전투자 전환 — 계좌 + 보유종목 실시간 구독")
+        except Exception as e:
+            _subscribe_failed_reason = "subscribe_failed"
+            logger.error("[구독] 실전투자 전환 — 계좌/보유종목 구독 등록 실패: %s", e, exc_info=True)
 
     # 모드 전환 후 계좌 스냅샷 즉시 갱신
     await _refresh_account_snapshot_meta()
@@ -267,6 +278,16 @@ async def on_trade_mode_switched() -> None:
 
     # 엔진 상태 브로드캐스트 (프론트엔드 헤더 테스트모드 표시 갱신)
     await broadcast_engine_status()
+
+    # 구독 전환 실패 시 사용자 알림 전송 — 4단계 프론트엔드 핸들러와 동일 구조 (설계서 결정 3).
+    # _safe_broadcast 재사용 — 새 알림 함수·이벤트 시스템 추가 없음 (W12 중복·과잉 추상화 금지).
+    # 이벤트명은 하이픈(kebab-case) 규칙 준수 — 4단계 프론트엔드 핸들러와 매칭 (태스크 4-2 명시).
+    if _subscribe_failed_reason is not None:
+        from backend.app.services.engine_account_notify import _safe_broadcast
+        await _safe_broadcast(
+            "trade-mode-switch-failed",
+            {"type": "trade_mode_switch_failed", "reason": _subscribe_failed_reason, "mode": _mode_str},
+        )
 
 
 # ── 업종 매수 ─────────────────────────────────────────────────────

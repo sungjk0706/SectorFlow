@@ -45,7 +45,28 @@ async def apply_settings_change(changed_keys: set[str]) -> None:
 
     # ── 1) RAM 캐시 갱신 — PATCH 저장 직후 DB 최신값을 캐시에 반영 ──────────────
     # [핵심] DB 저장 후 브로드캐스트 전에 반드시 캐시를 갱신해야 최신 값이 전송됨.
-    await refresh_engine_integrated_system_settings_cache(None, use_root=True)
+    # 모드 전환 시 캐시 갱신 실패 → DB를 이전 모드로 복원하여 저장값-작동값 일관성 유지 (W4 단계 간 정합성).
+    # 일반 설정 변경의 캐시 갱신 실패는 기존 동작 유지 (범위 한정 — 설계서 결정 3).
+    _is_mode_switch = bool(changed_keys & TRADE_MODE_KEYS)
+    _prev_trade_mode = (
+        engine_state.state.integrated_system_settings_cache.get("trade_mode")
+        if _is_mode_switch else None
+    )
+    try:
+        await refresh_engine_integrated_system_settings_cache(None, use_root=True)
+    except Exception:
+        logger.warning("[설정] 캐시 갱신 실패", exc_info=True)
+        if _is_mode_switch and _prev_trade_mode is not None:
+            try:
+                from backend.app.core.settings_file import save_selected_settings
+                await save_selected_settings({"trade_mode": _prev_trade_mode})
+                logger.info("[설정] 모드 전환 캐시 갱신 실패 — DB를 이전 모드로 복원: %s", _prev_trade_mode)
+            except Exception:
+                logger.error(
+                    "[설정] 모드 전환 캐시 갱신 실패 후 DB 복원도 실패 — 저장값과 작동값 불일치 가능",
+                    exc_info=True,
+                )
+        raise
 
     # ── 2) broker / confirmed_data_broker 변경 → 엔진 재기동 (단일 진입점 보장, 조기 종료) ────────────
     # confirmed_data_broker: 확정 시세 다운로드 증권사 — startup 토큰 발급 대상은 아니나
