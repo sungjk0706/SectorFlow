@@ -143,7 +143,7 @@ export function bindWSToStore(
     applyEngineStatus(data as EngineStatusPayload)
   })
 
-  /* ── trade-mode-switch-failed: 런타임 투자모드 전환 실패 알림 (R-5) ──
+  /* ── trade-mode-switch-failed: 런타임 매매모드 전환 실패 알림 (R-5) ──
    *  구독 전환 실패 시 백엔드가 전송. 화면 상태 적용 + 토스트 에러 알림.
    *  circuit-breaker-open 핸들러 패턴과 동일 (showToast + 상태 적용). */
   settingsClient.onEvent('trade-mode-switch-failed', (data) => {

@@ -10,7 +10,7 @@
 // - general-settings-news-settings-tab.ts: 뉴스 설정 탭 (Step 2 신설)
 // - general-settings-display-settings-tab.ts: 화면 설정 탭 (Step 2 신설)
 // - general-settings-telegram-tab.ts: 텔레그램 탭
-// - general-settings-account-tab.ts: 투자모드 탭
+// - general-settings-account-tab.ts: 매매모드 탭
 // - general-settings-api-settings-tab.ts: API 설정 탭
 
 import { uiStore } from '../stores/uiStore'
@@ -83,7 +83,7 @@ function renderTabBar(): HTMLElement {
     { id: 'time-settings', label: '시간 설정' },
     { id: 'news-settings', label: '뉴스 설정' },
     { id: 'display-settings', label: '화면 설정' },
-    { id: 'account-manage', label: '투자모드' },
+    { id: 'account-manage', label: '매매모드' },
     { id: 'api-settings', label: 'API 설정' },
     { id: 'telegram', label: '텔레그램' },
   ]
@@ -116,7 +116,7 @@ function refreshUI(): void {
 
 /* ── 설정 동기화 ── */
 // Step 2 분할: syncAutoTradeTab/syncTimeSettingsTab/syncNewsSettingsTab/syncDisplaySettingsTab은 각 탭 파일로 이관.
-// 본 파일에는 텔레그램/투자모드/API 설정 탭 동기화만 잔류.
+// 본 파일에는 텔레그램/매매모드/API 설정 탭 동기화만 잔류.
 
 function syncTelegramTab(r: Record<string, unknown>): void {
   const act = document.activeElement

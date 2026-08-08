@@ -155,7 +155,7 @@ def broker_credential_block_reason(broker_name: str) -> str:
 
 
 def _build_operation_settings(merged: dict, tm: str) -> dict:
-    """운영 설정: 증권사, 투자모드, 자동매매 토글, 매수/매도 시간대."""
+    """운영 설정: 증권사, 매매모드, 자동매매 토글, 매수/매도 시간대."""
     return {
         "broker": merged["broker"],
         "trade_mode": tm,

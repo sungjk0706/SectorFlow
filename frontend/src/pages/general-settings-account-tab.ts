@@ -1,5 +1,5 @@
 // frontend/src/pages/general-settings-account-tab.ts
-// 일반설정 — 투자모드 탭 (F-04 분할, P24 단순성)
+// 일반설정 — 매매모드 탭 (F-04 분할, P24 단순성)
 // general-settings.ts에서 이관. 순수 이동, 동작 변경 없음.
 
 import { createRadioGroup, createMoneyInput } from '../components/common/setting-row'
@@ -13,7 +13,7 @@ import { applyVirtualDataResetCompleted } from '../stores/uiStore'
 import { type GeneralSettingsState, GS } from './general-settings-shared'
 
 export function renderAccountTab(state: GeneralSettingsState, container: HTMLElement): void {
-  // 투자모드 선택 (중앙정렬)
+  // 매매모드 선택 (중앙정렬)
   state.tradeModeRadioGroup = createRadioGroup({
     items: [
       { value: 'virtual', label: '가상매매' },

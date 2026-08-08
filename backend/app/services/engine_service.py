@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 async def apply_settings_change(changed_keys: set[str]) -> None:
     """설정 변경 후 엔진 동기화 (settings_store.py에서 이관).
 
-    흐름: 캐시 갱신 → broker 변경(조기 종료) → 투자모드 전환(조기 종료) →
+    흐름: 캐시 갱신 → broker 변경(조기 종료) → 매매모드 전환(조기 종료) →
     일반 설정 브로드캐스트 → 그룹별 후속 처리 → 매수 스냅샷 무효화.
     """
     from backend.app.services.engine_account_notify import (
@@ -76,7 +76,7 @@ async def apply_settings_change(changed_keys: set[str]) -> None:
     if await _handle_broker_change(changed_keys):
         return
 
-    # ── 3) 투자모드 전환 → 캐시 갱신 + 계좌 구독 전환 (조기 종료) ──────────────
+    # ── 3) 매매모드 전환 → 캐시 갱신 + 계좌 구독 전환 (조기 종료) ──────────────
     if await _handle_trade_mode_change(changed_keys):
         return
 
@@ -141,7 +141,7 @@ async def _handle_broker_change(changed_keys: set[str]) -> bool:
 
 
 async def _handle_trade_mode_change(changed_keys: set[str]) -> bool:
-    """투자모드 전환 시 캐시 갱신 + 계좌 구독 전환. 처리했으면 True(조기 종료), 아니면 False."""
+    """매매모드 전환 시 캐시 갱신 + 계좌 구독 전환. 처리했으면 True(조기 종료), 아니면 False."""
     from backend.app.services.engine_account_notify import (
         notify_desktop_header_refresh,
         notify_desktop_settings_toggled,
@@ -155,7 +155,7 @@ async def _handle_trade_mode_change(changed_keys: set[str]) -> bool:
         # await는 이벤트 루프 양보이지 블로킹이 아님 — 단일 루프 원칙 유지 (W1).
         # 모드 전환은 사용자 수동 조작의 드문 이벤트라 수십~수백 ms 대기는 체감 미미 (설계서 결정 2).
         await on_trade_mode_switched()
-        logger.info("[설정] 투자모드 전환 감지 — 저장데이터 갱신 + 계좌 구독 전환 (엔진 재기동 없음)")
+        logger.info("[설정] 매매모드 전환 감지 — 저장데이터 갱신 + 계좌 구독 전환 (엔진 재기동 없음)")
     await notify_desktop_header_refresh()
     await notify_desktop_settings_toggled()
     return True

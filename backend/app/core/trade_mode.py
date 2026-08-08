@@ -12,7 +12,7 @@ LIVE 수신 시 type "0B"는 engine_service._normalize_real_type 에서 "01"과 
 
 
 def normalize_trade_mode(value: object | None) -> str:
-    """투자모드 입력을 내부 표준값인 'virtual' 또는 'live'로 정규화한다.
+    """매매모드 입력을 내부 표준값인 'virtual' 또는 'live'로 정규화한다.
 
     매핑: 'virtual'→'virtual', 'live'→'live', 그 외/None→'virtual' (fail-closed).
     """

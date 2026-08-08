@@ -100,7 +100,7 @@ export interface UIState {
   positionBuildFailed: boolean  // 가상매매 포지션 구축 실패 (보유 종목 비어있음)
   degradedMode: boolean         // 감소 모드 기동 (종목 데이터 불완전)
 
-  /* ── 런타임 투자모드 전환 실패 알림 (R-5 — 구독 전환 실패, 클릭 시 해제) ──
+  /* ── 런타임 매매모드 전환 실패 알림 (R-5 — 구독 전환 실패, 클릭 시 해제) ──
    *  DB·캐시는 새 모드이나 구독이 이전 모드인 불일치 상태를 사용자에게 알림.
    *  자동 롤백 금지 — 사용자가 수동 대응(재전환 시도 또는 앱 재기동). */
   tradeModeSwitchFailed: { reason: string; mode: string } | null
@@ -296,7 +296,7 @@ export function clearDegradedMode(): void {
   uiStore.setState({ degradedMode: false })
 }
 
-/* ── trade-mode-switch-failed: 런타임 투자모드 전환 실패 알림 (R-5) ──
+/* ── trade-mode-switch-failed: 런타임 매매모드 전환 실패 알림 (R-5) ──
  *  구독 전환 실패 시 백엔드가 전송. reason/mode 누락 시 기본값으로 보정 (P20 명시적 값). */
 export function applyTradeModeSwitchFailed(data: { reason?: string; mode?: string }): void {
   uiStore.setState({ tradeModeSwitchFailed: {

@@ -229,14 +229,14 @@ def get_engine_status() -> dict:
 # ── 투자 모드 전환 ─────────────────────────────────────────────────
 
 async def on_trade_mode_switched() -> None:
-    """투자모드 전환 시 호출 — 엔진 재기동 없이 계좌 구독 상태만 전환한다."""
+    """매매모드 전환 시 호출 — 엔진 재기동 없이 계좌 구독 상태만 전환한다."""
     from backend.app.services import settlement_engine
     from backend.app.services.engine_ws import _subscribe_account_realtime, _subscribe_positions_stocks_realtime
     from backend.app.services.engine_account import _refresh_account_snapshot_meta, _broadcast_account
 
     _new_virtual = is_virtual_mode(engine_state.state.integrated_system_settings_cache)
     _mode_str = "가상매매" if _new_virtual else "실전매매"
-    logger.info("[연산] 투자모드 전환 — %s (엔진 재기동 없음)", _mode_str)
+    logger.info("[연산] 매매모드 전환 — %s (엔진 재기동 없음)", _mode_str)
 
     # BrokerRouter를 통해 현재 연결된 커넥터 확인 (증권사 하드코딩 제거)
     ws = engine_state.state.connector_manager

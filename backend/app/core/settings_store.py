@@ -230,7 +230,7 @@ def _prepare_save_payload(data: dict, before: dict) -> tuple[dict, dict]:
     mode_keys = {"trade_mode"}
     if set(data.keys()) & mode_keys:
         logger.info(
-            "[설정] 투자모드 업데이트 요청: trade_mode=%s keys=%s",
+            "[설정] 매매모드 업데이트 요청: trade_mode=%s keys=%s",
             after.get("trade_mode", before.get("trade_mode")),
             sorted(list(set(data.keys()) & mode_keys)),
         )

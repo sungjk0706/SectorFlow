@@ -10,7 +10,7 @@
 // - general-settings-news-settings-tab.ts: 뉴스 설정 탭 (Step 2 신설)
 // - general-settings-display-settings-tab.ts: 화면 설정 탭 (Step 2 신설)
 // - general-settings-telegram-tab.ts: 텔레그램 탭
-// - general-settings-account-tab.ts: 투자모드 탭
+// - general-settings-account-tab.ts: 매매모드 탭
 // - general-settings-api-settings-tab.ts: API 설정 탭
 
 import type { SettingsManager } from '../settings'

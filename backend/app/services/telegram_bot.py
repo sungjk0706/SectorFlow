@@ -206,7 +206,7 @@ def _build_settings_lines(flat: dict) -> str:
         f"🔰 마스터: {on_off('time_scheduler_on')}",
         f" 매수: {on_off('auto_buy_on')} ({flat.get('buy_time_start', '?')}~{flat.get('buy_time_end', '?')})",
         f"🏪 매도: {on_off('auto_sell_on')} ({flat.get('sell_time_start', '?')}~{flat.get('sell_time_end', '?')})",
-        f"🎯 투자모드: {mode_txt}",
+        f"🎯 매매모드: {mode_txt}",
     ]
 
     # 매수 조건 (매수 차단 — 개별 종목 단위, P23 책임 분리)

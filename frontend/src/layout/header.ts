@@ -290,7 +290,7 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
   logo.appendChild(logoText)
   header.appendChild(logo)
 
-  // 투자모드 칩 (로고 바로 우측, 독립적 위치 — 시각적 우선순위)
+  // 매매모드 칩 (로고 바로 우측, 독립적 위치 — 시각적 우선순위)
   const modeChip = createChipEl()
   modeChip.style.display = 'none'
   modeChip.style.marginRight = 'auto'

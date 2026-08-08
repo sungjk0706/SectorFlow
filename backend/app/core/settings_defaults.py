@@ -22,7 +22,7 @@ DEFAULT_USER_SETTINGS: dict[str, Any] = {
     "telegram_bot_token_virtual": "",
     "telegram_bot_token_live": "",
     
-    # 투자모드
+    # 매매모드
     "trade_mode": "virtual",
     "virtual_deposit": 10000000,
     "virtual_balance": 10000000,
