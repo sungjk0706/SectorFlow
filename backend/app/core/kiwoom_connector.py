@@ -368,6 +368,73 @@ class KiwoomConnector(BrokerConnector):
             logger.warning("[연결] %s 업종지수(0J) 구독 응답 시간 초과", _BROKER_DISPLAY)
         return ok
 
+    async def subscribe_account(self) -> bool:
+        """계좌 실시간(주문체결 00, 잔고 04) 구독 등록 — grp_no=10, ACK 대기.
+
+        기존 engine_ws_reg.subscribe_account_realtime()의 전송 로직을 이 메서드로 이동.
+        계좌번호 미설정 경고 로직도 본 메서드 내부로 이동 (3단계에서 공통 로직 교체 시 활용).
+        """
+        if not self.is_connected() or not self._socket:
+            logger.warning("[연결] %s 계좌 구독 실패 — 연결 없음", _BROKER_DISPLAY)
+            return False
+
+        from backend.app.services.engine_state import state
+        s = state.integrated_system_settings_cache
+        acnt = str(s.get("kiwoom_account_no", "") or "").strip()
+        if not acnt:
+            logger.warning("[계좌] 계좌번호 미설정 — 구독 요청은 빈값으로 전송")
+
+        from backend.app.core.kiwoom_ws_reg import build_account_reg_payload
+        from backend.app.services.engine_ws import _ws_send_reg_unreg_and_wait_ack
+        payload = build_account_reg_payload()
+        try:
+            ok, _rc = await _ws_send_reg_unreg_and_wait_ack(payload, sender=self)
+            if ok:
+                logger.info(
+                    "[계좌] %s 계좌 구독 완료 — 계좌 설정=%s",
+                    _BROKER_DISPLAY, "Y" if acnt else "N",
+                )
+            else:
+                logger.warning("[계좌] %s 계좌 구독 응답 시간 초과", _BROKER_DISPLAY)
+            return ok
+        except Exception as e:
+            logger.warning("[계좌] %s 계좌 구독 실패: %s", _BROKER_DISPLAY, e, exc_info=True)
+            return False
+
+    async def unsubscribe_account(self) -> bool:
+        """계좌 실시간 구독 해지 — REMOVE grp_no=10, ACK 대기 없이 전송 (fire-and-forget).
+
+        기존 daily_time_scheduler의 if broker_nm == "kiwoom" 블록 전송 로직을 이 메서드로 이동.
+        계좌번호 확인 로직도 본 메서드 내부로 이동 (3단계에서 공통 로직 교체 시 활용).
+        """
+        if not self.is_connected() or not self._socket:
+            return False
+
+        from backend.app.services.engine_state import state
+        s = state.integrated_system_settings_cache
+        acnt = str(s.get("kiwoom_account_no", "") or "").strip()
+        if not acnt:
+            logger.warning("[계좌] %s 계좌번호 미설정 — 구독 해지 생략", _BROKER_DISPLAY)
+            return False
+
+        # grp_no=10 계좌 구독 해지 — REMOVE 페이로드 직접 조립 후 전송.
+        payload = {
+            "trnm":    "REMOVE",
+            "grp_no":  "10",
+            "refresh": "1",
+            "data":    [{"item": [""], "type": ["00"]}, {"item": [""], "type": ["04"]}],
+        }
+        try:
+            ok = await self.send_message(payload)
+            if ok:
+                logger.info("[계좌] %s 계좌 구독 해지 전송", _BROKER_DISPLAY)
+            else:
+                logger.warning("[계좌] %s 계좌 구독 해지 전송 실패", _BROKER_DISPLAY)
+            return ok
+        except Exception as e:
+            logger.warning("[계좌] %s 계좌 구독 해지 실패: %s", _BROKER_DISPLAY, e, exc_info=True)
+            return False
+
     async def _reconnect_socket(self, token: str) -> None:
         """재연결 시 소켓만 다시 맺는다 (토큰은 이미 발급됨). 베이스 _reconnect_loop에서 호출."""
         self._token = token

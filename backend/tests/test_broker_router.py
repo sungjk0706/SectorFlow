@@ -35,6 +35,7 @@ def _mock_settings(
             "order": broker,
             "sector": broker,
             "auth": broker,
+            "account": broker,
         }
     else:
         # 부분 broker_config 병합 — 누락 feature는 기본 broker로 채움 (P20 정규화 준수)
@@ -43,6 +44,7 @@ def _mock_settings(
             "order": broker,
             "sector": broker,
             "auth": broker,
+            "account": broker,
         }
         full.update(broker_config)
         broker_config = full

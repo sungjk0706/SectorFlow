@@ -606,6 +606,21 @@ class LsConnector(BrokerConnector):
                 success_all = False
         return success_all
 
+    async def subscribe_account(self) -> bool:
+        """계좌 실시간 구독 — LS는 소켓 연결 시 계좌 등록을 수행하므로 no-op.
+
+        LS증권은 소켓 연결 및 로그인 핸드셰이크 단계에서 계좌 등록(tr_type="1")을
+        수행하므로 별도 전송 없이 True 반환.
+        """
+        return True
+
+    async def unsubscribe_account(self) -> bool:
+        """계좌 실시간 구독 해지 — LS는 소켓 종료로 자동 해지되므로 no-op.
+
+        LS증권은 소켓 종료 시 실시간 구독이 자동 해지되므로 별도 전송 없이 True 반환.
+        """
+        return True
+
     async def subscribe_news(self) -> bool:
         """실시간 뉴스(NWS) 구독 등록 — 단건 스트림 (tr_key=NWS001). JIF 패턴과 동일 구조."""
         if not self.is_connected() or not self._socket:

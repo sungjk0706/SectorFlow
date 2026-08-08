@@ -319,6 +319,7 @@ def _normalize_broker_config(merged: dict) -> dict:
         "order": broker,
         "sector": broker,
         "auth": broker,
+        "account": broker,
     }
 
 

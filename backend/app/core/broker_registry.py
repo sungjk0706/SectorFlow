@@ -34,6 +34,7 @@ BROKER_TIMEOUT_DEFAULT: float = 10.0
 def _lazy_kiwoom_registry() -> dict[str, type]:
     """순환 import 방지: 최초 접근 시 키움 Provider 클래스 로드."""
     from backend.app.core.kiwoom_providers import (
+        KiwoomAccountProvider,
         KiwoomAuthProvider,
         KiwoomOrderProvider,
         KiwoomWebSocketProvider,
@@ -45,13 +46,14 @@ def _lazy_kiwoom_registry() -> dict[str, type]:
         "order":     KiwoomOrderProvider,
         "websocket": KiwoomWebSocketProvider,
         "stock":     KiwoomStockProvider,
-        # "account": KiwoomAccountProvider,  # 2단계에서 구현체 추가 후 연결
+        "account":   KiwoomAccountProvider,
     }
 
 
 def _lazy_ls_registry() -> dict[str, type]:
     """순환 import 방지: 최초 접근 시 LS Provider 클래스 로드."""
     from backend.app.core.ls_providers import (
+        LsAccountProvider,
         LsAuthProvider,
         LsOrderProvider,
         LsWebSocketProvider,
@@ -60,7 +62,7 @@ def _lazy_ls_registry() -> dict[str, type]:
         "auth":      LsAuthProvider,
         "order":     LsOrderProvider,
         "websocket": LsWebSocketProvider,
-        # "account": LsAccountProvider,  # 2단계에서 구현체 추가 후 연결
+        "account":   LsAccountProvider,
     }
 
 

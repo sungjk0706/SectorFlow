@@ -5,7 +5,7 @@ LS증권 Provider 구현체
 from __future__ import annotations
 import logging
 from backend.app.core.broker_providers import (
-    AuthProvider, OrderProvider, WebSocketProvider
+    AccountProvider, AuthProvider, OrderProvider, WebSocketProvider
 )
 from backend.app.core.ls_rest import LsRestAPI
 from backend.app.core.broker_urls import BROKER_DISPLAY_NAMES
@@ -104,3 +104,43 @@ class LsOrderProvider(OrderProvider):
 class LsWebSocketProvider(WebSocketProvider):
     def __init__(self, auth_provider: AuthProvider):
         pass
+
+
+# ── Account Provider ────────────────────────────────────────────────────────
+class LsAccountProvider(AccountProvider):
+    """LS증권 계좌 데이터 파싱 — 최소 인터페이스 구현.
+
+    LS 실전 체결·잔고 응답 구조가 확정되지 않은 메서드는 NotImplementedError로 두고
+    G-2(LS 실전 체결·잔고 구현) 보완 갭에서 완성한다.
+    LS는 소켓 연결 시 계좌 등록을 수행하므로 실시간 계좌 파싱은 LS 실시간 메시지
+    형식에 맞춰 G-2에서 구현 예정.
+    """
+
+    def __init__(self, auth_provider: AuthProvider | None = None):
+        # AccountProvider는 순수 파싱 위임이므로 auth_provider 불필요.
+        # _create_provider가 auth_provider 주입 패턴으로 호출하므로 시그니처만 맞춤.
+        pass
+
+    @property
+    def broker_name(self) -> str:
+        return "ls"
+
+    def parse_deposit(self, raw: dict) -> tuple:
+        # LS 실전 예수금 조회 응답 구조 확정 후 G-2에서 구현.
+        raise NotImplementedError("LS 예수금 파싱은 G-2(LS 실전 체결·잔고 구현)에서 완성 예정")
+
+    def parse_balance(self, raw: dict, deposit) -> tuple:
+        # LS 실전 잔고 조회 응답 구조 확정 후 G-2에서 구현.
+        raise NotImplementedError("LS 잔고 파싱은 G-2(LS 실전 체결·잔고 구현)에서 완성 예정")
+
+    def is_realtime_stock_item(self, item: dict) -> bool:
+        # LS 실시간 메시지 형식 확정 후 G-2에서 구현.
+        raise NotImplementedError("LS 실시간 종목 판별은 G-2(LS 실전 체결·잔고 구현)에서 완성 예정")
+
+    def apply_realtime_position_line(self, item, vals, positions, extra) -> None:
+        # LS 실시간 보유 종목 반영 형식 확정 후 G-2에서 구현.
+        raise NotImplementedError("LS 실시간 보유 종목 반영은 G-2(LS 실전 체결·잔고 구현)에서 완성 예정")
+
+    def compute_realtime_account_delta(self, vals: dict) -> dict:
+        # LS 실시간 계좌 단위 갱신 형식 확정 후 G-2에서 구현.
+        raise NotImplementedError("LS 실시간 계좌 갱신은 G-2(LS 실전 체결·잔고 구현)에서 완성 예정")

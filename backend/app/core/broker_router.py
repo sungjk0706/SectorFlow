@@ -22,7 +22,7 @@ from backend.app.core.broker_urls import BROKER_DISPLAY_NAMES
 
 logger = logging.getLogger(__name__)
 
-FEATURES = ("order", "auth", "websocket")
+FEATURES = ("order", "auth", "websocket", "account")
 
 # 기능 → 한글 표시 이름
 _FEATURE_DISPLAY: dict[str, str] = {
@@ -127,7 +127,6 @@ class BrokerRouter:
 
     @property
     def account(self) -> AccountProvider:
-        # 2단계에서 FEATURES에 "account" 추가 후 _providers에 반영됨.
         return self._providers["account"]  # type: ignore[return-value]
 
     # ── 검증 ──────────────────────────────────────────────────────────

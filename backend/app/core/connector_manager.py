@@ -244,6 +244,17 @@ class ConnectorManager:
                 return await c.subscribe_account() # type: ignore
         return False
 
+    async def unsubscribe_account(self) -> bool:
+        """계좌 실시간 구독 해지 라우팅 — unsubscribe_account() 구현 커넥터에 위임.
+
+        subscribe_account()와 동일 패턴: hasattr 체크 후 위임.
+        LS는 no-op(True 반환), 키움은 REMOVE grp_no=10 전송.
+        """
+        for c in self._connectors.values():
+            if c.is_connected() and hasattr(c, "unsubscribe_account"):
+                return await c.unsubscribe_account() # type: ignore
+        return False
+
     async def subscribe_index(self) -> bool:
         """업종지수 실시간 구독 라우팅 — subscribe_index() 구현 커넥터에 위임"""
         for c in self._connectors.values():

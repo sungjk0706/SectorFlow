@@ -12,6 +12,7 @@ from __future__ import annotations
 import logging
 from typing import Callable, Optional
 from backend.app.core.broker_providers import (
+    AccountProvider,
     AuthProvider,
     OrderProvider,
     RawStockFetchResult,
@@ -180,4 +181,44 @@ class KiwoomWebSocketProvider(WebSocketProvider):
         auth_provider: Optional[KiwoomAuthProvider] = None,
     ):
         pass
+
+
+# ── Account Provider ────────────────────────────────────────────────────────
+class KiwoomAccountProvider(AccountProvider):
+    """키움 계좌 데이터 파싱 — 기존 kiwoom_account_parsing 함수 호출 위임.
+
+    파싱 로직 자체는 kiwoom_account_parsing.py에 유지 (단일 진실 소스).
+    본 Provider는 인터페이스 계약만 충족하여 공통 로직이 증권사 식별자 없이
+    계좌 데이터를 처리할 수 있도록 한다.
+    """
+
+    def __init__(self, auth_provider: Optional[KiwoomAuthProvider] = None):
+        # AccountProvider는 순수 파싱 위임이므로 auth_provider 불필요.
+        # _create_provider가 auth_provider 주입 패턴으로 호출하므로 시그니처만 맞춤.
+        pass
+
+    @property
+    def broker_name(self) -> str:
+        return "kiwoom"
+
+    def parse_deposit(self, raw: dict) -> tuple:
+        from backend.app.core.kiwoom_account_parsing import parse_kt00001_deposit
+        return parse_kt00001_deposit(raw)
+
+    def parse_balance(self, raw: dict, deposit) -> tuple:
+        from backend.app.core.kiwoom_account_parsing import parse_kt00018_balance
+        return parse_kt00018_balance(raw, deposit)
+
+    def is_realtime_stock_item(self, item: dict) -> bool:
+        from backend.app.core.kiwoom_account_parsing import _real04_is_stock_item
+        return _real04_is_stock_item(item)
+
+    def apply_realtime_position_line(self, item, vals, positions, extra) -> None:
+        from backend.app.core.kiwoom_account_parsing import real04_official_apply_position_line
+        # extra는 latest_trade_prices 딕셔너리로 전달 (기존 시그니처 유지).
+        real04_official_apply_position_line(item, vals, positions, extra)
+
+    def compute_realtime_account_delta(self, vals: dict) -> dict:
+        from backend.app.core.kiwoom_account_parsing import real04_official_account_delta
+        return real04_official_account_delta(vals)
 
