@@ -1424,15 +1424,9 @@ async def _do_unreg_all() -> None:
         # Broker Abstraction: subscribe_stocks / unsubscribe_stocks 추상 API 사용
         ok = await ws.unsubscribe_stocks(all_codes)
 
-        # 키움증권일 때만 계좌 실시간도 해지 (grp 10)
-        broker_nm = str(engine_state.state.integrated_system_settings_cache["broker"]).lower().strip()
-        if broker_nm == "kiwoom":
-            acnt_no = str(engine_state.state.integrated_system_settings_cache.get(f"{broker_nm}_account_no", "") or "").strip()
-            if acnt_no:
-                await ws.send_message({
-                    "trnm": "REMOVE", "grp_no": "10", "refresh": "0",
-                    "data": [{"item": [""], "type": ["00", "04"]}],
-                })
+        # 계좌 실시간 구독 해지 — 커넥터 unsubscribe_account()가 내부에서 증권사 분기 처리
+        # (키움: grp 10 REMOVE 전송, LS: no-op). 계좌번호 확인도 구현체 내부에서 수행.
+        await ws.unsubscribe_account()
 
         # 구독 상태 초기화
         for cd in subscribed:

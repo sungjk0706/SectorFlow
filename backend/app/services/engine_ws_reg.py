@@ -15,7 +15,6 @@ from backend.app.services.engine_symbol_utils import (
 )
 from backend.app.services import engine_state
 from backend.app.core.broker_urls import BROKER_DISPLAY_NAMES
-from backend.app.core.kiwoom_ws_reg import build_account_reg_payload
 
 logger = logging.getLogger(__name__)
 
@@ -187,34 +186,21 @@ async def subscribe_index_realtime() -> bool:
 async def subscribe_account_realtime() -> None:
     """계좌 단위 실시간 구독: 주문체결(00)·잔고(04) — refresh='0'으로 누적 등록.
 
-    키움: grp_no=10으로 계좌 구독 전송.
-    LS증권: 소켓 연결 및 로그인 핸드셰이크 단계에서 계좌 등록(tr_type="1")을 수행하므로 여기서 생략.
+    커넥터 subscribe_account()가 내부에서 증권사 분기 처리
+    (키움: grp_no=10 계좌 구독 전송, LS: 소켓 연결·로그인 단계에서 자동 등록되므로 no-op).
+    계좌번호 미설정 경고도 구현체 내부에서 수행.
     """
-    s = engine_state.state.integrated_system_settings_cache
-    broker_nm = str(s.get("broker", "") or "").lower().strip()
-    if broker_nm != "kiwoom":
-        return
-
     ws = engine_state.state.connector_manager
     if not ws or not ws.is_connected():
         return
 
-    acnt = str(s.get(f"{broker_nm}_account_no", "") or "").strip()
-    if not acnt:
-        logger.warning("[계좌] 계좌번호 미설정 — 구독 요청은 빈값으로 전송")
-
-    payload = build_account_reg_payload()
     try:
-        from backend.app.services.engine_ws import _ws_send_reg_unreg_and_wait_ack
-        ok, _rc = await _ws_send_reg_unreg_and_wait_ack(payload, sender=ws)
+        ok = await ws.subscribe_account()
         if ok:
             engine_state.state.ws_account_subscribed = True
-            logger.info(
-                "[계좌] 계좌 구독 완료 — 계좌 설정=%s",
-                "Y" if acnt else "N",
-            )
+            logger.info("[계좌] 계좌 구독 완료")
         else:
-            logger.warning("[계좌] 계좌 구독 응답 시간 초과")
+            logger.warning("[계좌] 계좌 구독 응답 시간 초과 또는 미지원")
     except Exception as e:
         logger.warning("[계좌] 계좌 구독 실패: %s", e, exc_info=True)
 

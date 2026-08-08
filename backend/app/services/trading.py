@@ -11,6 +11,7 @@ from datetime import datetime
 from backend.app.services import data_manager
 from backend.app.services.auto_trading_effective import auto_buy_effective, auto_sell_effective
 from backend.app.core.broker_factory import get_router
+from backend.app.core import broker_registry
 from backend.app.core.trade_mode import is_test_mode
 from backend.app.core import journal as _journal
 from backend.app.services import dry_run
@@ -330,13 +331,12 @@ class AutoTradeManager:
 
     # ── 체결 응답 대기 (결정 2 — 주문 접수 후 체결·잔고 응답 수신까지 대기) ──────
     # 타임아웃: 키움 10초 / LS 15초 (결정 5 — 재시도 폐지 후 타임아웃은 알림 시점 기준)
-    _FILL_TIMEOUTS: dict[str, float] = {"kiwoom": 10.0, "ls": 15.0}
-    _FILL_TIMEOUT_DEFAULT: float = 10.0
+    # 증권사별 값은 broker_registry.BROKER_TIMEOUTS에서 단일 관리 (P10).
 
     def _fill_timeout_for(self, settings: dict) -> float:
         """설정의 증권사별 체결 응답 타임아웃 반환 (P18 — 모드 무관 동일)."""
         broker = str(settings.get("broker", "") or "").lower()
-        return self._FILL_TIMEOUTS.get(broker, self._FILL_TIMEOUT_DEFAULT)
+        return broker_registry.BROKER_TIMEOUTS.get(broker, broker_registry.BROKER_TIMEOUT_DEFAULT)
 
     def _begin_fill_await(self, stk_cd: str) -> None:
         """체결 응답 대기 시작 — 이벤트 생성 (가상 체결 동기 호출 전 또는 실전 주문 전송 전 호출).
