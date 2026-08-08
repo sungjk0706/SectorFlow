@@ -94,7 +94,7 @@ export interface UIState {
   dailyBuyStateFailed: boolean
 
   /* ── 테스트 예수금 검증 실패 (사후 1회성 — 헤더 칩 알림) ── */
-  testCashFailed: { stk_cd: string; reason: string } | null
+  virtualCashFailed: { stk_cd: string; reason: string } | null
 
   /* ── 엔진 기동 상태 경고 (P21 — 지속 상태, 엔진 재기동 시 해제) ── */
   positionBuildFailed: boolean  // 가상매매 포지션 구축 실패 (보유 종목 비어있음)
@@ -129,7 +129,7 @@ const initialState: UIState = {
   riskBlockStatus: null,
   realtimeLatencyExceeded: false,
   dailyBuyStateFailed: false,
-  testCashFailed: null,
+  virtualCashFailed: null,
   positionBuildFailed: false,
   degradedMode: false,
   tradeModeSwitchFailed: null,
@@ -273,18 +273,18 @@ export function applyDailyBuyStateStatus(data: { failed?: boolean }): void {
   uiStore.setState({ dailyBuyStateFailed: !!data.failed })
 }
 
-/* ── test-cash-failed: 테스트 예수금 검증 실패 갱신 (사후 1회성 — 헤더 칩) ── */
-export function applyTestCashFailed(data: { failed?: boolean; stk_cd?: string; reason?: string }): void {
+/* ── virtual-cash-failed: 테스트 예수금 검증 실패 갱신 (사후 1회성 — 헤더 칩) ── */
+export function applyVirtualCashFailed(data: { failed?: boolean; stk_cd?: string; reason?: string }): void {
   if (data.failed) {
-    uiStore.setState({ testCashFailed: { stk_cd: data.stk_cd ?? '', reason: data.reason ?? '테스트 잔고 부족 — 매수 거부' } })
+    uiStore.setState({ virtualCashFailed: { stk_cd: data.stk_cd ?? '', reason: data.reason ?? '테스트 잔고 부족 — 매수 거부' } })
   } else {
-    uiStore.setState({ testCashFailed: null })
+    uiStore.setState({ virtualCashFailed: null })
   }
 }
 
 /* ── 테스트 잔고 부족 알림 수동 해제 (사용자 클릭) ── */
-export function clearTestCashFailed(): void {
-  uiStore.setState({ testCashFailed: null })
+export function clearVirtualCashFailed(): void {
+  uiStore.setState({ virtualCashFailed: null })
 }
 
 /* ── 엔진 기동 상태 경고 수동 해제 (사용자 클릭 — 다음 index-data까지 유지) ── */
@@ -396,7 +396,7 @@ export function applyInitialSnapshotUI(data: Record<string, unknown>): void {
     riskBlockStatus: null,
     realtimeLatencyExceeded: false,
     dailyBuyStateFailed: false,
-    testCashFailed: null,
+    virtualCashFailed: null,
     positionBuildFailed: !!(data.position_build_failed),
     degradedMode: !!(data.degraded_mode),
     engineReady: !!(data.bootstrap_done),

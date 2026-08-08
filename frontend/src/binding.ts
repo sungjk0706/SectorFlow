@@ -35,7 +35,7 @@ import {
   applyRiskBlockStatus,
   applyRealtimeLatencyStatus,
   applyDailyBuyStateStatus,
-  applyTestCashFailed,
+  applyVirtualCashFailed,
   applyMarketPhase,
   applyIndexData,
   applyEngineStatus,
@@ -336,8 +336,8 @@ export function bindWSToStore(
     applyDailyBuyStateStatus(data as { failed?: boolean })
   })
 
-  /* ── test-cash-failed: 테스트 예수금 검증 실패 (사후 1회성 — 헤더 칩 알림) ── */
-  pricesClient.onEvent('test-cash-failed', (data) => {
-    applyTestCashFailed(data as { failed?: boolean; stk_cd?: string; reason?: string })
+  /* ── virtual-cash-failed: 테스트 예수금 검증 실패 (사후 1회성 — 헤더 칩 알림) ── */
+  pricesClient.onEvent('virtual-cash-failed', (data) => {
+    applyVirtualCashFailed(data as { failed?: boolean; stk_cd?: string; reason?: string })
   })
 }

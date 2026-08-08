@@ -4,7 +4,7 @@
 
 import { uiStore } from '../stores/uiStore'
 import type { UIState } from '../stores/uiStore'
-import { clearCircuitBreakerOpen, clearRiskBlockStatus, clearTestCashFailed, clearPositionBuildFailed, clearDegradedMode, clearTradeModeSwitchFailed } from '../stores/uiStore'
+import { clearCircuitBreakerOpen, clearRiskBlockStatus, clearVirtualCashFailed, clearPositionBuildFailed, clearDegradedMode, clearTradeModeSwitchFailed } from '../stores/uiStore'
 import type { IndexData } from '../types'
 import { BROKER_LABELS } from '../components/common/broker-badge'
 import { COLOR, RADIUS, BLUR, SURFACE_ALPHA, FONT_WEIGHT } from '../components/common/ui-styles'
@@ -358,13 +358,13 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
   header.appendChild(riskBlockChip)
 
   // 테스트 잔고 부족 칩 (노란색 — 사후 1회성, 클릭 시 해제)
-  const testCashFailedChip = createChipEl()
-  testCashFailedChip.style.display = 'none'
-  testCashFailedChip.style.cursor = 'pointer'
-  testCashFailedChip.addEventListener('click', () => {
-    try { clearTestCashFailed() } catch (e) { console.error('[Header] testCashFailed clear error', e) }
+  const virtualCashFailedChip = createChipEl()
+  virtualCashFailedChip.style.display = 'none'
+  virtualCashFailedChip.style.cursor = 'pointer'
+  virtualCashFailedChip.addEventListener('click', () => {
+    try { clearVirtualCashFailed() } catch (e) { console.error('[Header] virtualCashFailed clear error', e) }
   })
-  header.appendChild(testCashFailedChip)
+  header.appendChild(virtualCashFailedChip)
 
   // 포지션 구축 실패 칩 (노란색 — 지속 상태, 클릭 시 다음 index-data까지 해제)
   const positionBuildFailedChip = createChipEl()
@@ -418,7 +418,7 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
   // ── Store 구독 ──
 
   function onStateChange(state: UIState): void {
-    const { marketPhase, avgAmtProgress, status, settings, indexData, circuitBreakerOpen, riskBlockStatus, testCashFailed, positionBuildFailed, degradedMode, tradeModeSwitchFailed } = state
+    const { marketPhase, avgAmtProgress, status, settings, indexData, circuitBreakerOpen, riskBlockStatus, virtualCashFailed, positionBuildFailed, degradedMode, tradeModeSwitchFailed } = state
 
     // P25: 칩 단위 격리 — 각 칩 렌더링 throw 시 해당 칩만 미갱신 + 로깅, 다음 칩 계속
     // (F-02 잔존 위험 해결 — onStateChange 콜백 내부 칩 간 격리)
@@ -452,17 +452,17 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
 
     // 테스트 잔고 부족 칩 (노란색 — 사후 1회성, 클릭 시 해제)
     try {
-      if (testCashFailed) {
-        testCashFailedChip.style.display = ''
-        testCashFailedChip.style.background = `${COLOR.warningBg}`
-        testCashFailedChip.style.color = `${COLOR.warning}`
-        testCashFailedChip.style.border = `1px solid ${COLOR.warning}40`
-        const reasonText = testCashFailed.reason || '테스트 잔고 부족 — 매수 거부'
-        setAlertChip(testCashFailedChip, reasonText)
+      if (virtualCashFailed) {
+        virtualCashFailedChip.style.display = ''
+        virtualCashFailedChip.style.background = `${COLOR.warningBg}`
+        virtualCashFailedChip.style.color = `${COLOR.warning}`
+        virtualCashFailedChip.style.border = `1px solid ${COLOR.warning}40`
+        const reasonText = virtualCashFailed.reason || '테스트 잔고 부족 — 매수 거부'
+        setAlertChip(virtualCashFailedChip, reasonText)
       } else {
-        testCashFailedChip.style.display = 'none'
+        virtualCashFailedChip.style.display = 'none'
       }
-    } catch (e) { console.error('[header] testCashFailed chip error', e) }
+    } catch (e) { console.error('[header] virtualCashFailed chip error', e) }
 
     // 포지션 구축 실패 칩 (노란색 — 보유 종목 불러오기 실패, 엔진은 계속 가동)
     try {

@@ -173,7 +173,7 @@ async def _broadcast_daily_buy_state_status(*, failed: bool) -> None:
         logger.warning("[매매] daily-buy-state-status 브로드캐스트 실패", exc_info=True)
 
 
-async def _broadcast_test_cash_failed(*, stk_cd: str, reason: str) -> None:
+async def _broadcast_virtual_cash_failed(*, stk_cd: str, reason: str) -> None:
     """가상매매 예수금 검증 실패를 화면에 전송 (P21 사용자 투명성).
 
     사후 1회성 이벤트 — 매수상태 배지(지속 상태 전용)가 아닌 헤더 칩으로 알림.
@@ -201,11 +201,11 @@ async def _broadcast_circuit_breaker_recovered() -> None:
         logger.warning("[매매] circuit-breaker-open 해제 브로드캐스트 실패", exc_info=True)
 
 
-async def _broadcast_test_cash_resolved() -> None:
+async def _broadcast_virtual_cash_resolved() -> None:
     """가상매매 매수 성공 시 잔고 부족 칩 해제 (P21 사용자 투명성).
 
     잔고 부족 상태가 해소되었으므로 칩도 자동 해제 — 수동 클릭 대기 불필요.
-    P23(일관성): _broadcast_test_cash_failed 패턴과 동일 (_safe_broadcast 사용).
+    P23(일관성): _broadcast_virtual_cash_failed 패턴과 동일 (_safe_broadcast 사용).
     P18(가상매매 동등성): 가상매매 전용 사유이므로 실전매매에서는 호출되지 않음.
     """
     try:
@@ -604,7 +604,7 @@ class AutoTradeManager:
                 logger.info("[매매] 매수 거부: %s (%s)", stk_cd, _reject_reason)
                 self._buy_state[stk_cd]["has_open_buy"] = False
                 # P21(사용자 투명성): 가상매매 예수금 검증 실패를 화면에 알림 — 헤더 칩 "⚠ 가상매매 잔고 부족"
-                await _broadcast_test_cash_failed(stk_cd=stk_cd, reason=_reject_reason)
+                await _broadcast_virtual_cash_failed(stk_cd=stk_cd, reason=_reject_reason)
                 return False, BUY_REJECT_VIRTUAL_CASH
 
         # ── 가상매매 가드: 가상매매면 실전 서버에 절대 주문 안 보냄 ─────────
@@ -706,7 +706,7 @@ class AutoTradeManager:
 
         # ── 가상매매 매수 성공 시 잔고 부족 칩 해제 (P21) ──
         if is_virtual_mode(raw_all):
-            await _broadcast_test_cash_resolved()
+            await _broadcast_virtual_cash_resolved()
 
         # ── 체결·잔고 응답 대기 (결정 2 — 잠금 해제 시점을 체결 응답 후로 이동) ──
         # 가상매매: 가상 체결(fake_fill_event) → on_fill_update가 이벤트 설정.

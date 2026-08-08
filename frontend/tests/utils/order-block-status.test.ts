@@ -34,7 +34,7 @@ function makeCleanUiState(): UIState {
     riskBlockStatus: null,
     realtimeLatencyExceeded: false,
     dailyBuyStateFailed: false,
-    testCashFailed: null,
+    virtualCashFailed: null,
     positionBuildFailed: false,
     degradedMode: false,
     tradeModeSwitchFailed: null,
