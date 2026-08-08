@@ -185,8 +185,8 @@ export interface AccountValsParams {
   isTestMode: boolean
   buyHistory: Record<string, unknown>[]
   sellHistory: Record<string, unknown>[]
-  realAccountContainer: HTMLDivElement | null
-  testAccountContainer: HTMLDivElement | null
+  liveAccountContainer: HTMLDivElement | null
+  virtualAccountContainer: HTMLDivElement | null
   accountValRefs: HTMLSpanElement[]
   testAccountValRefs: HTMLSpanElement[]
   holdingCountSpan: HTMLSpanElement | null
@@ -226,9 +226,9 @@ export function renderAccountVals(params: AccountValsParams): void {
   const cumPnl = { pnl: cumPnlAmt, rate: cumRate }
 
   // CSS display 토글로 모드별 컨테이너 전환
-  if (params.realAccountContainer && params.testAccountContainer) {
-    params.realAccountContainer.style.display = isTestMode ? 'none' : ''
-    params.testAccountContainer.style.display = isTestMode ? '' : 'none'
+  if (params.liveAccountContainer && params.virtualAccountContainer) {
+    params.liveAccountContainer.style.display = isTestMode ? 'none' : ''
+    params.virtualAccountContainer.style.display = isTestMode ? '' : 'none'
   }
 
   // 11행 공통 값 조립 (행 0만 모드별 상이: 테스트=누적투자금, 실전=예수금)

@@ -557,7 +557,7 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
     try {
       if (status) {
         modeChip.style.display = ''
-        applyStatusChip(modeChip, status.is_test_mode ? '테스트모드' : '실전모드', undefined, status.is_test_mode ? 'blue' : 'red')
+        applyStatusChip(modeChip, status.is_test_mode ? '가상매매' : '실전매매', undefined, status.is_test_mode ? 'blue' : 'red')
       } else {
         modeChip.style.display = 'none'
       }

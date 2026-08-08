@@ -130,7 +130,7 @@ function syncTelegramTab(r: Record<string, unknown>): void {
 }
 
 function syncAccountTab(r: Record<string, unknown>): void {
-  if (state.depositDisplay) state.depositDisplay.textContent = `${(Number(r.test_virtual_deposit) || 0).toLocaleString()}원`
+  if (state.depositDisplay) state.depositDisplay.textContent = `${(Number(r.virtual_deposit) || 0).toLocaleString()}원`
   syncTradeMode(state)
 }
 

@@ -282,7 +282,7 @@ export function restoreInitialView(state: ProfitDetailState, initState: ReturnTy
     updateSummaryCards(
       initState.dailySummary, state.summaryCardEls,
       state.sellHistory,
-      globalSettingsManager.getSettings()?.trade_mode === 'test',
+      globalSettingsManager.getSettings()?.trade_mode === 'virtual',
     )
   }
 }
@@ -312,7 +312,7 @@ function flushDirtyRender(state: ProfitDetailState): void {
     updateSummaryCards(
       hotState.dailySummary, state.summaryCardEls,
       state.sellHistory,
-      globalSettingsManager.getSettings()?.trade_mode === 'test',
+      globalSettingsManager.getSettings()?.trade_mode === 'virtual',
     )
   }
 

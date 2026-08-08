@@ -42,8 +42,8 @@ export interface ProfitOverviewState {
   testAccountValRefs: HTMLSpanElement[]
   holdingCountSpan: HTMLSpanElement | null
   holdingCountSpanTest: HTMLSpanElement | null
-  realAccountContainer: HTMLDivElement | null
-  testAccountContainer: HTMLDivElement | null
+  liveAccountContainer: HTMLDivElement | null
+  virtualAccountContainer: HTMLDivElement | null
   // 업종별 종목 수익
   sectorStockListContainer: HTMLDivElement | null
   expandToggleBtn: HTMLButtonElement | null
@@ -99,8 +99,8 @@ function createState(): ProfitOverviewState {
     testAccountValRefs: [],
     holdingCountSpan: null,
     holdingCountSpanTest: null,
-    realAccountContainer: null,
-    testAccountContainer: null,
+    liveAccountContainer: null,
+    virtualAccountContainer: null,
     sectorStockListContainer: null,
     expandToggleBtn: null,
     allExpanded: false,
@@ -181,7 +181,7 @@ function mount(container: HTMLElement): void {
   root.appendChild(refreshStatus.el)
 
   const settings = globalSettingsManager.getSettings()
-  const isTestMode = settings?.trade_mode === 'test'
+  const isTestMode = settings?.trade_mode === 'virtual'
 
   // 상단: 좌측 차트 2개 + 우측 계좌 현황
   const upper = document.createElement('div')

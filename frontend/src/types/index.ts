@@ -262,8 +262,8 @@ export interface AppSettings {
   ls_account_no: string;
 
   // 테스트 가상잔고
-  test_virtual_deposit: number;
-  test_virtual_balance: number;
+  virtual_deposit: number;
+  virtual_balance: number;
 
   // 토글
   auto_buy_on: boolean;

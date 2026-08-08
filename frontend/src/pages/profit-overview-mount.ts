@@ -41,11 +41,11 @@ export function renderAccountVals(state: ProfitOverviewState): void {
     positions: hotState.positions,
     masterStocks: hotState.masterStocks,
     positionCount: hotState.positionCount ?? 0,
-    isTestMode: settings?.trade_mode === 'test',
+    isTestMode: settings?.trade_mode === 'virtual',
     buyHistory: state.buyHistory,
     sellHistory: state.sellHistory,
-    realAccountContainer: state.realAccountContainer,
-    testAccountContainer: state.testAccountContainer,
+    liveAccountContainer: state.liveAccountContainer,
+    virtualAccountContainer: state.virtualAccountContainer,
     accountValRefs: state.accountValRefs,
     testAccountValRefs: state.testAccountValRefs,
     holdingCountSpan: state.holdingCountSpan,
@@ -74,7 +74,7 @@ function makeCenterTitle(quickLabel: string | undefined): string {
  *  rate null 시 도넛/타이틀 모두 수익률 미표시. */
 function buildDonutCenter(state: ProfitOverviewState): SectorDonutCenter {
   const settings = globalSettingsManager.getSettings()
-  const isTestMode = settings?.trade_mode === 'test'
+  const isTestMode = settings?.trade_mode === 'virtual'
   const { pnl, rate } = computeCumulativePnl({
     sellHistory: state.filteredSellHistory,
     isTestMode,
@@ -196,18 +196,18 @@ export function buildAccountPanel(state: ProfitOverviewState, isTestMode: boolea
   accountPanel.appendChild(accountHeader)
 
   // 실전모드 컨테이너
-  state.realAccountContainer = buildAccountRows(
+  state.liveAccountContainer = buildAccountRows(
     ACCOUNT_LABELS_REAL, isTestMode, state.accountValRefs,
     (el) => { state.holdingCountSpan = el },
   )
-  accountPanel.appendChild(state.realAccountContainer)
+  accountPanel.appendChild(state.liveAccountContainer)
 
   // 테스트모드 컨테이너
-  state.testAccountContainer = buildAccountRows(
+  state.virtualAccountContainer = buildAccountRows(
     ACCOUNT_LABELS_TEST, !isTestMode, state.testAccountValRefs,
     (el) => { state.holdingCountSpanTest = el },
   )
-  accountPanel.appendChild(state.testAccountContainer)
+  accountPanel.appendChild(state.virtualAccountContainer)
 
   // 업종별 종목 수익 섹션 — 타이틀 + 전체보기 버튼 + 컨테이너
   accountPanel.appendChild(buildStockListSection(state))
@@ -250,7 +250,7 @@ async function applyDateRange(
   const seq = ++state.applyDateRangeSeq
   try {
     const settings = globalSettingsManager.getSettings()
-    const tradeMode = settings?.trade_mode || 'test'
+    const tradeMode = settings?.trade_mode || 'virtual'
     let actualFrom = from
     let actualTo = to
     let actualDays = days
@@ -426,10 +426,10 @@ function flushRender(state: ProfitOverviewState): void {
       refreshFilteredViews(state)
       if (tradeModeChanged) {
         state.prevTradeMode = settings?.trade_mode
-        const isTest = settings?.trade_mode === 'test'
-        if (state.realAccountContainer && state.testAccountContainer) {
-          state.realAccountContainer.style.display = isTest ? 'none' : ''
-          state.testAccountContainer.style.display = isTest ? '' : 'none'
+        const isTest = settings?.trade_mode === 'virtual'
+        if (state.liveAccountContainer && state.virtualAccountContainer) {
+          state.liveAccountContainer.style.display = isTest ? 'none' : ''
+          state.virtualAccountContainer.style.display = isTest ? '' : 'none'
         }
         renderAccountVals(state)
       }
