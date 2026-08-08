@@ -336,6 +336,20 @@ export function applyEngineStatus(data: EngineStatusPayload): void {
     if (data.degraded_mode !== undefined) {
       patch.degradedMode = !!data.degraded_mode
     }
+    // R-3: 런타임 모드 전환 시 헤더 모드 칩 즉시 갱신 — 백엔드가 이미 전송 중인
+    // is_test_mode/trade_mode를 화면 상태에 반영 (기존 patch.status spread 병합 패턴 유지)
+    if (data.is_test_mode !== undefined) {
+      const base = patch.status ?? state.status
+      patch.status = base
+        ? { ...base, is_test_mode: data.is_test_mode }
+        : { is_test_mode: data.is_test_mode } as EngineStatus
+    }
+    if (data.trade_mode !== undefined) {
+      const base = patch.status ?? state.status
+      patch.status = base
+        ? { ...base, trade_mode: data.trade_mode }
+        : { trade_mode: data.trade_mode } as EngineStatus
+    }
     return patch
   })
 }
