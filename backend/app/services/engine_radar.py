@@ -6,7 +6,7 @@
 """
 import logging
 from backend.app.services import engine_state
-from backend.app.core.kiwoom_account_parsing import _parse_float_loose
+from backend.app.core.numeric_utils import _parse_float_loose
 
 logger = logging.getLogger(__name__)
 

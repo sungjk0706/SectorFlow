@@ -9,6 +9,7 @@
 전역 엔진 상태 없음 — 동일 입력에 동일 출력만 보장.
 """
 from __future__ import annotations
+from backend.app.core.numeric_utils import _parse_float_loose
 from backend.app.core.symbol_utils import _base_stk_cd, _real_item_stk_cd
 from backend.app.services.engine_ws_parsing import _parse_fid10_price
 
@@ -18,14 +19,6 @@ def _parse_int_loose(v) -> int:
         return int(str(v).replace(",", "") or 0)
     except (ValueError, TypeError):
         return 0
-
-
-def _parse_float_loose(v) -> float:
-    try:
-        cleaned = str(v).replace(",", "").replace("%", "").replace("+", "").strip()
-        return float(cleaned or 0)
-    except (ValueError, TypeError):
-        return 0.0
 
 
 def _real04_is_stock_item(item: dict) -> bool:

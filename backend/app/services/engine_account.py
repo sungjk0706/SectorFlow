@@ -76,7 +76,7 @@ async def _broadcast_buy_limit_status() -> None:
 
 async def _fetch_account_data(settings: dict) -> dict:
     """브로커 REST API로 실계좌 잔고/평가 조회. 토큰 없으면 즉시 실패(0원 stub 금지). deposit→balance 순차 + 0.5초 간격 429 예방."""
-    from backend.app.core.kiwoom_account_parsing import parse_kt00001_deposit, parse_kt00018_balance
+    from backend.app.core.broker_factory import get_router
 
     _EMPTY = {"success": False, "summary": {}, "stock_list": []}
     # 증권사별 REST API 분리
@@ -100,7 +100,9 @@ async def _fetch_account_data(settings: dict) -> dict:
     if deposit_raw is None:
         return _EMPTY
 
-    ok_dep, dep_body, deposit, orderable, _withdrawable = parse_kt00001_deposit(deposit_raw)
+    # AccountProvider 인터페이스 경유 파싱 — 공통 로직은 증권사 전용 모듈을 직접 참조하지 않음.
+    _account_provider = get_router().account
+    ok_dep, dep_body, deposit, orderable, _withdrawable = _account_provider.parse_deposit(deposit_raw)
     if not ok_dep:
         logger.warning(
             "[계좌] 예수금 상세현황(kt00001) 오류 응답코드=%s 메시지=%s",
@@ -108,7 +110,7 @@ async def _fetch_account_data(settings: dict) -> dict:
         )
         return _EMPTY
 
-    deposit, tot_eval, tot_pnl, tot_buy, total_rate, stock_list = parse_kt00018_balance(
+    deposit, tot_eval, tot_pnl, tot_buy, total_rate, stock_list = _account_provider.parse_balance(
         balance_raw, deposit
     )
 
@@ -321,22 +323,20 @@ async def _apply_balance_realtime(item: dict, vals: dict) -> None:
     계좌 단위(item=계좌번호): FID 930~934 계좌 합계 갱신.
     종목 단위(item=종목코드): FID 930~933·950·8019·10 포지션 갱신.
     """
-    from backend.app.core.kiwoom_account_parsing import (
-        _real04_is_stock_item,
-        real04_official_account_delta,
-        real04_official_apply_position_line,
-    )
+    from backend.app.core.broker_factory import get_router
     from backend.app.services.engine_account_notify import _rebuild_positions_cache
 
-    if _real04_is_stock_item(item):
+    # AccountProvider 인터페이스 경유 파싱 — 공통 로직은 증권사 전용 모듈을 직접 참조하지 않음.
+    _account_provider = get_router().account
+    if _account_provider.is_realtime_stock_item(item):
         # 종목 단위 레코드 — 보유수량·매입단가·평가손익 등 갱신
         _prev_len = len(state.positions)
-        real04_official_apply_position_line(item, vals, state.positions, {})
+        _account_provider.apply_realtime_position_line(item, vals, state.positions, {})
         if len(state.positions) != _prev_len:
             _rebuild_positions_cache(state.positions)
     else:
         # 계좌 단위 레코드 — 예수금·총평가·총손익 등 갱신
-        delta = real04_official_account_delta(vals)
+        delta = _account_provider.compute_realtime_account_delta(vals)
         if delta:
             if "deposit" in delta:
                 state.account_snapshot["deposit"] = int(delta["deposit"])

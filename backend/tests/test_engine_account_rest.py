@@ -4,6 +4,7 @@
 키움 전용 파싱 함수(parse_kt00001_deposit, parse_kt00018_balance, real04_official_*)는
 P4(증권사명 침투 금지)에 따라 backend.app.core.kiwoom_account_parsing 로 이동됨 —
 해당 테스트는 kiwoom_account_parsing 모듈에서 import하여 검증한다.
+범용 유틸리티 _parse_float_loose는 backend.app.core.numeric_utils에서 import한다.
 """
 from __future__ import annotations
 
@@ -16,13 +17,13 @@ from backend.app.services.engine_account_rest import (
 )
 from backend.app.core.kiwoom_account_parsing import (
     _parse_int_loose,
-    _parse_float_loose,
     _real04_is_stock_item,
     real04_official_account_delta,
     real04_official_apply_position_line,
     parse_kt00001_deposit,
     parse_kt00018_balance,
 )
+from backend.app.core.numeric_utils import _parse_float_loose
 
 
 # ── _parse_int_loose ─────────────────────────────────────────────────────────────
