@@ -121,7 +121,7 @@ function refreshUI(): void {
 function syncTelegramTab(r: Record<string, unknown>): void {
   const act = document.activeElement
   state.teleToggle?.setOn(!!r.tele_on)
-  for (const k of ['telegram_chat_id', 'telegram_bot_token_test', 'telegram_bot_token_real']) {
+  for (const k of ['telegram_chat_id', 'telegram_bot_token_virtual', 'telegram_bot_token_live']) {
     if (state.teleInputs[k] && (!act || !state.teleInputs[k].contains(act))) {
       state.teleInputs[k].value = String(r[k] || '')
     }

@@ -78,12 +78,12 @@ describe('MASKED_FIELDS', () => {
     expect(MASKED_FIELDS.has('ls_app_secret')).toBe(true)
   })
 
-  it('contains telegram_bot_token_test', () => {
-    expect(MASKED_FIELDS.has('telegram_bot_token_test')).toBe(true)
+  it('contains telegram_bot_token_virtual', () => {
+    expect(MASKED_FIELDS.has('telegram_bot_token_virtual')).toBe(true)
   })
 
-  it('contains telegram_bot_token_real', () => {
-    expect(MASKED_FIELDS.has('telegram_bot_token_real')).toBe(true)
+  it('contains telegram_bot_token_live', () => {
+    expect(MASKED_FIELDS.has('telegram_bot_token_live')).toBe(true)
   })
 })
 

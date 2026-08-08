@@ -140,7 +140,7 @@ export function buildLeftColumn(): { leftColumn: HTMLDivElement; chartContainer:
   return { leftColumn, chartContainer, donutChartContainer }
 }
 
-/* ── mount 헬퍼: 계좌 현황 행 (실전/테스트 공통 — P23 중복 제거) ── */
+/* ── mount 헬퍼: 계좌 현황 행 (실전매매/가상매매 공통 — P23 중복 제거) ── */
 
 function buildAccountRows(
   labels: readonly string[],
@@ -186,7 +186,7 @@ function buildAccountRows(
   return container
 }
 
-/* ── mount 헬퍼: 우측 계좌 현황 패널 (실전 + 테스트 + 업종별 종목 수익) ── */
+/* ── mount 헬퍼: 우측 계좌 현황 패널 (실전매매 + 가상매매 + 업종별 종목 수익) ── */
 
 export function buildAccountPanel(state: ProfitOverviewState, isTestMode: boolean): HTMLDivElement {
   const accountPanel = document.createElement('div')

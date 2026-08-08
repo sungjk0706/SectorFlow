@@ -169,11 +169,11 @@ function buildTestVirtualResetWrap(): HTMLElement {
   const wrap = document.createElement('div')
   Object.assign(wrap.style, { borderTop: '1px solid ' + COLOR.borderLight, padding: GS.rowPad })
   const resetBtn = createActionButton({
-    label: '테스트 데이터 전체 초기화', variant: 'danger', padding: '8px 18px', borderRadius: RADIUS.xs, fontSize: GS.label,
+    label: '가상매매 데이터 전체 초기화', variant: 'danger', padding: '8px 18px', borderRadius: RADIUS.xs, fontSize: GS.label,
     onClick: async () => {
       const confirmed = await showConfirmDialog({
-        title: '테스트 데이터 초기화',
-        message: '테스트 데이터를 전체 초기화하시겠습니까?\n가상 보유종목, 매매 이력, 투자금이 모두 초기화됩니다.',
+        title: '가상매매 데이터 초기화',
+        message: '가상매매 데이터를 전체 초기화하시겠습니까?\n가상 보유종목, 매매 이력, 투자금이 모두 초기화됩니다.',
         isDanger: true
       })
       if (!confirmed) return

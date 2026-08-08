@@ -692,7 +692,7 @@ describe('hotStore — account-update / account-summary-update 이벤트 분리 
       hotStore.setState({ positions: [initialPos], positionCount: 1 })
 
       applyAccountUpdate({
-        snapshot: { total_buy_amount: 700000, total_sell_amount: 0, total_eval_amount: 800000, total_pnl: 100000, total_pnl_rate: 14.29, deposit: 5000000, trade_mode: 'test', position_count: 1 },
+        snapshot: { total_buy_amount: 700000, total_sell_amount: 0, total_eval_amount: 800000, total_pnl: 100000, total_pnl_rate: 14.29, deposit: 5000000, trade_mode: 'virtual', position_count: 1 },
         changed_positions: [{ stk_cd: '005930', stk_nm: '삼성전자', qty: 10, avg_price: 70000, cur_price: 80000, buy_amt: 700000, pnl_rate: 14.29, buy_date: '20260720' }],
         removed_codes: [],
       })
@@ -709,7 +709,7 @@ describe('hotStore — account-update / account-summary-update 이벤트 분리 
       hotStore.setState({ positions: [posA, posB], positionCount: 2 })
 
       applyAccountUpdate({
-        snapshot: { total_buy_amount: 1300000, total_sell_amount: 0, total_eval_amount: 1450000, total_pnl: 150000, total_pnl_rate: 11.54, deposit: 5000000, trade_mode: 'test', position_count: 1 },
+        snapshot: { total_buy_amount: 1300000, total_sell_amount: 0, total_eval_amount: 1450000, total_pnl: 150000, total_pnl_rate: 11.54, deposit: 5000000, trade_mode: 'virtual', position_count: 1 },
         changed_positions: [],
         removed_codes: ['000660'],
       })
@@ -723,7 +723,7 @@ describe('hotStore — account-update / account-summary-update 이벤트 분리 
     it('changed_positions/removed_codes 모두 빈 경우 snapshot만 갱신', () => {
       hotStore.setState({ account: null })
       applyAccountUpdate({
-        snapshot: { total_buy_amount: 0, total_sell_amount: 0, total_eval_amount: 0, total_pnl: 0, total_pnl_rate: 0, deposit: 5000000, trade_mode: 'test', position_count: 0 },
+        snapshot: { total_buy_amount: 0, total_sell_amount: 0, total_eval_amount: 0, total_pnl: 0, total_pnl_rate: 0, deposit: 5000000, trade_mode: 'virtual', position_count: 0 },
         changed_positions: [],
         removed_codes: [],
       })
@@ -790,13 +790,13 @@ describe('hotStore — account-update / account-summary-update 이벤트 분리 
     it('WS의 더 최신 account revision이 오래된 응답으로 덮어써지지 않음', () => {
       applyAccountUpdate({
         freshness: { group: 'account', revision: 2 },
-        snapshot: { total_buy_amount: 0, total_sell_amount: 0, total_eval_amount: 900000, total_pnl: 0, total_pnl_rate: 0, deposit: 7000000, trade_mode: 'test', position_count: 0 },
+        snapshot: { total_buy_amount: 0, total_sell_amount: 0, total_eval_amount: 900000, total_pnl: 0, total_pnl_rate: 0, deposit: 7000000, trade_mode: 'virtual', position_count: 0 },
         changed_positions: [],
         removed_codes: [],
       })
       applyAccountUpdate({
         freshness: { group: 'account', revision: 1 },
-        snapshot: { total_buy_amount: 0, total_sell_amount: 0, total_eval_amount: 800000, total_pnl: 0, total_pnl_rate: 0, deposit: 6000000, trade_mode: 'test', position_count: 0 },
+        snapshot: { total_buy_amount: 0, total_sell_amount: 0, total_eval_amount: 800000, total_pnl: 0, total_pnl_rate: 0, deposit: 6000000, trade_mode: 'virtual', position_count: 0 },
         changed_positions: [],
         removed_codes: [],
       })
@@ -805,7 +805,7 @@ describe('hotStore — account-update / account-summary-update 이벤트 분리 
     })
 
     it('WS 최신 데이터가 HTTP 페이지 진입 응답으로 되돌아가지 않음', () => {
-      const latest = { total_buy_amount: 0, total_sell_amount: 0, total_eval_amount: 900000, total_pnl: 0, total_pnl_rate: 0, deposit: 7000000, trade_mode: 'test', position_count: 0 }
+      const latest = { total_buy_amount: 0, total_sell_amount: 0, total_eval_amount: 900000, total_pnl: 0, total_pnl_rate: 0, deposit: 7000000, trade_mode: 'virtual', position_count: 0 }
       const older = { ...latest, total_eval_amount: 800000, deposit: 6000000 }
       applyAccountUpdate({ freshness: { group: 'account', revision: 2 }, snapshot: latest, changed_positions: [], removed_codes: [] })
 

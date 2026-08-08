@@ -336,7 +336,7 @@ export function bindWSToStore(
     applyDailyBuyStateStatus(data as { failed?: boolean })
   })
 
-  /* ── virtual-cash-failed: 테스트 예수금 검증 실패 (사후 1회성 — 헤더 칩 알림) ── */
+  /* ── virtual-cash-failed: 가상매매 예수금 검증 실패 (사후 1회성 — 헤더 칩 알림) ── */
   pricesClient.onEvent('virtual-cash-failed', (data) => {
     applyVirtualCashFailed(data as { failed?: boolean; stk_cd?: string; reason?: string })
   })

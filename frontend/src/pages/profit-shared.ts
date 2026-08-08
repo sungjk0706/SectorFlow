@@ -231,7 +231,7 @@ export function renderAccountVals(params: AccountValsParams): void {
     params.virtualAccountContainer.style.display = isTestMode ? '' : 'none'
   }
 
-  // 11행 공통 값 조립 (행 0만 모드별 상이: 테스트=누적투자금, 실전=예수금)
+  // 11행 공통 값 조립 (행 0만 모드별 상이: 가상매매=누적투자금, 실전=예수금)
   const row0 = isTestMode ? (a?.initial_deposit ?? 0) : (a?.deposit ?? 0)
   const orderable = a?.orderable ?? 0
   // P21/P23: cur_price null인 보유종목 있으면 평가금액/평가손익/수익률 3행 '-' 표시 (개별 행과 동일 null 패턴)

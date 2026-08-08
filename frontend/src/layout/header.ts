@@ -357,7 +357,7 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
   })
   header.appendChild(riskBlockChip)
 
-  // 테스트 잔고 부족 칩 (노란색 — 사후 1회성, 클릭 시 해제)
+  // 가상매매 잔고 부족 칩 (노란색 — 사후 1회성, 클릭 시 해제)
   const virtualCashFailedChip = createChipEl()
   virtualCashFailedChip.style.display = 'none'
   virtualCashFailedChip.style.cursor = 'pointer'
@@ -450,14 +450,14 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
       }
     } catch (e) { console.error('[header] riskBlock chip error', e) }
 
-    // 테스트 잔고 부족 칩 (노란색 — 사후 1회성, 클릭 시 해제)
+    // 가상매매 잔고 부족 칩 (노란색 — 사후 1회성, 클릭 시 해제)
     try {
       if (virtualCashFailed) {
         virtualCashFailedChip.style.display = ''
         virtualCashFailedChip.style.background = `${COLOR.warningBg}`
         virtualCashFailedChip.style.color = `${COLOR.warning}`
         virtualCashFailedChip.style.border = `1px solid ${COLOR.warning}40`
-        const reasonText = virtualCashFailed.reason || '테스트 잔고 부족 — 매수 거부'
+        const reasonText = virtualCashFailed.reason || '가상매매 잔고 부족 — 매수 거부'
         setAlertChip(virtualCashFailedChip, reasonText)
       } else {
         virtualCashFailedChip.style.display = 'none'
@@ -557,7 +557,7 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
     try {
       if (status) {
         modeChip.style.display = ''
-        applyStatusChip(modeChip, status.is_test_mode ? '가상매매' : '실전매매', undefined, status.is_test_mode ? 'blue' : 'red')
+        applyStatusChip(modeChip, status.is_virtual_mode ? '가상매매' : '실전매매', undefined, status.is_virtual_mode ? 'blue' : 'red')
       } else {
         modeChip.style.display = 'none'
       }

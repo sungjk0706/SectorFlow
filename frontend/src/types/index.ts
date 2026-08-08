@@ -101,7 +101,7 @@ export interface EngineStatus {
   login_ok: boolean;
   broker_token_valid: boolean;
   trade_mode: string;
-  is_test_mode: boolean;
+  is_virtual_mode: boolean;
   engine_task_alive: boolean;
   stock_subscribed_count: number;
   ws_reg_total_estimate: number;
@@ -126,7 +126,7 @@ export interface EngineStatusPayload {
   login_ok?: boolean;
   broker_token_valid?: boolean;
   trade_mode?: string;
-  is_test_mode?: boolean;
+  is_virtual_mode?: boolean;
   engine_task_alive?: boolean;
   stock_subscribed_count?: number;
   ws_reg_total_estimate?: number;
@@ -250,8 +250,8 @@ export interface AppSettings {
   // 텔레그램
   tele_on: boolean;
   telegram_chat_id: string;
-  telegram_bot_token_test: string;
-  telegram_bot_token_real: string;
+  telegram_bot_token_virtual: string;
+  telegram_bot_token_live: string;
 
   // 키움 API
   kiwoom_app_key: string;
@@ -261,7 +261,7 @@ export interface AppSettings {
   ls_app_secret: string;
   ls_account_no: string;
 
-  // 테스트 가상잔고
+  // 가상매매 가상잔고
   virtual_deposit: number;
   virtual_balance: number;
 

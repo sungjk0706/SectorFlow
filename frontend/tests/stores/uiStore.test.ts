@@ -13,7 +13,7 @@ import type { AppSettings, SettingsChangedDeltaEvent } from '../../src/types'
 function makeFullSettings(): AppSettings {
   return {
     broker: 'kiwoom',
-    trade_mode: 'test',
+    trade_mode: 'virtual',
     buy_amt: 100000,
     buy_amt_on: true,
     max_daily_total_buy_on: false,
@@ -71,8 +71,8 @@ function makeFullSettings(): AppSettings {
     news_keywords: '',
     tele_on: false,
     telegram_chat_id: '',
-    telegram_bot_token_test: '',
-    telegram_bot_token_real: '',
+    telegram_bot_token_virtual: '',
+    telegram_bot_token_live: '',
     kiwoom_app_key: '',
     kiwoom_app_secret: '',
     kiwoom_account_no: '',

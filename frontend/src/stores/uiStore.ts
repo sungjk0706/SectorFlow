@@ -93,7 +93,7 @@ export interface UIState {
   /* ── 일일 매수 상태 로드 실패 (매수 전용 차단) ── */
   dailyBuyStateFailed: boolean
 
-  /* ── 테스트 예수금 검증 실패 (사후 1회성 — 헤더 칩 알림) ── */
+  /* ── 가상매매 예수금 검증 실패 (사후 1회성 — 헤더 칩 알림) ── */
   virtualCashFailed: { stk_cd: string; reason: string } | null
 
   /* ── 엔진 기동 상태 경고 (P21 — 지속 상태, 엔진 재기동 시 해제) ── */
@@ -273,16 +273,16 @@ export function applyDailyBuyStateStatus(data: { failed?: boolean }): void {
   uiStore.setState({ dailyBuyStateFailed: !!data.failed })
 }
 
-/* ── virtual-cash-failed: 테스트 예수금 검증 실패 갱신 (사후 1회성 — 헤더 칩) ── */
+/* ── virtual-cash-failed: 가상매매 예수금 검증 실패 갱신 (사후 1회성 — 헤더 칩) ── */
 export function applyVirtualCashFailed(data: { failed?: boolean; stk_cd?: string; reason?: string }): void {
   if (data.failed) {
-    uiStore.setState({ virtualCashFailed: { stk_cd: data.stk_cd ?? '', reason: data.reason ?? '테스트 잔고 부족 — 매수 거부' } })
+    uiStore.setState({ virtualCashFailed: { stk_cd: data.stk_cd ?? '', reason: data.reason ?? '가상매매 잔고 부족 — 매수 거부' } })
   } else {
     uiStore.setState({ virtualCashFailed: null })
   }
 }
 
-/* ── 테스트 잔고 부족 알림 수동 해제 (사용자 클릭) ── */
+/* ── 가상매매 잔고 부족 알림 수동 해제 (사용자 클릭) ── */
 export function clearVirtualCashFailed(): void {
   uiStore.setState({ virtualCashFailed: null })
 }
@@ -357,12 +357,12 @@ export function applyEngineStatus(data: EngineStatusPayload): void {
       patch.degradedMode = !!data.degraded_mode
     }
     // R-3: 런타임 모드 전환 시 헤더 모드 칩 즉시 갱신 — 백엔드가 이미 전송 중인
-    // is_test_mode/trade_mode를 화면 상태에 반영 (기존 patch.status spread 병합 패턴 유지)
-    if (data.is_test_mode !== undefined) {
+    // is_virtual_mode/trade_mode를 화면 상태에 반영 (기존 patch.status spread 병합 패턴 유지)
+    if (data.is_virtual_mode !== undefined) {
       const base = patch.status ?? state.status
       patch.status = base
-        ? { ...base, is_test_mode: data.is_test_mode }
-        : { is_test_mode: data.is_test_mode } as EngineStatus
+        ? { ...base, is_virtual_mode: data.is_virtual_mode }
+        : { is_virtual_mode: data.is_virtual_mode } as EngineStatus
     }
     if (data.trade_mode !== undefined) {
       const base = patch.status ?? state.status

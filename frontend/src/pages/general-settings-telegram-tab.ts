@@ -15,10 +15,10 @@ import {
   currentSecretFieldStatus, isEncryptionBlockingSave,
 } from './general-settings-shared'
 
-const TELE_STR_KEYS = ['telegram_chat_id', 'telegram_bot_token_test', 'telegram_bot_token_real'] as const
-const TELE_LABELS: Record<string, string> = { telegram_chat_id: '채팅 ID', telegram_bot_token_test: '테스트 봇 토큰', telegram_bot_token_real: '실전 봇 토큰' }
+const TELE_STR_KEYS = ['telegram_chat_id', 'telegram_bot_token_virtual', 'telegram_bot_token_live'] as const
+const TELE_LABELS: Record<string, string> = { telegram_chat_id: '채팅 ID', telegram_bot_token_virtual: '가상매매 봇 토큰', telegram_bot_token_live: '실전매매 봇 토큰' }
 // B21-01 세션7: 텔레그램 민감 필드 (상태 배지 표시 대상 — chat_id는 비민감이므로 제외)
-const TELE_SECRET_KEYS = ['telegram_bot_token_test', 'telegram_bot_token_real'] as const
+const TELE_SECRET_KEYS = ['telegram_bot_token_virtual', 'telegram_bot_token_live'] as const
 
 function buildTeleToggleRow(state: GeneralSettingsState): HTMLElement {
   const r = createSettingToggleRow({

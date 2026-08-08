@@ -43,7 +43,7 @@ describe('binding — 자료 중심 화면 초기 스냅샷 수신', () => {
     stockClassificationStore.setState({
       sectors: {}, stockMoves: {}, mergedSectors: [], noSectorCount: 0, allStocks: [],
     })
-    uiStore.setState({ settings: { trade_mode: 'test' } as any })
+    uiStore.setState({ settings: { trade_mode: 'virtual' } as any })
     prices = createMockWSClient()
     settings = createMockWSClient()
     orders = createMockWSClient()
