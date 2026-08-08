@@ -22,7 +22,7 @@ export interface AccountSnapshot {
   deposit: number;
   orderable?: number;
   initial_deposit?: number;
-  accumulated_investment?: number;  // 테스트모드: 누적투자금 (초기투자금 + 충전금액)
+  accumulated_investment?: number;  // 가상매매: 누적투자금 (초기투자금 + 충전금액)
   daily_deposit?: number;           // 당일 입금액 (실시간, 당일 카드 분모 보정용)
   total_asset?: number;             // 실전 증권사 API 총자산 (평가금 + 예수금) — P10 SSOT, 재계산 금지
   trade_mode: string;
@@ -43,7 +43,7 @@ export interface Position {
 
 // 매수후보는 StockScore(정적 스코어), 실시간 시세는 masterStocks(백엔드 master_stocks_cache 프론트 사본)로 분리 (P10 SSOT).
 // 공통 실시간 파생 필드 null 표시 규칙 (세션 8 — P22 데이터 정합성, 백엔드 _build_target_entry 계약 반영):
-//   cur_price: null = 틱 미수신 (테스트모드 기동 직후, 장 전, 구독 지연).
+//   cur_price: null = 틱 미수신 (가상매매 기동 직후, 장 전, 구독 지연).
 //              첫 틱 도달 후 applyRealData가 number로 갱신.
 //   change_rate/trade_amount/change/strength: 백엔드 None 시 null/undefined 가능.
 //              현재 타입은 기존 호환성 유지 (change_rate는 number, 나머지 optional).

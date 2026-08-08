@@ -130,7 +130,7 @@ export function createSummaryCards(container: HTMLElement, callbacks: SummaryCar
  *  분모 규칙 (매수원금 기반 — 설계서 0절 최상위 원칙):
  *    - 실현 수익률 = 해당 기간 매도 완료된 종목들의 실현손익 합 ÷ 총 매수원금 합 × 100
  *    - 4카드(당일/5거래일/당월/누적) 동일 공식 (설계 원칙 5) — computeCumulativePnl이 aggregatePnl 기반으로 계산.
- *    - 실전모드: 증권사 서버가 SSOT — rate null → '-' 표시 (AGENTS.md 실전vs테스트 테이블).
+ *    - 실전매매: 증권사 서버가 SSOT — rate null → '-' 표시 (AGENTS.md 실전vs가상 테이블).
  *  당일 카드: getTradingToday() SSOT 기준 당일 실현손익 (개장 전 폴백 제거 — P10 단일 해석, P20 폴백 금지).
  *  dailySummary는 5거래일 날짜 추출에만 사용 (날짜 결정 SSOT). */
 export function updateSummaryCards(
@@ -219,7 +219,7 @@ export function renderAccountVals(params: AccountValsParams): void {
 
   // 누적 실현 손익 + 수익률: SSOT 함수 사용 (도넛 차트 중앙과 동일 소스 — P10/P22)
   // 분모: 매수원금 기반 (aggregatePnl — 설계서 0절 최상위 원칙).
-  //       실전모드: 증권사 서버가 SSOT — rate null (AGENTS.md 실전vs테스트 테이블).
+  //       실전매매: 증권사 서버가 SSOT — rate null (AGENTS.md 실전vs가상 테이블).
   const { pnl: cumPnlAmt, rate: cumRate } = computeCumulativePnl({
     sellHistory, isTestMode,
   })

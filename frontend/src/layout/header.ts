@@ -316,7 +316,7 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
   krxAlertChip.style.display = 'none'
   header.appendChild(krxAlertChip)
 
-  // 엔진 상태 칩: 증권사(항상 표시, 상태만 갱신), 테스트/실전모드
+  // 엔진 상태 칩: 증권사(항상 표시, 상태만 갱신), 가상/실전매매
   const brokerChipsContainer = document.createElement('span')
   brokerChipsContainer.style.cssText = 'display:inline-flex;gap:4px;align-items:center;'
   header.appendChild(brokerChipsContainer)

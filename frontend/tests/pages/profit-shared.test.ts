@@ -229,14 +229,14 @@ describe('computePositionValuation ↔ computeHoldingsSummary 일관성 (P10 SSO
  * 분모 규칙 (매수원금 기반 — 설계서 0절 최상위 원칙):
  *   - 실현 수익률 = 해당 기간 매도 완료된 종목들의 실현손익 합 ÷ 총 매수원금 합 × 100
  *   - 4카드(당일/5거래일/당월/누적) 동일 공식 (설계 원칙 5) — computeCumulativePnl이 aggregatePnl 기반으로 계산.
- *   - 실전모드: 증권사 서버가 SSOT — rate null → '-' 표시 (AGENTS.md 실전vs테스트 테이블).
+ *   - 실전매매: 증권사 서버가 SSOT — rate null → '-' 표시 (AGENTS.md 실전vs가상 테이블).
  * dateFrom/dateTo 적용 시 해당 범위 내 손익·매수원금만 집계.
  */
 function makeSellRow(date: string, realizedPnl: number, buyTotalAmt: number): Record<string, unknown> {
   return { date, realized_pnl: realizedPnl, buy_total_amt: buyTotalAmt }
 }
 
-describe('computeCumulativePnl — 테스트모드 (분모=매수원금)', () => {
+describe('computeCumulativePnl — 가상매매 (분모=매수원금)', () => {
   it('단일 매도 — 수익률 = realized_pnl / buy_total_amt × 100', () => {
     const sells = [makeSellRow('2026-07-29', -100000, 1000000)]
     const result = computeCumulativePnl({
@@ -268,17 +268,17 @@ describe('computeCumulativePnl — 테스트모드 (분모=매수원금)', () =>
   })
 })
 
-describe('computeCumulativePnl — 실전모드 (증권사 서버 SSOT — 앱 재계산 금지, AGENTS.md 실전vs테스트 테이블)', () => {
-  it('단일 매도 — 실전모드는 rate=null (증권사 SSOT, 앱 재계산 금지)', () => {
+describe('computeCumulativePnl — 실전매매 (증권사 서버 SSOT — 앱 재계산 금지, AGENTS.md 실전vs가상 테이블)', () => {
+  it('단일 매도 — 실전매매는 rate=null (증권사 SSOT, 앱 재계산 금지)', () => {
     const sells = [makeSellRow('2026-07-29', -100000, 1000000)]
     const result = computeCumulativePnl({
       sellHistory: sells, isTestMode: false,
     })
     expect(result.pnl).toBe(-100000)
-    expect(result.rate).toBeNull()  // 실전모드: 증권사 서버가 SSOT — 앱 재계산 금지
+    expect(result.rate).toBeNull()  // 실전매매: 증권사 서버가 SSOT — 앱 재계산 금지
   })
 
-  it('다중 매도 합산 — 실전모드는 rate=null (증권사 SSOT)', () => {
+  it('다중 매도 합산 — 실전매매는 rate=null (증권사 SSOT)', () => {
     const sells = [
       makeSellRow('2026-07-28', -50000, 500000),
       makeSellRow('2026-07-29', -50000, 500000),
@@ -287,15 +287,15 @@ describe('computeCumulativePnl — 실전모드 (증권사 서버 SSOT — 앱 �
       sellHistory: sells, isTestMode: false,
     })
     expect(result.pnl).toBe(-100000)
-    expect(result.rate).toBeNull()  // 실전모드: 증권사 서버가 SSOT — 앱 재계산 금지
+    expect(result.rate).toBeNull()  // 실전매매: 증권사 서버가 SSOT — 앱 재계산 금지
   })
 
-  it('빈 sellHistory — 실전모드는 rate=null', () => {
+  it('빈 sellHistory — 실전매매는 rate=null', () => {
     const result = computeCumulativePnl({
       sellHistory: [], isTestMode: false,
     })
     expect(result.pnl).toBe(0)
-    expect(result.rate).toBeNull()  // 실전모드: 증권사 서버가 SSOT — 앱 재계산 금지
+    expect(result.rate).toBeNull()  // 실전매매: 증권사 서버가 SSOT — 앱 재계산 금지
   })
 })
 
@@ -342,7 +342,7 @@ describe('computeCumulativePnl — 4카드 동일 공식 (설계 원칙 5·검�
   // 동일 sellHistory에 대해 기간(당일·5거래일·당월·누적)에 관계없이 계산 공식은 동일.
   // 집계 대상(기간 필터)만 달라짐 — 분모 규칙 분기 없음.
 
-  it('누적 모드 + 테스트모드 → 분모=매수원금 합 (전체 매도 범위)', () => {
+  it('누적 모드 + 가상매매 → 분모=매수원금 합 (전체 매도 범위)', () => {
     const sells = [
       makeSellRow('2026-07-28', -50000, 500000),
       makeSellRow('2026-07-29', -50000, 500000),
@@ -353,7 +353,7 @@ describe('computeCumulativePnl — 4카드 동일 공식 (설계 원칙 5·검�
     expect(result.rate).toBe(-10)  // -100000 / 1000000 * 100 (매수원금 분모)
   })
 
-  it('기간 한정 모드 + 테스트모드 → 분모=해당 기간 매수원금 합 (누적투자금 아님)', () => {
+  it('기간 한정 모드 + 가상매매 → 분모=해당 기간 매수원금 합 (누적투자금 아님)', () => {
     const sells = [
       makeSellRow('2026-07-28', -50000, 500000),
       makeSellRow('2026-07-29', -50000, 500000),
@@ -366,7 +366,7 @@ describe('computeCumulativePnl — 4카드 동일 공식 (설계 원칙 5·검�
     expect(result.rate).toBe(-10)
   })
 
-  it('기간 한정 모드 + 실전모드 → rate=null (증권사 SSOT, 앱 재계산 금지)', () => {
+  it('기간 한정 모드 + 실전매매 → rate=null (증권사 SSOT, 앱 재계산 금지)', () => {
     const sells = [
       makeSellRow('2026-07-28', -50000, 500000),
       makeSellRow('2026-07-29', -50000, 500000),
@@ -375,7 +375,7 @@ describe('computeCumulativePnl — 4카드 동일 공식 (설계 원칙 5·검�
       sellHistory: sells, isTestMode: false,
       dateFrom: '2026-07-28', dateTo: '2026-07-29',
     })
-    expect(result.rate).toBeNull()  // 실전모드: 증권사 서버가 SSOT — 앱 재계산 금지
+    expect(result.rate).toBeNull()  // 실전매매: 증권사 서버가 SSOT — 앱 재계산 금지
   })
 })
 
@@ -453,12 +453,12 @@ describe('computeCumulativePnl — 기간별 동일 공식 (설계 8.2 — 기�
 })
 
 /* ── computeCumulativePnl — 모드별 (설계 8.3) ── */
-// P18 테스트모드 동등성: 동일 매도 완료 거래에 대해 pnl은 모드 무관 동일,
-//   rate만 차이 (테스트모드=계산값, 실전모드=null).
-// 실전모드: 증권사 서버가 SSOT — 앱에서 수익률 재계산 금지 (AGENTS.md 실전vs테스트 테이블).
+// P18 가상매매 동등성: 동일 매도 완료 거래에 대해 pnl은 모드 무관 동일,
+//   rate만 차이 (가상매매=계산값, 실전매매=null).
+// 실전매매: 증권사 서버가 SSOT — 앱에서 수익률 재계산 금지 (AGENTS.md 실전vs가상 테이블).
 
 describe('computeCumulativePnl — 모드별 (설계 8.3 — pnl 동일성 + rate만 차이)', () => {
-  it('동일 sellHistory → 테스트모드/실전모드 pnl 동일, rate만 차이 (P18 테스트모드 동등성)', () => {
+  it('동일 sellHistory → 가상매매/실전매매 pnl 동일, rate만 차이 (P18 가상매매 동등성)', () => {
     const sells = [
       makeSellRow('2026-07-28', -50000, 500000),
       makeSellRow('2026-07-29', 30000, 300000),
@@ -470,9 +470,9 @@ describe('computeCumulativePnl — 모드별 (설계 8.3 — pnl 동일성 + rat
     expect(realResult.pnl).toBe(testResult.pnl)  // -20000
     expect(testResult.pnl).toBe(-20000)          // -50000 + 30000
 
-    // rate만 차이 — 테스트모드=계산값, 실전모드=null (증권사 SSOT)
+    // rate만 차이 — 가상매매=계산값, 실전매매=null (증권사 SSOT)
     expect(testResult.rate).toBe(-2.5)           // -20000 / 800000 * 100 = -2.5
-    expect(realResult.rate).toBeNull()           // 실전모드: 앱 재계산 금지
+    expect(realResult.rate).toBeNull()           // 실전매매: 앱 재계산 금지
   })
 
   it('동일 sellHistory + 기간 필터 → 모드 무관 pnl 동일, rate만 차이', () => {

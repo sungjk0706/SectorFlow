@@ -97,7 +97,7 @@ export interface UIState {
   testCashFailed: { stk_cd: string; reason: string } | null
 
   /* ── 엔진 기동 상태 경고 (P21 — 지속 상태, 엔진 재기동 시 해제) ── */
-  positionBuildFailed: boolean  // 테스트모드 포지션 구축 실패 (보유 종목 비어있음)
+  positionBuildFailed: boolean  // 가상매매 포지션 구축 실패 (보유 종목 비어있음)
   degradedMode: boolean         // 감소 모드 기동 (종목 데이터 불완전)
 
   /* ── 런타임 투자모드 전환 실패 알림 (R-5 — 구독 전환 실패, 클릭 시 해제) ──

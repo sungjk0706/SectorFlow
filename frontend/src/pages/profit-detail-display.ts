@@ -180,7 +180,7 @@ function updateStatistics(state: ProfitDetailState): void {
   const winRate = sellCount > 0 ? Math.round(winCount / sellCount * 10000) / 100 : 0
   // 수익률: computeCumulativePnl SSOT 사용 (분모 규칙 단일 소스 — P10/P22).
   //   매수원금 기반 (aggregatePnl — 설계서 0절 최상위 원칙).
-  //   실전모드: 증권사 서버가 SSOT — rate null → '-' 표시 (AGENTS.md 실전vs테스트 테이블).
+  //   실전매매: 증권사 서버가 SSOT — rate null → '-' 표시 (AGENTS.md 실전vs가상 테이블).
   const isTestMode = globalSettingsManager.getSettings()?.trade_mode === 'virtual'
   const { rate: avgRate } = computeCumulativePnl({
     sellHistory: filteredSells,

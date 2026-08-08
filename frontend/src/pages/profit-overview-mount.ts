@@ -69,7 +69,7 @@ function makeCenterTitle(quickLabel: string | undefined): string {
 /** 도넛 차트 중앙 손익 계산 — 계좌 현황과 동일 SSOT 사용 (P10/P22).
  *  데이터 소스: filteredSellHistory (날짜 필터 적용).
  *  분모: 매수원금 기반 (aggregatePnl — 설계서 0절 최상위 원칙).
- *        실전모드: 증권사 서버가 SSOT — rate null → '-' 표시 (AGENTS.md 실전vs테스트 테이블).
+ *        실전매매: 증권사 서버가 SSOT — rate null → '-' 표시 (AGENTS.md 실전vs가상 테이블).
  *  도넛 중앙 + 업종별 종목 수익 섹션 타이틀 중앙 요소가 동일 소스(computeCumulativePnl)를 공유 (P10 SSOT).
  *  rate null 시 도넛/타이틀 모두 수익률 미표시. */
 function buildDonutCenter(state: ProfitOverviewState): SectorDonutCenter {
@@ -195,14 +195,14 @@ export function buildAccountPanel(state: ProfitOverviewState, isTestMode: boolea
   const accountHeader = sectionTitle('계좌 현황')
   accountPanel.appendChild(accountHeader)
 
-  // 실전모드 컨테이너
+  // 실전매매 컨테이너
   state.liveAccountContainer = buildAccountRows(
     ACCOUNT_LABELS_REAL, isTestMode, state.accountValRefs,
     (el) => { state.holdingCountSpan = el },
   )
   accountPanel.appendChild(state.liveAccountContainer)
 
-  // 테스트모드 컨테이너
+  // 가상매매 컨테이너
   state.virtualAccountContainer = buildAccountRows(
     ACCOUNT_LABELS_TEST, !isTestMode, state.testAccountValRefs,
     (el) => { state.holdingCountSpanTest = el },

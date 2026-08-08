@@ -190,15 +190,15 @@ export interface CumulativePnlParams {
  *  분모 규칙 (매수원금 기반 — 설계서 0절 최상위 원칙):
  *    - 실현 수익률 = 해당 기간 매도 완료된 종목들의 실현손익 합 ÷ 총 매수원금 합 × 100
  *    - aggregatePnl이 이 계산을 수행 (pnl / buyTotal * 100) — 본 함수는 aggregatePnl 결과를 그대로 사용.
- *    - 실전모드: 증권사 서버가 SSOT (AGENTS.md 실전vs테스트 테이블) — rate null → '-' 표시.
- *  rate null 반환: 실전모드 시 (P20 — 분모 0 시 computeWeightedRate가 0 반환하므로 null 아님).
+ *    - 실전매매: 증권사 서버가 SSOT (AGENTS.md 실전vs가상 테이블) — rate null → '-' 표시.
+ *  rate null 반환: 실전매매 시 (P20 — 분모 0 시 computeWeightedRate가 0 반환하므로 null 아님).
  *  dateFrom/dateTo 적용 시 해당 범위 내 손익만 집계.
  *  renderAccountVals(계좌 현황)·canvas-sector-donut(도넛 중앙)·updateSummaryCards(요약 카드)·
  *  updateStatistics(하단 통계)가 동일 분모·동일 데이터 범위를 사용하도록 추출 (P22 데이터 정합성). */
 export function computeCumulativePnl(params: CumulativePnlParams): { pnl: number; rate: number | null } {
   const { sellHistory, isTestMode, dateFrom, dateTo } = params
   const { pnl, rate } = aggregatePnl(sellHistory, dateFrom, dateTo)
-  // 실전모드: 증권사 서버가 SSOT — 앱에서 수익률 재계산 금지 (AGENTS.md 실전vs테스트 테이블)
+  // 실전매매: 증권사 서버가 SSOT — 앱에서 수익률 재계산 금지 (AGENTS.md 실전vs가상 테이블)
   if (!isTestMode) {
     return { pnl, rate: null }
   }
