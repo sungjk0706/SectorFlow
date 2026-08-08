@@ -1,7 +1,7 @@
 """B1-02-05/06/07 P25 격리된 실패 단위 테스트 — leaf 핸들러/엔진 시작 보호.
 
 검증 대상:
-  - B1-02-05: _handle_real_00 — on_fill_update/_on_fill_after_ws 예외 시 정상 반환 + 지연 측정 유지
+  - B1-02-05: _handle_real_00 — on_fill_update/큐 put 예외 시 정상 반환 + 지연 측정 유지
   - B1-02-06: _handle_real_balance — _apply_balance_realtime 예외 시 정상 반환
   - B1-02-07: start_engine — _refresh_positions_if_dirty 예외 시 엔진 기동 계속 (True 반환)
 
@@ -30,14 +30,18 @@ from backend.app.services.engine_lifecycle import start_engine  # noqa: E402
 # ── B1-02-05: _handle_real_00 격리 ──────────────────────────────────────────
 
 class TestHandleReal00Isolation:
-    """on_fill_update/_on_fill_after_ws 예외 시에도 함수 정상 반환 + 지연 측정 유지."""
+    """on_fill_update/큐 put 예외 시에도 함수 정상 반환 + 지연 측정 유지.
+
+    체결 후 처리는 주문 대기열로 이동 — _handle_real_00은 on_fill_update(체결 사실 기록) 후
+    get_order_queue().put_nowait({"type":"fill_after","code":...})만 수행.
+    """
 
     @pytest.mark.asyncio
     async def test_on_fill_update_exception_does_not_raise(self):
         """on_fill_update가 throw해도 _handle_real_00 정상 반환 + 지연 측정 유지.
 
-        단일 try 블록 구조: on_fill_update 실패 시 _on_fill_after_ws는 스킵 (같은 블록 내).
-        체결 콜백 실패를 잔고 갱신 실패와 분리하지 않는 단순성(P24) 선택.
+        단일 try 블록 구조: on_fill_update 실패 시 큐 put은 스킵 (같은 블록 내).
+        체결 콜백 실패를 큐 put 실패와 분리하지 않는 단순성(P24) 선택.
         """
         mock_auto_trade = MagicMock()
         mock_auto_trade.on_fill_update = AsyncMock(side_effect=RuntimeError("callback boom"))
@@ -45,32 +49,39 @@ class TestHandleReal00Isolation:
         mock_state.auto_trade = mock_auto_trade
         mock_state.access_token = "tok"
 
+        mock_queue = MagicMock()
+
         with (
             patch("backend.app.services.engine_ws_dispatch.engine_state", state=mock_state),
-            patch("backend.app.services.engine_ws_dispatch.engine_account._on_fill_after_ws", new=AsyncMock()) as mock_after,
+            patch("backend.app.services.engine_ws_dispatch.get_order_queue", return_value=mock_queue),
             patch("backend.app.services.engine_ws_dispatch._check_realtime_latency") as mock_latency,
             patch("backend.app.services.engine_ws_dispatch._real_item_stk_cd", return_value="005930"),
         ):
             # 예외 전파 없이 정상 반환
             await _handle_real_00({"90001": "005930"}, {"907": "1", "902": "0"})
 
-        # on_fill_update 실패 → 같은 try 블록의 _on_fill_after_ws는 스킵
-        mock_after.assert_not_called()
+        # on_fill_update 실패 → 같은 try 블록의 큐 put은 스킵
+        mock_queue.put_nowait.assert_not_called()
         # 지연 측정은 try 외부 — 예외와 무관하게 항상 실행
         mock_latency.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_on_fill_after_ws_exception_does_not_raise(self):
-        """_on_fill_after_ws가 throw해도 _handle_real_00 정상 반환 + 지연 측정 유지."""
+    async def test_queue_full_exception_does_not_raise(self):
+        """큐 put 실패(QueueFull) 시에도 _handle_real_00 정상 반환 + 지연 측정 유지."""
+        import asyncio as _asyncio
+
         mock_auto_trade = MagicMock()
         mock_auto_trade.on_fill_update = AsyncMock()
         mock_state = MagicMock()
         mock_state.auto_trade = mock_auto_trade
         mock_state.access_token = "tok"
 
+        mock_queue = MagicMock()
+        mock_queue.put_nowait.side_effect = _asyncio.QueueFull()
+
         with (
             patch("backend.app.services.engine_ws_dispatch.engine_state", state=mock_state),
-            patch("backend.app.services.engine_ws_dispatch.engine_account._on_fill_after_ws", new=AsyncMock(side_effect=RuntimeError("account boom"))),
+            patch("backend.app.services.engine_ws_dispatch.get_order_queue", return_value=mock_queue),
             patch("backend.app.services.engine_ws_dispatch._check_realtime_latency") as mock_latency,
             patch("backend.app.services.engine_ws_dispatch._real_item_stk_cd", return_value="005930"),
         ):
@@ -81,20 +92,23 @@ class TestHandleReal00Isolation:
 
     @pytest.mark.asyncio
     async def test_auto_trade_none_skips_callback_and_measures_latency(self):
-        """auto_trade=None이면 콜백 스킵 + 잔고 갱신 + 지연 측정 정상 동작 (회귀 보호)."""
+        """auto_trade=None이면 콜백 스킵 + 큐 put + 지연 측정 정상 동작 (회귀 보호)."""
         mock_state = MagicMock()
         mock_state.auto_trade = None
         mock_state.access_token = "tok"
 
+        mock_queue = MagicMock()
+
         with (
             patch("backend.app.services.engine_ws_dispatch.engine_state", state=mock_state),
-            patch("backend.app.services.engine_ws_dispatch.engine_account._on_fill_after_ws", new=AsyncMock()) as mock_after,
+            patch("backend.app.services.engine_ws_dispatch.get_order_queue", return_value=mock_queue),
             patch("backend.app.services.engine_ws_dispatch._check_realtime_latency") as mock_latency,
             patch("backend.app.services.engine_ws_dispatch._real_item_stk_cd", return_value="005930"),
         ):
             await _handle_real_00({"90001": "005930"}, {"907": "1", "902": "0"})
 
-        mock_after.assert_awaited_once()
+        # auto_trade=None이어도 체결 후 처리 큐 put은 수행 (체결 사실은 기록)
+        mock_queue.put_nowait.assert_called_once_with({"type": "fill_after", "code": "005930"})
         mock_latency.assert_called_once()
 
 

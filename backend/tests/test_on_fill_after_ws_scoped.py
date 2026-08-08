@@ -172,26 +172,32 @@ class TestOnFillAfterWsScopedSellCheck:
 # ── _handle_real_00: 체결 종목 코드 전달 연결 ──────────────────────────────────
 
 class TestHandleReal00PassesFillCode:
-    """_handle_real_00이 _on_fill_after_ws에 체결 종목 코드를 전달하는지 확인."""
+    """_handle_real_00이 체결 후 처리 큐에 체결 종목 코드를 전달하는지 확인.
+
+    체결 후 처리는 주문 대기열로 이동 — _handle_real_00은 _on_fill_after_ws를 직접 호출하지 않고
+    get_order_queue().put_nowait({"type":"fill_after","code":...})로 위임.
+    """
 
     @pytest.mark.asyncio
-    async def test_handle_real_00_passes_raw_cd_to_on_fill_after_ws(self):
-        """_handle_real_00이 추출한 종목 코드를 _on_fill_after_ws에 전달."""
+    async def test_handle_real_00_passes_raw_cd_to_fill_after_queue(self):
+        """_handle_real_00이 추출한 종목 코드를 fill_after 큐 요청에 전달."""
         mock_auto_trade = MagicMock()
         mock_auto_trade.on_fill_update = AsyncMock()
         mock_state = MagicMock()
         mock_state.auto_trade = mock_auto_trade
         mock_state.access_token = "tok"
 
+        mock_queue = MagicMock()
+
         with (
             patch("backend.app.services.engine_ws_dispatch.engine_state", state=mock_state),
-            patch("backend.app.services.engine_ws_dispatch.engine_account._on_fill_after_ws", new=AsyncMock()) as mock_after,
+            patch("backend.app.services.engine_ws_dispatch.get_order_queue", return_value=mock_queue),
             patch("backend.app.services.engine_ws_dispatch._check_realtime_latency"),
             patch("backend.app.services.engine_ws_dispatch._real_item_stk_cd", return_value="005930"),
         ):
             await _handle_real_00({"90001": "005930"}, {"907": "1", "902": "0"})
 
-        mock_after.assert_awaited_once_with("005930")
+        mock_queue.put_nowait.assert_called_once_with({"type": "fill_after", "code": "005930"})
 
 
 # ── fake_fill_event: 테스트 모드 체결 종목 코드 전달 ──────────────────────────

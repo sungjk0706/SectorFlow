@@ -5,6 +5,7 @@
 order_queue에서 주문 실행 요청을 꺼내 순차 처리:
 - {type: "sell_check", codes: [...]} → 보유종목 매도 조건 검사 (check_sell_conditions)
 - {type: "buy_evaluate"} → 매수 후보 평가 (evaluate_buy_candidates)
+- {type: "fill_after", code: "..."} → 주문 체결 후 처리 (잔고 갱신·매도 조건 검사)
 
 시세 처리 루프·업종 재계산 루프가 주문 실행(체결 대기 0.5초+)에 블록되지 않도록
 주문 요청을 큐에 넣고 즉시 다음 처리로 넘어가며, 본 루프가 큐에서 순차 소비.
@@ -50,6 +51,8 @@ async def _order_loop_impl() -> None:
                     await _handle_sell_check(request, state)
                 elif req_type == "buy_evaluate":
                     await _handle_buy_evaluate(state)
+                elif req_type == "fill_after":
+                    await _handle_fill_after(request)
                 else:
                     logger.warning("[주문루프] 알 수 없는 요청 타입 — 드롭: %s", request)
             except Exception as e:
@@ -116,6 +119,19 @@ async def _handle_buy_evaluate(state) -> None:
     from backend.app.services.buy_order_executor import evaluate_buy_candidates
 
     await evaluate_buy_candidates()
+
+
+async def _handle_fill_after(request: dict) -> None:
+    """주문 체결 후 처리 요청 — engine_account._on_fill_after_ws 호출 래핑.
+
+    틱 핫패스(_handle_real_00)에서 체결 사실 기록만 수행하고,
+    체결 후 처리(잔고 갱신·매도 조건 검사)는 본 루프가 큐에서 꺼내 순차 실행.
+    _on_fill_after_ws 내부 로직은 변경 없음 — 실행 시점만 틱 핫패스에서 큐 기반으로 이동.
+    """
+    from backend.app.services import engine_account
+
+    code = request.get("code", "")
+    await engine_account._on_fill_after_ws(code)
 
 
 async def start_order_loop() -> None:

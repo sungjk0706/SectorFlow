@@ -7,6 +7,7 @@ from __future__ import annotations
 import time
 import backend.app.services.engine_state as engine_state
 from backend.app.services import engine_account
+from backend.app.services.core_queues import get_order_queue
 import logging
 from backend.app.services.engine_symbol_utils import (
     _base_stk_cd,
@@ -140,9 +141,10 @@ async def _handle_real_00(item: dict, vals: dict) -> None:
         if engine_state.state.auto_trade:
             await engine_state.state.auto_trade.on_fill_update(raw_cd, side, unex, engine_state.state.access_token)
 
-        # [근본해결] 부분 체결(unex > 0) 포함 모든 체결 발생 시 즉시 계좌 상태 반영
-        # 체결 종목 코드 전달 — 주문 체결 경로는 체결 종목만 매도 조건 점검 (P7/P24)
-        await engine_account._on_fill_after_ws(raw_cd)
+        # 체결 후 처리(잔고 갱신·매도 조건 검사)는 주문 대기열로 이동 — 틱 핫패스는 체결 사실 기록만.
+        # 주문 실행 루프가 큐에서 꺼내 engine_account._on_fill_after_ws 순차 실행 (W1/W2).
+        # 큐 put 실패 시에도 on_fill_update는 위에서 완료된 상태 보장 (P25 격리된 실패).
+        get_order_queue().put_nowait({"type": "fill_after", "code": raw_cd})
     except Exception as e:
         logger.warning("[매매] 체결 콜백/잔고 갱신 오류 (계속): %s", e, exc_info=True)
 
