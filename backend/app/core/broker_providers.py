@@ -84,3 +84,52 @@ class OrderProvider(ABC):
 # ── WebSocket Provider ────────────────────────────────────────────────
 class WebSocketProvider(ABC):
     """실시간 WebSocket 연결."""
+
+
+# ── Account Provider ──────────────────────────────────────────────────────
+class AccountProvider(ABC):
+    """계좌 데이터 파싱 — 증권사별 응답 구조에 의존하는 파싱을 전용 계층에 위임.
+
+    공통 로직(services/)은 이 인터페이스만 호출하여 증권사 식별자 없이
+    계좌 잔고·보유 종목·실시간 체결을 처리한다.
+    파싱 로직 자체는 각 증권사 전용 모듈에 유지 — Provider는 호출만 위임.
+    """
+
+    @property
+    @abstractmethod
+    def broker_name(self) -> str:
+        """증권사 식별자 (예: 'kiwoom')."""
+        ...
+
+    @abstractmethod
+    def parse_deposit(self, raw: dict) -> tuple:
+        """예수금 조회 응답 파싱.
+
+        반환값은 증권사별 기존 파싱 함수의 반환 튜플을 그대로 유지
+        (공통 데이터 모델 재설계는 비목표).
+        """
+        ...
+
+    @abstractmethod
+    def parse_balance(self, raw: dict, deposit) -> tuple:
+        """잔고·보유 종목 조회 응답 파싱.
+
+        deposit 은 parse_deposit 결과 중 예수금 값을 보완용으로 전달.
+        반환값은 증권사별 기존 파싱 함수의 반환 튜플을 그대로 유지.
+        """
+        ...
+
+    @abstractmethod
+    def is_realtime_stock_item(self, item: dict) -> bool:
+        """실시간 메시지 item 필드가 종목코드인지 계좌번호인지 구분."""
+        ...
+
+    @abstractmethod
+    def apply_realtime_position_line(self, item, vals, positions, extra) -> None:
+        """실시간 종목 단위 레코드를 보유 종목 리스트에 반영 (in-place)."""
+        ...
+
+    @abstractmethod
+    def compute_realtime_account_delta(self, vals: dict) -> dict:
+        """실시간 계좌 단위 레코드에서 부분 갱신할 계좌 필드 딕셔너리 반환."""
+        ...

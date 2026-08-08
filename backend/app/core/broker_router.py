@@ -9,6 +9,7 @@ BrokerRouter — 기능별 Provider 매핑 중앙 라우터.
 from __future__ import annotations
 import logging
 from backend.app.core.broker_providers import (
+    AccountProvider,
     AuthProvider,
     OrderProvider,
     WebSocketProvider,
@@ -28,6 +29,7 @@ _FEATURE_DISPLAY: dict[str, str] = {
     "order": "주문",
     "auth": "인증",
     "websocket": "웹소켓",
+    "account": "계좌",
 }
 
 
@@ -122,6 +124,11 @@ class BrokerRouter:
     @property
     def websocket(self) -> WebSocketProvider:
         return self._providers["websocket"]  # type: ignore[return-value]
+
+    @property
+    def account(self) -> AccountProvider:
+        # 2단계에서 FEATURES에 "account" 추가 후 _providers에 반영됨.
+        return self._providers["account"]  # type: ignore[return-value]
 
     # ── 검증 ──────────────────────────────────────────────────────────
 

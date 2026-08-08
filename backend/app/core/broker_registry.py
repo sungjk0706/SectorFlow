@@ -22,6 +22,12 @@ logger = logging.getLogger(__name__)
 # ── 동일 증권사 강제 쌍 ───────────────────────────────────────────────
 MUST_SAME_BROKER_PAIRS: list[tuple[str, str]] = []
 
+# ── 체결 타임아웃 설정 (레지스트리 SSOT) ─────────────────────────────────
+# 공통 로직(services/)은 이 딕셔너리를 조회하여 증권사별 타임아웃을 적용.
+# 증권사 식별자 문자열을 공통 로직에 두지 않고 이곳에서 단일 관리 (P10).
+BROKER_TIMEOUTS: dict[str, float] = {"kiwoom": 10.0, "ls": 15.0}
+BROKER_TIMEOUT_DEFAULT: float = 10.0
+
 # ── Provider 레지스트리 ───────────────────────────────────────────────
 # 새 증권사 추가 시 이 dict에 한 줄만 추가하면 됨.
 
@@ -39,6 +45,7 @@ def _lazy_kiwoom_registry() -> dict[str, type]:
         "order":     KiwoomOrderProvider,
         "websocket": KiwoomWebSocketProvider,
         "stock":     KiwoomStockProvider,
+        # "account": KiwoomAccountProvider,  # 2단계에서 구현체 추가 후 연결
     }
 
 
@@ -53,6 +60,7 @@ def _lazy_ls_registry() -> dict[str, type]:
         "auth":      LsAuthProvider,
         "order":     LsOrderProvider,
         "websocket": LsWebSocketProvider,
+        # "account": LsAccountProvider,  # 2단계에서 구현체 추가 후 연결
     }
 
 
