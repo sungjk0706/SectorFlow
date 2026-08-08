@@ -148,7 +148,7 @@ class TestStartEngineRefreshPositionsIsolation:
 
     @pytest.mark.asyncio
     async def test_refresh_positions_exception_continues_startup(self):
-        """테스트모드에서 _refresh_positions_if_dirty가 throw해도 start_engine이 True 반환 +
+        """가상매매에서 _refresh_positions_if_dirty가 throw해도 start_engine이 True 반환 +
         후속 _apply_pending_settings_on_startup/broadcast_engine_status 실행."""
         mock_state = MagicMock()
         mock_state.engine_task = None  # 기동 전
@@ -202,7 +202,7 @@ class TestStartEngineRefreshPositionsIsolation:
 
     @pytest.mark.asyncio
     async def test_real_mode_skips_refresh_positions(self):
-        """실전투자 모드 회귀 보호 — is_virtual_mode False 시 _refresh_positions_if_dirty 호출 안 함."""
+        """실전매매 모드 회귀 보호 — is_virtual_mode False 시 _refresh_positions_if_dirty 호출 안 함."""
         mock_state = MagicMock()
         mock_state.engine_task = None
         mock_state.running = False

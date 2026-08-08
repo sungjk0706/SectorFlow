@@ -377,7 +377,7 @@ class TestTrimExpired:
     """_trim_expired: 모드별 보관 기한 초과 레코드 제거 (메모리 + DB)."""
 
     async def test_test_mode_6_months_expired(self):
-        """테스트모드: 달력 6개월 이전 데이터 삭제, 최근 데이터 보존."""
+        """가상매매: 달력 6개월 이전 데이터 삭제, 최근 데이터 보존."""
         from backend.app.services import trade_history
         trade_history._buy_history.clear()
         trade_history._sell_history.clear()
@@ -405,7 +405,7 @@ class TestTrimExpired:
         assert mock_db.call_count == 2  # test + real DB 삭제 (test_db_count=1, real_db_count=1)
 
     async def test_real_mode_90_days_preserved(self):
-        """실전모드: 90거래일 이내 데이터 보존."""
+        """실전매매: 90거래일 이내 데이터 보존."""
         from backend.app.services import trade_history
         trade_history._buy_history.clear()
         real_rec = _make_buy_rec(date="2026-05-01", trade_mode="live")

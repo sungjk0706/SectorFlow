@@ -358,7 +358,7 @@ class TestResetRealtimeFields:
 
     @pytest.mark.asyncio
     async def test_non_test_mode(self):
-        """실전모드 — master_stocks_cache, positions 필드 초기화 + notify 호출."""
+        """실전매매 — master_stocks_cache, positions 필드 초기화 + notify 호출."""
         master_cache = {
             "005930": {"code": "005930", "cur_price": 70000, "change": 500, "change_rate": 0.72,
                        "trade_amount": 100000, "strength": 80, "order_ratio": [100, 200],
@@ -449,7 +449,7 @@ class TestResetRealtimeFields:
 
     @pytest.mark.asyncio
     async def test_test_mode_resets_dry_run_positions(self):
-        """테스트모드 — dry_run._test_positions도 초기화 (L173-179)."""
+        """가상매매 — dry_run._test_positions도 초기화 (L173-179)."""
         master_cache = {"005930": {"cur_price": 70000, "change": 500, "change_rate": 0.72,
                                     "trade_amount": 100000, "strength": 80}}
         test_positions = {

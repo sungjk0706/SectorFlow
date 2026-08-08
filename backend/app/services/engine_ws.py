@@ -125,8 +125,8 @@ async def _subscribe_positions_stocks_realtime() -> None:
 async def _ensure_ws_subscriptions_for_positions() -> None:
     """로그인 직후 계좌 실시간 구독 + 보유종목 시세 구독을 하는 함수.
 
-    테스트모드: 계좌 구독(00/04) 생략, 보유종목 시세(0B)만 구독.
-    실전투자: 계좌 구독 + 보유종목 시세 모두 구독.
+    가상매매: 계좌 구독(00/04) 생략, 보유종목 시세(0B)만 구독.
+    실전매매: 계좌 구독 + 보유종목 시세 모두 구독.
     """
     from backend.app.core.trade_mode import is_virtual_mode
     from backend.app.services.engine_account import _refresh_account_snapshot_meta

@@ -511,10 +511,10 @@ class TestPageStateFields:
         assert reg.get_codes(PAGE_SECTOR_RANKING) == ["000660", "005930", "035420"]
 
 
-# ── 보충: 실전 모드 보유 종목 준비 상태 ────────────────────────────────────
+# ── 보충: 실전매매 보유 종목 준비 상태 ────────────────────────────────────
 
 class TestRealModeHoldReadiness:
-    """실전 모드 — 잔고 조회 전 보유 종목 미준비, 조회 후 준비."""
+    """실전매매 — 잔고 조회 전 보유 종목 미준비, 조회 후 준비."""
 
     async def test_real_mode_not_bootstrapped_not_ready(self):
         reg = PageTargetRegistry()

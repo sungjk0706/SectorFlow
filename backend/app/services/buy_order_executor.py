@@ -106,7 +106,7 @@ def _refresh_buyable_prices(ss, available: int, effective_buy_amt: int | None, i
         if s.cur_price is None or s.cur_price <= 0:
             continue
         _price = s.cur_price
-        # 테스트모드 슬리피지 적용 (trading.py:254와 동일)
+        # 가상매매 슬리피지 적용 (trading.py:254와 동일)
         _est_price = dry_run.estimate_fill_price(_price, "BUY") if is_virtual else _price
         # 종목별 가용 금액 = min(effective_buy_amt, available) 또는 available
         _max_for_code = min(effective_buy_amt, available) if effective_buy_amt is not None else available

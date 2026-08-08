@@ -2,8 +2,8 @@
 
 검증 대상:
   - _on_fill_after_ws(fill_code) — 체결 종목만 매도 조건 점검 대상 필터링
-  - 실전 모드: state.positions에서 체결 종목만 매칭
-  - 테스트 모드: dry_run.get_position(code)로 해당 종목만 조회
+  - 실전매매: state.positions에서 체결 종목만 매칭
+  - 가상매매: dry_run.get_position(code)로 해당 종목만 조회
   - 체결 종목이 보유 목록에 없거나 전량 매도로 사라진 경우 → 빈 목록, check_sell_conditions 호출 안 함 (안전 종료)
   - fill_code 빈 문자열(구 호출부 호환) → 전체 보유 종목 검사 (회귀 보호)
   - _handle_real_00 / fake_fill_event에서 체결 종목 코드 전달 확인
@@ -30,7 +30,7 @@ class TestOnFillAfterWsScopedSellCheck:
 
     @pytest.mark.asyncio
     async def test_real_mode_fill_code_filters_to_matched_position(self):
-        """실전 모드 — 체결 종목 코드로 보유 목록에서 일치 종목만 매도 검사 전달."""
+        """실전매매 — 체결 종목 코드로 보유 목록에서 일치 종목만 매도 검사 전달."""
         matched = {"stk_cd": "005930", "qty": "10", "cur_price": 70000, "pnl_rate": 1.5}
         other = {"stk_cd": "000660", "qty": "5", "cur_price": 100000, "pnl_rate": -0.5}
         mock_state = MagicMock()
@@ -38,7 +38,7 @@ class TestOnFillAfterWsScopedSellCheck:
         mock_state.auto_trade = MagicMock()
         mock_state.auto_trade.check_sell_conditions = AsyncMock()
         mock_state.access_token = "tok"
-        mock_state.integrated_system_settings_cache = {"broker": "kiwoom"}  # 실전 모드
+        mock_state.integrated_system_settings_cache = {"broker": "kiwoom"}  # 실전매매
 
         with (
             patch("backend.app.services.engine_account.state", mock_state),
@@ -56,7 +56,7 @@ class TestOnFillAfterWsScopedSellCheck:
 
     @pytest.mark.asyncio
     async def test_real_mode_fill_code_not_in_positions_skips_sell_check(self):
-        """실전 모드 — 체결 종목이 보유 목록에 없으면(전량 매도 등) check_sell_conditions 호출 안 함."""
+        """실전매매 — 체결 종목이 보유 목록에 없으면(전량 매도 등) check_sell_conditions 호출 안 함."""
         other = {"stk_cd": "000660", "qty": "5", "cur_price": 100000, "pnl_rate": -0.5}
         mock_state = MagicMock()
         mock_state.positions = [other]
@@ -77,14 +77,14 @@ class TestOnFillAfterWsScopedSellCheck:
 
     @pytest.mark.asyncio
     async def test_test_mode_fill_code_filters_to_matched_position(self):
-        """테스트 모드 — dry_run.get_position(code)로 해당 종목만 매도 검사 전달."""
+        """가상매매 — dry_run.get_position(code)로 해당 종목만 매도 검사 전달."""
         matched = {"stk_cd": "005930", "qty": 10, "cur_price": 70000, "pnl_rate": 1.5}
         mock_state = MagicMock()
-        mock_state.positions = []  # 테스트 모드에서는 사용 안 함
+        mock_state.positions = []  # 가상매매에서는 사용 안 함
         mock_state.auto_trade = MagicMock()
         mock_state.auto_trade.check_sell_conditions = AsyncMock()
         mock_state.access_token = "tok"
-        mock_state.integrated_system_settings_cache = {"broker": "dry_run"}  # 테스트 모드
+        mock_state.integrated_system_settings_cache = {"broker": "dry_run"}  # 가상매매
 
         with (
             patch("backend.app.services.engine_account.state", mock_state),
@@ -103,7 +103,7 @@ class TestOnFillAfterWsScopedSellCheck:
 
     @pytest.mark.asyncio
     async def test_test_mode_fill_code_not_in_positions_skips_sell_check(self):
-        """테스트 모드 — 체결 종목이 보유 목록에 없으면 check_sell_conditions 호출 안 함."""
+        """가상매매 — 체결 종목이 보유 목록에 없으면 check_sell_conditions 호출 안 함."""
         mock_state = MagicMock()
         mock_state.positions = []
         mock_state.auto_trade = MagicMock()
@@ -200,7 +200,7 @@ class TestHandleReal00PassesFillCode:
         mock_queue.put_nowait.assert_called_once_with({"type": "fill_after", "code": "005930"})
 
 
-# ── fake_fill_event: 테스트 모드 체결 종목 코드 전달 ──────────────────────────
+# ── fake_fill_event: 가상매매 체결 종목 코드 전달 ──────────────────────────
 
 class TestFakeFillEventPassesFillCode:
     """fake_fill_event가 _on_fill_after_ws에 체결 종목 코드를 전달하는지 확인."""

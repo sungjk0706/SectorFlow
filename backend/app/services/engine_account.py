@@ -230,7 +230,7 @@ def _apply_account_yield_to_state(yield_data: dict, s: dict) -> None:
     broker = str(s.get("broker", "") or "").lower().strip()
 
     _apply_broker_totals_from_summary(summary)
-    # 테스트모드: 실전 잔고로 _positions 덮어쓰지 않음 — 모의투자 가상 잔고 격리
+    # 가상매매: 실전 잔고로 _positions 덮어쓰지 않음 — 모의투자 가상 잔고 격리
     if is_virtual_mode(s):
         logger.info("[계좌] 가상매매 — 실전 잔고 %d건 무시, 모의투자 가상 잔고 유지", len(stock_list))
     else:
@@ -274,8 +274,8 @@ def _apply_broker_totals_from_summary(summary: dict) -> None:
 async def _refresh_account_snapshot_meta() -> None:
     """
     스냅샷 시각·보유종목수·가격소스 갱신.
-    실전모드: 총평가·총손익·총매입·총수익률은 _broker_rest_totals(REST kt00018 또는 REAL 04 공식 FID 932~934) 사용.
-    테스트모드: positions 합산으로 totals 구성 + 가상 예수금 반영.
+    실전매매: 총평가·총손익·총매입·총수익률은 _broker_rest_totals(REST kt00018 또는 REAL 04 공식 FID 932~934) 사용.
+    가상매매: positions 합산으로 totals 구성 + 가상 예수금 반영.
     """
     from backend.app.services.engine_account_rest import build_account_snapshot_meta
     from backend.app.services import dry_run, settlement_engine
@@ -285,7 +285,7 @@ async def _refresh_account_snapshot_meta() -> None:
     pos = await dry_run.get_positions() if _is_virtual else state.positions
 
     if _is_virtual:
-        # 테스트모드: settlement_engine 누적투자금/주문가능금액 반영 + 포지션 합산으로 totals 구성
+        # 가상매매: settlement_engine 누적투자금/주문가능금액 반영 + 포지션 합산으로 totals 구성
         accumulated_investment = settlement_engine.get_accumulated_investment()
         orderable = settlement_engine.get_orderable()
         total_buy = sum(int(p.get("buy_amt", 0) or 0) for p in pos)
@@ -347,7 +347,7 @@ async def _apply_balance_realtime(item: dict, vals: dict) -> None:
             if "total_rate" in delta:
                 state.broker_rest_totals["total_rate"] = float(delta["total_rate"])
 
-    # ── 상태 게이트 회복: 실전투자 잔고 업데이트 시 매수 재평가 → 주문 실행 큐로 이동 (결정 5) ──
+    # ── 상태 게이트 회복: 실전매매 잔고 업데이트 시 매수 재평가 → 주문 실행 큐로 이동 (결정 5) ──
     try:
         from backend.app.services.buy_order_executor import _cash_insufficient, invalidate_buy_snapshot
         from backend.app.services.core_queues import get_order_queue
@@ -402,7 +402,7 @@ async def _broadcast_account(reason: str | None = None) -> None:
 
     try:
         pos = await dry_run.get_positions() if is_virtual_mode(state.integrated_system_settings_cache) else list(state.positions or [])
-        # 실전모드: REST API가 buy_date를 제공하지 않으므로 trade_history SSOT에서 주입
+        # 실전매매: REST API가 buy_date를 제공하지 않으므로 trade_history SSOT에서 주입
         if not is_virtual_mode(state.integrated_system_settings_cache) and pos:
             from backend.app.services import trade_history
             trade_positions = await trade_history.build_positions_from_trades("live")

@@ -1,6 +1,6 @@
-"""테스트모드 동등성 근본해결 — fake_send_order / fake_fill_event 단위 테스트.
+"""가상매매 동등성 근본해결 — fake_send_order / fake_fill_event 단위 테스트.
 
-원칙 18(테스트모드 동등성) 검증:
+원칙 18(가상매매 동등성) 검증:
 - fake_send_order: 주문 접수만 (포지션 변경 없음)
 - fake_fill_event: 체결 + on_fill_update + _on_fill_after_ws (실전 WS "00"과 동일)
 - _dryrun_post_sell_broadcast 폴백 제거 확인 (원칙 20)

@@ -115,7 +115,7 @@ class EngineState:
         self.engine_user_id: str = ""
         self.realtime_latency_exceeded: bool = False
         # ── 엔진 기동 상태 경고 (P21 사용자 투명성 — get_engine_status()로 프론트 전달) ──
-        # position_build_failed: 테스트모드 포지션 구축 실패 (엔진은 계속 가동, 보유 종목 비어있음)
+        # position_build_failed: 가상매매 포지션 구축 실패 (엔진은 계속 가동, 보유 종목 비어있음)
         # degraded_mode: 캐시 선행 로드 치명 오류로 감소 모드 기동 (종목 데이터 불완전)
         # 둘 다 엔진 재기동 시에만 해제 (start_engine에서 초기화하지 않으면 이전 세션 값 잔존 위험).
         self.position_build_failed: bool = False

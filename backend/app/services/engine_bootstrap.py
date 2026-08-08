@@ -22,7 +22,7 @@ async def _login_post_pipeline() -> None:
 
         from backend.app.core.trade_mode import is_virtual_mode
 
-        # 잔고 조회 — 테스트모드 생략, 실전모드는 account_rest_bootstrapped 기반만 (시간대 자의적 판정 제거)
+        # 잔고 조회 — 가상매매 생략, 실전매매는 account_rest_bootstrapped 기반만 (시간대 자의적 판정 제거)
         if is_virtual_mode(engine_state.state.integrated_system_settings_cache):
             logger.info("[연산] 파이프라인 — 가상매매 — REST 잔고 조회 생략 (가상잔고 사용)")
         elif not engine_state.state.account_rest_bootstrapped:

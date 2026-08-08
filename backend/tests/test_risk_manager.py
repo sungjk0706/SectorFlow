@@ -60,7 +60,7 @@ def risk_manager(mock_circuit_breaker):
 
 @pytest.fixture
 def settings_cache():
-    """기본 설정 캐시 (실전모드)."""
+    """기본 설정 캐시 (실전매매)."""
     return {
         "test_mode_on": False,
         "max_single_stock_exposure": 20_000_000,

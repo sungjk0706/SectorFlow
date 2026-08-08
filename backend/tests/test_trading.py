@@ -1,4 +1,4 @@
-"""trading.py 단위 테스트 — 매수/매도 실행 분기 및 테스트모드 동등성 검증.
+"""trading.py 단위 테스트 — 매수/매도 실행 분기 및 가상매매 동등성 검증.
 
 AutoTradeManager의 _to_trade_settings, execute_buy 게이트, 
 execute_sell 분기, check_sell_conditions 로직을 검증.
@@ -869,14 +869,14 @@ class TestOnFillUpdate:
 # ── 일일/종목당 매수 한도 수수료 포함 누적 (P22 정합성, P10 SSOT) ──────────────
 class TestDailyBuySpentFeeInclusive:
     """_load_daily_buy_state와 매수 후 누적이 trade_history.total_amt 기준
-    (테스트모드: 수수료 포함 / 실전모드: 순수 매수가)으로 일치하는지 검증."""
+    (가상매매: 수수료 포함 / 실전매매: 순수 매수가)으로 일치하는지 검증."""
 
     @pytest.mark.asyncio
     async def test_load_uses_total_amt_sum(self):
         """_load_daily_buy_state가 price*qty가 아닌 total_amt 합으로 로드."""
         from backend.app.core.constants import BUY_COMMISSION
         mgr = _make_manager()
-        # trade_history 기록: 테스트모드 fee 포함 total_amt
+        # trade_history 기록: 가상매매 fee 포함 total_amt
         rows = [
             {"stk_cd": "005930", "price": 70000, "qty": 10, "total_amt": 700000 + round(700000 * BUY_COMMISSION), "ts": "2026-07-23T10:00:00"},
             {"stk_cd": "000660", "price": 120000, "qty": 5, "total_amt": 600000 + round(600000 * BUY_COMMISSION), "ts": "2026-07-23T10:30:00"},
@@ -889,7 +889,7 @@ class TestDailyBuySpentFeeInclusive:
 
     @pytest.mark.asyncio
     async def test_load_real_mode_total_amt_excludes_fee(self):
-        """실전모드 기록(total_amt=price*qty, fee=0)은 수수료 미포함으로 로드 (현행 유지)."""
+        """실전매매 기록(total_amt=price*qty, fee=0)은 수수료 미포함으로 로드 (현행 유지)."""
         mgr = _make_manager()
         rows = [
             {"stk_cd": "005930", "price": 70000, "qty": 10, "total_amt": 700000, "ts": "2026-07-23T10:00:00"},
@@ -918,7 +918,7 @@ class TestDailyBuySpentFeeInclusive:
 
     @pytest.mark.asyncio
     async def test_post_buy_accumulation_test_mode_includes_fee(self):
-        """테스트모드 매수 성공 후 _daily_buy_spent가 수수료 포함으로 누적.
+        """가상매매 매수 성공 후 _daily_buy_spent가 수수료 포함으로 누적.
         trade_history.record_buy의 total_amt 공식(base + round(base*BUY_COMMISSION))과 동일 (P10/P22)."""
         from backend.app.core.constants import BUY_COMMISSION
         mgr = _make_manager(_raw_settings(rebuy_block_on=False))
@@ -946,7 +946,7 @@ class TestDailyBuySpentFeeInclusive:
             mock_rm.return_value.check_buy_order_allowed = AsyncMock(return_value=(True, "승인"))
             result, _reason = await mgr.execute_buy("005930", 70000, "token")
         assert result is True
-        # buy_qty = max_buy_qty_for_budget(70000, 1_000_000, is_test=True)
+        # buy_qty = max_buy_qty_for_budget(70000, 1_000_000, is_virtual=True)
         #   = 14 (cost 980_000 + round(980_000*0.00015)=147 → 980_147 ≤ 1_000_000)
         # base = 14 * 70000 = 980_000
         # fee = round(980_000 * 0.00015) = 147
@@ -958,7 +958,7 @@ class TestDailyBuySpentFeeInclusive:
 
     @pytest.mark.asyncio
     async def test_post_buy_accumulation_real_mode_excludes_fee(self):
-        """실전모드 매수 성공 후 _daily_buy_spent는 수수료 미포함 (P18 부합 — 실전은 증권사 SSOT, 앱 수수료 계산 금지)."""
+        """실전매매 매수 성공 후 _daily_buy_spent는 수수료 미포함 (P18 부합 — 실전은 증권사 SSOT, 앱 수수료 계산 금지)."""
         mgr = _make_manager(_raw_settings(rebuy_block_on=False))
         with patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.services.trading.auto_buy_effective", return_value=True), \
@@ -983,11 +983,11 @@ class TestDailyBuySpentFeeInclusive:
             mock_rm.return_value.get_withdrawable_deposit.return_value = 10_000_000
             mock_rm.return_value.check_buy_order_allowed = AsyncMock(return_value=(True, "승인"))
             mock_router.return_value.order.send_order = AsyncMock(return_value={"success": True, "order_id": "real1"})
-            # 실전모드: WS "00" 체결 응답 대기 — 테스트에서는 WS 미수신이므로 대기 통과 모의
+            # 실전매매: WS "00" 체결 응답 대기 — 테스트에서는 WS 미수신이므로 대기 통과 모의
             mgr._end_fill_await = AsyncMock(return_value=True)
             result, _reason = await mgr.execute_buy("005930", 70000, "token")
         assert result is True
-        # 실전모드: fee=0 → spent = base만
+        # 실전매매: fee=0 → spent = base만
         _expected_base = 14 * 70000
         assert mgr._daily_buy_spent == _expected_base
 
@@ -1148,7 +1148,7 @@ class TestExecuteBuyReasonPassThrough:
         assert _kwargs["reason"] == ""
 
 
-# ── execute_buy 주문 전송 실패 (P22 정합성, P15 단일 경로, P18 테스트모드 동등성) ──
+# ── execute_buy 주문 전송 실패 (P22 정합성, P15 단일 경로, P18 가상매매 동등성) ──
 
 class TestExecuteBuyOrderFailure:
     """주문 전송 실패 시 사전 차감 롤백 + 실전 주문 경로 미호출 검증.
@@ -1159,7 +1159,7 @@ class TestExecuteBuyOrderFailure:
 
     @pytest.mark.asyncio
     async def test_buy_order_send_failure_releases_reserved_cash(self):
-        """테스트모드 매수 주문 전송 실패 시 release_buy_power 호출 → 주문가능금액 예약 전 복원 (P22).
+        """가상매매 매수 주문 전송 실패 시 release_buy_power 호출 → 주문가능금액 예약 전 복원 (P22).
 
         시나리오:
           1. reserve_test_buy_power 성공 (사전 차감)
@@ -1215,9 +1215,9 @@ class TestExecuteBuyOrderFailure:
 
     @pytest.mark.asyncio
     async def test_buy_order_failure_does_not_call_real_broker(self):
-        """테스트모드 주문 실패 시 실전 get_router().order.send_order 호출 안 함 (P15/P18).
+        """가상매매 주문 실패 시 실전 get_router().order.send_order 호출 안 함 (P15/P18).
 
-        테스트모드는 fake_send_order만 사용하고 실전 브로커 경로로 우회하지 않음.
+        가상매매는 fake_send_order만 사용하고 실전 브로커 경로로 우회하지 않음.
         """
         mgr = _make_manager(_raw_settings(rebuy_block_on=False))
         _reserved_cost = 980_147
@@ -1247,7 +1247,7 @@ class TestExecuteBuyOrderFailure:
             mock_rm.return_value.check_buy_order_allowed = AsyncMock(return_value=(True, "승인"))
             result, _reason = await mgr.execute_buy("005930", 70000, "token")
         assert result is False
-        # 실전 라우터가 조회되지 않아야 함 (테스트모드는 fake_send_order만 사용)
+        # 실전 라우터가 조회되지 않아야 함 (가상매매는 fake_send_order만 사용)
         mock_get_router.assert_not_called()
 
 
@@ -1419,10 +1419,10 @@ class TestOrderSerializationLock:
         assert mgr._order_lock.locked() is False
 
 
-# ── 테스트모드 가상 응답 시간 — 주문 흐름 검증 (4단계 신규 테스트) ──────────────
+# ── 가상매매 가상 응답 시간 — 주문 흐름 검증 (4단계 신규 테스트) ──────────────
 
 class TestTestModeFillAwaitFlow:
-    """테스트모드 주문 흐름 검증 — "주문 → 대기 → 응답 → 다음" 구조 (P18 동등성).
+    """가상매매 주문 흐름 검증 — "주문 → 대기 → 응답 → 다음" 구조 (P18 동등성).
 
     3단계에서 가상 체결을 백그라운드 예약에서 주문 흐름 내 동기 대기로 변경.
     본 테스트는 변경된 구조가 올바르게 동작하는지 검증:

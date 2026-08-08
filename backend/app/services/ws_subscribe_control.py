@@ -85,13 +85,13 @@ def broadcast_ws_connection_status(connected: bool) -> None:
 
 
 # ---------------------------------------------------------------------------
-# 계좌 구독 보장 (실전모드 멱등)
+# 계좌 구독 보장 (실전매매 멱등)
 # ---------------------------------------------------------------------------
 
 async def _ensure_account_subscription() -> None:
-    """실전모드에서 어떤 구독이든 시작하면 계좌(grp 10) 구독도 함께 보장 (멱등).
+    """실전매매에서 어떤 구독이든 시작하면 계좌(grp 10) 구독도 함께 보장 (멱등).
 
-    테스트모드에서는 계좌 구독 안 함.
+    가상매매에서는 계좌 구독 안 함.
     """
     from backend.app.core.trade_mode import is_virtual_mode
     if is_virtual_mode(engine_state.state.integrated_system_settings_cache):
@@ -191,7 +191,7 @@ async def run_conditional_reg_pipeline() -> None:
         except Exception as e:
             logger.debug("[구독] 업종지수 자동 구독 실패: %s", e, exc_info=True)
 
-        # 실전모드에서 구독 시작했으면 계좌 구독 보장
+        # 실전매매에서 구독 시작했으면 계좌 구독 보장
         await _ensure_account_subscription()
 
 

@@ -124,8 +124,8 @@ async def _build_account_brief_lines(snap: dict, is_virtual: bool) -> str:
     """계좌 요약 라인 생성 — 모드별 라벨/데이터 소스 분리 (P10 SSOT, P21 투명성, P23 일관성).
 
     프론트엔드 수익현황 페이지(profit-shared.ts renderAccountVals)와 동일 기준:
-      - 테스트모드: 행 0 = "누적 투자금" (initial_deposit, settlement_engine SSOT)
-      - 실전모드:   행 0 = "예수금"     (deposit, 증권사 REST kt00001 SSOT)
+      - 가상매매: 행 0 = "누적 투자금" (initial_deposit, settlement_engine SSOT)
+      - 실전매매:   행 0 = "예수금"     (deposit, 증권사 REST kt00001 SSOT)
     주문가능 금액(orderable)은 양 모드 공통 표시 (프론트엔드와 동일).
     라벨은 프론트엔드 account-labels.ts와 동일 — "총평가/총손익" 모호성 제거 (P23).
     누적 실현 손익금/수익률 추가 — 프론트엔드 aggregatePnl/computeCumulativePnl과 동일 공식 (P21).
@@ -170,7 +170,7 @@ async def _compute_period_pnl(label: str, *, today_only: bool = False, date_from
     """기간별 실현 손익 라인 1줄 생성 (P10 SSOT — trade_history.get_realized_pnl_summary, 프론트엔드 aggregatePnl과 동일 공식).
 
     수익률 분모 = 매수원금 합계(buy_total) — 프론트엔드 computeCumulativePnl과 동일.
-    실전모드: 증권사 서버가 수익률 SSOT이므로 앱에서 재계산 금지 → 수익률 미표시 (AGENTS.md 실전vs테스트 테이블).
+    실전매매: 증권사 서버가 수익률 SSOT이므로 앱에서 재계산 금지 → 수익률 미표시 (AGENTS.md 실전vs테스트 테이블).
     """
     from backend.app.services.trade_history import get_realized_pnl_summary
 
@@ -183,7 +183,7 @@ async def _compute_period_pnl(label: str, *, today_only: bool = False, date_from
         rate = pnl / buy_total * 100 if buy_total > 0 else 0.0
         rate_txt = f"  ({fmt_rate(rate)})"
     else:
-        # 실전모드: 증권사 서버가 수익률 SSOT — 앱에서 재계산 금지
+        # 실전매매: 증권사 서버가 수익률 SSOT — 앱에서 재계산 금지
         rate_txt = "  (수익률: 증권사 확인)"
     return f"  {label}: {pnl_txt}{rate_txt}"
 
@@ -618,7 +618,7 @@ class TelegramBot(TaskGuardMixin):
 
         period: "당일" | "5일" | "당월" | "누적"
         trade_history SSOT에서 집계 (P10), 프론트엔드 aggregatePnl과 동일 공식 (P23).
-        실전모드: 수익률은 증권사 서버 SSOT이므로 앱에서 재계산 금지 (AGENTS.md).
+        실전매매: 수익률은 증권사 서버 SSOT이므로 앱에서 재계산 금지 (AGENTS.md).
         """
         try:
             from backend.app.core.trade_mode import is_virtual_mode

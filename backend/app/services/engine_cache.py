@@ -107,7 +107,7 @@ async def _load_caches_preboot(settings: dict) -> None:
             logger.info("[데이터] 실시간 필드 초기화 구간 — 실시간 필드 초기화 (DB 로드 후)")
 
         # ── 기동 완료 로직 ──
-        # 테스트모드: Settlement Engine 상태 로드 (설정 test_virtual_deposit 우선, DB 없으면 초기화)
+        # 가상매매: Settlement Engine 상태 로드 (설정 virtual_deposit 우선, DB 없으면 초기화)
         if engine_state.state.integrated_system_settings_cache["trade_mode"] == "virtual":
             from backend.app.services import settlement_engine
             initial_deposit = engine_state.state.integrated_system_settings_cache["virtual_deposit"]

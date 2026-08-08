@@ -431,7 +431,7 @@ async def run_engine_loop() -> None:
             from backend.app.services.engine_lifecycle import log_message, broadcast_engine_status
             log_message(f" [구동] 유효한 API 키가 없습니다 (대상: {', '.join(BROKER_DISPLAY_NAMES.get(b, b) for b in ws_brokers)}). 일반설정에서 증권사 API 키를 입력하세요.")
             await broadcast_engine_status()
-            # 엔진 중단하지 않고 계속 진행 (테스트모드/연결 안됨 상태 허용)
+            # 엔진 중단하지 않고 계속 진행 (가상매매/연결 안됨 상태 허용)
 
         # REST/토큰 발급은 기준 증권사(broker_nm) 기준 유지
 
@@ -535,7 +535,7 @@ async def run_engine_loop() -> None:
         await _broadcast_engine_ws()
 
         # ── 백그라운드 태스크로 파이프라인 루프 시작 (Step 7: 중앙 코디네이터 연동) ──
-        # 테스트모드와 무관하게 항상 시작 (UI 전송 등 돈과 무관한 기능 실행)
+        # 가상매매와 무관하게 항상 시작 (UI 전송 등 돈과 무관한 기능 실행)
         # 순서 보장: Ingestion -> Compute
         # Gateway 루프는 app.py에서 독립적으로 시작 (파이프라인 독립성 보장)
         from backend.app.pipelines.pipeline_compute import start_compute_loop

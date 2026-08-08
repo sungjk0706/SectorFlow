@@ -678,7 +678,7 @@ class TestPriceBasedFiltering:
     @pytest.mark.asyncio
     async def test_orderable_less_than_price_blocks_execute_buy(self, fresh_state, reset_cash_gate):
         """주문가능금액이 종목 가격보다 적으면 execute_buy 호출 안 됨."""
-        # cur_price=70000, 테스트모드 슬리피지 적용 시 est_price=70100
+        # cur_price=70000, 가상매매 슬리피지 적용 시 est_price=70100
         # available=50_000 < 70100 → _buyable_codes에서 제외
         with patch("backend.app.services.engine_state.state", fresh_state), \
              patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \

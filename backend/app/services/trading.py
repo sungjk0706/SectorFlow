@@ -174,11 +174,11 @@ async def _broadcast_daily_buy_state_status(*, failed: bool) -> None:
 
 
 async def _broadcast_test_cash_failed(*, stk_cd: str, reason: str) -> None:
-    """테스트모드 예수금 검증 실패를 화면에 전송 (P21 사용자 투명성).
+    """가상매매 예수금 검증 실패를 화면에 전송 (P21 사용자 투명성).
 
     사후 1회성 이벤트 — 매수상태 배지(지속 상태 전용)가 아닌 헤더 칩으로 알림.
     P23(일관성): _broadcast_daily_buy_state_status 패턴과 동일 (_safe_broadcast 사용).
-    P18(테스트모드 동등성): 테스트모드 전용 사유이므로 실전모드에서는 호출되지 않음.
+    P18(가상매매 동등성): 가상매매 전용 사유이므로 실전매매에서는 호출되지 않음.
     """
     try:
         from backend.app.services.engine_account_notify import _safe_broadcast
@@ -202,11 +202,11 @@ async def _broadcast_circuit_breaker_recovered() -> None:
 
 
 async def _broadcast_test_cash_resolved() -> None:
-    """테스트모드 매수 성공 시 잔고 부족 칩 해제 (P21 사용자 투명성).
+    """가상매매 매수 성공 시 잔고 부족 칩 해제 (P21 사용자 투명성).
 
     잔고 부족 상태가 해소되었으므로 칩도 자동 해제 — 수동 클릭 대기 불필요.
     P23(일관성): _broadcast_test_cash_failed 패턴과 동일 (_safe_broadcast 사용).
-    P18(테스트모드 동등성): 테스트모드 전용 사유이므로 실전모드에서는 호출되지 않음.
+    P18(가상매매 동등성): 가상매매 전용 사유이므로 실전매매에서는 호출되지 않음.
     """
     try:
         from backend.app.services.engine_account_notify import _safe_broadcast
@@ -220,7 +220,7 @@ async def _broadcast_order_fill_timeout(*, stk_cd: str, stk_nm: str, side: str) 
 
     주문은 접수되었으나 체결 응답이 타임아웃 내 오지 않음 — 재시도 없이 알림 후 대기.
     P23(일관성): risk-block-status 브로드캐스트 패턴과 동일 (_safe_broadcast 사용).
-    P18(테스트모드 동등성): 모드 무관 동일 동작.
+    P18(가상매매 동등성): 모드 무관 동일 동작.
     """
     try:
         from backend.app.services.engine_account_notify import _safe_broadcast
@@ -242,7 +242,7 @@ async def _handle_order_failure() -> None:
     record_order_failure() → circuit_breaker OPEN 시 time_scheduler_on=False +
     circuit-breaker-open 브로드캐스트 + header_refresh + settings_toggled + 에러 로그.
     P16(살아있는 경로): execute_buy/execute_sell 내부에서 호출.
-    P18(테스트모드 동등성): 모드 무관 동일 동작.
+    P18(가상매매 동등성): 모드 무관 동일 동작.
     P25(격리된 실패): 리스크 매니저 실패 시 warning 로그 후 차단.
     """
     try:
@@ -353,8 +353,8 @@ class AutoTradeManager:
         """체결 응답 대기 완료 — 이벤트 대기 + 타임아웃 처리 (결정 2, P22 정합성).
 
         잠금 해제 시점을 체결 응답 수신 후로 이동 — 한 번에 하나의 주문만 잔고에 영향.
-        테스트모드: 가상 체결 이벤트(fake_fill_event) → on_fill_update가 이벤트 설정.
-        실전모드: 실시간 체결 이벤트(키움 "00" / LS 체결 채널) → on_fill_update가 이벤트 설정.
+        가상매매: 가상 체결 이벤트(fake_fill_event) → on_fill_update가 이벤트 설정.
+        실전매매: 실시간 체결 이벤트(키움 "00" / LS 체결 채널) → on_fill_update가 이벤트 설정.
         타임아웃 시 사용자 알림(화면 + 텔레그램) 후 False 반환 (잠금은 호출자 try/finally로 해제).
 
         반환: True=체결 응답 수신, False=타임아웃 (사용자 알림 완료)
@@ -469,7 +469,7 @@ class AutoTradeManager:
             return False, BUY_REJECT_SIGNAL_INTERVAL
 
         # ── 실제 잔고 보유종목 수 기준으로 최대보유종목수 체크 ─────────────
-        # 테스트모드: 모의투자 가상 잔고 / 실전투자: 키움 실제 잔고
+        # 가상매매: 모의투자 가상 잔고 / 실전매매: 키움 실제 잔고
         # max_stock_cnt_on=False → 제한 없음 (사용자 선택)
         max_limit = settings["max_limit"]
         max_limit_on = bool(raw_all.get("max_stock_cnt_on", True))
@@ -560,7 +560,7 @@ class AutoTradeManager:
         order_price = 0
         order_type = "시장가"
 
-        # ── RiskManager 게이트 (테스트/실전 공통 — 모드 분기는 RiskManager 내부에서 처리) ──
+        # ── RiskManager 게이트 (가상매매/실전매매 공통 — 모드 분기는 RiskManager 내부에서 처리) ──
         risk_mgr = get_risk_manager()
         _allowed, _risk_reason = await risk_mgr.check_buy_order_allowed(
             stk_cd, float(current_price), buy_qty
@@ -591,7 +591,7 @@ class AutoTradeManager:
         logger.info("[매매] [매수주문] %s(%s) 매수신호 감지. %s %d주 주문전송.", stk_nm, stk_cd, order_type, buy_qty)
         _fire_and_forget_telegram(f"🚀 [자동매매] {stk_nm} {buy_qty}주 매수 주문 전송.", self.get_settings_fn())
 
-        # ── 테스트모드: 예수금 검증 + 즉시 차감 (TOCTOU 경쟁 상태 방지, P22) ────
+        # ── 가상매매: 예수금 검증 + 즉시 차감 (TOCTOU 경쟁 상태 방지, P22) ────
         _reserved_cost: int = 0
         if is_virtual_mode(raw_all):
             from backend.app.services.engine_strategy_core import reserve_test_buy_power
@@ -607,7 +607,7 @@ class AutoTradeManager:
                 await _broadcast_test_cash_failed(stk_cd=stk_cd, reason=_reject_reason)
                 return False, BUY_REJECT_TEST_CASH
 
-        # ── 테스트모드 가드: 테스트모드면 실전 서버에 절대 주문 안 보냄 ─────────
+        # ── 가상매매 가드: 가상매매면 실전 서버에 절대 주문 안 보냄 ─────────
         if is_virtual_mode(raw_all):
             _dry_price = int(order_price) if order_price > 0 else int(current_price)
             res = await dry_run.fake_send_order(
@@ -647,13 +647,13 @@ class AutoTradeManager:
         if is_virtual_mode(raw_all):
             fill_price = dry_run.estimate_fill_price(fill_price, "BUY")
         # 일일 누적 한도 기준 = trade_history.record_buy의 total_amt 공식과 동일 (P10/P22)
-        # 테스트모드: 수수료 포함 / 실전모드: 순수 매수가 (P18 — 실전은 증권사 서버가 SSOT, 앱 수수료 계산 금지)
+        # 가상매매: 수수료 포함 / 실전매매: 순수 매수가 (P18 — 실전은 증권사 서버가 SSOT, 앱 수수료 계산 금지)
         _base = int(buy_qty * fill_price)
         _fee = round(_base * BUY_COMMISSION) if is_virtual_mode(raw_all) else 0
         spent = _base + _fee
         self._daily_buy_spent += max(0, spent)
 
-        # ── 매수 성공 즉시 _bought_today 반영 (테스트/실전 공통 — 원칙 18 동등성) ──
+        # ── 매수 성공 즉시 _bought_today 반영 (가상매매/실전매매 공통 — 원칙 18 동등성) ──
         if stk_cd not in self._bought_today:
             self._bought_today[stk_cd] = time.time()
             logger.info("[매매] [매수기억] %s 주문 성공! 금일 매수 이력 저장.", stk_nm)
@@ -677,7 +677,7 @@ class AutoTradeManager:
         except Exception:
             logger.warning("[매매] 매수 한도 전송 실패", exc_info=True)
 
-        # ── 테스트모드: 가상 체결 동기 대기 (실전 WS "00"과 동일한 downstream, P18 동등성) ──
+        # ── 가상매매: 가상 체결 동기 대기 (실전 WS "00"과 동일한 downstream, P18 동등성) ──
         # 주문 흐름 내에서 가상 체결 완료까지 대기 — "주문 → 대기 → 응답 → 다음" 흐름 (결정 4).
         # fake_fill_event 내부에서 on_fill_update가 _fill_event를 설정 → _end_fill_await가 즉시 통과.
         if is_virtual_mode(raw_all):
@@ -704,13 +704,13 @@ class AutoTradeManager:
         except Exception:
             logger.warning("[매매] 리스크 관리자 성공 보고 실패", exc_info=True)
 
-        # ── 테스트모드 매수 성공 시 잔고 부족 칩 해제 (P21) ──
+        # ── 가상매매 매수 성공 시 잔고 부족 칩 해제 (P21) ──
         if is_virtual_mode(raw_all):
             await _broadcast_test_cash_resolved()
 
         # ── 체결·잔고 응답 대기 (결정 2 — 잠금 해제 시점을 체결 응답 후로 이동) ──
-        # 테스트모드: 가상 체결(fake_fill_event) → on_fill_update가 이벤트 설정.
-        # 실전모드: WS "00" 체결 이벤트 → on_fill_update가 이벤트 설정.
+        # 가상매매: 가상 체결(fake_fill_event) → on_fill_update가 이벤트 설정.
+        # 실전매매: WS "00" 체결 이벤트 → on_fill_update가 이벤트 설정.
         # 타임아웃 시 사용자 알림 후 차단 반환 — 주문은 접수되었으나 체결 미확정 (P21 투명성).
         _fill_ok = await self._end_fill_await(stk_cd, stk_nm, "매수", raw_all)
         if not _fill_ok:
@@ -823,10 +823,10 @@ class AutoTradeManager:
         self._recent_sells.add(stk_cd)
 
         # ── 평균매입가를 주문 전에 미리 조회 (주문 후 포지션 삭제되면 조회 불가) ──
-        # P18 참고: 테스트/실전 분기는 "조회"이며 돈 I/O가 아님. 엄격 해석상 미세 위반 소지
-        # 있으나 현행 유지 — 테스트모드는 build_positions_from_trades로 유령 포지션
+        # P18 참고: 가상매매/실전매매 분기는 "조회"이며 돈 I/O가 아님. 엄격 해석상 미세 위반 소지
+        # 있으나 현행 유지 — 가상매매는 build_positions_from_trades로 유령 포지션
         # 차단 검사(qty 부족 시 매도 중단)를 수행하는 안전장치이므로 분기가 의도적.
-        # 실전모드는 get_positions()로 브로커 잔고를 직접 조회.
+        # 실전매매는 get_positions()로 브로커 잔고를 직접 조회.
         _mode = "virtual" if is_virtual_mode(base_settings) else "live"
         _avg_buy = 0
         _buy_date = ""
@@ -857,7 +857,7 @@ class AutoTradeManager:
         except Exception:
             logger.warning("[매매] 평균 매수가 조회 실패", exc_info=True)
 
-        # ── 테스트모드 가드: 테스트모드면 실전 서버에 절대 주문 안 보냄 ─────────
+        # ── 가상매매 가드: 가상매매면 실전 서버에 절대 주문 안 보냄 ─────────
         if is_virtual_mode(base_settings):
             _dry_sell_price = int(order_price) if order_price > 0 else int(cur_price)
             result = await dry_run.fake_send_order(
@@ -906,7 +906,7 @@ class AutoTradeManager:
             buy_date=_buy_date,
         )
 
-        # ── 테스트모드: 가상 체결 동기 대기 (실전 WS "00"과 동일한 downstream, P18 동등성) ──
+        # ── 가상매매: 가상 체결 동기 대기 (실전 WS "00"과 동일한 downstream, P18 동등성) ──
         # 주문 흐름 내에서 가상 체결 완료까지 대기 — "주문 → 대기 → 응답 → 다음" 흐름 (결정 4).
         # fake_fill_event 내부에서 on_fill_update가 _fill_event를 설정 → _end_fill_await가 즉시 통과.
         if is_virtual_mode(base_settings):
@@ -927,8 +927,8 @@ class AutoTradeManager:
             logger.warning("[매매] 리스크 관리자 성공 보고 실패", exc_info=True)
 
         # ── 체결·잔고 응답 대기 (결정 2 — 잠금 해제 시점을 체결 응답 후로 이동) ──
-        # 테스트모드: 가상 체결(fake_fill_event) → on_fill_update가 이벤트 설정.
-        # 실전모드: WS "00" 체결 이벤트 → on_fill_update가 이벤트 설정.
+        # 가상매매: 가상 체결(fake_fill_event) → on_fill_update가 이벤트 설정.
+        # 실전매매: WS "00" 체결 이벤트 → on_fill_update가 이벤트 설정.
         # 타임아웃 시 사용자 알림 후 차단 반환 — 주문은 접수되었으나 체결 미확정 (P21 투명성).
         _fill_ok = await self._end_fill_await(stk_cd, stk_nm, "매도", base_settings)
         if not _fill_ok:

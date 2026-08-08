@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 def _select_token(settings: dict | None) -> str:
-    """trade_mode에 따라 테스트/실전 봇 토큰 선택 (채널 분리)."""
+    """trade_mode에 따라 가상매매/실전매매 봇 토큰 선택 (채널 분리)."""
     settings = settings or {}
     if is_virtual_mode(settings):
         return (settings.get("telegram_bot_token_test") or "").strip()

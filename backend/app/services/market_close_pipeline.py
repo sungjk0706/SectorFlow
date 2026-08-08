@@ -526,8 +526,8 @@ async def _save_daily_snapshot(trade_mode: str) -> None:
     """장마감 후 당일 계좌 총자산 스냅샷 저장 (기초자산 분모 방식).
 
     account_snapshot에서 total_asset 산출:
-      - 테스트모드: orderable + total_eval_amount (주문가능금액 + 총평가금액)
-      - 실전모드: deposit + total_eval_amount (예수금 + 총평가금액)
+      - 가상매매: orderable + total_eval_amount (주문가능금액 + 총평가금액)
+      - 실전매매: deposit + total_eval_amount (예수금 + 총평가금액)
     P22 데이터 정합성 — total_asset은 원본 account_snapshot에서 파생.
     저장 후 settlement_engine.reset_daily_deposit_total() 호출 (당일 입금액 누적 초기화).
     """

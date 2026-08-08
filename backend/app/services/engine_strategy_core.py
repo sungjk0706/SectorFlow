@@ -30,7 +30,7 @@ def make_detail(stk_cd: str, stk_nm: str, cur_price: int,
 
 async def reserve_test_buy_power(price: int, qty: int, daily_spent: int) -> tuple[bool, str, int]:
     """
-    테스트모드: 매수 전 예수금 검증 + 즉시 차감 (TOCTOU 경쟁 상태 방지).
+    가상매매: 매수 전 예수금 검증 + 즉시 차감 (TOCTOU 경쟁 상태 방지).
     Settlement Engine의 reserve_buy_power를 호출하여 매수 가능 여부 확인과 동시에
     _orderable에서 즉시 차감한다.
     반환: (ok, reason, cost) — cost는 차감된 금액 (롤백 시 release_buy_power에 전달).

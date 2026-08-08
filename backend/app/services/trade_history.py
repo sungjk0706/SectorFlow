@@ -28,8 +28,8 @@ _sell_history: list[dict] = []
 _history_lock: LazyLock = LazyLock()
 _loaded: bool = False
 
-RETENTION_MONTHS_TEST: int = 6       # 테스트모드: 달력 기준 6개월 보관
-RETENTION_TRADING_DAYS_REAL: int = 90  # 실전모드: 거래일 90일 보관 (추후 논의 대상)
+RETENTION_MONTHS_TEST: int = 6       # 가상매매: 달력 기준 6개월 보관
+RETENTION_TRADING_DAYS_REAL: int = 90  # 실전매매: 거래일 90일 보관 (추후 논의 대상)
 
 
 # ── 메모리 초기화 ─────────────────────────────────────────────────────────────
@@ -367,7 +367,7 @@ async def record_buy(
     await _ensure_loaded()
     now = datetime.now()
     total_amt = price * qty
-    # 테스트모드만 앱에서 수수료 계산 / 실전은 증권사 데이터 그대로 사용 (P18 — 실전은 증권사 SSOT)
+    # 가상매매만 앱에서 수수료 계산 / 실전은 증권사 데이터 그대로 사용 (P18 — 실전은 증권사 SSOT)
     fee = round(total_amt * BUY_COMMISSION) if trade_mode == "virtual" else 0
     rec = {
         "ts": now.isoformat(timespec="seconds"),
@@ -428,7 +428,7 @@ async def record_sell(
         logger.warning("[정산] 외부에서 전달된 평균매입가가 0 이하입니다. 유령 데이터 혼입 방지를 위해 실현손익 계산을 건너뜁니다.")
         # realized_pnl 및 pnl_rate를 0으로 처리 (이후 코드에서 avg_buy_price > 0 체크로 안전하게 처리됨)
     total_amt = price * qty
-    # 테스트모드만 앱에서 수수료/세금 계산 / 실전은 증권사 데이터 그대로 사용 (P18 — 실전은 증권사 SSOT)
+    # 가상매매만 앱에서 수수료/세금 계산 / 실전은 증권사 데이터 그대로 사용 (P18 — 실전은 증권사 SSOT)
     fee = round(total_amt * SELL_COMMISSION) if trade_mode == "virtual" else 0
     tax = round(total_amt * SECURITIES_TAX) if trade_mode == "virtual" else 0
     # 매도금액(실수령) = 매도가×수량 - 수수료 - 세금
@@ -484,7 +484,7 @@ async def compute_expected_orderable(starting_balance: int, trade_mode: str = "v
       - 매도 증가: price*qty - round(price*qty*SECURITIES_TAX) - round(price*qty*SELL_COMMISSION)
 
     _buy_history/_sell_history는 최신순(INSERT 0) 저장이므로 ts 오름차순으로 병합 처리.
-    trade_mode 필터링 적용 (실전은 증권사 서버가 SSOT이므로 테스트모드만 대조).
+    trade_mode 필터링 적용 (실전은 증권사 서버가 SSOT이므로 가상매매만 대조).
     """
     await _ensure_loaded()
     async with _history_lock:
@@ -721,7 +721,7 @@ async def get_daily_summary(
 
 
 async def clear_test_history() -> None:
-    """테스트모드(trade_mode=='test') 이력만 즉시 삭제 (비동기적 수행). 실전 이력은 보존."""
+    """가상매매(trade_mode=='test') 이력만 즉시 삭제 (비동기적 수행). 실전 이력은 보존."""
     async with _history_lock:
         _buy_history[:] = [r for r in _buy_history if r["trade_mode"] != "virtual"]
         _sell_history[:] = [r for r in _sell_history if r["trade_mode"] != "virtual"]

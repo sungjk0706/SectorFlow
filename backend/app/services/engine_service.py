@@ -176,7 +176,7 @@ def _build_changed_dict(changed_keys: set[str]) -> dict:
 
 
 async def _apply_virtual_balance_change(changed_keys: set[str]) -> None:
-    """테스트모드 가상 예수금 변경 시 Settlement Engine 동기화 + 계좌 스냅샷 갱신."""
+    """가상매매 가상 예수금 변경 시 Settlement Engine 동기화 + 계좌 스냅샷 갱신."""
     from backend.app.services import settlement_engine as _se
     _VIRTUAL_BALANCE_KEYS = {"virtual_balance", "virtual_deposit"}
     if not (changed_keys & _VIRTUAL_BALANCE_KEYS):

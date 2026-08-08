@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Dry-Run 모듈 — 테스트모드 전용 가상 체결 엔진 + 영속 잔고.
+Dry-Run 모듈 — 가상매매 전용 가상 체결 엔진 + 영속 잔고.
 
 책임:
   1. fake_send_order()  — 키움 send_order 응답과 동일한 구조의 가짜 체결 반환
@@ -108,7 +108,7 @@ def _apply_slippage(price: int, side: str, ticks: int = SLIPPAGE_TICKS) -> int:
 
 
 def estimate_fill_price(price: int, side: str) -> int:
-    """테스트모드 시장가 주문 예상 체결가 (슬리피지 적용).
+    """가상매매 시장가 주문 예상 체결가 (슬리피지 적용).
 
     trading.py에서 주문 전 수량/예수금 계산에 사용 — fake_fill_event 내부 슬리피지와 동일 로직.
     """
@@ -159,7 +159,7 @@ async def fake_fill_event(
     pre_reserved: bool = False,
 ) -> None:
     """
-    테스트모드 가상 체결 이벤트 — 실전 WS "00" 이벤트와 동일한 downstream 호출 체인.
+    가상매매 가상 체결 이벤트 — 실전 WS "00" 이벤트와 동일한 downstream 호출 체인.
     1. _apply_buy/_apply_sell (포지션 + Settlement Engine)
     2. on_fill_update (has_open_buy 해제, _recent_sells 해제, 로그/텔레그램)
     3. _on_fill_after_ws (계좌 갱신, 매도 조건 검사)

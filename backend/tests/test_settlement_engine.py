@@ -1,4 +1,4 @@
-"""settlement_engine.py 단위 테스트 — 테스트모드 정산 엔진 로직 검증.
+"""settlement_engine.py 단위 테스트 — 가상매매 정산 엔진 로직 검증.
 
 누적투자금/주문가능금액 관리, 매수/매도 체결 처리, 충전, 
 Effective Buy Power 계산 로직을 검증.
@@ -633,7 +633,7 @@ class TestMaxBuyQtyForBudget:
         assert max_buy_qty_for_budget(70_000, budget, is_virtual=True) == 0
 
     def test_real_mode_excludes_fee(self):
-        """실전모드는 수수료 미적용 — budget // price."""
+        """실전매매는 수수료 미적용 — budget // price."""
         # 14*70000=980000, 14*70000+fee=980147 > 980000이지만 실전은 무시
         assert max_buy_qty_for_budget(70_000, 980_000, is_virtual=False) == 14
 

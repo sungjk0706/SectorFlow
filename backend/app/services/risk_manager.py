@@ -339,7 +339,7 @@ class RiskManager:
 
     async def check_buy_order_allowed(self, stk_cd: str, price: float, qty: int) -> tuple[bool, str]:
         """
-        매수 주문 허용 여부 검사. 테스트/실전 모드 공통 호출.
+        매수 주문 허용 여부 검사. 가상매매/실전매매 공통 호출.
         모드 분기는 돈 I/O(예수금·포지션 조회) 최소 지점에서만 수행 — 원칙 18.
 
         기존 체크(일일 손실 한도/예수금/단일 종목 비중)는 항상 실행.
@@ -417,8 +417,8 @@ class RiskManager:
     def get_withdrawable_deposit(self) -> int:
         """주문 가능한 예수금/가용금액을 모드에 따라 반환.
 
-        - 테스트모드: settlement_engine.get_available_cash()
-        - 실전모드: account_snapshot['orderable']
+        - 가상매매: settlement_engine.get_available_cash()
+        - 실전매매: account_snapshot['orderable']
         """
         from backend.app.services.engine_state import state as engine_state
         cache = engine_state.integrated_system_settings_cache

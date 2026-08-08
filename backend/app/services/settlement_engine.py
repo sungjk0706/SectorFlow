@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Settlement Engine — 테스트모드 전용 누적투자금/주문가능금액 관리.
+Settlement Engine — 가상매매 전용 누적투자금/주문가능금액 관리.
 
 책임:
   1. _accumulated_investment (누적투자금) 관리 — 초기투자금 + 충전금액, 매수/매도 시 불변
@@ -56,7 +56,7 @@ def get_orderable() -> int:
 
 async def reserve_buy_power(order_amount: int, daily_limit: int = 0, daily_spent: int = 0) -> tuple[bool, str, int]:
     """
-    매수 가능 여부 확인 + 즉시 차감 (원자적). TOCTOU 경쟁 상태 방지 (테스트모드 전용 — P18).
+    매수 가능 여부 확인 + 즉시 차감 (원자적). TOCTOU 경쟁 상태 방지 (가상매매 전용 — P18).
     검증 통과 시 _orderable에서 즉시 차감하고 영속화.
     반환: (ok, reason, cost) — cost는 차감된 금액 (롤백 시 release_buy_power에 전달).
     실전은 증권사 서버가 SSOT이므로 이 함수 미호출 (engine_strategy_core.reserve_test_buy_power 경유, trading.py에서 is_virtual_mode 게이트).
@@ -75,7 +75,7 @@ async def reserve_buy_power(order_amount: int, daily_limit: int = 0, daily_spent
 
 async def release_buy_power(cost: int) -> None:
     """
-    사전 차감 롤백 (주문 실패 시). 테스트모드 전용 (P18).
+    사전 차감 롤백 (주문 실패 시). 가상매매 전용 (P18).
     reserve_buy_power로 차감한 금액을 _orderable에 복원.
     """
     if cost <= 0:
@@ -89,7 +89,7 @@ async def release_buy_power(cost: int) -> None:
 
 async def on_buy_fill(price: int, qty: int) -> int:
     """
-    매수 체결 처리 (테스트모드 전용 — P18).
+    매수 체결 처리 (가상매매 전용 — P18).
     - 주문가능금액(orderable)에서만 차감
     - 누적투자금은 변하지 않음
     반환: 차감 후 주문가능금액.
@@ -108,7 +108,7 @@ async def on_buy_fill(price: int, qty: int) -> int:
 
 async def on_sell_fill(price: int, qty: int, stk_cd: str, stk_nm: str) -> int:
     """
-    매도 체결 처리 (테스트모드 전용 — P18).
+    매도 체결 처리 (가상매매 전용 — P18).
     - 순매도대금을 주문가능금액(orderable)에만 추가
     - 누적투자금은 변하지 않음
     반환: 추가 후 주문가능금액.
@@ -166,7 +166,7 @@ def reset_daily_deposit_total() -> None:
 
 def get_effective_buy_power(daily_limit: int = 0, daily_spent: int = 0) -> int:
     """
-    실제 매수 가능 금액 계산 (주문가능금액 기준). 테스트모드 전용 (P18).
+    실제 매수 가능 금액 계산 (주문가능금액 기준). 가상매매 전용 (P18).
     daily_limit == 0이면 무제한 (주문가능금액만 사용).
     reserve_buy_power에서만 호출 → 실전 미호출.
     """
@@ -178,9 +178,9 @@ def get_effective_buy_power(daily_limit: int = 0, daily_spent: int = 0) -> int:
 def max_buy_qty_for_budget(price: int, budget: int, is_virtual: bool) -> int:
     """예산 내 최대 매수 수량 (수수료 포함, P10 SSOT, P18 부합).
 
-    테스트모드: reserve_buy_power의 cost 공식(price*qty + round(price*qty*BUY_COMMISSION))
+    가상매매: reserve_buy_power의 cost 공식(price*qty + round(price*qty*BUY_COMMISSION))
     과 정합되도록 수수료 여유분 확보.
-    실전모드: 증권사 서버가 SSOT이므로 앱에서 수수료 계산하지 않음 — budget // price 만 사용.
+    실전매매: 증권사 서버가 SSOT이므로 앱에서 수수료 계산하지 않음 — budget // price 만 사용.
     trading.py의 buy_qty 계산과 buy_order_executor._refresh_buyable_prices가
     동일 기준으로 호출 (P22 정합성).
     """
@@ -234,7 +234,7 @@ async def _load(force_reload: bool = False, initial_deposit: int | None = None) 
     """SQLite KV 스토어에서 상태 로드.
 
     - DB에 저장된 상태가 있으면 로드한다.
-    - 없으면 initial_deposit(인자 → settings.test_virtual_deposit → 기본값)을 사용해 초기화.
+    - 없으면 initial_deposit(인자 → settings.virtual_deposit → 기본값)을 사용해 초기화.
     - DB 에러 시 예외 전파하여 기동 실패로 명시적 알림.
 
     Args:

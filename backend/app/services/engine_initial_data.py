@@ -244,7 +244,7 @@ async def _reset_realtime_fields() -> None:
         pos["bid_depth"] = None
         pos["ask_depth"] = None
 
-    # 테스트모드 가상 보유종목 실시간 필드 초기화
+    # 가상매매 가상 보유종목 실시간 필드 초기화
     if is_virtual_mode(engine_state.state.integrated_system_settings_cache):
         for pos in dry_run._test_positions.values():
             pos["cur_price"] = None

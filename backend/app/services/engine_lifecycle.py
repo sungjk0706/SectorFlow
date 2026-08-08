@@ -34,9 +34,9 @@ async def start_engine(user_id: str = "") -> bool:
     engine_state.state.running = True
     engine_state.state.engine_task = asyncio.create_task(_engine_loop())
 
-    # ── 테스트모드: 거래내역 기반 포지션 구축 ──────────────────────────────────
-    # 테스트모드는 증권사 서버가 없으므로 trades 테이블(SSOT)에서 포지션 구축.
-    # 실전투자 모드는 증권사 서버가 SSOT이므로 별도 대조 불필요.
+    # ── 가상매매: 거래내역 기반 포지션 구축 ──────────────────────────────────
+    # 가상매매는 증권사 서버가 없으므로 trades 테이블(SSOT)에서 포지션 구축.
+    # 실전매매 모드는 증권사 서버가 SSOT이므로 별도 대조 불필요.
     # P25 격리된 실패: 포지션 구축 실패 시에도 엔진 기동은 계속. 호출자(app.py/engine_service)와 다단계 방어.
     # P21 사용자 투명성: 실패 시 position_build_failed 플래그 설정 → get_engine_status()로 프론트 전달.
     if is_virtual_mode(engine_state.state.integrated_system_settings_cache):
@@ -125,7 +125,7 @@ async def stop_engine() -> None:
     from backend.app.services.core_queues import clear_all_queues
     clear_all_queues()
 
-    # 테스트모드 가상 잔고: 엔진 중지 시 초기화하지 않음
+    # 가상매매 가상 잔고: 엔진 중지 시 초기화하지 않음
     # (포지션·예수금은 사용자가 직접 초기화할 때만 리셋)
 
 
@@ -221,7 +221,7 @@ def get_engine_status() -> dict:
         "ws_reg_total_estimate": sub_count,
         "broker_statuses": broker_statuses,  # broker별 실제 연결 상태
         "market_phase": get_market_phase(),  # 장 상태 (P21 사용자 투명성)
-        "position_build_failed": engine_state.state.position_build_failed,  # P21 — 테스트모드 포지션 구축 실패
+        "position_build_failed": engine_state.state.position_build_failed,  # P21 — 가상매매 포지션 구축 실패
         "degraded_mode": engine_state.state.degraded_mode,  # P21 — 감소 모드 기동
     }
 
@@ -276,7 +276,7 @@ async def on_trade_mode_switched() -> None:
     await _refresh_account_snapshot_meta()
     await _broadcast_account(reason="trade_mode_switch")
 
-    # 엔진 상태 브로드캐스트 (프론트엔드 헤더 테스트모드 표시 갱신)
+    # 엔진 상태 브로드캐스트 (프론트엔드 헤더 가상매매 표시 갱신)
     await broadcast_engine_status()
 
     # 구독 전환 실패 시 사용자 알림 전송 — 4단계 프론트엔드 핸들러와 동일 구조 (설계서 결정 3).

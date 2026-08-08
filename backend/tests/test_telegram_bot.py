@@ -1117,7 +1117,7 @@ class TestCmdPeriodPnl:
 
     @pytest.mark.asyncio
     async def test_real_mode_omits_rate(self):
-        """실전모드 — 수익률은 증권사 서버 SSOT이므로 앱에서 재계산 금지 (AGENTS.md)."""
+        """실전매매 — 수익률은 증권사 서버 SSOT이므로 앱에서 재계산 금지 (AGENTS.md)."""
         bot = TelegramBot()
         mock_state = MagicMock()
         mock_state.integrated_system_settings_cache = {"trade_mode": "live"}
@@ -1129,7 +1129,7 @@ class TestCmdPeriodPnl:
         mock_send.assert_called_once()
         text = mock_send.call_args[0][2]
         assert "증권사 확인" in text
-        # 테스트모드 수익률 표시 없음
+        # 가상매매 수익률 표시 없음
         assert "%)" not in text
 
     @pytest.mark.asyncio
@@ -1444,7 +1444,7 @@ class TestBuildRiskStatusLines:
 class TestCmdAccount:
     @pytest.mark.asyncio
     async def test_account_real_mode_shows_deposit(self):
-        """실전모드 — 예수금(deposit) + 주문가능(orderable) + 평가/실현 손익 표시 (P10/P21/P23)."""
+        """실전매매 — 예수금(deposit) + 주문가능(orderable) + 평가/실현 손익 표시 (P10/P21/P23)."""
         bot = TelegramBot()
         snap = {
             "deposit": 1_000_000,
@@ -1482,15 +1482,15 @@ class TestCmdAccount:
 
     @pytest.mark.asyncio
     async def test_account_test_mode_shows_initial_deposit(self):
-        """테스트모드 — 누적 투자금(initial_deposit) + 주문가능(orderable) + 평가/실현 손익 표시 (P10/P21/P23).
+        """가상매매 — 누적 투자금(initial_deposit) + 주문가능(orderable) + 평가/실현 손익 표시 (P10/P21/P23).
 
-        테스트모드에서는 deposit이 SSOT가 아니므로 "예수금" 라벨 사용 금지.
+        가상매매에서는 deposit이 SSOT가 아니므로 "예수금" 라벨 사용 금지.
         프론트엔드 profit-shared.ts renderAccountVals와 동일 기준.
         실현 수익률 분모 = 매수원금 합계(realized_buy_total) — 양 모드 공통 (프론트엔드 computeCumulativePnl/aggregatePnl과 동일 — P10 SSOT).
         """
         bot = TelegramBot()
         snap = {
-            "deposit": 0,  # 테스트모드에서는 의미 없는 값
+            "deposit": 0,  # 가상매매에서는 의미 없는 값
             "initial_deposit": 10_000_000,
             "accumulated_investment": 10_000_000,
             "orderable": 9_500_000,
@@ -1524,7 +1524,7 @@ class TestCmdAccount:
         assert "누적 총 실현 수익률" in text
         # 150,000 / 8,000,000 * 100 = 1.875% → :.2f 표시 1.88%
         assert "1.88" in text
-        # 테스트모드에서는 "예수금" 라벨이 나오면 안 됨 (P23 일관성)
+        # 가상매매에서는 "예수금" 라벨이 나오면 안 됨 (P23 일관성)
         assert "예수금" not in text
 
     @pytest.mark.asyncio

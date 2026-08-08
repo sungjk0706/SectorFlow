@@ -24,14 +24,14 @@ async def _send_initial_snapshot_delayed(websocket: WebSocket, ws_manager) -> No
         from backend.app.services.engine_state import state
 
         # 이벤트 구동 방식: 데이터 준비 완료 시 즉시 전송 (타임아웃/폴링 제거)
-        # 테스트모드와 실전모드 동일하게 데이터 준비 대기 (앱 기동 준비는 돈과 무관)
+        # 가상매매와 실전매매 동일하게 데이터 준비 대기 (앱 기동 준비는 돈과 무관)
         if not state.data_ready_event.is_set():
             logger.info("[연결] 데이터 로드 대기 중 — 초기 데이터 전송 지연")
             await state.data_ready_event.wait()
             logger.info("[연결] 데이터 로드 — 초기 데이터 전송 시작")
 
         # 앱 준비 완료 대기 (이벤트 구동)
-        # 테스트모드와 실전모드 동일하게 앱 준비 대기 (앱 기동 준비는 돈과 무관)
+        # 가상매매와 실전매매 동일하게 앱 준비 대기 (앱 기동 준비는 돈과 무관)
         if not state.bootstrap_event.is_set():
             logger.info("[연결] 앱 기동 대기 중 — 초기 데이터 전송 지연")
             await state.bootstrap_event.wait()
@@ -91,7 +91,7 @@ async def _send_initial_snapshot_delayed(websocket: WebSocket, ws_manager) -> No
         from backend.app.services.sector_data_provider import get_sector_scores_snapshot
         from backend.app.services.engine_state import state
 
-        # 업종 요약정보 생성 완료 대기 (테스트모드 포함)
+        # 업종 요약정보 생성 완료 대기 (가상매매 포함)
         if not state.sector_summary_ready_event.is_set():
             logger.info("[연결] 업종 요약정보 생성 대기 중")
             await state.sector_summary_ready_event.wait()

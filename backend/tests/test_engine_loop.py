@@ -1352,7 +1352,7 @@ class TestRunEngineLoopAccountMasking:
 
     @pytest.mark.asyncio
     async def test_real_mode_warning_in_log(self):
-        """실전모드 → '★ 실제 자금 투입 ★' 경고 포함."""
+        """실전매매 → '★ 실제 자금 투입 ★' 경고 포함."""
         mock_state = _mock_state()
         mock_state.engine_stop_event.is_set.return_value = True
 
@@ -1361,7 +1361,7 @@ class TestRunEngineLoopAccountMasking:
         with (
             patch.object(engine_state, "state", mock_state),
             patch.object(engine_loop, "get_router", return_value=mock_router),
-            patch.object(engine_loop, "is_virtual_mode", return_value=False),  # 실전모드
+            patch.object(engine_loop, "is_virtual_mode", return_value=False),  # 실전매매
             patch.object(engine_loop, "_load_caches_preboot", new_callable=AsyncMock),
             patch.object(engine_loop, "_get_all_tokens_async", new_callable=AsyncMock),
             patch.object(engine_loop, "_load_broker_spec_async", new_callable=AsyncMock, return_value=[]),

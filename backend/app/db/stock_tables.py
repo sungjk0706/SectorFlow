@@ -64,7 +64,7 @@ async def _create_runtime_tables(conn) -> None:
             deposit INTEGER,                     -- 예수금 (참조용)
             orderable INTEGER,                   -- 주문가능금액 (참조용)
             total_eval_amount INTEGER,           -- 총평가금액 (참조용)
-            accumulated_investment INTEGER,      -- 누적투자금 (참조용, 테스트모드)
+            accumulated_investment INTEGER,      -- 누적투자금 (참조용, 가상매매)
             daily_deposit INTEGER DEFAULT 0,     -- 당일 입금액
             daily_withdrawal INTEGER DEFAULT 0,  -- 당일 출금액 (현재 0, 후순위)
             snapshot_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

@@ -401,12 +401,12 @@ class TestLoadCachesPrebootWsWindow:
         mock_reset.assert_not_awaited()
 
 
-# ── _load_caches_preboot — 테스트모드 분기 ─────────────────────────────────────
+# ── _load_caches_preboot — 가상매매 분기 ─────────────────────────────────────
 
 class TestLoadCachesPrebootTradeMode:
     @pytest.mark.asyncio
     async def test_test_mode_loads_settlement_state(self):
-        """테스트모드 → settlement_engine.load_state 호출."""
+        """가상매매 → settlement_engine.load_state 호출."""
         from backend.app.services import engine_cache
 
         snap = _make_snapshot(3)
@@ -428,7 +428,7 @@ class TestLoadCachesPrebootTradeMode:
 
     @pytest.mark.asyncio
     async def test_real_mode_skips_settlement_state(self):
-        """실전모드 → settlement_engine.load_state 미호출."""
+        """실전매매 → settlement_engine.load_state 미호출."""
         from backend.app.services import engine_cache
 
         snap = _make_snapshot(3)
@@ -450,7 +450,7 @@ class TestLoadCachesPrebootTradeMode:
 
     @pytest.mark.asyncio
     async def test_test_mode_calls_reconcile_after_load_state(self):
-        """세션1 시나리오: 테스트모드 기동 시 load_state → reconcile_with_trades 호출 순서 (P22).
+        """세션1 시나리오: 가상매매 기동 시 load_state → reconcile_with_trades 호출 순서 (P22).
 
         engine_cache.py 113-116: load_state(initial_deposit) 후 reconcile_with_trades() 호출.
         autouse fixture가 reconcile을 AsyncMock으로 차단하므로, 테스트 내에서 직접 patch하여

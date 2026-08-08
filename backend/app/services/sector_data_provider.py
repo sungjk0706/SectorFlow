@@ -194,7 +194,7 @@ def _build_target_entry(bt, news_boost_cache: dict[str, float] | None = None) ->
           boost_score
       - 실시간 파생 필드 (sectorStocks SSOT에서 파생 — null 허용):
           cur_price, change, change_rate, strength, trade_amount
-          - null = 틱 미수신 (테스트모드 기동 직후, 장 전, 구독 지연 등)
+          - null = 틱 미수신 (가상매매 기동 직후, 장 전, 구독 지연 등)
           - 프론트 buyTargets는 sectorStocks 기준 rebindBuyTargetsRealtime으로 재결합
       - 원천 부재 표시 규칙 (P20 폴백 금지 — 명시적 "데이터 없음" 표시):
           high_5d: int(cache_entry.get("high_5d_price", 0) or 0) — 0 = 원천 부재/미다운로드
