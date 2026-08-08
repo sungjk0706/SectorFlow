@@ -170,7 +170,7 @@ async def _compute_period_pnl(label: str, *, today_only: bool = False, date_from
     """기간별 실현 손익 라인 1줄 생성 (P10 SSOT — trade_history.get_realized_pnl_summary, 프론트엔드 aggregatePnl과 동일 공식).
 
     수익률 분모 = 매수원금 합계(buy_total) — 프론트엔드 computeCumulativePnl과 동일.
-    실전매매: 증권사 서버가 수익률 SSOT이므로 앱에서 재계산 금지 → 수익률 미표시 (AGENTS.md 실전vs테스트 테이블).
+    실전매매: 증권사 서버가 수익률 SSOT이므로 앱에서 재계산 금지 → 수익률 미표시 (AGENTS.md 실전/가상매매 테이블).
     """
     from backend.app.services.trade_history import get_realized_pnl_summary
 
@@ -201,7 +201,7 @@ def _build_settings_lines(flat: dict) -> str:
 
     # 자동매매
     mode = flat.get("trade_mode") or "virtual"
-    mode_txt = "테스트" if mode == "virtual" else "실전"
+    mode_txt = "가상매매" if mode == "virtual" else "실전매매"
     auto_lines = [
         f"🔰 마스터: {on_off('time_scheduler_on')}",
         f" 매수: {on_off('auto_buy_on')} ({flat.get('buy_time_start', '?')}~{flat.get('buy_time_end', '?')})",

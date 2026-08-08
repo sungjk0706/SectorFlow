@@ -247,7 +247,7 @@ async def on_trade_mode_switched() -> None:
     # DB·캐시는 새 모드이나 구독이 이전 모드인 불일치 상태를 사용자가 인지하여 수동 대응하도록 알림만 전송 (W10 사용자 투명성).
     _subscribe_failed_reason: str | None = None
     if _new_virtual:
-        # 실전→테스트: 계좌 실시간 구독(00/04) 해제, 분석용 구독은 유지
+        # 실전매매→가상매매: 계좌 실시간 구독(00/04) 해제, 분석용 구독은 유지
         from backend.app.services.engine_ws_reg import _unreg_grp
         try:
             await _unreg_grp("10")
@@ -260,10 +260,10 @@ async def on_trade_mode_switched() -> None:
         await settlement_engine.load_state()
         logger.info("[연산] 가상매매 전환 — 정산 엔진 상태 복원")
     else:
-        # 테스트→실전: Settlement Engine 상태 저장 + 타이머 취소
+        # 가상매매→실전매매: Settlement Engine 상태 저장 + 타이머 취소
         await settlement_engine.save_state()
         logger.info("[연산] 실전매매 전환 — 정산 엔진 상태 저장")
-        # 테스트→실전: 계좌 실시간 구독(00/04) + 보유종목 실시간(0B) 등록
+        # 가상매매→실전매매: 계좌 실시간 구독(00/04) + 보유종목 실시간(0B) 등록
         try:
             await _subscribe_account_realtime()
             await _subscribe_positions_stocks_realtime()

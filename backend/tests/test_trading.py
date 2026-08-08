@@ -497,7 +497,7 @@ class TestBroadcastDailyBuyStateStatus:
 # ── _broadcast_virtual_cash_failed 헬퍼 단위 테스트 (P21 사용자 투명성) ──────────
 
 class TestBroadcastVirtualCashFailed:
-    """테스트 예수금 검증 실패 브로드캐스트 검증 (사후 1회성 — 헤더 칩 알림)."""
+    """가상매매 예수금 검증 실패 브로드캐스트 검증 (사후 1회성 — 헤더 칩 알림)."""
 
     @pytest.mark.asyncio
     async def test_failed_broadcasts(self):

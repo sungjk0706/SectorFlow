@@ -25,7 +25,7 @@ import {
 import {
   applySettingsChanged,
   applyAvgAmtProgress,
-  applyTestDataResetCompleted,
+  applyVirtualDataResetCompleted,
   applyInitialSnapshotUI,
   applyWsSubscribeStatus,
   applyBuyLimitStatus,
@@ -161,8 +161,8 @@ export function bindWSToStore(
 
 
   /* ── orders 채널 이벤트 핸들러 ── */
-  ordersClient.onEvent('test-data-reset-completed', () => {
-    applyTestDataResetCompleted()
+  ordersClient.onEvent('virtual-data-reset-completed', () => {
+    applyVirtualDataResetCompleted()
   })
 
   /* ── stock-classification-changed는 모든 채널에서 수신 가능하도록 prices 채널에 유지 ── */

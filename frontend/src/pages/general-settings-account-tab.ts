@@ -9,7 +9,7 @@ import { showConfirmDialog, showAlertDialog, showCustomDialog } from '../compone
 import { showSaveToast } from '../components/common/toast'
 import { FONT_SIZE, COLOR, RADIUS } from '../components/common/ui-styles'
 import { api } from '../api/client'
-import { applyTestDataResetCompleted } from '../stores/uiStore'
+import { applyVirtualDataResetCompleted } from '../stores/uiStore'
 import { type GeneralSettingsState, GS } from './general-settings-shared'
 
 export function renderAccountTab(state: GeneralSettingsState, container: HTMLElement): void {
@@ -178,8 +178,8 @@ function buildTestVirtualResetWrap(): HTMLElement {
       })
       if (!confirmed) return
       try {
-        await api.resetTestData()
-        applyTestDataResetCompleted()
+        await api.resetVirtualData()
+        applyVirtualDataResetCompleted()
         showSaveToast('saved')
       } catch {
         await showAlertDialog({ title: '오류', message: '초기화 실패' })

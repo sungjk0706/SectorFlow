@@ -310,8 +310,8 @@ export function clearTradeModeSwitchFailed(): void {
   uiStore.setState({ tradeModeSwitchFailed: null })
 }
 
-/* ── test-data-reset-completed: 통합 초기화 완료 ── */
-export function applyTestDataResetCompleted(): void {
+/* ── virtual-data-reset-completed: 통합 초기화 완료 ── */
+export function applyVirtualDataResetCompleted(): void {
   uiStore.setState({
     buyLimitStatus: { daily_buy_spent: 0 },
   })

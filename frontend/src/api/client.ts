@@ -97,8 +97,8 @@ export const api = {
       body: JSON.stringify({ value }),
     }),
 
-  resetTestData: () =>
-    request<{ ok: boolean; message?: string }>('/api/test-data/reset', {
+  resetVirtualData: () =>
+    request<{ ok: boolean; message?: string }>('/api/virtual-data/reset', {
       method: 'POST',
     }),
 

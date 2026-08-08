@@ -97,13 +97,13 @@ async def patch_setting_field(field_name: str, body: dict, _: str = Depends(get_
         )
 
 
-async def _reset_test_trades_and_deposit(default_deposit: int) -> None:
-    """테스트 매매 이력·가상 보유종목·예수금·정산엔진 초기화 + 이력 브로드캐스트."""
+async def _reset_virtual_trades_and_deposit(default_deposit: int) -> None:
+    """가상매매 매매 이력·가상 보유종목·예수금·정산엔진 초기화 + 이력 브로드캐스트."""
     from backend.app.services.dry_run import clear, set_virtual_deposit
     from backend.app.services.trade_history import clear_virtual_history, broadcast_history
     from backend.app.services import settlement_engine
 
-    # 1. 테스트 매매 이력 초기화 (실전 이력은 보존) — trades가 SSOT이므로 먼저 삭제
+    # 1. 가상매매 매매 이력 초기화 (실전 이력은 보존) — trades가 SSOT이므로 먼저 삭제
     await clear_virtual_history()
     # 2. 가상 보유종목 메모리 초기화 (trades 삭제 후이므로 빈 상태로 복원됨)
     await clear()
@@ -163,9 +163,9 @@ async def _reset_buy_state_and_broadcast() -> None:
     await _broadcast_buy_limit_status()
 
 
-@router.post("/test-data/reset")
-async def reset_test_data(_: str = Depends(get_current_user)):
-    """테스트 데이터 전체 초기화 (가상 보유종목 + 예수금 + 테스트 매매 이력)."""
+@router.post("/virtual-data/reset")
+async def reset_virtual_data(_: str = Depends(get_current_user)):
+    """가상매매 데이터 전체 초기화 (가상 보유종목 + 예수금 + 가상매매 매매 이력)."""
     try:
         from backend.app.services.engine_state import state
 
@@ -175,21 +175,21 @@ async def reset_test_data(_: str = Depends(get_current_user)):
             settings.get("virtual_deposit", default_deposit) or default_deposit
         )
 
-        # 1. 테스트 매매 이력·가상 보유종목·예수금·정산엔진 초기화 + 이력 브로드캐스트
-        await _reset_test_trades_and_deposit(default_deposit)
+        # 1. 가상매매 매매 이력·가상 보유종목·예수금·정산엔진 초기화 + 이력 브로드캐스트
+        await _reset_virtual_trades_and_deposit(default_deposit)
         # 2. 보유종목 메모리 리스트 및 캐시 초기화 + 계좌 스냅샷 갱신 + WS account-update 발송
         await _reset_positions_and_account()
         # 3. 일일매수 누적 상태·쿨다운·buy_targets 리셋 + WS buy-limit-status 발송
         await _reset_buy_state_and_broadcast()
         # 4. 통합 초기화 완료 신호 (모든 클라이언트 일괄 동기화)
         from backend.app.services.engine_account_notify import _broadcast
-        await _broadcast("test-data-reset-completed", {"_v": 1})
+        await _broadcast("virtual-data-reset-completed", {"_v": 1})
 
-        return {"ok": True, "message": "테스트 데이터 전체 초기화 완료"}
+        return {"ok": True, "message": "가상매매 데이터 전체 초기화 완료"}
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"테스트 데이터 초기화 실패: {e}",
+            detail=f"가상매매 데이터 초기화 실패: {e}",
         )
 
 

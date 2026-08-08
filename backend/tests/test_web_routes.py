@@ -668,11 +668,11 @@ class TestPatchSettingField:
         assert "타임테이블 시간 순서 오류" in exc_info.value.detail
 
 
-class TestResetTestData:
-    """settings.py: POST /api/test-data/reset — 테스트 데이터 전체 초기화."""
+class TestResetVirtualData:
+    """settings.py: POST /api/virtual-data/reset — 가상매매 데이터 전체 초기화."""
 
     async def test_success(self):
-        from backend.app.web.routes.settings import reset_test_data
+        from backend.app.web.routes.settings import reset_virtual_data
         with patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.services.trade_history.clear_virtual_history", new_callable=AsyncMock), \
              patch("backend.app.services.dry_run.clear", new_callable=AsyncMock), \
@@ -694,15 +694,15 @@ class TestResetTestData:
             mock_state.sector_summary_cache = None
             mock_state._last_global_buy_ts = 0.0
             mock_state._last_global_sell_ts = 0.0
-            result = await reset_test_data(_="dev")
+            result = await reset_virtual_data(_="dev")
         assert result["ok"] is True
         assert "초기화 완료" in result["message"]
         mock_reset.assert_called_once_with(10_000_000)
         mock_rebuild.assert_called_once_with([])
-        mock_broadcast.assert_called_once_with("test-data-reset-completed", {"_v": 1})
+        mock_broadcast.assert_called_once_with("virtual-data-reset-completed", {"_v": 1})
 
     async def test_exception_raises_500(self):
-        from backend.app.web.routes.settings import reset_test_data
+        from backend.app.web.routes.settings import reset_virtual_data
         from fastapi import HTTPException
         with patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.services.trade_history.clear_virtual_history", new_callable=AsyncMock, side_effect=RuntimeError("db locked")):
@@ -711,7 +711,7 @@ class TestResetTestData:
                 "sector_stock_layout": [],
             }
             with pytest.raises(HTTPException) as exc_info:
-                await reset_test_data(_="dev")
+                await reset_virtual_data(_="dev")
         assert exc_info.value.status_code == 500
         assert "초기화 실패" in exc_info.value.detail
 

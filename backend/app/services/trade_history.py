@@ -738,8 +738,8 @@ async def clear_virtual_history() -> None:
             query="DELETE FROM trades WHERE trade_mode = 'virtual'", params=(),
         ))
     except Exception as e:
-        logger.warning("[정산] DB 테스트 이력 삭제 실패: %s", e)
-    logger.info("[정산] 테스트 이력 삭제")
+        logger.warning("[정산] DB 가상매매 이력 삭제 실패: %s", e)
+    logger.info("[정산] 가상매매 이력 삭제")
 
 
 async def broadcast_history(trade_mode: str) -> None:

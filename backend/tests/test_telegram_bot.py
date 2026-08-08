@@ -2005,14 +2005,14 @@ class TestBuildSettingsLines:
         assert "마스터: ON" in text
         assert "매수: ON" in text
         assert "매도: OFF" in text
-        assert "투자모드: 테스트" in text
+        assert "투자모드: 가상매매" in text
         assert "09:00~15:20" in text
 
     def test_real_mode_label(self):
         flat = self._full_flat()
         flat["trade_mode"] = "live"
         text = _build_settings_lines(flat)
-        assert "투자모드: 실전" in text
+        assert "투자모드: 실전매매" in text
 
     def test_buy_section_includes_active_conditions(self):
         text = _build_settings_lines(self._full_flat())
