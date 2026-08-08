@@ -4,7 +4,7 @@
 
 import { uiStore } from '../stores/uiStore'
 import type { UIState } from '../stores/uiStore'
-import { clearCircuitBreakerOpen, clearRiskBlockStatus, clearTestCashFailed, clearPositionBuildFailed, clearDegradedMode } from '../stores/uiStore'
+import { clearCircuitBreakerOpen, clearRiskBlockStatus, clearTestCashFailed, clearPositionBuildFailed, clearDegradedMode, clearTradeModeSwitchFailed } from '../stores/uiStore'
 import type { IndexData } from '../types'
 import { BROKER_LABELS } from '../components/common/broker-badge'
 import { COLOR, RADIUS, BLUR, SURFACE_ALPHA, FONT_WEIGHT } from '../components/common/ui-styles'
@@ -384,6 +384,15 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
   })
   header.appendChild(degradedModeChip)
 
+  // 모드 전환 실패 칩 (빨간색 — 구독 전환 실패, 클릭 시 해제)
+  const tradeModeSwitchFailedChip = createChipEl()
+  tradeModeSwitchFailedChip.style.display = 'none'
+  tradeModeSwitchFailedChip.style.cursor = 'pointer'
+  tradeModeSwitchFailedChip.addEventListener('click', () => {
+    try { clearTradeModeSwitchFailed() } catch (e) { console.error('[Header] tradeModeSwitchFailed clear error', e) }
+  })
+  header.appendChild(tradeModeSwitchFailedChip)
+
   // 설정 상태 칩: 자동매매, 자동매수, 자동매도, 텔레그램
   const autoTradeChip = createChipEl()
   autoTradeChip.style.display = 'none'
@@ -409,7 +418,7 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
   // ── Store 구독 ──
 
   function onStateChange(state: UIState): void {
-    const { marketPhase, avgAmtProgress, status, settings, indexData, circuitBreakerOpen, riskBlockStatus, testCashFailed, positionBuildFailed, degradedMode } = state
+    const { marketPhase, avgAmtProgress, status, settings, indexData, circuitBreakerOpen, riskBlockStatus, testCashFailed, positionBuildFailed, degradedMode, tradeModeSwitchFailed } = state
 
     // P25: 칩 단위 격리 — 각 칩 렌더링 throw 시 해당 칩만 미갱신 + 로깅, 다음 칩 계속
     // (F-02 잔존 위험 해결 — onStateChange 콜백 내부 칩 간 격리)
@@ -480,6 +489,19 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
         degradedModeChip.style.display = 'none'
       }
     } catch (e) { console.error('[header] degradedMode chip error', e) }
+
+    // 모드 전환 실패 칩 (빨간색 — 구독 전환 실패, 체결 수신 확인 필요)
+    try {
+      if (tradeModeSwitchFailed) {
+        tradeModeSwitchFailedChip.style.display = ''
+        tradeModeSwitchFailedChip.style.background = `${COLOR.upBg}`
+        tradeModeSwitchFailedChip.style.color = `${COLOR.up}`
+        tradeModeSwitchFailedChip.style.border = `1px solid ${COLOR.up}40`
+        setAlertChip(tradeModeSwitchFailedChip, '모드 전환 실패 — 체결 수신 확인 필요')
+      } else {
+        tradeModeSwitchFailedChip.style.display = 'none'
+      }
+    } catch (e) { console.error('[header] tradeModeSwitchFailed chip error', e) }
 
     // 장 상태 — 카운트다운(백엔드 SSOT 수신값)이 있으면 우선 표시, 없으면 시계 페이즈명
     // 서킷브레이커/사이드카 발동(krx_alert 있음) 시 NXT/KRX 칩 숨김, CB 알림 칩만 표시 (P21 투명성).

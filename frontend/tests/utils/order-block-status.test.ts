@@ -37,6 +37,7 @@ function makeCleanUiState(): UIState {
     testCashFailed: null,
     positionBuildFailed: false,
     degradedMode: false,
+    tradeModeSwitchFailed: null,
   }
 }
 

@@ -39,6 +39,7 @@ import {
   applyMarketPhase,
   applyIndexData,
   applyEngineStatus,
+  applyTradeModeSwitchFailed,
   uiStore,
   type ReceiveRateEntry,
 } from './stores/uiStore'
@@ -140,6 +141,14 @@ export function bindWSToStore(
 
   settingsClient.onEvent('engine-status', (data) => {
     applyEngineStatus(data as EngineStatusPayload)
+  })
+
+  /* ── trade-mode-switch-failed: 런타임 투자모드 전환 실패 알림 (R-5) ──
+   *  구독 전환 실패 시 백엔드가 전송. 화면 상태 적용 + 토스트 에러 알림.
+   *  circuit-breaker-open 핸들러 패턴과 동일 (showToast + 상태 적용). */
+  settingsClient.onEvent('trade-mode-switch-failed', (data) => {
+    applyTradeModeSwitchFailed(data as { reason?: string; mode?: string })
+    showToast('error', '모드 전환 실패 — 체결 수신이 이전 모드일 수 있습니다', 8000)
   })
 
   settingsClient.onEvent('index-data', (data) => {
