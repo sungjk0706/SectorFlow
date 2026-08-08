@@ -104,7 +104,7 @@ async def _ensure_account_subscription() -> None:
     from backend.app.services import engine_ws_reg
     try:
         await engine_ws_reg.subscribe_account_realtime()
-        logger.info("[구독] 실전모드 — 계좌(그룹 10) 구독 보장")
+        logger.info("[구독] 실전매매 — 계좌(그룹 10) 구독 보장")
     except Exception as e:
         logger.debug("[구독] 계좌 구독 보장 실패: %s", e, exc_info=True)
 

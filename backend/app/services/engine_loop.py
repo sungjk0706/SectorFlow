@@ -507,12 +507,12 @@ async def run_engine_loop() -> None:
                     _rest_api._account_tr_id = tr
             engine_state.state.broker_rest_apis[broker_nm] = _rest_api
             from backend.app.services.engine_lifecycle import log_message
-            log_message(f"[연결] {BROKER_DISPLAY_NAMES.get(broker_nm, broker_nm)} 연결 (테스트모드={_is_virtual})")
+            log_message(f"[연결] {BROKER_DISPLAY_NAMES.get(broker_nm, broker_nm)} 연결 (가상매매={_is_virtual})")
 
 
 
         _is_virtual_flag  = is_virtual_mode(settings)
-        _mode_str      = "테스트모드" if _is_virtual_flag else "실전투자"
+        _mode_str      = "가상매매" if _is_virtual_flag else "실전매매"
         _broker_str    = BROKER_DISPLAY_NAMES.get(broker_nm, "증권사")
         _acnt_raw      = (
             settings.get(f"{broker_nm}_account_no")

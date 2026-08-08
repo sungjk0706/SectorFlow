@@ -40,13 +40,13 @@ async def start_engine(user_id: str = "") -> bool:
     # P25 격리된 실패: 포지션 구축 실패 시에도 엔진 기동은 계속. 호출자(app.py/engine_service)와 다단계 방어.
     # P21 사용자 투명성: 실패 시 position_build_failed 플래그 설정 → get_engine_status()로 프론트 전달.
     if is_virtual_mode(engine_state.state.integrated_system_settings_cache):
-        logger.info("[연산] 테스트모드 - 거래내역 기반 포지션 구축")
+        logger.info("[연산] 가상매매 - 거래내역 기반 포지션 구축")
         from backend.app.services import dry_run
         try:
             await dry_run._refresh_positions_if_dirty()
         except Exception as e:
             engine_state.state.position_build_failed = True
-            logger.warning("[연산] 테스트모드 포지션 구축 실패 — 엔진은 계속 가동: %s", e, exc_info=True)
+            logger.warning("[연산] 가상매매 포지션 구축 실패 — 엔진은 계속 가동: %s", e, exc_info=True)
 
     # ── Pending Settings Changes 적용 ───────────────────────────────────────
     # 엔진 미실행 중 변경된 설정이 있으면 기동 시 반영
@@ -235,7 +235,7 @@ async def on_trade_mode_switched() -> None:
     from backend.app.services.engine_account import _refresh_account_snapshot_meta, _broadcast_account
 
     _new_virtual = is_virtual_mode(engine_state.state.integrated_system_settings_cache)
-    _mode_str = "테스트모드" if _new_virtual else "실전투자"
+    _mode_str = "가상매매" if _new_virtual else "실전매매"
     logger.info("[연산] 투자모드 전환 — %s (엔진 재기동 없음)", _mode_str)
 
     # BrokerRouter를 통해 현재 연결된 커넥터 확인 (증권사 하드코딩 제거)
@@ -251,26 +251,26 @@ async def on_trade_mode_switched() -> None:
         from backend.app.services.engine_ws_reg import _unreg_grp
         try:
             await _unreg_grp("10")
-            logger.info("[구독] 테스트모드 전환 — 계좌 실시간 구독 해제")
+            logger.info("[구독] 가상매매 전환 — 계좌 실시간 구독 해제")
         except Exception as e:
             _subscribe_failed_reason = "unreg_failed"
-            logger.error("[구독] 테스트모드 전환 — 계좌 구독 해제 실패: %s", e, exc_info=True)
+            logger.error("[구독] 가상매매 전환 — 계좌 구독 해제 실패: %s", e, exc_info=True)
         # Settlement Engine: 상태 로드 (모드 전환 시 복원 목적) + 만료 항목 정리 + 타이머 재스케줄
         # load_state는 기동 시(로드)와 모드 전환 시(복원) 양쪽에 사용되는 dual-purpose 함수
         await settlement_engine.load_state()
-        logger.info("[연산] 테스트모드 전환 — 정산 엔진 상태 복원")
+        logger.info("[연산] 가상매매 전환 — 정산 엔진 상태 복원")
     else:
         # 테스트→실전: Settlement Engine 상태 저장 + 타이머 취소
         await settlement_engine.save_state()
-        logger.info("[연산] 실전투자 전환 — 정산 엔진 상태 저장")
+        logger.info("[연산] 실전매매 전환 — 정산 엔진 상태 저장")
         # 테스트→실전: 계좌 실시간 구독(00/04) + 보유종목 실시간(0B) 등록
         try:
             await _subscribe_account_realtime()
             await _subscribe_positions_stocks_realtime()
-            logger.info("[구독] 실전투자 전환 — 계좌 + 보유종목 실시간 구독")
+            logger.info("[구독] 실전매매 전환 — 계좌 + 보유종목 실시간 구독")
         except Exception as e:
             _subscribe_failed_reason = "subscribe_failed"
-            logger.error("[구독] 실전투자 전환 — 계좌/보유종목 구독 등록 실패: %s", e, exc_info=True)
+            logger.error("[구독] 실전매매 전환 — 계좌/보유종목 구독 등록 실패: %s", e, exc_info=True)
 
     # 모드 전환 후 계좌 스냅샷 즉시 갱신
     await _refresh_account_snapshot_meta()

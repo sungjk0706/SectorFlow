@@ -232,7 +232,7 @@ def _apply_account_yield_to_state(yield_data: dict, s: dict) -> None:
     _apply_broker_totals_from_summary(summary)
     # 테스트모드: 실전 잔고로 _positions 덮어쓰지 않음 — 모의투자 가상 잔고 격리
     if is_virtual_mode(s):
-        logger.info("[계좌] 테스트모드 — 실전 잔고 %d건 무시, 모의투자 가상 잔고 유지", len(stock_list))
+        logger.info("[계좌] 가상매매 — 실전 잔고 %d건 무시, 모의투자 가상 잔고 유지", len(stock_list))
     else:
         # 수량·매입은 REST 기준
         merged = _merge_positions_from_rest(stock_list)

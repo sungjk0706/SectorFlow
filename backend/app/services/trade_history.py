@@ -166,7 +166,7 @@ async def _trim_expired() -> None:
                 params=(test_cutoff,),
             ))
             logger.info(
-                "[정산] 테스트모드 %d개월 이전 매매 기록 %d건 삭제 완료",
+                "[정산] 가상매매 %d개월 이전 매매 기록 %d건 삭제 완료",
                 RETENTION_MONTHS_TEST, test_db_count,
             )
         if real_db_count > 0:
@@ -176,7 +176,7 @@ async def _trim_expired() -> None:
                 params=(real_cutoff,),
             ))
             logger.info(
-                "[정산] 실전모드 %d거래일 이전 매매 기록 %d건 삭제 완료",
+                "[정산] 실전매매 %d거래일 이전 매매 기록 %d건 삭제 완료",
                 RETENTION_TRADING_DAYS_REAL, real_db_count,
             )
     except Exception as e:
