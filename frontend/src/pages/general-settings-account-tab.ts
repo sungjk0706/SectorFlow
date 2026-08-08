@@ -40,12 +40,33 @@ function handleTradeMode(state: GeneralSettingsState, val: string): void {
   if (val === state.vals.trade_mode) return
 
   if (val === 'real') {
-    const msg = document.createElement('div')
-    Object.assign(msg.style, { fontSize: FONT_SIZE.label, color: COLOR.code, lineHeight: '1.6' })
-    msg.innerHTML = `실전투자 모드로 전환하시겠습니까?<br><span style="color:${COLOR.up};font-weight:500">실제 돈으로 매매가 실행됩니다.</span>`
-    showCustomDialog({
+    const container = document.createElement('div')
+    Object.assign(container.style, { fontSize: FONT_SIZE.label, color: COLOR.code, lineHeight: '1.6' })
+
+    const checkboxTexts = [
+      '실제 증권사 계좌의 자금이 사용됩니다',
+      '자동 매매로 인해 손실이 발생할 수 있습니다',
+      '실제 주문이 증권사 서버로 전송됩니다',
+    ]
+    const checkboxes: HTMLInputElement[] = []
+    for (const text of checkboxTexts) {
+      const row = document.createElement('label')
+      Object.assign(row.style, { display: 'flex', alignItems: 'center', gap: '8px', margin: '8px 0', cursor: 'pointer' })
+      const cb = document.createElement('input')
+      cb.type = 'checkbox'
+      Object.assign(cb.style, { margin: '0', cursor: 'pointer' })
+      const label = document.createElement('span')
+      Object.assign(label.style, { fontSize: FONT_SIZE.label, color: COLOR.code })
+      label.textContent = text
+      row.appendChild(cb)
+      row.appendChild(label)
+      container.appendChild(row)
+      checkboxes.push(cb)
+    }
+
+    const overlay = showCustomDialog({
       title: '실전투자 모드 전환',
-      content: msg,
+      content: container,
       actions: [
         { label: '취소', onClick: () => {} },
         { label: '전환', onClick: async () => {
@@ -56,6 +77,21 @@ function handleTradeMode(state: GeneralSettingsState, val: string): void {
         }, variant: 'danger' },
       ]
     })
+
+    const convertBtn = Array.from(overlay.querySelectorAll('button')).find(b => b.textContent === '전환')
+    if (convertBtn) {
+      convertBtn.disabled = true
+      convertBtn.style.opacity = '0.4'
+      convertBtn.style.cursor = 'not-allowed'
+      const updateConvertBtn = () => {
+        const allChecked = checkboxes.every(cb => cb.checked)
+        convertBtn.disabled = !allChecked
+        convertBtn.style.opacity = allChecked ? '' : '0.4'
+        convertBtn.style.cursor = allChecked ? 'pointer' : 'not-allowed'
+      }
+      for (const cb of checkboxes) cb.addEventListener('change', updateConvertBtn)
+    }
+
     return
   }
 
