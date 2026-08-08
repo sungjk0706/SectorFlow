@@ -821,6 +821,49 @@ check_verification_tools() {
     fi
 }
 
+# ─── 커밋 누락 방지 게이트 ───
+# 검증 통과 후 코드 변경이 커밋되지 않았으면 차단.
+# 근거: cyrus PR #1161 "block session stop when work is unshipped" 패턴.
+# stop_hook_active 가드(상단 33~42줄)가 2회차 통과를 담당 — 1회차 차단 후 에이전트가
+# 커밋 시도, 2회차는 stop_hook_active=true로 통과. 무한 루프 방지.
+# .gitignore 대상(문서 파일)은 커밋 게이트에서 제외 — 코드 파일만 검사.
+check_commit_gate() {
+    local changes
+    changes=$(git status --porcelain 2>/dev/null || true)
+    if [ -z "$changes" ]; then
+        echo "[pre-complete] ✅ 커밋 게이트 — 변경 사항 없음"
+        return 0
+    fi
+
+    # 코드 파일만 필터링 (.gitignore 대상 제외)
+    local uncommitted_code=""
+    while IFS= read -r line; do
+        # porcelain 형식: XY filename (rename은 R  old -> new)
+        local file
+        file=$(echo "$line" | awk '{print $NF}')
+        # .gitignore 대상이면 스킵
+        if git check-ignore -q -- "$file" 2>/dev/null; then
+            continue
+        fi
+        # 코드 파일 패턴만 대상
+        case "$file" in
+            backend/*|frontend/*|main.py|scripts/*|.devin/hooks*|.devin/scripts/*|.devin/config*)
+                uncommitted_code="${uncommitted_code}${file}\n"
+                ;;
+        esac
+    done <<< "$changes"
+
+    if [ -n "$uncommitted_code" ]; then
+        echo "[pre-complete] ❌ 커밋 누락 — 코드 변경이 커밋되지 않음"
+        printf "%b" "$uncommitted_code" | sed 's/^/  - /'
+        echo "[pre-complete] 검증은 통과했지만 코드가 커밋되지 않았습니다. 커밋 후 종료하세요."
+        echo "[pre-complete] (2회차 시도 시 stop_hook_active 가드로 통과됩니다 — 의도적 미커밋 시 다시 종료)"
+        FAILED=$((FAILED + 1))
+    else
+        echo "[pre-complete] ✅ 커밋 게이트 통과 — 미커밋 코드 없음"
+    fi
+}
+
 # ─── 실행 ───
 case "$TARGET" in
     auto)     run_auto ;;
@@ -849,6 +892,10 @@ detect_core_logic
 # 코드 변경 시 pre-commit-review 필수, 핵심 로직 시 independent-verify 필수.
 # 증거 파일(.devin/state/verify-results/) 존재 여부로 결정론적 판정.
 check_verification_tools
+
+# 커밋 누락 방지 게이트 — 검증 통과 후 코드가 커밋되지 않았으면 차단.
+# docs 모드(코드 변경 없음)는 자동 통과, 코드 변경 시에만 실제 판정.
+check_commit_gate
 
 echo "[pre-complete] ------------------------------------------------"
 if [ "$FAILED" -gt 0 ]; then

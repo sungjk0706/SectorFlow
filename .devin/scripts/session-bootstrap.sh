@@ -22,6 +22,11 @@ mkdir -p "$DEVIN_DIR/state" 2>/dev/null
   git ls-files --others --exclude-standard 2>/dev/null
 } | sort -u > "$SNAPSHOT_FILE" 2>/dev/null || true
 
+# 사전조사·승인 게이트 lock 파일 삭제 — 새 세션은 조사·승인부터 다시.
+# 이전 세션의 lock이 남아있으면 무조건 통과되어 게이트가 무의미해짐.
+rm -f "$DEVIN_DIR/state/investigation.lock" 2>/dev/null || true
+rm -f "$DEVIN_DIR/state/approval.lock" 2>/dev/null || true
+
 # python3가 없으면 no-op (훅 실패가 세션 시작을 블로킹하지 않도록).
 if ! command -v python3 >/dev/null 2>&1; then
   exit 0

@@ -23,6 +23,30 @@
       ]
     }
   ],
+  "UserPromptSubmit": [
+    {
+      "matcher": "",
+      "hooks": [
+        {
+          "type": "command",
+          "command": ".devin/scripts/investigation-gate-prompt.sh",
+          "timeout": 5
+        }
+      ]
+    }
+  ],
+  "PreToolUse": [
+    {
+      "matcher": "edit|write",
+      "hooks": [
+        {
+          "type": "command",
+          "command": ".devin/scripts/pretooluse-gate.sh",
+          "timeout": 5
+        }
+      ]
+    }
+  ],
   "Stop": [
     {
       "matcher": "",

@@ -102,5 +102,27 @@ if [ -n "$db_remove_new" ]; then
     exit 1
 fi
 
+# 8. .gitignore 대상 파일 커밋 차단 (문서 커밋 시도 방지)
+# .gitignore에 등록된 경로(HANDOVER.md, docs/설계서/, docs/태스크/, docs/조사보고서/ 등)가
+# 스테이징되었는지 검사. git add -f 로 강제 추가된 경우도 감지.
+# 근거: openclaw 이슈 #72744 — git check-ignore 로 필터링하는 패턴.
+staged_all=$(git diff --cached --name-only --diff-filter=ACMR || true)
+ignored_staged=""
+if [ -n "$staged_all" ]; then
+    while IFS= read -r f; do
+        if git check-ignore -q -- "$f" 2>/dev/null; then
+            ignored_staged="${ignored_staged}${f}\n"
+        fi
+    done <<< "$staged_all"
+fi
+if [ -n "$ignored_staged" ]; then
+    echo "[pre-commit] ❌ .gitignore 대상 파일이 커밋에 포함됨 — 문서 커밋 시도 차단"
+    printf "%b" "$ignored_staged" | sed 's/^/  - /'
+    echo "[pre-commit] 이 파일들은 git 추적 제외 대상입니다. 로컬에서만 관리합니다."
+    echo "[pre-commit] 스테이징에서 제거: git reset HEAD -- <파일경로>"
+    echo "[pre-commit] 더 자세한 내용: AGENTS.md '문서 저장 경로 규칙' + .gitignore"
+    exit 1
+fi
+
 echo "[pre-commit] ✅ 모든 검증 통과 — 커밋 진행"
 exit 0
