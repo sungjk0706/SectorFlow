@@ -289,7 +289,7 @@ class TestBuildAccountSnapshotMeta:
     def test_accumulated_investment_passed_through(self):
         snap = {"accumulated_investment": 12_000_000, "initial_deposit": 10_000_000}
         totals = {"total_eval": 0, "total_pnl": 0, "total_buy": 0, "total_sell": 0, "total_rate": 0.0}
-        result = build_account_snapshot_meta(snap, totals, [], True, "test")
+        result = build_account_snapshot_meta(snap, totals, [], True, "virtual")
         assert result["accumulated_investment"] == 12_000_000
         assert result["initial_deposit"] == 10_000_000
 

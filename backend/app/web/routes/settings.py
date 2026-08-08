@@ -100,11 +100,11 @@ async def patch_setting_field(field_name: str, body: dict, _: str = Depends(get_
 async def _reset_test_trades_and_deposit(default_deposit: int) -> None:
     """테스트 매매 이력·가상 보유종목·예수금·정산엔진 초기화 + 이력 브로드캐스트."""
     from backend.app.services.dry_run import clear, set_virtual_deposit
-    from backend.app.services.trade_history import clear_test_history, broadcast_history
+    from backend.app.services.trade_history import clear_virtual_history, broadcast_history
     from backend.app.services import settlement_engine
 
     # 1. 테스트 매매 이력 초기화 (실전 이력은 보존) — trades가 SSOT이므로 먼저 삭제
-    await clear_test_history()
+    await clear_virtual_history()
     # 2. 가상 보유종목 메모리 초기화 (trades 삭제 후이므로 빈 상태로 복원됨)
     await clear()
     # 3. 가상 예수금 초기화 (기본예수금으로 리셋)

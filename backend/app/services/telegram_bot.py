@@ -345,7 +345,7 @@ class TelegramBot(TaskGuardMixin):
 
         rows: list[dict] = []
         seen_tokens: set[str] = set()
-        for token_field in ("telegram_bot_token_test", "telegram_bot_token_real"):
+        for token_field in ("telegram_bot_token_virtual", "telegram_bot_token_live"):
             raw_token = flat.get(token_field) or ""
             s = str(raw_token)
             if s.startswith("gAAAA"):
@@ -850,13 +850,13 @@ class TelegramBot(TaskGuardMixin):
 # ── 설정 변경 시 폴링 start/stop/restart 단일 진입 (engine_service·settings 공유) ────
 TELEGRAM_POLLING_KEYS = frozenset({
     "tele_on",
-    "telegram_bot_token_test",
-    "telegram_bot_token_real",
+    "telegram_bot_token_virtual",
+    "telegram_bot_token_live",
     "telegram_chat_id",
 })
 _TELEGRAM_CRED_KEYS = frozenset({
-    "telegram_bot_token_test",
-    "telegram_bot_token_real",
+    "telegram_bot_token_virtual",
+    "telegram_bot_token_live",
     "telegram_chat_id",
 })
 

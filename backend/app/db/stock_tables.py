@@ -59,7 +59,7 @@ async def _create_runtime_tables(conn) -> None:
     await conn.execute('''
         CREATE TABLE IF NOT EXISTS account_daily_snapshot (
             date TEXT NOT NULL,                  -- 거래일 (YYYY-MM-DD)
-            trade_mode TEXT NOT NULL,            -- "test" 또는 "real"
+            trade_mode TEXT NOT NULL,            -- "virtual" 또는 "live"
             total_asset INTEGER NOT NULL,        -- 기초자산 (예수금/주문가능금액 + 총평가금액)
             deposit INTEGER,                     -- 예수금 (참조용)
             orderable INTEGER,                   -- 주문가능금액 (참조용)

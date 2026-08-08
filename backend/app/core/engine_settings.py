@@ -173,8 +173,8 @@ def _build_telegram_settings(merged: dict) -> dict:
     """텔레그램 알림 설정 (토큰은 복호화). tele_on 단일 키 (P10 SSOT)."""
     return {
         "tele_on": bool(merged["tele_on"]),
-        "telegram_bot_token_test": _decrypt_field(merged["telegram_bot_token_test"])[0],
-        "telegram_bot_token_real": _decrypt_field(merged["telegram_bot_token_real"])[0],
+        "telegram_bot_token_virtual": _decrypt_field(merged["telegram_bot_token_virtual"])[0],
+        "telegram_bot_token_live": _decrypt_field(merged["telegram_bot_token_live"])[0],
         "telegram_chat_id": merged["telegram_chat_id"],
     }
 

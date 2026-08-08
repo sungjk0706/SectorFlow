@@ -19,8 +19,8 @@ class TestSelectToken:
         from backend.app.services.telegram import _select_token
         settings = {
             "trade_mode": "virtual",
-            "telegram_bot_token_test": "test_token_123",
-            "telegram_bot_token_real": "real_token_456",
+            "telegram_bot_token_virtual": "test_token_123",
+            "telegram_bot_token_live": "real_token_456",
         }
         with patch("backend.app.services.telegram.is_virtual_mode", return_value=True):
             assert _select_token(settings) == "test_token_123"
@@ -29,8 +29,8 @@ class TestSelectToken:
         from backend.app.services.telegram import _select_token
         settings = {
             "trade_mode": "live",
-            "telegram_bot_token_test": "test_token_123",
-            "telegram_bot_token_real": "real_token_456",
+            "telegram_bot_token_virtual": "test_token_123",
+            "telegram_bot_token_live": "real_token_456",
         }
         with patch("backend.app.services.telegram.is_virtual_mode", return_value=False):
             assert _select_token(settings) == "real_token_456"
@@ -47,25 +47,25 @@ class TestSelectToken:
 
     def test_missing_test_token_returns_empty(self):
         from backend.app.services.telegram import _select_token
-        settings = {"trade_mode": "virtual", "telegram_bot_token_real": "real"}
+        settings = {"trade_mode": "virtual", "telegram_bot_token_live": "real"}
         with patch("backend.app.services.telegram.is_virtual_mode", return_value=True):
             assert _select_token(settings) == ""
 
     def test_missing_real_token_returns_empty(self):
         from backend.app.services.telegram import _select_token
-        settings = {"trade_mode": "live", "telegram_bot_token_test": "test"}
+        settings = {"trade_mode": "live", "telegram_bot_token_virtual": "test"}
         with patch("backend.app.services.telegram.is_virtual_mode", return_value=False):
             assert _select_token(settings) == ""
 
     def test_whitespace_token_stripped(self):
         from backend.app.services.telegram import _select_token
-        settings = {"trade_mode": "virtual", "telegram_bot_token_test": "  token_with_spaces  "}
+        settings = {"trade_mode": "virtual", "telegram_bot_token_virtual": "  token_with_spaces  "}
         with patch("backend.app.services.telegram.is_virtual_mode", return_value=True):
             assert _select_token(settings) == "token_with_spaces"
 
     def test_none_token_value_returns_empty(self):
         from backend.app.services.telegram import _select_token
-        settings = {"trade_mode": "virtual", "telegram_bot_token_test": None}
+        settings = {"trade_mode": "virtual", "telegram_bot_token_virtual": None}
         with patch("backend.app.services.telegram.is_virtual_mode", return_value=True):
             assert _select_token(settings) == ""
 
@@ -104,7 +104,7 @@ class TestSendMsgAsync:
         from backend.app.services.telegram import send_msg_async
         settings = {
             "tele_on": True,
-            "telegram_bot_token_test": "token",
+            "telegram_bot_token_virtual": "token",
             "trade_mode": "virtual",
         }
         with patch("backend.app.services.telegram.is_virtual_mode", return_value=True):
@@ -116,7 +116,7 @@ class TestSendMsgAsync:
         from backend.app.services.telegram import send_msg_async
         settings = {
             "tele_on": True,
-            "telegram_bot_token_test": "",
+            "telegram_bot_token_virtual": "",
             "telegram_chat_id": "12345",
             "trade_mode": "virtual",
         }
@@ -129,7 +129,7 @@ class TestSendMsgAsync:
         from backend.app.services.telegram import send_msg_async
         settings = {
             "tele_on": True,
-            "telegram_bot_token_test": "token",
+            "telegram_bot_token_virtual": "token",
             "telegram_chat_id": "",
             "trade_mode": "virtual",
         }
@@ -142,7 +142,7 @@ class TestSendMsgAsync:
         from backend.app.services.telegram import send_msg_async
         settings = {
             "tele_on": True,
-            "telegram_bot_token_test": "test_token",
+            "telegram_bot_token_virtual": "test_token",
             "telegram_chat_id": "12345",
             "trade_mode": "virtual",
         }
@@ -164,7 +164,7 @@ class TestSendMsgAsync:
         from backend.app.services.telegram import send_msg_async
         settings = {
             "tele_on": True,
-            "telegram_bot_token_test": "test_token",
+            "telegram_bot_token_virtual": "test_token",
             "telegram_chat_id": "12345",
             "trade_mode": "virtual",
         }
@@ -186,7 +186,7 @@ class TestSendMsgAsync:
         from backend.app.services.telegram import send_msg_async
         settings = {
             "tele_on": True,
-            "telegram_bot_token_test": "test_token",
+            "telegram_bot_token_virtual": "test_token",
             "telegram_chat_id": "12345",
             "trade_mode": "virtual",
         }
@@ -204,8 +204,8 @@ class TestSendMsgAsync:
         from backend.app.services.telegram import send_msg_async
         settings = {
             "tele_on": True,
-            "telegram_bot_token_test": "test_token",
-            "telegram_bot_token_real": "real_token",
+            "telegram_bot_token_virtual": "test_token",
+            "telegram_bot_token_live": "real_token",
             "telegram_chat_id": "12345",
             "trade_mode": "live",
         }
@@ -230,7 +230,7 @@ class TestSendMsgAsync:
         from backend.app.services.telegram import send_msg_async
         settings = {
             "tele_on": True,
-            "telegram_bot_token_test": "test_token",
+            "telegram_bot_token_virtual": "test_token",
             "telegram_chat_id": "12345",
             "trade_mode": "virtual",
         }

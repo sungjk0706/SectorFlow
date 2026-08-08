@@ -258,7 +258,7 @@ class TestFetchEnabledSettings:
             mock_state.integrated_system_settings_cache = {
                 "tele_on": True,
                 "telegram_chat_id": "12345",
-                "telegram_bot_token_test": "plain_test_token",
+                "telegram_bot_token_virtual": "plain_test_token",
             }
             result = bot._fetch_enabled_settings()
         assert len(result) == 1
@@ -276,7 +276,7 @@ class TestFetchEnabledSettings:
             mock_state.integrated_system_settings_cache = {
                 "tele_on": True,
                 "telegram_chat_id": "999",
-                "telegram_bot_token_test": "gAAAAencrypteddata",
+                "telegram_bot_token_virtual": "gAAAAencrypteddata",
             }
             result = bot._fetch_enabled_settings()
         assert len(result) == 1
@@ -293,7 +293,7 @@ class TestFetchEnabledSettings:
             mock_state.integrated_system_settings_cache = {
                 "tele_on": True,
                 "telegram_chat_id": "999",
-                "telegram_bot_token_test": "gAAAAencrypteddata",
+                "telegram_bot_token_virtual": "gAAAAencrypteddata",
             }
             result = bot._fetch_enabled_settings()
         assert result == []
@@ -310,7 +310,7 @@ class TestFetchEnabledSettings:
             mock_state.integrated_system_settings_cache = {
                 "tele_on": True,
                 "telegram_chat_id": "999",
-                "telegram_bot_token_test": "gAAAAencrypteddata",
+                "telegram_bot_token_virtual": "gAAAAencrypteddata",
             }
             result = bot._fetch_enabled_settings()
         assert result == []
@@ -324,8 +324,8 @@ class TestFetchEnabledSettings:
             mock_state.integrated_system_settings_cache = {
                 "tele_on": True,
                 "telegram_chat_id": "555",
-                "telegram_bot_token_test": "test_tok",
-                "telegram_bot_token_real": "real_tok",
+                "telegram_bot_token_virtual": "test_tok",
+                "telegram_bot_token_live": "real_tok",
             }
             result = bot._fetch_enabled_settings()
         assert len(result) == 2
@@ -340,8 +340,8 @@ class TestFetchEnabledSettings:
             mock_state.integrated_system_settings_cache = {
                 "tele_on": True,
                 "telegram_chat_id": "555",
-                "telegram_bot_token_test": "same_token",
-                "telegram_bot_token_real": "same_token",
+                "telegram_bot_token_virtual": "same_token",
+                "telegram_bot_token_live": "same_token",
             }
             result = bot._fetch_enabled_settings()
         assert len(result) == 1
@@ -354,8 +354,8 @@ class TestFetchEnabledSettings:
             mock_state.integrated_system_settings_cache = {
                 "tele_on": True,
                 "telegram_chat_id": "555",
-                "telegram_bot_token_test": "",
-                "telegram_bot_token_real": "real_tok",
+                "telegram_bot_token_virtual": "",
+                "telegram_bot_token_live": "real_tok",
             }
             result = bot._fetch_enabled_settings()
         assert len(result) == 1
@@ -368,7 +368,7 @@ class TestFetchEnabledSettings:
             mock_state.integrated_system_settings_cache = {
                 "tele_on": True,
                 "telegram_chat_id": "555",
-                "telegram_bot_token_test": "  spaced_token  ",
+                "telegram_bot_token_virtual": "  spaced_token  ",
             }
             result = bot._fetch_enabled_settings()
         assert len(result) == 1
@@ -381,7 +381,7 @@ class TestFetchEnabledSettings:
             mock_state.integrated_system_settings_cache = {
                 "tele_on": True,
                 "telegram_chat_id": "  007788  ",
-                "telegram_bot_token_test": "tok",
+                "telegram_bot_token_virtual": "tok",
             }
             result = bot._fetch_enabled_settings()
         assert result[0]["telegram_chat_id"] == "7788"
@@ -2262,7 +2262,7 @@ class TestApplyTelegramPollingChange:
             mock_state.integrated_system_settings_cache = {"tele_on": True}
             mock_bot.is_running = True
             mock_bot.stop_async = AsyncMock()
-            await apply_telegram_polling_change({"telegram_bot_token_test"})
+            await apply_telegram_polling_change({"telegram_bot_token_virtual"})
         mock_bot.stop_async.assert_called_once()
         mock_bot.start.assert_called_once()
 
@@ -2273,7 +2273,7 @@ class TestApplyTelegramPollingChange:
              patch("backend.app.services.telegram_bot.telegram_bot") as mock_bot:
             mock_state.integrated_system_settings_cache = {"tele_on": True}
             mock_bot.is_running = False
-            await apply_telegram_polling_change({"telegram_bot_token_real"})
+            await apply_telegram_polling_change({"telegram_bot_token_live"})
         mock_bot.start.assert_called_once()
         mock_bot.stop_async.assert_not_called()
 
@@ -2296,7 +2296,7 @@ class TestApplyTelegramPollingChange:
              patch("backend.app.services.telegram_bot.telegram_bot") as mock_bot:
             mock_state.integrated_system_settings_cache = {"tele_on": False}
             mock_bot.stop_async = AsyncMock()
-            await apply_telegram_polling_change({"telegram_bot_token_test"})
+            await apply_telegram_polling_change({"telegram_bot_token_virtual"})
         mock_bot.stop_async.assert_called_once()
         mock_bot.start.assert_not_called()
 
@@ -2319,7 +2319,7 @@ class TestTelegramPollingKeys:
     def test_contains_all_expected_keys(self):
         assert TELEGRAM_POLLING_KEYS == frozenset({
             "tele_on",
-            "telegram_bot_token_test",
-            "telegram_bot_token_real",
+            "telegram_bot_token_virtual",
+            "telegram_bot_token_live",
             "telegram_chat_id",
         })

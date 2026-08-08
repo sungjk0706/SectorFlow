@@ -4,7 +4,7 @@
 추가: _ensure_loaded, _insert_trade, _trim_expired,
       record_buy, record_sell, _lookup_sector,
       get_buy/sell_history, get_total_realized_pnl, get_daily_summary 확장,
-      clear_test_history, build_positions_from_trades,
+      clear_virtual_history, build_positions_from_trades,
       _reset_global_state, 브로드캐스트 함수들
 """
 from __future__ import annotations
@@ -962,10 +962,10 @@ class TestGetDailySummaryExtended:
         assert result[0]["base_asset"] is None
 
 
-# ── clear_test_history ────────────────────────────────────────────────────────
+# ── clear_virtual_history ────────────────────────────────────────────────────────
 
-class TestClearTestHistory:
-    """clear_test_history: test 모드 이력만 삭제, real 보존."""
+class TestClearVirtualHistory:
+    """clear_virtual_history: virtual 모드 이력만 삭제, live 보존."""
 
     async def test_removes_test_keeps_real(self):
         from backend.app.services import trade_history
@@ -981,7 +981,7 @@ class TestClearTestHistory:
         ])
         with patch("backend.app.services.trade_history._history_lock"):
             with patch("backend.app.db.db_writer.execute_db_write", new_callable=AsyncMock):
-                await trade_history.clear_test_history()
+                await trade_history.clear_virtual_history()
         assert all(r["trade_mode"] == "live" for r in trade_history._buy_history)
         assert all(r["trade_mode"] == "live" for r in trade_history._sell_history)
         assert len(trade_history._buy_history) == 1
@@ -995,7 +995,7 @@ class TestClearTestHistory:
         trade_history._sell_history.clear()
         with patch("backend.app.services.trade_history._history_lock"):
             with patch("backend.app.db.db_writer.execute_db_write", new_callable=AsyncMock):
-                await trade_history.clear_test_history()
+                await trade_history.clear_virtual_history()
         assert dry_run._positions_dirty is True
 
     async def test_db_delete_failure_handled(self):
@@ -1004,7 +1004,7 @@ class TestClearTestHistory:
         trade_history._buy_history.append(_make_buy_rec(trade_mode="virtual"))
         with patch("backend.app.services.trade_history._history_lock"):
             with patch("backend.app.db.db_writer.execute_db_write", new_callable=AsyncMock, side_effect=Exception("DB error")):
-                await trade_history.clear_test_history()
+                await trade_history.clear_virtual_history()
         assert len(trade_history._buy_history) == 0  # 메모리는 정상 삭제됨
 
 

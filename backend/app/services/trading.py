@@ -45,7 +45,7 @@ BUY_REJECT_RISK_CONSEC_LOSS = "risk_consec_loss" # 연속 손실 한도 초과
 BUY_REJECT_RISK_CASH = "risk_cash"               # 예수금 부족 (잔액 0)
 BUY_REJECT_RISK_MARKET_DROP = "risk_market_drop" # 시장 지수 급락
 BUY_REJECT_RISK_MARKET_DATA = "risk_market_data" # 시장 지수 자료 확인 불가
-BUY_REJECT_TEST_CASH = "test_cash"               # 테스트 예수금 검증 실패
+BUY_REJECT_VIRTUAL_CASH = "virtual_cash"       # 가상매매 예수금 검증 실패
 BUY_REJECT_ORDER_FAIL = "order_fail"             # 주문 전송 실패
 BUY_REJECT_ORDER_BUSY = "order_busy"             # 주문 직렬화 잠금 점유 중 (다른 주문 처리 중)
 BUY_REJECT_FILL_TIMEOUT = "fill_timeout"         # 주문 체결 응답 타임아웃 (접수 후 체결 응답 미수신)
@@ -81,7 +81,7 @@ BUY_GLOBAL_REJECT_REASONS: frozenset[str] = frozenset({
     BUY_REJECT_RISK_CASH,
     BUY_REJECT_RISK_MARKET_DROP,
     BUY_REJECT_RISK_MARKET_DATA,
-    BUY_REJECT_TEST_CASH,
+    BUY_REJECT_VIRTUAL_CASH,
     BUY_REJECT_ORDER_FAIL,
     BUY_REJECT_ORDER_BUSY,
     BUY_REJECT_FILL_TIMEOUT,
@@ -108,7 +108,7 @@ BUY_REJECT_REASON_TEXT: dict[str, str] = {
     BUY_REJECT_ORDER_FAIL:        "주문 전송 실패",
     BUY_REJECT_ORDER_BUSY:        "주문 처리 중",
     BUY_REJECT_FILL_TIMEOUT:      "주문 응답 시간 초과",
-    BUY_REJECT_TEST_CASH:         "테스트 잔고 부족",
+    BUY_REJECT_VIRTUAL_CASH:      "가상매매 잔고 부족",
     BUY_REJECT_AUTO_BUY_OFF:      "자동매수 OFF",
     BUY_REJECT_MASTER_OFF:        "자동매매 OFF",
     BUY_REJECT_BUY_TIME_OUT:      "자동매수 시간외",
@@ -182,9 +182,9 @@ async def _broadcast_test_cash_failed(*, stk_cd: str, reason: str) -> None:
     """
     try:
         from backend.app.services.engine_account_notify import _safe_broadcast
-        await _safe_broadcast("test-cash-failed", {"failed": True, "stk_cd": stk_cd, "reason": reason})
+        await _safe_broadcast("virtual-cash-failed", {"failed": True, "stk_cd": stk_cd, "reason": reason})
     except Exception:
-        logger.warning("[매매] test-cash-failed 브로드캐스트 실패", exc_info=True)
+        logger.warning("[매매] virtual-cash-failed 브로드캐스트 실패", exc_info=True)
 
 
 async def _broadcast_circuit_breaker_recovered() -> None:
@@ -210,9 +210,9 @@ async def _broadcast_test_cash_resolved() -> None:
     """
     try:
         from backend.app.services.engine_account_notify import _safe_broadcast
-        await _safe_broadcast("test-cash-failed", {"failed": False})
+        await _safe_broadcast("virtual-cash-failed", {"failed": False})
     except Exception:
-        logger.warning("[매매] test-cash-failed 해제 브로드캐스트 실패", exc_info=True)
+        logger.warning("[매매] virtual-cash-failed 해제 브로드캐스트 실패", exc_info=True)
 
 
 async def _broadcast_order_fill_timeout(*, stk_cd: str, stk_nm: str, side: str) -> None:
@@ -288,7 +288,7 @@ class AutoTradeManager:
 
     async def _load_daily_buy_state(self) -> tuple[int | None, dict[str, float]]:
         """기동 시 trade_history에서 오늘 매수 합계 + 매수 종목 timestamp dict 로드.
-        한도 체크 기준 = trade_history.total_amt (테스트: 수수료 포함 / 실전: 순수 매수가).
+        한도 체크 기준 = trade_history.total_amt (가상매매: 수수료 포함 / 실전: 순수 매수가).
         실패 시 spent=None 반환 — 호출부에서 매수 차단."""
         try:
             rows = await trade_history.get_buy_history(today_only=True)
@@ -603,9 +603,9 @@ class AutoTradeManager:
             if not ok:
                 logger.info("[매매] 매수 거부: %s (%s)", stk_cd, _reject_reason)
                 self._buy_state[stk_cd]["has_open_buy"] = False
-                # P21(사용자 투명성): 테스트 예수금 검증 실패를 화면에 알림 — 헤더 칩 "⚠ 테스트 잔고 부족"
+                # P21(사용자 투명성): 가상매매 예수금 검증 실패를 화면에 알림 — 헤더 칩 "⚠ 가상매매 잔고 부족"
                 await _broadcast_test_cash_failed(stk_cd=stk_cd, reason=_reject_reason)
-                return False, BUY_REJECT_TEST_CASH
+                return False, BUY_REJECT_VIRTUAL_CASH
 
         # ── 가상매매 가드: 가상매매면 실전 서버에 절대 주문 안 보냄 ─────────
         if is_virtual_mode(raw_all):

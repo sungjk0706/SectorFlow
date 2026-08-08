@@ -19,11 +19,11 @@ class TestNormalizeTradeMode:
         assert normalize_trade_mode("test") == "virtual"
         assert normalize_trade_mode("mock") == "virtual"
 
-    def test_real_is_preserved(self):
-        assert normalize_trade_mode("real") == "live"
+    def test_real_fails_closed_to_virtual(self):
+        assert normalize_trade_mode("real") == "virtual"
 
     def test_normalizes_case_and_whitespace(self):
-        assert normalize_trade_mode(" REAL ") == "live"
+        assert normalize_trade_mode(" REAL ") == "virtual"
         assert normalize_trade_mode(" MOCK ") == "virtual"
 
     def test_invalid_values_fail_closed_to_virtual(self):
@@ -117,8 +117,8 @@ class TestBuildEngineSettingsDictDefaults:
     def test_telegram_fields_defaults(self):
         result = build_engine_settings_dict({})
         assert result["tele_on"] is False
-        assert result["telegram_bot_token_test"] == ""
-        assert result["telegram_bot_token_real"] == ""
+        assert result["telegram_bot_token_virtual"] == ""
+        assert result["telegram_bot_token_live"] == ""
 
     def test_kiwoom_credentials_empty(self):
         result = build_engine_settings_dict({})

@@ -720,8 +720,8 @@ async def get_daily_summary(
     return result
 
 
-async def clear_test_history() -> None:
-    """가상매매(trade_mode=='test') 이력만 즉시 삭제 (비동기적 수행). 실전 이력은 보존."""
+async def clear_virtual_history() -> None:
+    """가상매매(trade_mode=='virtual') 이력만 즉시 삭제 (비동기적 수행). 실전 이력은 보존."""
     async with _history_lock:
         _buy_history[:] = [r for r in _buy_history if r["trade_mode"] != "virtual"]
         _sell_history[:] = [r for r in _sell_history if r["trade_mode"] != "virtual"]

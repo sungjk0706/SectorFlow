@@ -145,8 +145,8 @@ class TestLoadIntegratedSystemSettingsDB:
         assert result["trade_mode"] == "live"
 
     @pytest.mark.asyncio
-    async def test_migrates_legacy_trade_mode_mock_to_test(self, in_memory_db):
-        """레거시 trade_mode='mock'이 'test'로 마이그레이션되는지 확인."""
+    async def test_migrates_legacy_trade_mode_mock_to_virtual(self, in_memory_db):
+        """레거시 trade_mode='mock'이 'virtual'로 마이그레이션되는지 확인."""
         await in_memory_db.execute(
             "INSERT INTO integrated_system_settings (key, value, value_type) VALUES (?, ?, ?)",
             ("trade_mode", "mock", "string"),
@@ -514,7 +514,7 @@ class TestClassifySecretFields:
         merged = {f: "" for f in [
             "kiwoom_app_key", "kiwoom_app_secret",
             "ls_app_key", "ls_app_secret",
-            "telegram_bot_token_test", "telegram_bot_token_real",
+            "telegram_bot_token_virtual", "telegram_bot_token_live",
         ]}
         result = classify_secret_fields(merged)
         assert set(result.keys()) == set(merged.keys())

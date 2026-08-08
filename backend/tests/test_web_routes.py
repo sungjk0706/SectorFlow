@@ -623,18 +623,18 @@ class TestPatchSettingField:
     async def test_token_save_restarts_telegram_polling(self):
         """단계3: 토큰 저장(엔진 미실행) + tele_on=True → 폴링 재시작."""
         from backend.app.web.routes.settings import patch_setting_field
-        with patch("backend.app.core.settings_store.apply_settings_updates", new_callable=AsyncMock, return_value={"telegram_bot_token_test"}), \
+        with patch("backend.app.core.settings_store.apply_settings_updates", new_callable=AsyncMock, return_value={"telegram_bot_token_virtual"}), \
              patch("backend.app.services.engine_lifecycle.is_engine_running", return_value=False), \
              patch("backend.app.core.sector_stock_cache.save_pending_settings", new_callable=AsyncMock), \
              patch("backend.app.services.engine_config.refresh_engine_integrated_system_settings_cache", new_callable=AsyncMock), \
              patch("backend.app.services.engine_account_notify.notify_desktop_settings_toggled", new_callable=AsyncMock), \
-             patch("backend.app.services.engine_config._mask_sensitive_settings", return_value={"telegram_bot_token_test": "***"}), \
+             patch("backend.app.services.engine_config._mask_sensitive_settings", return_value={"telegram_bot_token_virtual": "***"}), \
              patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.services.telegram_bot.apply_telegram_polling_change", new_callable=AsyncMock) as mock_apply:
-            mock_state.integrated_system_settings_cache = {"tele_on": True, "telegram_bot_token_test": "***"}
-            result = await patch_setting_field("telegram_bot_token_test", {"value": "newtoken"}, _="dev")
+            mock_state.integrated_system_settings_cache = {"tele_on": True, "telegram_bot_token_virtual": "***"}
+            result = await patch_setting_field("telegram_bot_token_virtual", {"value": "newtoken"}, _="dev")
         assert result["ok"] is True
-        mock_apply.assert_called_once_with({"telegram_bot_token_test"})
+        mock_apply.assert_called_once_with({"telegram_bot_token_virtual"})
 
     async def test_encryption_error_returns_structured_detail(self):
         """B21-01 세션3: EncryptionError → 422 detail 객체(code/message/field) 반환 (설계 5)."""
@@ -674,7 +674,7 @@ class TestResetTestData:
     async def test_success(self):
         from backend.app.web.routes.settings import reset_test_data
         with patch("backend.app.services.engine_state.state") as mock_state, \
-             patch("backend.app.services.trade_history.clear_test_history", new_callable=AsyncMock), \
+             patch("backend.app.services.trade_history.clear_virtual_history", new_callable=AsyncMock), \
              patch("backend.app.services.dry_run.clear", new_callable=AsyncMock), \
              patch("backend.app.services.dry_run.set_virtual_deposit", new_callable=AsyncMock), \
              patch("backend.app.services.settlement_engine.reset", new_callable=AsyncMock) as mock_reset, \
@@ -705,7 +705,7 @@ class TestResetTestData:
         from backend.app.web.routes.settings import reset_test_data
         from fastapi import HTTPException
         with patch("backend.app.services.engine_state.state") as mock_state, \
-             patch("backend.app.services.trade_history.clear_test_history", new_callable=AsyncMock, side_effect=RuntimeError("db locked")):
+             patch("backend.app.services.trade_history.clear_virtual_history", new_callable=AsyncMock, side_effect=RuntimeError("db locked")):
             mock_state.integrated_system_settings_cache = {
                 "virtual_deposit": 10_000_000,
                 "sector_stock_layout": [],

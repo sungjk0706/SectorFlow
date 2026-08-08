@@ -503,7 +503,7 @@ class TestBroadcastTestCashFailed:
     async def test_failed_broadcasts(self):
         with patch("backend.app.services.engine_account_notify._safe_broadcast", new=AsyncMock()) as mock_bc:
             await _broadcast_test_cash_failed(stk_cd="005930", reason="예수금 부족")
-            mock_bc.assert_awaited_once_with("test-cash-failed", {"failed": True, "stk_cd": "005930", "reason": "예수금 부족"})
+            mock_bc.assert_awaited_once_with("virtual-cash-failed", {"failed": True, "stk_cd": "005930", "reason": "예수금 부족"})
 
 
 # ── _map_risk_reason_to_code 헬퍼 단위 테스트 (P23 일관성) ─────────────────────

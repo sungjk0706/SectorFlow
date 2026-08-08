@@ -215,7 +215,7 @@ def get_engine_status() -> dict:
         "login_ok": engine_state.state.login_ok,  # 프론트 매핑용
         "broker_token_valid": bool(engine_state.state.access_token),  # 하위 호환
         "trade_mode": "virtual" if virtual_mode else "live",
-        "is_test_mode": virtual_mode,  # 프론트 매핑용
+        "is_virtual_mode": virtual_mode,  # 프론트 매핑용
         "engine_task_alive": engine_state.state.engine_task is not None and not engine_state.state.engine_task.done(),
         "stock_subscribed_count": sub_count,
         "ws_reg_total_estimate": sub_count,

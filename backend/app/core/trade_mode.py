@@ -14,13 +14,12 @@ LIVE 수신 시 type "0B"는 engine_service._normalize_real_type 에서 "01"과 
 def normalize_trade_mode(value: object | None) -> str:
     """투자모드 입력을 내부 표준값인 'virtual' 또는 'live'로 정규화한다.
 
-    매핑: 'mock'→'virtual', 'test'→'virtual', 'real'→'live',
-          'virtual'→'virtual', 'live'→'live', 그 외/None→'virtual' (fail-closed).
+    매핑: 'virtual'→'virtual', 'live'→'live', 그 외/None→'virtual' (fail-closed).
     """
     mode = str(value or "").strip().lower()
-    if mode in ("live", "real"):
+    if mode == "live":
         return "live"
-    # 'virtual', 'test', 'mock', 그 외/None → 'virtual' (fail-closed)
+    # 'virtual', 그 외/None → 'virtual' (fail-closed)
     return "virtual"
 
 
@@ -28,7 +27,6 @@ def effective_trade_mode(settings: dict | None) -> str:
     """엔진 캐시 또는 DB에서 로드한 플랫 dict에서 'virtual' | 'live' 반환.
 
     단일 소스: trade_mode 문자열 값만 참조한다.
-    하위 호환: 기존 'mock'·'test'·'real' 값도 공통 정규화 규칙으로 매핑한다.
     """
     s = settings or {}
     return normalize_trade_mode(s.get("trade_mode"))

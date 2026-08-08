@@ -111,7 +111,7 @@ async def refresh_engine_integrated_system_settings_cache(user_id: str | None = 
 # ── 민감 정보 마스킹 ─────────────────────────────────────────────────
 
 _SENSITIVE_SETTINGS_KEYS: frozenset[str] = frozenset({
-    "telegram_bot_token_test", "telegram_bot_token_real",
+    "telegram_bot_token_virtual", "telegram_bot_token_live",
 })
 
 
