@@ -112,7 +112,7 @@ class TestRecordOrderRequest:
     @pytest.mark.asyncio
     async def test_records_correctly(self):
         with patch("backend.app.core.journal._journal_lock", _fake_lock_ctx()):
-            await record_order_request("ord001", "005930", "BUY", 10, 70000.0, "test")
+            await record_order_request("ord001", "005930", "BUY", 10, 70000.0, "virtual")
         from backend.app.core import journal
         row = journal._journal_entries[0]
         assert row["event_type"] == "order_request"
@@ -121,7 +121,7 @@ class TestRecordOrderRequest:
         assert row["data"]["side"] == "BUY"
         assert row["data"]["quantity"] == 10
         assert row["data"]["price"] == 70000.0
-        assert row["data"]["trade_mode"] == "test"
+        assert row["data"]["trade_mode"] == "virtual"
         assert row["data"]["status"] == "pending"
 
 

@@ -55,11 +55,11 @@ def _make_snapshot(num=5, with_high=True):
     return snap
 
 
-def _make_settings(trade_mode="test", layout=None, virtual_deposit=10000000):
+def _make_settings(trade_mode="virtual", layout=None, virtual_deposit=10000000):
     """테스트용 settings dict 생성."""
     return {
         "trade_mode": trade_mode,
-        "test_virtual_deposit": virtual_deposit,
+        "virtual_deposit": virtual_deposit,
         "sector_stock_layout": layout or [],
     }
 
@@ -411,7 +411,7 @@ class TestLoadCachesPrebootTradeMode:
 
         snap = _make_snapshot(3)
         mock_state = MagicMock()
-        settings = _make_settings(trade_mode="test", virtual_deposit=50000000)
+        settings = _make_settings(trade_mode="virtual", virtual_deposit=50000000)
         _apply_mocks(mock_state, settings=settings)
         with (
             patch.object(engine_state, "state", mock_state),
@@ -433,7 +433,7 @@ class TestLoadCachesPrebootTradeMode:
 
         snap = _make_snapshot(3)
         mock_state = MagicMock()
-        settings = _make_settings(trade_mode="real")
+        settings = _make_settings(trade_mode="live")
         _apply_mocks(mock_state, settings=settings)
         with (
             patch.object(engine_state, "state", mock_state),
@@ -460,7 +460,7 @@ class TestLoadCachesPrebootTradeMode:
 
         snap = _make_snapshot(3)
         mock_state = MagicMock()
-        settings = _make_settings(trade_mode="test", virtual_deposit=50_000_000)
+        settings = _make_settings(trade_mode="virtual", virtual_deposit=50_000_000)
         _apply_mocks(mock_state, settings=settings)
 
         # load_state 호출 시점에 reconcile이 아직 호출되지 않았음을 검증하기 위한 클로저

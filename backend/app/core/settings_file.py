@@ -303,6 +303,25 @@ def _migrate_timetable_keys_to_nxt_krx(merged: dict) -> tuple[dict, bool]:
     return merged, dirty
 
 
+def _migrate_virtual_keys_rename(merged: dict) -> tuple[dict, bool]:
+    """가상매매 설정 키 이름 변경 (모드명 변경 2단계).
+    test_virtual_deposit → virtual_deposit
+    test_virtual_balance → virtual_balance
+    기존 키가 있으면 값을 새 키로 옮기고 기존 키 제거 (idempotent).
+    새 키가 이미 있으면 기존 키만 제거."""
+    dirty = False
+    for old_key, new_key in (
+        ("test_virtual_deposit", "virtual_deposit"),
+        ("test_virtual_balance", "virtual_balance"),
+    ):
+        if old_key in merged:
+            if new_key not in merged:
+                merged[new_key] = merged[old_key]
+            del merged[old_key]
+            dirty = True
+    return merged, dirty
+
+
 # 암호화 필드 목록 (단일 정의)
 _ENCRYPT_FIELDS: frozenset[str] = frozenset({
     "kiwoom_app_key", "kiwoom_app_secret",
@@ -555,8 +574,9 @@ async def _apply_all_migrations(merged: dict, db_data: dict) -> None:
     merged, dirty_mdl = _migrate_remove_max_daily_loss_limit(merged)
     merged, dirty_5d = _migrate_remove_scheduler_5d_download_on(merged)
     merged, dirty_ttk = _migrate_timetable_keys_to_nxt_krx(merged)
+    merged, dirty_vkr = _migrate_virtual_keys_rename(merged)
 
-    if dirty or dirty_tm or dirty_tr or dirty_si or dirty_bc or dirty_tg or dirty_krx or dirty_ws or dirty_wso or dirty_lv or dirty_td or dirty_mps or dirty_mt or dirty_lo or dirty_mdl or dirty_5d or dirty_ttk:
+    if dirty or dirty_tm or dirty_tr or dirty_si or dirty_bc or dirty_tg or dirty_krx or dirty_ws or dirty_wso or dirty_lv or dirty_td or dirty_mps or dirty_mt or dirty_lo or dirty_mdl or dirty_5d or dirty_ttk or dirty_vkr:
         _legacy_keys = list(_keys_before - set(merged.keys()))
         await save_settings(merged, delete_keys=_legacy_keys or None)
 

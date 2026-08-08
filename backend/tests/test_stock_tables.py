@@ -493,7 +493,7 @@ class TestGetEarliestBaseAsset:
         mock_cursor = AsyncMock()
         mock_cursor.fetchone = AsyncMock(return_value={"total_asset": 1000000})
         _mock_db_connection.execute = AsyncMock(return_value=mock_cursor)
-        result = await get_earliest_base_asset(_mock_db_connection, trade_mode="test")
+        result = await get_earliest_base_asset(_mock_db_connection, trade_mode="virtual")
         assert result == 1000000
 
     @pytest.mark.asyncio
@@ -502,7 +502,7 @@ class TestGetEarliestBaseAsset:
         mock_cursor = AsyncMock()
         mock_cursor.fetchone = AsyncMock(return_value=None)
         _mock_db_connection.execute = AsyncMock(return_value=mock_cursor)
-        result = await get_earliest_base_asset(_mock_db_connection, trade_mode="test")
+        result = await get_earliest_base_asset(_mock_db_connection, trade_mode="virtual")
         assert result is None
 
     @pytest.mark.asyncio
@@ -510,7 +510,7 @@ class TestGetEarliestBaseAsset:
         """예외 전파 (P20 폴백 금지)."""
         _mock_db_connection.execute = AsyncMock(side_effect=Exception("DB error"))
         with pytest.raises(Exception, match="DB error"):
-            await get_earliest_base_asset(_mock_db_connection, trade_mode="test")
+            await get_earliest_base_asset(_mock_db_connection, trade_mode="virtual")
 
 
 # ── get_deposit_history ─────────────────────────────────────────────
@@ -525,7 +525,7 @@ class TestGetDepositHistory:
             {"date": "2026-02-10", "daily_deposit": 300000},
         ])
         _mock_db_connection.execute = AsyncMock(return_value=mock_cursor)
-        result = await get_deposit_history(_mock_db_connection, trade_mode="test")
+        result = await get_deposit_history(_mock_db_connection, trade_mode="virtual")
         assert result == [
             {"date": "2026-01-05", "daily_deposit": 500000},
             {"date": "2026-02-10", "daily_deposit": 300000},
@@ -537,7 +537,7 @@ class TestGetDepositHistory:
         mock_cursor = AsyncMock()
         mock_cursor.fetchall = AsyncMock(return_value=[])
         _mock_db_connection.execute = AsyncMock(return_value=mock_cursor)
-        result = await get_deposit_history(_mock_db_connection, trade_mode="test")
+        result = await get_deposit_history(_mock_db_connection, trade_mode="virtual")
         assert result == []
 
     @pytest.mark.asyncio
@@ -545,7 +545,7 @@ class TestGetDepositHistory:
         """예외 전파 (P20 폴백 금지)."""
         _mock_db_connection.execute = AsyncMock(side_effect=Exception("DB error"))
         with pytest.raises(Exception, match="DB error"):
-            await get_deposit_history(_mock_db_connection, trade_mode="test")
+            await get_deposit_history(_mock_db_connection, trade_mode="virtual")
 
 
 # ── 원자료 결과 계약 (broker_providers — 설계서 4.1·4.3) ────────────────────

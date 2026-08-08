@@ -23,9 +23,9 @@ DEFAULT_USER_SETTINGS: dict[str, Any] = {
     "telegram_bot_token_real": "",
     
     # 투자모드
-    "trade_mode": "test",
-    "test_virtual_deposit": 10000000,
-    "test_virtual_balance": 10000000,
+    "trade_mode": "virtual",
+    "virtual_deposit": 10000000,
+    "virtual_balance": 10000000,
     
     # 증권사 선택
     "broker": "kiwoom",

@@ -112,7 +112,7 @@ async def _reset_test_trades_and_deposit(default_deposit: int) -> None:
     # 4. Settlement Engine 초기화 (예수금 리셋 + 미정산 삭제 + 타이머 취소)
     await settlement_engine.reset(default_deposit)
     # 5. 초기화된 매매 이력 브로드캐스트 → 프론트 테이블 갱신
-    await broadcast_history("test")
+    await broadcast_history("virtual")
 
 
 async def _reset_positions_and_account() -> None:
@@ -172,7 +172,7 @@ async def reset_test_data(_: str = Depends(get_current_user)):
         default_deposit = 10_000_000
         settings = state.integrated_system_settings_cache
         default_deposit = int(
-            settings.get("test_virtual_deposit", default_deposit) or default_deposit
+            settings.get("virtual_deposit", default_deposit) or default_deposit
         )
 
         # 1. 테스트 매매 이력·가상 보유종목·예수금·정산엔진 초기화 + 이력 브로드캐스트

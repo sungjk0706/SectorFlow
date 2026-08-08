@@ -894,7 +894,7 @@ class TestHandleReal01Tick:
              patch("backend.app.services.engine_ws_parsing.parse_change_rate_to_percent", return_value=2.0), \
              patch("backend.app.services.engine_ws_parsing._ws_fid_int", return_value=1000), \
              patch("backend.app.services.engine_ws_parsing._ws_fid_raw", return_value="2.0"), \
-             patch("backend.app.core.trade_mode.is_test_mode", return_value=False), \
+             patch("backend.app.core.trade_mode.is_virtual_mode", return_value=False), \
              patch("backend.app.services.engine_account_rest.apply_last_price_to_positions_inplace", return_value=False), \
              patch("backend.app.pipelines.pipeline_compute.state", mock_state):
             await _handle_real_01_tick(item, vals, mock_bq)
@@ -919,7 +919,7 @@ class TestHandleReal01Tick:
              patch("backend.app.services.engine_ws_parsing.parse_change_rate_to_percent", return_value=2.0), \
              patch("backend.app.services.engine_ws_parsing._ws_fid_int", return_value=1000), \
              patch("backend.app.services.engine_ws_parsing._ws_fid_raw", return_value="2.0"), \
-             patch("backend.app.core.trade_mode.is_test_mode", return_value=False), \
+             patch("backend.app.core.trade_mode.is_virtual_mode", return_value=False), \
              patch("backend.app.services.engine_account_rest.apply_last_price_to_positions_inplace", return_value=True), \
              patch("backend.app.services.engine_account_rest.recalc_broker_totals_from_positions", return_value={}), \
              patch("backend.app.pipelines.pipeline_compute.state", mock_state):
@@ -946,7 +946,7 @@ class TestHandleReal01Tick:
              patch("backend.app.services.engine_ws_parsing.parse_change_rate_to_percent", return_value=2.0), \
              patch("backend.app.services.engine_ws_parsing._ws_fid_int", return_value=1000), \
              patch("backend.app.services.engine_ws_parsing._ws_fid_raw", return_value="2.0"), \
-             patch("backend.app.core.trade_mode.is_test_mode", return_value=True), \
+             patch("backend.app.core.trade_mode.is_virtual_mode", return_value=True), \
              patch("backend.app.services.dry_run", mock_dry_run), \
              patch("backend.app.pipelines.pipeline_compute.state", mock_state):
             result = await _handle_real_01_tick(item, vals, mock_bq)
@@ -978,7 +978,7 @@ class TestHandleReal01Tick:
              patch("backend.app.services.engine_ws_parsing.parse_change_rate_to_percent", return_value=2.0), \
              patch("backend.app.services.engine_ws_parsing._ws_fid_int", return_value=1000), \
              patch("backend.app.services.engine_ws_parsing._ws_fid_raw", return_value=""), \
-             patch("backend.app.core.trade_mode.is_test_mode", return_value=False), \
+             patch("backend.app.core.trade_mode.is_virtual_mode", return_value=False), \
              patch("backend.app.services.engine_account_rest.apply_last_price_to_positions_inplace", return_value=False), \
              patch("backend.app.pipelines.pipeline_compute.state", mock_state):
             await _handle_real_01_tick(item, vals, mock_bq)

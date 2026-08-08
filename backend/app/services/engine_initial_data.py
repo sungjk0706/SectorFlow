@@ -223,7 +223,7 @@ _REALTIME_FIELDS = (
 
 async def _reset_realtime_fields() -> None:
     """WS 구독 시작 시 실시간 필드와 뉴스 만료 시각을 None으로 초기화한다."""
-    from backend.app.core.trade_mode import is_test_mode
+    from backend.app.core.trade_mode import is_virtual_mode
     from backend.app.services import dry_run
     from backend.app.services.engine_account_notify import (
         notify_cache,
@@ -245,7 +245,7 @@ async def _reset_realtime_fields() -> None:
         pos["ask_depth"] = None
 
     # 테스트모드 가상 보유종목 실시간 필드 초기화
-    if is_test_mode(engine_state.state.integrated_system_settings_cache):
+    if is_virtual_mode(engine_state.state.integrated_system_settings_cache):
         for pos in dry_run._test_positions.values():
             pos["cur_price"] = None
             pos["change"] = None

@@ -93,7 +93,7 @@ class TestLoad:
                    new_callable=AsyncMock, return_value=None), \
              patch("backend.app.services.engine_state.state") as mock_state, \
              patch.object(settlement_engine, "_persist", new_callable=AsyncMock):
-            mock_state.integrated_system_settings_cache = {"test_virtual_deposit": 7_000_000}
+            mock_state.integrated_system_settings_cache = {"virtual_deposit": 7_000_000}
             await settlement_engine._load()
         assert settlement_engine._initial_deposit == 7_000_000
         assert settlement_engine._accumulated_investment == 7_000_000
@@ -600,42 +600,42 @@ class TestMaxBuyQtyForBudget:
     """
 
     def test_zero_price_returns_zero(self):
-        assert max_buy_qty_for_budget(0, 1_000_000, is_test=True) == 0
+        assert max_buy_qty_for_budget(0, 1_000_000, is_virtual=True) == 0
 
     def test_zero_budget_returns_zero(self):
-        assert max_buy_qty_for_budget(70_000, 0, is_test=True) == 0
+        assert max_buy_qty_for_budget(70_000, 0, is_virtual=True) == 0
 
     def test_negative_inputs_returns_zero(self):
-        assert max_buy_qty_for_budget(-1, -1, is_test=True) == 0
+        assert max_buy_qty_for_budget(-1, -1, is_virtual=True) == 0
 
     def test_test_mode_exact_fit_no_fee_overflow(self):
         """예산이 딱 맞을 때 수수료 포함 후에도 수량 유지.
         price=70000, budget=980147 → 14주 cost=980147 (정확히 일치).
         """
         budget = 14 * 70_000 + round(14 * 70_000 * BUY_COMMISSION)
-        assert max_buy_qty_for_budget(70_000, budget, is_test=True) == 14
+        assert max_buy_qty_for_budget(70_000, budget, is_virtual=True) == 14
 
     def test_test_mode_fee_overflow_reduces_qty(self):
         """수수료 초과 시 1주 감소.
         price=70000, budget=980146 (1원 부족) → 14주 cost=980147 > 980146 → 13주.
         """
         budget = 14 * 70_000 + round(14 * 70_000 * BUY_COMMISSION) - 1
-        assert max_buy_qty_for_budget(70_000, budget, is_test=True) == 13
+        assert max_buy_qty_for_budget(70_000, budget, is_virtual=True) == 13
 
     def test_test_mode_one_share_only(self):
         """예산이 1주+수수료는 감당하지만 2주는 안 되는 경우."""
         budget = 70_000 + round(70_000 * BUY_COMMISSION)
-        assert max_buy_qty_for_budget(70_000, budget, is_test=True) == 1
+        assert max_buy_qty_for_budget(70_000, budget, is_virtual=True) == 1
 
     def test_test_mode_cannot_afford_one_share(self):
         """예산이 1주+수수료보다 적으면 0."""
         budget = 70_000 + round(70_000 * BUY_COMMISSION) - 1
-        assert max_buy_qty_for_budget(70_000, budget, is_test=True) == 0
+        assert max_buy_qty_for_budget(70_000, budget, is_virtual=True) == 0
 
     def test_real_mode_excludes_fee(self):
         """실전모드는 수수료 미적용 — budget // price."""
         # 14*70000=980000, 14*70000+fee=980147 > 980000이지만 실전은 무시
-        assert max_buy_qty_for_budget(70_000, 980_000, is_test=False) == 14
+        assert max_buy_qty_for_budget(70_000, 980_000, is_virtual=False) == 14
 
     @pytest.mark.asyncio
     async def test_consistent_with_reserve_buy_power(self, fresh_engine):
@@ -644,7 +644,7 @@ class TestMaxBuyQtyForBudget:
         # 주문가능금액을 1_000_000으로 설정
         settlement_engine._orderable = 1_000_000
         price = 70_000
-        qty = max_buy_qty_for_budget(price, 1_000_000, is_test=True)
+        qty = max_buy_qty_for_budget(price, 1_000_000, is_virtual=True)
         assert qty > 0
         ok, reason, cost = await reserve_buy_power(price * qty, 0, 0)
         assert ok is True, f"reserve_buy_power 거부: {reason}"

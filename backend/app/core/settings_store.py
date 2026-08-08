@@ -168,8 +168,8 @@ _TRADE_INT_KEYS = {
     "sell_offset": (0, 100_000),                    # 매도 호가 오프셋 (0=비활성)
     "sell_custom_qty": (0, 10_000_000),             # 매도 수량 (0=비활성)
     "max_daily_total_buy_amt": (0, 1_000_000_000_000),  # 일일 최대 매수 금액 (0=비활성)
-    "test_virtual_deposit": (0, 1_000_000_000_000),     # 가상 예수금
-    "test_virtual_balance": (0, 1_000_000_000_000),     # 가상 잔고
+    "virtual_deposit": (0, 1_000_000_000_000),          # 가상 예수금
+    "virtual_balance": (0, 1_000_000_000_000),          # 가상 잔고
     "buy_interval_sec": (1, 300),                   # 매수 주문 간격 (초, 1~300 1초 단위, P21/P22)
     "sell_interval_sec": (1, 300),                  # 매도 주문 간격 (초, 1~300 1초 단위, P21/P22)
 }

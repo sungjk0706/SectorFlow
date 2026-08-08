@@ -44,7 +44,7 @@ class TestLoginPostPipeline:
         with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.sector_data_provider.recompute_sector_summary_now", new=AsyncMock()), \
              patch("backend.app.services.engine_ws._cleanup_stale_ws_subscriptions_on_session_ready", new=AsyncMock()), \
-             patch("backend.app.core.trade_mode.is_test_mode", return_value=True), \
+             patch("backend.app.core.trade_mode.is_virtual_mode", return_value=True), \
              patch("backend.app.services.engine_account._update_account_memory", new=AsyncMock()) as mock_update, \
              patch("backend.app.services.engine_account_notify.notify_desktop_sector_refresh", new=AsyncMock()) as mock_refresh, \
              patch("backend.app.services.engine_account_notify.notify_desktop_sector_stocks_refresh", new=AsyncMock()):
@@ -60,7 +60,7 @@ class TestLoginPostPipeline:
         with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.sector_data_provider.recompute_sector_summary_now", new=AsyncMock()), \
              patch("backend.app.services.engine_ws._cleanup_stale_ws_subscriptions_on_session_ready", new=AsyncMock()), \
-             patch("backend.app.core.trade_mode.is_test_mode", return_value=False), \
+             patch("backend.app.core.trade_mode.is_virtual_mode", return_value=False), \
              patch("backend.app.services.engine_account._update_account_memory", new=AsyncMock()) as mock_update, \
              patch("backend.app.services.engine_account_notify.notify_desktop_sector_refresh", new=AsyncMock()) as mock_refresh, \
              patch("backend.app.services.engine_account_notify.notify_desktop_sector_stocks_refresh", new=AsyncMock()):
@@ -76,7 +76,7 @@ class TestLoginPostPipeline:
         with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.sector_data_provider.recompute_sector_summary_now", new=AsyncMock()), \
              patch("backend.app.services.engine_ws._cleanup_stale_ws_subscriptions_on_session_ready", new=AsyncMock()), \
-             patch("backend.app.core.trade_mode.is_test_mode", return_value=False), \
+             patch("backend.app.core.trade_mode.is_virtual_mode", return_value=False), \
              patch("backend.app.services.engine_account._update_account_memory", new=AsyncMock()) as mock_update, \
              patch("backend.app.services.engine_account_notify.notify_desktop_sector_refresh", new=AsyncMock()) as mock_refresh, \
              patch("backend.app.services.engine_account_notify.notify_desktop_sector_stocks_refresh", new=AsyncMock()):
@@ -92,7 +92,7 @@ class TestLoginPostPipeline:
         with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.sector_data_provider.recompute_sector_summary_now", new=AsyncMock()), \
              patch("backend.app.services.engine_ws._cleanup_stale_ws_subscriptions_on_session_ready", new=AsyncMock()), \
-             patch("backend.app.core.trade_mode.is_test_mode", return_value=False), \
+             patch("backend.app.core.trade_mode.is_virtual_mode", return_value=False), \
              patch("backend.app.services.engine_account._update_account_memory", new=AsyncMock()) as mock_update, \
              patch("backend.app.services.engine_account_notify.notify_desktop_sector_refresh", new=AsyncMock()) as mock_refresh, \
              patch("backend.app.services.engine_account_notify.notify_desktop_sector_stocks_refresh", new=AsyncMock()) as mock_stocks_refresh:
@@ -116,7 +116,7 @@ class TestLoginPostPipeline:
         with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.sector_data_provider.recompute_sector_summary_now", new=AsyncMock()), \
              patch("backend.app.services.engine_ws._cleanup_stale_ws_subscriptions_on_session_ready", new=AsyncMock()), \
-             patch("backend.app.core.trade_mode.is_test_mode", return_value=False), \
+             patch("backend.app.core.trade_mode.is_virtual_mode", return_value=False), \
              patch("backend.app.services.engine_account._update_account_memory", new=AsyncMock()), \
              patch("backend.app.services.engine_account_notify.notify_desktop_sector_refresh", new=AsyncMock()), \
              patch("backend.app.services.engine_account_notify.notify_desktop_sector_stocks_refresh", new=AsyncMock()):
@@ -140,7 +140,7 @@ class TestLoginPostPipeline:
         with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.sector_data_provider.recompute_sector_summary_now", new=AsyncMock()) as mock_recompute, \
              patch("backend.app.services.engine_ws._cleanup_stale_ws_subscriptions_on_session_ready", new=AsyncMock()), \
-             patch("backend.app.core.trade_mode.is_test_mode", return_value=False), \
+             patch("backend.app.core.trade_mode.is_virtual_mode", return_value=False), \
              patch("backend.app.services.engine_account._update_account_memory", new=AsyncMock()) as mock_update, \
              patch("backend.app.services.engine_ws._run_sector_reg_pipeline", new=AsyncMock()) as mock_reg, \
              patch("backend.app.services.engine_ws._ensure_ws_subscriptions_for_positions", new=AsyncMock()) as mock_ensure, \
@@ -168,7 +168,7 @@ class TestLoginPostPipeline:
         with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.sector_data_provider.recompute_sector_summary_now", new=AsyncMock()) as mock_recompute, \
              patch("backend.app.services.engine_ws._cleanup_stale_ws_subscriptions_on_session_ready", new=AsyncMock()), \
-             patch("backend.app.core.trade_mode.is_test_mode", return_value=False), \
+             patch("backend.app.core.trade_mode.is_virtual_mode", return_value=False), \
              patch("backend.app.services.engine_account._update_account_memory", new=AsyncMock()), \
              patch("backend.app.services.engine_ws._run_sector_reg_pipeline", new=AsyncMock()) as mock_reg, \
              patch("backend.app.services.engine_ws._ensure_ws_subscriptions_for_positions", new=AsyncMock()) as mock_ensure, \
@@ -190,7 +190,7 @@ class TestLoginPostPipeline:
         with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.sector_data_provider.recompute_sector_summary_now", new=AsyncMock()), \
              patch("backend.app.services.engine_ws._cleanup_stale_ws_subscriptions_on_session_ready", new=AsyncMock()), \
-             patch("backend.app.core.trade_mode.is_test_mode", return_value=False), \
+             patch("backend.app.core.trade_mode.is_virtual_mode", return_value=False), \
              patch("backend.app.services.engine_account._update_account_memory", new=AsyncMock()), \
              patch("backend.app.services.engine_account_notify.notify_desktop_sector_refresh", new=AsyncMock()) as mock_refresh, \
              patch("backend.app.services.engine_account_notify.notify_desktop_sector_stocks_refresh", new=AsyncMock()) as mock_stocks_refresh:
@@ -206,7 +206,7 @@ class TestLoginPostPipeline:
         with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.sector_data_provider.recompute_sector_summary_now", new=AsyncMock()), \
              patch("backend.app.services.engine_ws._cleanup_stale_ws_subscriptions_on_session_ready", new=AsyncMock(side_effect=Exception("pipeline error"))), \
-             patch("backend.app.core.trade_mode.is_test_mode", return_value=False), \
+             patch("backend.app.core.trade_mode.is_virtual_mode", return_value=False), \
              patch("backend.app.services.engine_account._update_account_memory", new=AsyncMock()), \
              patch("backend.app.services.engine_account_notify.notify_desktop_sector_refresh", new=AsyncMock()), \
              patch("backend.app.services.engine_account_notify.notify_desktop_sector_stocks_refresh", new=AsyncMock()):

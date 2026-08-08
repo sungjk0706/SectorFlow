@@ -668,21 +668,21 @@ class TestTradeAndVirtualBalanceValidation:
             mock_save.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_rejects_negative_test_virtual_deposit(self):
-        """test_virtual_deposit 음수 입력 시 ValueError (0 이상만 허용)."""
+    async def test_rejects_negative_virtual_deposit(self):
+        """virtual_deposit 음수 입력 시 ValueError (0 이상만 허용)."""
         with patch("backend.app.core.settings_store.load_selected_settings", new=AsyncMock(return_value={})), \
              patch("backend.app.core.settings_store.save_selected_settings", new=AsyncMock()) as mock_save:
-            with pytest.raises(ValueError, match="test_virtual_deposit는 0~1000000000000 사이여야 합니다"):
-                await apply_settings_updates({"test_virtual_deposit": -1})
+            with pytest.raises(ValueError, match="virtual_deposit는 0~1000000000000 사이여야 합니다"):
+                await apply_settings_updates({"virtual_deposit": -1})
             mock_save.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_rejects_negative_test_virtual_balance(self):
-        """test_virtual_balance 음수 입력 시 ValueError (0 이상만 허용)."""
+    async def test_rejects_negative_virtual_balance(self):
+        """virtual_balance 음수 입력 시 ValueError (0 이상만 허용)."""
         with patch("backend.app.core.settings_store.load_selected_settings", new=AsyncMock(return_value={})), \
              patch("backend.app.core.settings_store.save_selected_settings", new=AsyncMock()) as mock_save:
-            with pytest.raises(ValueError, match="test_virtual_balance는 0~1000000000000 사이여야 합니다"):
-                await apply_settings_updates({"test_virtual_balance": -1})
+            with pytest.raises(ValueError, match="virtual_balance는 0~1000000000000 사이여야 합니다"):
+                await apply_settings_updates({"virtual_balance": -1})
             mock_save.assert_not_called()
 
     @pytest.mark.asyncio
@@ -719,10 +719,10 @@ class TestTradeAndVirtualBalanceValidation:
             ("sell_custom_qty", 10_000_000),       # 상한 경계
             ("max_daily_total_buy_amt", 0),        # 하한 경계 (0=비활성)
             ("max_daily_total_buy_amt", 1_000_000_000_000),  # 상한 경계
-            ("test_virtual_deposit", 0),           # 하한 경계
-            ("test_virtual_deposit", 1_000_000_000_000),     # 상한 경계
-            ("test_virtual_balance", 0),           # 하한 경계
-            ("test_virtual_balance", 1_000_000_000_000),     # 상한 경계
+            ("virtual_deposit", 0),           # 하한 경계
+            ("virtual_deposit", 1_000_000_000_000),     # 상한 경계
+            ("virtual_balance", 0),           # 하한 경계
+            ("virtual_balance", 1_000_000_000_000),     # 상한 경계
         ]
         for k, v in valid_cases:
             with patch("backend.app.core.settings_store.load_selected_settings", new=AsyncMock(return_value={})), \
@@ -751,12 +751,12 @@ class TestBuildMaskedSettingsDict:
 
     @pytest.mark.asyncio
     async def test_non_encrypted_passthrough(self):
-        flat = {"broker": "kiwoom", "trade_mode": "test"}
+        flat = {"broker": "kiwoom", "trade_mode": "virtual"}
         with patch("backend.app.core.settings_store.load_integrated_system_settings", new=AsyncMock(return_value=flat)), \
              patch("backend.app.core.settings_store.auto_trading_effective", return_value=False):
             result = await build_masked_settings_dict()
             assert result["broker"] == "kiwoom"
-            assert result["trade_mode"] == "test"
+            assert result["trade_mode"] == "virtual"
 
     @pytest.mark.asyncio
     async def test_id_and_profile_set(self):

@@ -14,7 +14,7 @@ from backend.app.core.broker_urls import BROKER_DISPLAY_NAMES
 from backend.app.core.auth_utils import should_continue_recovery
 from backend.app.core.constants import TOKEN_RECOVERY_INTERVAL_SEC, TOKEN_RECOVERY_MAX_ATTEMPTS
 import logging
-from backend.app.core.trade_mode import is_test_mode
+from backend.app.core.trade_mode import is_virtual_mode
 from backend.app.services.trading import AutoTradeManager
 from backend.app.services.engine_cache import _load_caches_preboot
 from backend.app.services import engine_state
@@ -493,7 +493,7 @@ async def run_engine_loop() -> None:
         # ── 계좌 조회용 REST = Router의 AuthProvider에서 REST 실시간 인스턴스 공유 ──
         _auth_provider = router.auth
         if hasattr(_auth_provider, 'rest_api'):
-            _is_test = is_test_mode(settings)
+            _is_virtual = is_virtual_mode(settings)
             # 증권사별 state 분리
             _rest_api = _auth_provider.rest_api
             _rest_api._acnt_no = str(settings.get(f"{broker_nm}_account_no", "") or "")
@@ -507,19 +507,19 @@ async def run_engine_loop() -> None:
                     _rest_api._account_tr_id = tr
             engine_state.state.broker_rest_apis[broker_nm] = _rest_api
             from backend.app.services.engine_lifecycle import log_message
-            log_message(f"[연결] {BROKER_DISPLAY_NAMES.get(broker_nm, broker_nm)} 연결 (테스트모드={_is_test})")
+            log_message(f"[연결] {BROKER_DISPLAY_NAMES.get(broker_nm, broker_nm)} 연결 (테스트모드={_is_virtual})")
 
 
 
-        _is_test_flag  = is_test_mode(settings)
-        _mode_str      = "테스트모드" if _is_test_flag else "실전투자"
+        _is_virtual_flag  = is_virtual_mode(settings)
+        _mode_str      = "테스트모드" if _is_virtual_flag else "실전투자"
         _broker_str    = BROKER_DISPLAY_NAMES.get(broker_nm, "증권사")
         _acnt_raw      = (
             settings.get(f"{broker_nm}_account_no")
             or "미설정"
         )
         _acnt_disp     = (_acnt_raw[:4] + "****") if len(_acnt_raw) >= 4 else _acnt_raw
-        _real_warn     = " ★ 실제 자금 투입 ★" if not _is_test_flag else ""
+        _real_warn     = " ★ 실제 자금 투입 ★" if not _is_virtual_flag else ""
         logger.info("[연산] 엔진 기동 — %s %s / 계좌: %s%s", _broker_str, _mode_str, _acnt_disp, _real_warn)
 
         # 자동매매 관리자는 토큰 확보 시점에 생성 — 기동 시 고정 생성 제거 (설계 결정 3)

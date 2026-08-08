@@ -10,7 +10,7 @@ import asyncio
 from typing import Any, Coroutine
 import logging
 from datetime import datetime
-from backend.app.core.trade_mode import is_test_mode
+from backend.app.core.trade_mode import is_virtual_mode
 from backend.app.core.constants import _KST
 from backend.app.services import engine_state
 
@@ -39,7 +39,7 @@ async def start_engine(user_id: str = "") -> bool:
     # 실전투자 모드는 증권사 서버가 SSOT이므로 별도 대조 불필요.
     # P25 격리된 실패: 포지션 구축 실패 시에도 엔진 기동은 계속. 호출자(app.py/engine_service)와 다단계 방어.
     # P21 사용자 투명성: 실패 시 position_build_failed 플래그 설정 → get_engine_status()로 프론트 전달.
-    if is_test_mode(engine_state.state.integrated_system_settings_cache):
+    if is_virtual_mode(engine_state.state.integrated_system_settings_cache):
         logger.info("[연산] 테스트모드 - 거래내역 기반 포지션 구축")
         from backend.app.services import dry_run
         try:
@@ -191,7 +191,7 @@ def get_engine_status() -> dict:
     # 실시간 구독 종목 수
     sub_count = sum(1 for entry in engine_state.state.master_stocks_cache.values() if entry.get("_subscribed", False))
 
-    test_mode = is_test_mode(engine_state.state.integrated_system_settings_cache)
+    virtual_mode = is_virtual_mode(engine_state.state.integrated_system_settings_cache)
     ws = engine_state.state.connector_manager
     conn_ok = bool(ws and ws.is_connected())
 
@@ -214,8 +214,8 @@ def get_engine_status() -> dict:
         "logged_in": engine_state.state.login_ok,
         "login_ok": engine_state.state.login_ok,  # 프론트 매핑용
         "broker_token_valid": bool(engine_state.state.access_token),  # 하위 호환
-        "trade_mode": "test" if test_mode else "real",
-        "is_test_mode": test_mode,  # 프론트 매핑용
+        "trade_mode": "virtual" if virtual_mode else "live",
+        "is_test_mode": virtual_mode,  # 프론트 매핑용
         "engine_task_alive": engine_state.state.engine_task is not None and not engine_state.state.engine_task.done(),
         "stock_subscribed_count": sub_count,
         "ws_reg_total_estimate": sub_count,
@@ -234,8 +234,8 @@ async def on_trade_mode_switched() -> None:
     from backend.app.services.engine_ws import _subscribe_account_realtime, _subscribe_positions_stocks_realtime
     from backend.app.services.engine_account import _refresh_account_snapshot_meta, _broadcast_account
 
-    _new_test = is_test_mode(engine_state.state.integrated_system_settings_cache)
-    _mode_str = "테스트모드" if _new_test else "실전투자"
+    _new_virtual = is_virtual_mode(engine_state.state.integrated_system_settings_cache)
+    _mode_str = "테스트모드" if _new_virtual else "실전투자"
     logger.info("[연산] 투자모드 전환 — %s (엔진 재기동 없음)", _mode_str)
 
     # BrokerRouter를 통해 현재 연결된 커넥터 확인 (증권사 하드코딩 제거)
@@ -246,7 +246,7 @@ async def on_trade_mode_switched() -> None:
     # 구독 전환 실패 시 사용자 알림 전송 — 자동 롤백 금지 (설계서 결정 3 + 기각안).
     # DB·캐시는 새 모드이나 구독이 이전 모드인 불일치 상태를 사용자가 인지하여 수동 대응하도록 알림만 전송 (W10 사용자 투명성).
     _subscribe_failed_reason: str | None = None
-    if _new_test:
+    if _new_virtual:
         # 실전→테스트: 계좌 실시간 구독(00/04) 해제, 분석용 구독은 유지
         from backend.app.services.engine_ws_reg import _unreg_grp
         try:

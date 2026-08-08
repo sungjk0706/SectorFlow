@@ -7,7 +7,7 @@ engine_lifecycle.py에서 업종 매수 관련 함수를 분리.
 from __future__ import annotations
 import asyncio
 import logging
-from backend.app.core.trade_mode import is_test_mode
+from backend.app.core.trade_mode import is_virtual_mode
 from backend.app.services.auto_trading_effective import auto_buy_effective, auto_buy_reject_reason
 logger = logging.getLogger(__name__)
 
@@ -81,7 +81,7 @@ async def _apply_market_guard_reject_reasons(ss, market_status) -> None:
         await notify_buy_targets_update()
 
 
-def _refresh_buyable_prices(ss, available: int, effective_buy_amt: int | None, is_test: bool) -> set[str]:
+def _refresh_buyable_prices(ss, available: int, effective_buy_amt: int | None, is_virtual: bool) -> set[str]:
     """매수 가능 종목 집합 재계산 (P10 SSOT — execute_buy 내부와 동일 기준).
 
     최초 _buyable_codes 구축과 매수 성공 후 잔액 갱신 시 모두 이 헬퍼를 호출하여
@@ -107,11 +107,11 @@ def _refresh_buyable_prices(ss, available: int, effective_buy_amt: int | None, i
             continue
         _price = s.cur_price
         # 테스트모드 슬리피지 적용 (trading.py:254와 동일)
-        _est_price = dry_run.estimate_fill_price(_price, "BUY") if is_test else _price
+        _est_price = dry_run.estimate_fill_price(_price, "BUY") if is_virtual else _price
         # 종목별 가용 금액 = min(effective_buy_amt, available) 또는 available
         _max_for_code = min(effective_buy_amt, available) if effective_buy_amt is not None else available
         # 수수료 포함 최대 수량 1주 미만이면 매수 후보에서 제외 (P10 SSOT — trading.py와 동일 기준)
-        if settlement_engine.max_buy_qty_for_budget(_est_price, _max_for_code, is_test) <= 0:
+        if settlement_engine.max_buy_qty_for_budget(_est_price, _max_for_code, is_virtual) <= 0:
             continue
         _new_codes.add(s.code)
     return _new_codes
@@ -169,7 +169,7 @@ async def evaluate_buy_candidates() -> None:
     # ── 전역 조건 사전 체크 ──────────────────────────────────────────
     _max_limit = int(state.integrated_system_settings_cache["max_stock_cnt"])
     _max_limit_on = bool(state.integrated_system_settings_cache.get("max_stock_cnt_on", True))
-    if is_test_mode(state.integrated_system_settings_cache):
+    if is_virtual_mode(state.integrated_system_settings_cache):
         _pos_for_cnt = await dry_run.get_positions()
     else:
         _pos_for_cnt = state.positions
@@ -223,7 +223,7 @@ async def evaluate_buy_candidates() -> None:
         return
 
     # ── 전역 조건 스냅샷: 변화 없으면 매수 시도 스킵 (원칙 11 이벤트 기반) ──
-    _is_test = is_test_mode(state.integrated_system_settings_cache)
+    _is_virtual = is_virtual_mode(state.integrated_system_settings_cache)
 
     # ── 매수 가능 종목 집합: guard_pass + 장외 + 재매수 + 주문가능금액/가격 ──
     # _refresh_buyable_prices 헬퍼로 단일 진실 소스화 (P10 SSOT).
@@ -231,7 +231,7 @@ async def evaluate_buy_candidates() -> None:
     # "매수 시도" 로그 후 차단되는 불필요한 호출 제거 (P21 사용자 투명성).
     # available_cash를 snapshot에서 제거하고 _buyable_codes가 orderable/가격에
     # 의존하도록 통일 — orderable 변동 시 _buyable_codes가 변하여 snapshot 반영.
-    _buyable_codes = _refresh_buyable_prices(ss, _available, _effective_buy_amt, _is_test)
+    _buyable_codes = _refresh_buyable_prices(ss, _available, _effective_buy_amt, _is_virtual)
 
     _current_snapshot = {
         "buyable_codes": tuple(sorted(_buyable_codes)),

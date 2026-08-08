@@ -42,7 +42,7 @@ class TestOnFillAfterWsScopedSellCheck:
 
         with (
             patch("backend.app.services.engine_account.state", mock_state),
-            patch("backend.app.services.engine_account.is_test_mode", return_value=False),
+            patch("backend.app.services.engine_account.is_virtual_mode", return_value=False),
             patch("backend.app.services.auto_trading_effective.auto_sell_effective", return_value=True),
             patch("backend.app.services.engine_account._refresh_account_snapshot_meta", new=AsyncMock()),
         ):
@@ -67,7 +67,7 @@ class TestOnFillAfterWsScopedSellCheck:
 
         with (
             patch("backend.app.services.engine_account.state", mock_state),
-            patch("backend.app.services.engine_account.is_test_mode", return_value=False),
+            patch("backend.app.services.engine_account.is_virtual_mode", return_value=False),
             patch("backend.app.services.auto_trading_effective.auto_sell_effective", return_value=True),
             patch("backend.app.services.engine_account._refresh_account_snapshot_meta", new=AsyncMock()),
         ):
@@ -88,7 +88,7 @@ class TestOnFillAfterWsScopedSellCheck:
 
         with (
             patch("backend.app.services.engine_account.state", mock_state),
-            patch("backend.app.services.engine_account.is_test_mode", return_value=True),
+            patch("backend.app.services.engine_account.is_virtual_mode", return_value=True),
             patch("backend.app.services.auto_trading_effective.auto_sell_effective", return_value=True),
             patch("backend.app.services.engine_account._refresh_account_snapshot_meta", new=AsyncMock()),
             patch("backend.app.services.dry_run.get_position", new=AsyncMock(return_value=matched)),
@@ -113,7 +113,7 @@ class TestOnFillAfterWsScopedSellCheck:
 
         with (
             patch("backend.app.services.engine_account.state", mock_state),
-            patch("backend.app.services.engine_account.is_test_mode", return_value=True),
+            patch("backend.app.services.engine_account.is_virtual_mode", return_value=True),
             patch("backend.app.services.auto_trading_effective.auto_sell_effective", return_value=True),
             patch("backend.app.services.engine_account._refresh_account_snapshot_meta", new=AsyncMock()),
             patch("backend.app.services.dry_run.get_position", new=AsyncMock(return_value=None)),
@@ -136,7 +136,7 @@ class TestOnFillAfterWsScopedSellCheck:
 
         with (
             patch("backend.app.services.engine_account.state", mock_state),
-            patch("backend.app.services.engine_account.is_test_mode", return_value=False),
+            patch("backend.app.services.engine_account.is_virtual_mode", return_value=False),
             patch("backend.app.services.auto_trading_effective.auto_sell_effective", return_value=True),
             patch("backend.app.services.engine_account._refresh_account_snapshot_meta", new=AsyncMock()),
         ):
@@ -160,7 +160,7 @@ class TestOnFillAfterWsScopedSellCheck:
 
         with (
             patch("backend.app.services.engine_account.state", mock_state),
-            patch("backend.app.services.engine_account.is_test_mode", return_value=False),
+            patch("backend.app.services.engine_account.is_virtual_mode", return_value=False),
             patch("backend.app.services.auto_trading_effective.auto_sell_effective", return_value=False),
             patch("backend.app.services.engine_account._refresh_account_snapshot_meta", new=AsyncMock()),
         ):

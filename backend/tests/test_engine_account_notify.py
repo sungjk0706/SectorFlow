@@ -898,7 +898,7 @@ class TestApplyUnaffordableRejectReasons:
         mock_state.auto_trade._daily_buy_spent = 0
         with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm, \
-             patch("backend.app.core.trade_mode.is_test_mode", return_value=True), \
+             patch("backend.app.core.trade_mode.is_virtual_mode", return_value=True), \
              patch("backend.app.services.dry_run.estimate_fill_price", side_effect=lambda p, s: p):
             mock_rm.return_value.get_withdrawable_deposit.return_value = 50_000
             _apply_unaffordable_reject_reasons()
@@ -917,7 +917,7 @@ class TestApplyUnaffordableRejectReasons:
         mock_state.auto_trade._daily_buy_spent = 0
         with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm, \
-             patch("backend.app.core.trade_mode.is_test_mode", return_value=True), \
+             patch("backend.app.core.trade_mode.is_virtual_mode", return_value=True), \
              patch("backend.app.services.dry_run.estimate_fill_price", side_effect=lambda p, s: p):
             mock_rm.return_value.get_withdrawable_deposit.return_value = 10_000_000
             _apply_unaffordable_reject_reasons()
@@ -935,7 +935,7 @@ class TestApplyUnaffordableRejectReasons:
         mock_state.auto_trade._daily_buy_spent = 0
         with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm, \
-             patch("backend.app.core.trade_mode.is_test_mode", return_value=True), \
+             patch("backend.app.core.trade_mode.is_virtual_mode", return_value=True), \
              patch("backend.app.services.dry_run.estimate_fill_price", side_effect=lambda p, s: p):
             mock_rm.return_value.get_withdrawable_deposit.return_value = 50_000
             _apply_unaffordable_reject_reasons()
@@ -953,7 +953,7 @@ class TestApplyUnaffordableRejectReasons:
         mock_state.auto_trade._daily_buy_spent = 0
         with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm, \
-             patch("backend.app.core.trade_mode.is_test_mode", return_value=True), \
+             patch("backend.app.core.trade_mode.is_virtual_mode", return_value=True), \
              patch("backend.app.services.dry_run.estimate_fill_price", side_effect=lambda p, s: p):
             mock_rm.return_value.get_withdrawable_deposit.return_value = 50_000
             _apply_unaffordable_reject_reasons()
@@ -971,7 +971,7 @@ class TestApplyUnaffordableRejectReasons:
         mock_state.auto_trade._daily_buy_spent = 0
         with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm, \
-             patch("backend.app.core.trade_mode.is_test_mode", return_value=True):
+             patch("backend.app.core.trade_mode.is_virtual_mode", return_value=True):
             mock_rm.return_value.get_withdrawable_deposit.return_value = 0
             _apply_unaffordable_reject_reasons()
         assert bt.reject_reason == ""

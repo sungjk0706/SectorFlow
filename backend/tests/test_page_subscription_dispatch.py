@@ -37,7 +37,7 @@ def _mock_state(**overrides):
     mock.master_stocks_cache = overrides.get("master_stocks_cache", {"005930": {"name": "삼성전자"}})
     mock.sector_summary_cache = overrides.get("sector_summary_cache", None)
     mock.integrated_system_settings_cache = overrides.get(
-        "integrated_system_settings_cache", {"trade_mode": "test"}
+        "integrated_system_settings_cache", {"trade_mode": "virtual"}
     )
     mock.account_rest_bootstrapped = overrides.get("account_rest_bootstrapped", False)
     mock.sector_summary_ready_event = overrides.get(
@@ -149,7 +149,7 @@ class TestPageActiveDataPages:
         ws = _make_ws()
         with patch("backend.app.services.engine_state.state", _mock_state()), \
              patch("backend.app.services.engine_config._mask_sensitive_settings",
-                   return_value={"trade_mode": "test", "broker_app_key": "***"}):
+                   return_value={"trade_mode": "virtual", "broker_app_key": "***"}):
             await handle_page_active(ws, PAGE_SETTINGS, None)
 
         sent = ws.send_text.call_args_list
@@ -429,7 +429,7 @@ class TestDataPageSnapshotBuilder:
         """일반 설정 스냅샷 — 민감 정보 마스킹."""
         with patch("backend.app.services.engine_state.state", _mock_state()), \
              patch("backend.app.services.engine_config._mask_sensitive_settings",
-                   return_value={"trade_mode": "test", "broker_app_key": "***"}):
+                   return_value={"trade_mode": "virtual", "broker_app_key": "***"}):
             payload = await _build_data_page_snapshot(PAGE_SETTINGS)
         assert payload["broker_app_key"] == "***"
 

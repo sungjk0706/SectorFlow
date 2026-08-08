@@ -104,7 +104,7 @@ class TestGetWithdrawableDeposit:
     def test_test_mode_returns_settlement_engine_cash(self, risk_manager, settings_cache):
         settings_cache["test_mode_on"] = True
         with patch("backend.app.services.engine_state.state") as mock_state, \
-             patch("backend.app.services.risk_manager.is_test_mode", return_value=True), \
+             patch("backend.app.services.risk_manager.is_virtual_mode", return_value=True), \
              patch("backend.app.services.settlement_engine.get_available_cash", return_value=5_000_000):
             mock_state.integrated_system_settings_cache = settings_cache
             result = risk_manager.get_withdrawable_deposit()
@@ -112,7 +112,7 @@ class TestGetWithdrawableDeposit:
 
     def test_real_mode_returns_account_snapshot_orderable(self, risk_manager, settings_cache):
         with patch("backend.app.services.engine_state.state") as mock_state, \
-             patch("backend.app.services.risk_manager.is_test_mode", return_value=False):
+             patch("backend.app.services.risk_manager.is_virtual_mode", return_value=False):
             mock_state.integrated_system_settings_cache = settings_cache
             mock_state.account_snapshot = {"orderable": 80_000_000}
             result = risk_manager.get_withdrawable_deposit()
@@ -120,7 +120,7 @@ class TestGetWithdrawableDeposit:
 
     def test_real_mode_returns_zero_when_orderable_missing(self, risk_manager, settings_cache):
         with patch("backend.app.services.engine_state.state") as mock_state, \
-             patch("backend.app.services.risk_manager.is_test_mode", return_value=False):
+             patch("backend.app.services.risk_manager.is_virtual_mode", return_value=False):
             mock_state.integrated_system_settings_cache = settings_cache
             mock_state.account_snapshot = {}
             result = risk_manager.get_withdrawable_deposit()
@@ -133,7 +133,7 @@ class TestCheckBuyOrderAllowed:
     @pytest.mark.asyncio
     async def test_all_pass_returns_true(self, risk_manager, settings_cache):
         with patch("backend.app.services.engine_state.state") as mock_state, \
-             patch("backend.app.services.risk_manager.is_test_mode", return_value=False), \
+             patch("backend.app.services.risk_manager.is_virtual_mode", return_value=False), \
              patch("backend.app.services.risk_manager.get_total_realized_pnl", new_callable=AsyncMock, return_value=0):
             mock_state.integrated_system_settings_cache = settings_cache
             mock_state.account_snapshot = {"orderable": 100_000_000}
@@ -146,7 +146,7 @@ class TestCheckBuyOrderAllowed:
     async def test_circuit_breaker_open_blocks(self, risk_manager, settings_cache):
         risk_manager.circuit_breaker.state = "OPEN"
         with patch("backend.app.services.engine_state.state") as mock_state, \
-             patch("backend.app.services.risk_manager.is_test_mode", return_value=False), \
+             patch("backend.app.services.risk_manager.is_virtual_mode", return_value=False), \
              patch("backend.app.services.risk_manager.get_total_realized_pnl", new_callable=AsyncMock, return_value=0):
             mock_state.integrated_system_settings_cache = settings_cache
             mock_state.positions = []
@@ -157,7 +157,7 @@ class TestCheckBuyOrderAllowed:
     @pytest.mark.asyncio
     async def test_daily_loss_limit_blocks(self, risk_manager, settings_cache):
         with patch("backend.app.services.engine_state.state") as mock_state, \
-             patch("backend.app.services.risk_manager.is_test_mode", return_value=False), \
+             patch("backend.app.services.risk_manager.is_virtual_mode", return_value=False), \
              patch("backend.app.services.risk_manager.get_total_realized_pnl", new_callable=AsyncMock, return_value=-600_000):
             mock_state.integrated_system_settings_cache = settings_cache
             mock_state.positions = []
@@ -171,7 +171,7 @@ class TestCheckBuyOrderAllowed:
         settings_cache["daily_loss_limit_on"] = False
         settings_cache["daily_loss_limit"] = -500_000
         with patch("backend.app.services.engine_state.state") as mock_state, \
-             patch("backend.app.services.risk_manager.is_test_mode", return_value=False), \
+             patch("backend.app.services.risk_manager.is_virtual_mode", return_value=False), \
              patch("backend.app.services.risk_manager.get_total_realized_pnl", new_callable=AsyncMock, return_value=-600_000):
             mock_state.integrated_system_settings_cache = settings_cache
             mock_state.account_snapshot = {"orderable": 100_000_000}
@@ -182,7 +182,7 @@ class TestCheckBuyOrderAllowed:
     @pytest.mark.asyncio
     async def test_daily_loss_at_limit_blocks(self, risk_manager, settings_cache):
         with patch("backend.app.services.engine_state.state") as mock_state, \
-             patch("backend.app.services.risk_manager.is_test_mode", return_value=False), \
+             patch("backend.app.services.risk_manager.is_virtual_mode", return_value=False), \
              patch("backend.app.services.risk_manager.get_total_realized_pnl", new_callable=AsyncMock, return_value=-500_000):
             mock_state.integrated_system_settings_cache = settings_cache
             mock_state.positions = []
@@ -193,7 +193,7 @@ class TestCheckBuyOrderAllowed:
     @pytest.mark.asyncio
     async def test_daily_loss_above_limit_passes(self, risk_manager, settings_cache):
         with patch("backend.app.services.engine_state.state") as mock_state, \
-             patch("backend.app.services.risk_manager.is_test_mode", return_value=False), \
+             patch("backend.app.services.risk_manager.is_virtual_mode", return_value=False), \
              patch("backend.app.services.risk_manager.get_total_realized_pnl", new_callable=AsyncMock, return_value=-499_999):
             mock_state.integrated_system_settings_cache = settings_cache
             mock_state.account_snapshot = {"orderable": 100_000_000}
@@ -205,7 +205,7 @@ class TestCheckBuyOrderAllowed:
     async def test_daily_loss_limit_sends_telegram(self, risk_manager, settings_cache):
         """일일 손실 한도 도달 시 '자동매매 중단' 텔레그램 알림 전송 (P21)."""
         with patch("backend.app.services.engine_state.state") as mock_state, \
-             patch("backend.app.services.risk_manager.is_test_mode", return_value=False), \
+             patch("backend.app.services.risk_manager.is_virtual_mode", return_value=False), \
              patch("backend.app.services.risk_manager.get_total_realized_pnl", new_callable=AsyncMock, return_value=-600_000), \
              patch("backend.app.services.risk_manager._notify_telegram") as mock_telegram:
             mock_state.integrated_system_settings_cache = settings_cache
@@ -225,7 +225,7 @@ class TestCheckBuyOrderAllowed:
     @pytest.mark.asyncio
     async def test_insufficient_deposit_blocks(self, risk_manager, settings_cache):
         with patch("backend.app.services.engine_state.state") as mock_state, \
-             patch("backend.app.services.risk_manager.is_test_mode", return_value=False), \
+             patch("backend.app.services.risk_manager.is_virtual_mode", return_value=False), \
              patch("backend.app.services.risk_manager.get_total_realized_pnl", new_callable=AsyncMock, return_value=0):
             mock_state.integrated_system_settings_cache = settings_cache
             mock_state.account_snapshot = {"orderable": 500_000}
@@ -239,7 +239,7 @@ class TestCheckBuyOrderAllowed:
         # existing position 15M + new order 700K = 15.7M < 20M → pass
         # existing position 19.5M + new order 700K = 20.2M > 20M → block
         with patch("backend.app.services.engine_state.state") as mock_state, \
-             patch("backend.app.services.risk_manager.is_test_mode", return_value=False), \
+             patch("backend.app.services.risk_manager.is_virtual_mode", return_value=False), \
              patch("backend.app.services.risk_manager.get_total_realized_pnl", new_callable=AsyncMock, return_value=0):
             mock_state.integrated_system_settings_cache = settings_cache
             mock_state.account_snapshot = {"orderable": 100_000_000}
@@ -252,7 +252,7 @@ class TestCheckBuyOrderAllowed:
     async def test_single_stock_exposure_zero_disables_check(self, risk_manager, settings_cache):
         risk_manager.max_single_stock_exposure = 0
         with patch("backend.app.services.engine_state.state") as mock_state, \
-             patch("backend.app.services.risk_manager.is_test_mode", return_value=False), \
+             patch("backend.app.services.risk_manager.is_virtual_mode", return_value=False), \
              patch("backend.app.services.risk_manager.get_total_realized_pnl", new_callable=AsyncMock, return_value=0), \
              patch.object(risk_manager, "_sync_thresholds", lambda: None):
             mock_state.integrated_system_settings_cache = settings_cache
@@ -265,7 +265,7 @@ class TestCheckBuyOrderAllowed:
     async def test_test_mode_uses_settlement_engine(self, risk_manager, settings_cache):
         settings_cache["test_mode_on"] = True
         with patch("backend.app.services.engine_state.state") as mock_state, \
-             patch("backend.app.services.risk_manager.is_test_mode", return_value=True), \
+             patch("backend.app.services.risk_manager.is_virtual_mode", return_value=True), \
              patch("backend.app.services.risk_manager.get_total_realized_pnl", new_callable=AsyncMock, return_value=0), \
              patch("backend.app.services.settlement_engine.get_available_cash", return_value=100_000_000), \
              patch("backend.app.services.dry_run.get_position", new_callable=AsyncMock, return_value=None):
@@ -278,7 +278,7 @@ class TestCheckBuyOrderAllowed:
     async def test_test_mode_insufficient_cash_blocks(self, risk_manager, settings_cache):
         settings_cache["test_mode_on"] = True
         with patch("backend.app.services.engine_state.state") as mock_state, \
-             patch("backend.app.services.risk_manager.is_test_mode", return_value=True), \
+             patch("backend.app.services.risk_manager.is_virtual_mode", return_value=True), \
              patch("backend.app.services.risk_manager.get_total_realized_pnl", new_callable=AsyncMock, return_value=0), \
              patch("backend.app.services.settlement_engine.get_available_cash", return_value=500_000), \
              patch("backend.app.services.dry_run.get_position", new_callable=AsyncMock, return_value=None):
@@ -292,7 +292,7 @@ class TestCheckBuyOrderAllowed:
     async def test_test_mode_single_stock_exposure_with_position(self, risk_manager, settings_cache):
         settings_cache["test_mode_on"] = True
         with patch("backend.app.services.engine_state.state") as mock_state, \
-             patch("backend.app.services.risk_manager.is_test_mode", return_value=True), \
+             patch("backend.app.services.risk_manager.is_virtual_mode", return_value=True), \
              patch("backend.app.services.risk_manager.get_total_realized_pnl", new_callable=AsyncMock, return_value=0), \
              patch("backend.app.services.settlement_engine.get_available_cash", return_value=100_000_000), \
              patch("backend.app.services.dry_run.get_position", new_callable=AsyncMock, return_value={"buy_amount": 19_500_000}):
@@ -360,7 +360,7 @@ class TestRiskManagerToggle:
         """risk_manager_on=False 시 신규 조건 스킵 — 기존 일일 손실 한도/예수금/비중은 항상 실행."""
         risk_manager.risk_manager_on = False
         with patch("backend.app.services.engine_state.state") as mock_state, \
-             patch("backend.app.services.risk_manager.is_test_mode", return_value=False), \
+             patch("backend.app.services.risk_manager.is_virtual_mode", return_value=False), \
              patch("backend.app.services.risk_manager.get_total_realized_pnl", new_callable=AsyncMock, return_value=200_000), \
              patch.object(risk_manager, "_check_extended_buy_risk", new_callable=AsyncMock) as mock_ext:
             mock_state.integrated_system_settings_cache = settings_cache
@@ -376,7 +376,7 @@ class TestRiskManagerToggle:
         risk_manager.risk_manager_on = True
         risk_manager.risk_block_buy_on = False
         with patch("backend.app.services.engine_state.state") as mock_state, \
-             patch("backend.app.services.risk_manager.is_test_mode", return_value=False), \
+             patch("backend.app.services.risk_manager.is_virtual_mode", return_value=False), \
              patch("backend.app.services.risk_manager.get_total_realized_pnl", new_callable=AsyncMock, return_value=200_000), \
              patch.object(risk_manager, "_check_extended_buy_risk", new_callable=AsyncMock) as mock_ext:
             mock_state.integrated_system_settings_cache = settings_cache
@@ -412,7 +412,7 @@ class TestDailyLossRateLimit:
         risk_manager.daily_loss_limit = -700_000  # 기존 한도는 통과하도록 완화
         # today_pnl=-600_000 > -700_000 (기존 통과), today_principal=10_000_000 → -6% ≤ -5% (신규 차단)
         with patch("backend.app.services.engine_state.state") as mock_state, \
-             patch("backend.app.services.risk_manager.is_test_mode", return_value=False), \
+             patch("backend.app.services.risk_manager.is_virtual_mode", return_value=False), \
              patch("backend.app.services.risk_manager.get_total_realized_pnl", new_callable=AsyncMock, return_value=-600_000), \
              patch("backend.app.services.trade_history.get_buy_history", new_callable=AsyncMock, return_value=[{"price": 50_000, "qty": 200}]), \
              patch.object(risk_manager, "_sync_thresholds", lambda: None):
@@ -432,7 +432,7 @@ class TestDailyLossRateLimit:
         risk_manager.daily_loss_rate_limit = -5.0
         risk_manager.daily_loss_limit = -700_000  # 기존 한도는 통과하도록 완화
         with patch("backend.app.services.engine_state.state") as mock_state, \
-             patch("backend.app.services.risk_manager.is_test_mode", return_value=False), \
+             patch("backend.app.services.risk_manager.is_virtual_mode", return_value=False), \
              patch("backend.app.services.risk_manager.get_total_realized_pnl", new_callable=AsyncMock, return_value=-600_000), \
              patch("backend.app.services.trade_history.get_buy_history", new_callable=AsyncMock, return_value=[{"price": 50_000, "qty": 200}]), \
              patch.object(risk_manager, "_sync_thresholds", lambda: None):
@@ -451,7 +451,7 @@ class TestDailyLossRateLimit:
         risk_manager.daily_loss_rate_limit = -5.0
         risk_manager.daily_loss_limit = -700_000
         with patch("backend.app.services.engine_state.state") as mock_state, \
-             patch("backend.app.services.risk_manager.is_test_mode", return_value=False), \
+             patch("backend.app.services.risk_manager.is_virtual_mode", return_value=False), \
              patch("backend.app.services.risk_manager.get_total_realized_pnl", new_callable=AsyncMock, return_value=-600_000), \
              patch("backend.app.services.trade_history.get_buy_history", new_callable=AsyncMock, return_value=[{"price": 50_000, "qty": 200}]), \
              patch("backend.app.services.risk_manager._notify_telegram") as mock_telegram, \
@@ -484,7 +484,7 @@ class TestConsecutiveLossLimit:
         risk_manager.consecutive_loss_limit = 3
         sell_rows = [{"realized_pnl": -10_000}, {"realized_pnl": -20_000}, {"realized_pnl": -30_000}]
         with patch("backend.app.services.engine_state.state") as mock_state, \
-             patch("backend.app.services.risk_manager.is_test_mode", return_value=False), \
+             patch("backend.app.services.risk_manager.is_virtual_mode", return_value=False), \
              patch("backend.app.services.risk_manager.get_total_realized_pnl", new_callable=AsyncMock, return_value=0), \
              patch("backend.app.services.trade_history.get_buy_history", new_callable=AsyncMock, return_value=[]), \
              patch("backend.app.services.trade_history.get_sell_history", new_callable=AsyncMock, return_value=sell_rows), \
@@ -500,7 +500,7 @@ class TestConsecutiveLossLimit:
     async def test_consec_loss_zero_history(self, risk_manager):
         """매도 이력 없으면 0회 — 차단 안 함."""
         with patch("backend.app.services.trade_history.get_sell_history", new_callable=AsyncMock, return_value=[]):
-            count = await risk_manager._get_consecutive_loss_count("test")
+            count = await risk_manager._get_consecutive_loss_count("virtual")
         assert count == 0
 
     @pytest.mark.asyncio
@@ -508,7 +508,7 @@ class TestConsecutiveLossLimit:
         """최신 거래가 수익이면 연속 손실 0회."""
         sell_rows = [{"realized_pnl": 10_000}, {"realized_pnl": -20_000}, {"realized_pnl": -30_000}]
         with patch("backend.app.services.trade_history.get_sell_history", new_callable=AsyncMock, return_value=sell_rows):
-            count = await risk_manager._get_consecutive_loss_count("test")
+            count = await risk_manager._get_consecutive_loss_count("virtual")
         assert count == 0
 
     @pytest.mark.asyncio
@@ -516,7 +516,7 @@ class TestConsecutiveLossLimit:
         """연속 손실 2회 후 수익 거래 → 2회."""
         sell_rows = [{"realized_pnl": -10_000}, {"realized_pnl": -20_000}, {"realized_pnl": 30_000}]
         with patch("backend.app.services.trade_history.get_sell_history", new_callable=AsyncMock, return_value=sell_rows):
-            count = await risk_manager._get_consecutive_loss_count("test")
+            count = await risk_manager._get_consecutive_loss_count("virtual")
         assert count == 2
 
 
@@ -763,7 +763,7 @@ class TestMarketGuard:
         risk_manager.market_guard_kospi_on = True
         risk_manager.market_guard_kospi_drop_threshold_pct = -5.0
         with patch("backend.app.services.engine_state.state") as mock_state, \
-             patch("backend.app.services.risk_manager.is_test_mode", return_value=False), \
+             patch("backend.app.services.risk_manager.is_virtual_mode", return_value=False), \
              patch("backend.app.services.risk_manager.get_total_realized_pnl", new_callable=AsyncMock, return_value=0), \
              patch.object(risk_manager, "_sync_thresholds", lambda: None):
             mock_state.integrated_system_settings_cache = settings_cache
@@ -781,7 +781,7 @@ class TestMarketGuard:
         risk_manager.risk_block_buy_on = True
         risk_manager.market_guard_kospi_on = True
         with patch("backend.app.services.engine_state.state") as mock_state, \
-             patch("backend.app.services.risk_manager.is_test_mode", return_value=False), \
+             patch("backend.app.services.risk_manager.is_virtual_mode", return_value=False), \
              patch("backend.app.services.risk_manager.get_total_realized_pnl", new_callable=AsyncMock, return_value=0), \
              patch.object(risk_manager, "_sync_thresholds", lambda: None):
             mock_state.integrated_system_settings_cache = settings_cache
@@ -799,7 +799,7 @@ class TestMarketGuard:
         risk_manager.risk_block_buy_on = True
         risk_manager.market_guard_kospi_on = True
         with patch("backend.app.services.engine_state.state") as mock_state, \
-             patch("backend.app.services.risk_manager.is_test_mode", return_value=False), \
+             patch("backend.app.services.risk_manager.is_virtual_mode", return_value=False), \
              patch("backend.app.services.risk_manager.get_total_realized_pnl", new_callable=AsyncMock, return_value=0), \
              patch.object(risk_manager, "_sync_thresholds", lambda: None):
             mock_state.integrated_system_settings_cache = settings_cache
@@ -818,7 +818,7 @@ class TestMarketGuard:
         risk_manager.market_guard_kospi_on = True
         risk_manager.market_guard_kospi_drop_threshold_pct = -5.0
         with patch("backend.app.services.engine_state.state") as mock_state, \
-             patch("backend.app.services.risk_manager.is_test_mode", return_value=False), \
+             patch("backend.app.services.risk_manager.is_virtual_mode", return_value=False), \
              patch("backend.app.services.risk_manager.get_total_realized_pnl", new_callable=AsyncMock, return_value=0), \
              patch.object(risk_manager, "_sync_thresholds", lambda: None):
             mock_state.integrated_system_settings_cache = settings_cache

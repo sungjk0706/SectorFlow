@@ -102,7 +102,7 @@ def build_account_snapshot_meta(
     broker_rest_totals: dict,
     positions: list,
     price_source_ws: bool,
-    trade_mode: str = "real",
+    trade_mode: str = "live",
 ) -> dict:
     """
     스냅샷 시각·보유종목수·가격소스만 갱신.

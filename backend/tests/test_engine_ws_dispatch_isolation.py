@@ -154,7 +154,7 @@ class TestStartEngineRefreshPositionsIsolation:
         mock_state.engine_task = None  # 기동 전
         mock_state.running = False
         mock_state.engine_user_id = ""
-        mock_state.integrated_system_settings_cache = {"broker": "kiwoom"}  # is_test_mode True 유도
+        mock_state.integrated_system_settings_cache = {"broker": "kiwoom"}  # is_virtual_mode True 유도
 
         fake_task = MagicMock()
         fake_task.done.return_value = False
@@ -162,7 +162,7 @@ class TestStartEngineRefreshPositionsIsolation:
         with (
             patch("backend.app.services.engine_lifecycle.engine_state", state=mock_state),
             patch("backend.app.services.engine_lifecycle.asyncio.create_task", side_effect=self._make_fake_create_task(fake_task)),
-            patch("backend.app.services.engine_lifecycle.is_test_mode", return_value=True),
+            patch("backend.app.services.engine_lifecycle.is_virtual_mode", return_value=True),
             patch("backend.app.services.engine_lifecycle._engine_loop", new=AsyncMock()),
             patch("backend.app.services.dry_run._refresh_positions_if_dirty", new=AsyncMock(side_effect=RuntimeError("positions boom"))),
             patch("backend.app.services.engine_lifecycle._apply_pending_settings_on_startup", new=AsyncMock()) as mock_pending,
@@ -189,7 +189,7 @@ class TestStartEngineRefreshPositionsIsolation:
         with (
             patch("backend.app.services.engine_lifecycle.engine_state", state=mock_state),
             patch("backend.app.services.engine_lifecycle.asyncio.create_task", side_effect=self._make_fake_create_task(fake_task)),
-            patch("backend.app.services.engine_lifecycle.is_test_mode", return_value=True),
+            patch("backend.app.services.engine_lifecycle.is_virtual_mode", return_value=True),
             patch("backend.app.services.engine_lifecycle._engine_loop", new=AsyncMock()),
             patch("backend.app.services.dry_run._refresh_positions_if_dirty", new=AsyncMock()) as mock_refresh,
             patch("backend.app.services.engine_lifecycle._apply_pending_settings_on_startup", new=AsyncMock()),
@@ -202,7 +202,7 @@ class TestStartEngineRefreshPositionsIsolation:
 
     @pytest.mark.asyncio
     async def test_real_mode_skips_refresh_positions(self):
-        """실전투자 모드 회귀 보호 — is_test_mode False 시 _refresh_positions_if_dirty 호출 안 함."""
+        """실전투자 모드 회귀 보호 — is_virtual_mode False 시 _refresh_positions_if_dirty 호출 안 함."""
         mock_state = MagicMock()
         mock_state.engine_task = None
         mock_state.running = False
@@ -215,7 +215,7 @@ class TestStartEngineRefreshPositionsIsolation:
         with (
             patch("backend.app.services.engine_lifecycle.engine_state", state=mock_state),
             patch("backend.app.services.engine_lifecycle.asyncio.create_task", side_effect=self._make_fake_create_task(fake_task)),
-            patch("backend.app.services.engine_lifecycle.is_test_mode", return_value=False),
+            patch("backend.app.services.engine_lifecycle.is_virtual_mode", return_value=False),
             patch("backend.app.services.engine_lifecycle._engine_loop", new=AsyncMock()),
             patch("backend.app.services.dry_run._refresh_positions_if_dirty", new=AsyncMock()) as mock_refresh,
             patch("backend.app.services.engine_lifecycle._apply_pending_settings_on_startup", new=AsyncMock()),

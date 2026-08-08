@@ -108,9 +108,9 @@ async def _load_caches_preboot(settings: dict) -> None:
 
         # ── 기동 완료 로직 ──
         # 테스트모드: Settlement Engine 상태 로드 (설정 test_virtual_deposit 우선, DB 없으면 초기화)
-        if engine_state.state.integrated_system_settings_cache["trade_mode"] == "test":
+        if engine_state.state.integrated_system_settings_cache["trade_mode"] == "virtual":
             from backend.app.services import settlement_engine
-            initial_deposit = engine_state.state.integrated_system_settings_cache["test_virtual_deposit"]
+            initial_deposit = engine_state.state.integrated_system_settings_cache["virtual_deposit"]
             await settlement_engine.load_state(initial_deposit=initial_deposit)
             logger.debug("[데이터] 정산 엔진 상태 로드 (테스트모드)")
             # 기동 시 정합성 대조 — fake_fill_event 태스크 실패로 인한 잔고 불일치 복구 (B5-08-03, P22)

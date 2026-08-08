@@ -16,7 +16,7 @@ from typing import Optional
 import logging
 from backend.app.services.circuit_breaker import get_circuit_breaker
 from backend.app.services.trade_history import get_total_realized_pnl
-from backend.app.core.trade_mode import is_test_mode
+from backend.app.core.trade_mode import is_virtual_mode
 logger = logging.getLogger(__name__)
 
 
@@ -354,7 +354,7 @@ class RiskManager:
         # 2. 일일 손실 한도 검사 (기본 관문 — daily_loss_limit_on ON 시에만, 기본 ON)
         from backend.app.services.engine_state import state as engine_state
         cache = engine_state.integrated_system_settings_cache
-        trade_mode = "test" if is_test_mode(cache) else "real"
+        trade_mode = "virtual" if is_virtual_mode(cache) else "live"
         today_pnl = await get_total_realized_pnl(today_only=True, trade_mode=trade_mode)
         if self.daily_loss_limit_on and today_pnl <= self.daily_loss_limit:
             logger.warning("[매매] 일일 손실 한도 초과: 현재 %s, 한도 %s", f"{today_pnl:,}", f"{self.daily_loss_limit:,}")
@@ -393,7 +393,7 @@ class RiskManager:
 
         # 5. 단일 종목 비중 한도 검사 (모드 분기 — 돈 I/O, 항상 실행)
         existing_position_amount = 0
-        if is_test_mode(cache):
+        if is_virtual_mode(cache):
             from backend.app.services import dry_run
             from backend.app.services.engine_symbol_utils import _base_stk_cd
             pos = await dry_run.get_position(stk_cd)
@@ -422,7 +422,7 @@ class RiskManager:
         """
         from backend.app.services.engine_state import state as engine_state
         cache = engine_state.integrated_system_settings_cache
-        if is_test_mode(cache):
+        if is_virtual_mode(cache):
             from backend.app.services.settlement_engine import get_available_cash
             return get_available_cash()
         return int(engine_state.account_snapshot.get("orderable", 0) or 0)
@@ -445,7 +445,7 @@ class RiskManager:
         if self.risk_manager_on and self.risk_block_sell_on:
             from backend.app.services.engine_state import state as engine_state
             cache = engine_state.integrated_system_settings_cache
-            trade_mode = "test" if is_test_mode(cache) else "real"
+            trade_mode = "virtual" if is_virtual_mode(cache) else "live"
             today_pnl = await get_total_realized_pnl(today_only=True, trade_mode=trade_mode)
 
             # 일일 손실 한도 (매도 차단 시 손실 확대 위험 — daily_loss_limit_on ON 시에만)

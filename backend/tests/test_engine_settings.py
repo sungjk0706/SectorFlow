@@ -15,20 +15,20 @@ from backend.app.core.trade_mode import normalize_trade_mode
 # ── trade mode normalization ────────────────────────────────────────
 
 class TestNormalizeTradeMode:
-    def test_test_and_mock_map_to_test(self):
-        assert normalize_trade_mode("test") == "test"
-        assert normalize_trade_mode("mock") == "test"
+    def test_test_and_mock_map_to_virtual(self):
+        assert normalize_trade_mode("test") == "virtual"
+        assert normalize_trade_mode("mock") == "virtual"
 
     def test_real_is_preserved(self):
-        assert normalize_trade_mode("real") == "real"
+        assert normalize_trade_mode("real") == "live"
 
     def test_normalizes_case_and_whitespace(self):
-        assert normalize_trade_mode(" REAL ") == "real"
-        assert normalize_trade_mode(" MOCK ") == "test"
+        assert normalize_trade_mode(" REAL ") == "live"
+        assert normalize_trade_mode(" MOCK ") == "virtual"
 
-    def test_invalid_values_fail_closed_to_test(self):
-        assert normalize_trade_mode("invalid") == "test"
-        assert normalize_trade_mode(None) == "test"
+    def test_invalid_values_fail_closed_to_virtual(self):
+        assert normalize_trade_mode("invalid") == "virtual"
+        assert normalize_trade_mode(None) == "virtual"
 
 
 # ── build_engine_settings_dict ──────────────────────────────────────
@@ -39,7 +39,7 @@ class TestBuildEngineSettingsDictDefaults:
     def test_defaults_returned(self):
         result = build_engine_settings_dict({})
         assert result["broker"] == "kiwoom"
-        assert result["trade_mode"] == "test"
+        assert result["trade_mode"] == "virtual"
         assert result["time_scheduler_on"] is False
         assert result["auto_buy_on"] is False
         assert result["auto_sell_on"] is False
@@ -150,9 +150,9 @@ class TestBuildEngineSettingsDictDefaults:
         assert result["broker_config"]["order"] == "kiwoom"
         assert result["broker_config"]["auth"] == "kiwoom"
 
-    def test_test_virtual_deposit(self):
+    def test_virtual_deposit(self):
         result = build_engine_settings_dict({})
-        assert result["test_virtual_deposit"] == 10000000
+        assert result["virtual_deposit"] == 10000000
 
     def test_scheduler_defaults(self):
         result = build_engine_settings_dict({})
@@ -168,12 +168,12 @@ class TestBuildEngineSettingsDictOverride:
         assert result["broker_config"]["websocket"] == "testbroker"
 
     def test_trade_mode_real(self):
-        result = build_engine_settings_dict({"trade_mode": "real"})
-        assert result["trade_mode"] == "real"
+        result = build_engine_settings_dict({"trade_mode": "live"})
+        assert result["trade_mode"] == "live"
 
-    def test_trade_mode_mock_maps_to_test(self):
+    def test_trade_mode_mock_maps_to_virtual(self):
         result = build_engine_settings_dict({"trade_mode": "mock"})
-        assert result["trade_mode"] == "test"
+        assert result["trade_mode"] == "virtual"
 
     def test_buy_amount_override(self):
         result = build_engine_settings_dict({"buy_amt": 100000})
@@ -206,7 +206,7 @@ class TestBuildEngineSettingsDictOverride:
 
     def test_kiwoom_credentials(self):
         result = build_engine_settings_dict({
-            "trade_mode": "test",
+            "trade_mode": "virtual",
             "kiwoom_app_key": "test_key",
             "kiwoom_app_secret": "test_secret",
             "kiwoom_account_no": "87654321",
@@ -271,7 +271,7 @@ class TestBuildEngineSettingsDictOverride:
         평문 치환된 값을 PLAINTEXT_LEGACY로 오분류하지 않음."""
         merged = {
             "broker": "kiwoom",
-            "trade_mode": "test",
+            "trade_mode": "virtual",
             "kiwoom_app_key": "decrypted_plaintext",
             "kiwoom_app_secret": "decrypted_secret",
             "_secret_field_states": {
@@ -370,14 +370,14 @@ class TestGetEngineSettings:
     @pytest.mark.asyncio
     async def test_loads_from_db_and_builds(self):
         """get_engine_settings가 load_integrated_system_settings 호출 후 build."""
-        mock_flat = {"broker": "kiwoom", "trade_mode": "test"}
+        mock_flat = {"broker": "kiwoom", "trade_mode": "virtual"}
         with patch(
             "backend.app.core.engine_settings.load_integrated_system_settings",
             new=AsyncMock(return_value=mock_flat),
         ):
             result = await get_engine_settings()
         assert result["broker"] == "kiwoom"
-        assert result["trade_mode"] == "test"
+        assert result["trade_mode"] == "virtual"
 
     @pytest.mark.asyncio
     async def test_user_id_profile_ignored(self):

@@ -96,7 +96,7 @@ class TestRefreshPositionsIfDirty:
             "price": 70_000, "qty": 10, "fee": 105, "tax": 0,
             "total_amt": 700105, "avg_buy_price": 0, "buy_total_amt": 0,
             "realized_pnl": 0, "pnl_rate": 0.0, "reason": "test",
-            "trade_mode": "test",
+            "trade_mode": "virtual",
         })
         with patch("backend.app.services.trade_history._history_lock"):
             await dry_run._refresh_positions_if_dirty()
@@ -274,8 +274,8 @@ class TestVirtualBalance:
         with patch("backend.app.core.settings_store.apply_settings_updates", new_callable=AsyncMock) as mock_update:
             await dry_run.set_virtual_deposit(20_000_000)
         mock_update.assert_called_once_with({
-            "test_virtual_deposit": 20_000_000,
-            "test_virtual_balance": 20_000_000,
+            "virtual_deposit": 20_000_000,
+            "virtual_balance": 20_000_000,
         })
 
 

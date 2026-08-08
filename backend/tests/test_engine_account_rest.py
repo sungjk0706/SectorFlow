@@ -272,9 +272,9 @@ class TestBuildAccountSnapshotMeta:
         snap = {"broker": "kiwoom", "deposit": 5000000, "orderable": 4000000, "initial_deposit": 5000000}
         totals = {"total_eval": 10000000, "total_pnl": 500000, "total_buy": 9500000, "total_sell": 0, "total_rate": 5.26}
         positions = [{"qty": 10}, {"qty": 5}]
-        result = build_account_snapshot_meta(snap, totals, positions, True, "real")
+        result = build_account_snapshot_meta(snap, totals, positions, True, "live")
         assert result["broker"] == "kiwoom"
-        assert result["trade_mode"] == "real"
+        assert result["trade_mode"] == "live"
         assert result["deposit"] == 5000000
         assert result["total_eval"] == 10000000
         assert result["total_pnl"] == 500000
@@ -295,17 +295,17 @@ class TestBuildAccountSnapshotMeta:
 
     def test_accumulated_investment_none_when_absent(self):
         totals = {"total_eval": 0, "total_pnl": 0, "total_buy": 0, "total_sell": 0, "total_rate": 0.0}
-        result = build_account_snapshot_meta({}, totals, [], True, "real")
+        result = build_account_snapshot_meta({}, totals, [], True, "live")
         assert result["accumulated_investment"] is None
 
     def test_price_source_rest(self):
-        result = build_account_snapshot_meta({}, {"total_eval": 0, "total_pnl": 0, "total_buy": 0, "total_sell": 0, "total_rate": 0.0}, [], False, "test")
+        result = build_account_snapshot_meta({}, {"total_eval": 0, "total_pnl": 0, "total_buy": 0, "total_sell": 0, "total_rate": 0.0}, [], False, "virtual")
         assert result["price_source"] == "rest_bootstrap"
-        assert result["trade_mode"] == "test"
+        assert result["trade_mode"] == "virtual"
 
     def test_zero_qty_not_counted(self):
         positions = [{"qty": 10}, {"qty": 0}, {"qty": 5}]
-        result = build_account_snapshot_meta({}, {"total_eval": 0, "total_pnl": 0, "total_buy": 0, "total_sell": 0, "total_rate": 0.0}, positions, True, "real")
+        result = build_account_snapshot_meta({}, {"total_eval": 0, "total_pnl": 0, "total_buy": 0, "total_sell": 0, "total_rate": 0.0}, positions, True, "live")
         assert result["position_count"] == 2
 
 

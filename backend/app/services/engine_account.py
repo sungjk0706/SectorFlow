@@ -8,7 +8,7 @@
 """
 import asyncio
 import logging
-from backend.app.core.trade_mode import is_test_mode
+from backend.app.core.trade_mode import is_virtual_mode
 import backend.app.services.engine_state as engine_state
 from backend.app.services.engine_state import state, _get_rest_api_thread_sem as _ensure_rest_api_thread_sem
 
@@ -24,9 +24,9 @@ async def get_account_snapshot() -> dict:
     snap = dict(state.account_snapshot)
     
     if not snap or "trade_mode" not in snap:
-        _is_test = is_test_mode(state.integrated_system_settings_cache)
-        snap.setdefault("trade_mode", "test" if _is_test else "real")
-        if _is_test:
+        _is_virtual = is_virtual_mode(state.integrated_system_settings_cache)
+        snap.setdefault("trade_mode", "virtual" if _is_virtual else "live")
+        if _is_virtual:
             snap.setdefault("accumulated_investment", settlement_engine.get_accumulated_investment())
             snap.setdefault("orderable", settlement_engine.get_orderable())
             snap.setdefault("initial_deposit", settlement_engine.get_accumulated_investment())
@@ -41,14 +41,14 @@ async def get_account_snapshot() -> dict:
 
 def get_trade_mode() -> str:
     """거래 모드 반환."""
-    return "test" if is_test_mode(state.integrated_system_settings_cache) else "real"
+    return "virtual" if is_virtual_mode(state.integrated_system_settings_cache) else "live"
 
 
 async def get_positions() -> list:
     """보유 종목 목록 반환."""
     from backend.app.services import dry_run
     
-    if is_test_mode(state.integrated_system_settings_cache):
+    if is_virtual_mode(state.integrated_system_settings_cache):
         return await dry_run.get_positions()
     return list(state.positions)
 
@@ -231,7 +231,7 @@ def _apply_account_yield_to_state(yield_data: dict, s: dict) -> None:
 
     _apply_broker_totals_from_summary(summary)
     # 테스트모드: 실전 잔고로 _positions 덮어쓰지 않음 — 모의투자 가상 잔고 격리
-    if is_test_mode(s):
+    if is_virtual_mode(s):
         logger.info("[계좌] 테스트모드 — 실전 잔고 %d건 무시, 모의투자 가상 잔고 유지", len(stock_list))
     else:
         # 수량·매입은 REST 기준
@@ -281,10 +281,10 @@ async def _refresh_account_snapshot_meta() -> None:
     from backend.app.services import dry_run, settlement_engine
     from backend.app.services.engine_ws import _ws_live
     
-    _is_test = is_test_mode(state.integrated_system_settings_cache)
-    pos = await dry_run.get_positions() if _is_test else state.positions
+    _is_virtual = is_virtual_mode(state.integrated_system_settings_cache)
+    pos = await dry_run.get_positions() if _is_virtual else state.positions
 
-    if _is_test:
+    if _is_virtual:
         # 테스트모드: settlement_engine 누적투자금/주문가능금액 반영 + 포지션 합산으로 totals 구성
         accumulated_investment = settlement_engine.get_accumulated_investment()
         orderable = settlement_engine.get_orderable()
@@ -306,12 +306,12 @@ async def _refresh_account_snapshot_meta() -> None:
         }
         snap = build_account_snapshot_meta(
             state.account_snapshot, test_totals, pos, _ws_live(),
-            trade_mode="test",
+            trade_mode="virtual",
         )
     else:
         snap = build_account_snapshot_meta(
             state.account_snapshot, state.broker_rest_totals, pos, _ws_live(),
-            trade_mode="real",
+            trade_mode="live",
         )
     
     state.account_snapshot = snap
@@ -377,7 +377,7 @@ async def _on_fill_after_ws(fill_code: str = "") -> None:
 
     # 2. 매도 조건 검사 — 체결 종목 한정
     norm_code = _base_stk_cd(fill_code) if fill_code else ""
-    if is_test_mode(state.integrated_system_settings_cache):
+    if is_virtual_mode(state.integrated_system_settings_cache):
         if norm_code:
             _matched = await dry_run.get_position(norm_code)
             pos = [_matched] if _matched else []
@@ -401,11 +401,11 @@ async def _broadcast_account(reason: str | None = None) -> None:
     from backend.app.services.engine_account_broadcast import broadcast_account_update
 
     try:
-        pos = await dry_run.get_positions() if is_test_mode(state.integrated_system_settings_cache) else list(state.positions or [])
+        pos = await dry_run.get_positions() if is_virtual_mode(state.integrated_system_settings_cache) else list(state.positions or [])
         # 실전모드: REST API가 buy_date를 제공하지 않으므로 trade_history SSOT에서 주입
-        if not is_test_mode(state.integrated_system_settings_cache) and pos:
+        if not is_virtual_mode(state.integrated_system_settings_cache) and pos:
             from backend.app.services import trade_history
-            trade_positions = await trade_history.build_positions_from_trades("real")
+            trade_positions = await trade_history.build_positions_from_trades("live")
             for p in pos:
                 if not p.get("buy_date"):
                     cd = str(p.get("stk_cd", "")).strip()
@@ -428,7 +428,7 @@ async def get_held_codes() -> set[str]:
     from backend.app.services.engine_symbol_utils import _base_stk_cd
     from backend.app.services import dry_run
 
-    if is_test_mode(state.integrated_system_settings_cache):
+    if is_virtual_mode(state.integrated_system_settings_cache):
         return {_base_stk_cd(cd) for cd in await dry_run.position_codes()}
     out: set[str] = set()
     for s in list(state.positions):

@@ -83,7 +83,7 @@ class TestFilterStockFields:
 class TestGetTradeHistoryForSnapshot:
     @pytest.mark.asyncio
     async def test_sell_history(self):
-        with patch("backend.app.services.engine_account.get_trade_mode", return_value="test"), \
+        with patch("backend.app.services.engine_account.get_trade_mode", return_value="virtual"), \
              patch("backend.app.services.trade_history.get_sell_history", new=AsyncMock(return_value=[
                  {"stk_cd": "005930", "side": "sell"},
              ])):
@@ -93,7 +93,7 @@ class TestGetTradeHistoryForSnapshot:
 
     @pytest.mark.asyncio
     async def test_buy_history(self):
-        with patch("backend.app.services.engine_account.get_trade_mode", return_value="test"), \
+        with patch("backend.app.services.engine_account.get_trade_mode", return_value="virtual"), \
              patch("backend.app.services.trade_history.get_buy_history", new=AsyncMock(return_value=[
                  {"stk_cd": "005930", "side": "buy"},
              ])):
@@ -107,7 +107,7 @@ class TestGetTradeHistoryForSnapshot:
 class TestGetDailySummaryForSnapshot:
     @pytest.mark.asyncio
     async def test_returns_summary(self):
-        with patch("backend.app.services.engine_account.get_trade_mode", return_value="test"), \
+        with patch("backend.app.services.engine_account.get_trade_mode", return_value="virtual"), \
              patch("backend.app.services.trade_history.get_daily_summary", new=AsyncMock(return_value=[
                  {"date": "2024-01-01", "pnl": 10000},
              ])):
@@ -121,7 +121,7 @@ class TestGetDailySummaryForSnapshot:
         from backend.app.services import engine_state
         engine_state.state.integrated_system_settings_cache["daily_summary_days"] = 5
         try:
-            with patch("backend.app.services.engine_account.get_trade_mode", return_value="test"), \
+            with patch("backend.app.services.engine_account.get_trade_mode", return_value="virtual"), \
                  patch("backend.app.services.trade_history.get_daily_summary", new=AsyncMock(return_value=[])) as mock_gds:
                 await _get_daily_summary_for_snapshot()
             mock_gds.assert_called_once()
@@ -134,7 +134,7 @@ class TestGetDailySummaryForSnapshot:
         """캐시에 키 없으면 기본값 20 (DEFAULT_USER_SETTINGS)."""
         from backend.app.services import engine_state
         engine_state.state.integrated_system_settings_cache.pop("daily_summary_days", None)
-        with patch("backend.app.services.engine_account.get_trade_mode", return_value="test"), \
+        with patch("backend.app.services.engine_account.get_trade_mode", return_value="virtual"), \
              patch("backend.app.services.trade_history.get_daily_summary", new=AsyncMock(return_value=[])) as mock_gds:
             await _get_daily_summary_for_snapshot()
         mock_gds.assert_called_once()
@@ -371,7 +371,7 @@ class TestResetRealtimeFields:
         ]
         mock_notify_cache = MagicMock()
         with patch("backend.app.services.engine_state.state") as mock_state, \
-             patch("backend.app.core.trade_mode.is_test_mode", return_value=False), \
+             patch("backend.app.core.trade_mode.is_virtual_mode", return_value=False), \
              patch("backend.app.services.engine_account_notify.notify_cache", mock_notify_cache), \
              patch("backend.app.services.engine_account_notify.notify_desktop_sector_stocks_refresh", new=AsyncMock()) as mock_notify_refresh, \
              patch("backend.app.services.engine_account_notify._broadcast", new=AsyncMock()) as mock_broadcast, \
@@ -387,7 +387,7 @@ class TestResetRealtimeFields:
 
             mock_state.master_stocks_cache = master_cache
             mock_state.positions = positions
-            mock_state.integrated_system_settings_cache = {"trade_mode": "real"}
+            mock_state.integrated_system_settings_cache = {"trade_mode": "live"}
             mock_state.sector_summary_cache = MagicMock()
 
             await _reset_realtime_fields()
@@ -457,7 +457,7 @@ class TestResetRealtimeFields:
                        "bid_depth": 100, "ask_depth": 200},
         }
         with patch("backend.app.services.engine_state.state") as mock_state, \
-             patch("backend.app.core.trade_mode.is_test_mode", return_value=True), \
+             patch("backend.app.core.trade_mode.is_virtual_mode", return_value=True), \
              patch("backend.app.services.dry_run._test_positions", test_positions), \
              patch("backend.app.services.engine_account_notify.notify_cache", MagicMock()), \
              patch("backend.app.services.engine_account_notify.notify_desktop_sector_stocks_refresh", new=AsyncMock()), \
@@ -472,7 +472,7 @@ class TestResetRealtimeFields:
 
             mock_state.master_stocks_cache = master_cache
             mock_state.positions = []
-            mock_state.integrated_system_settings_cache = {"trade_mode": "test"}
+            mock_state.integrated_system_settings_cache = {"trade_mode": "virtual"}
             mock_state.sector_summary_cache = MagicMock()
 
             await _reset_realtime_fields()
@@ -487,7 +487,7 @@ class TestResetRealtimeFields:
     async def test_db_exception_still_notifies(self):
         """DB 초기화 실패 시에도 notify 호출 수행 (L200-201)."""
         with patch("backend.app.services.engine_state.state") as mock_state, \
-             patch("backend.app.core.trade_mode.is_test_mode", return_value=False), \
+             patch("backend.app.core.trade_mode.is_virtual_mode", return_value=False), \
              patch("backend.app.services.engine_account_notify.notify_cache", MagicMock()), \
              patch("backend.app.services.engine_account_notify.notify_desktop_sector_stocks_refresh", new=AsyncMock()) as mock_notify_refresh, \
              patch("backend.app.services.engine_account_notify._broadcast", new=AsyncMock()) as mock_broadcast, \
@@ -501,7 +501,7 @@ class TestResetRealtimeFields:
 
             mock_state.master_stocks_cache = {}
             mock_state.positions = []
-            mock_state.integrated_system_settings_cache = {"trade_mode": "real"}
+            mock_state.integrated_system_settings_cache = {"trade_mode": "live"}
             mock_state.sector_summary_cache = None
 
             await _reset_realtime_fields()
@@ -514,7 +514,7 @@ class TestResetRealtimeFields:
     async def test_empty_master_cache(self):
         """master_stocks_cache가 빈 경우에도 정상 동작."""
         with patch("backend.app.services.engine_state.state") as mock_state, \
-             patch("backend.app.core.trade_mode.is_test_mode", return_value=False), \
+             patch("backend.app.core.trade_mode.is_virtual_mode", return_value=False), \
              patch("backend.app.services.engine_account_notify.notify_cache", MagicMock()), \
              patch("backend.app.services.engine_account_notify.notify_desktop_sector_stocks_refresh", new=AsyncMock()), \
              patch("backend.app.services.engine_account_notify._broadcast", new=AsyncMock()), \
@@ -528,7 +528,7 @@ class TestResetRealtimeFields:
 
             mock_state.master_stocks_cache = {}
             mock_state.positions = []
-            mock_state.integrated_system_settings_cache = {"trade_mode": "real"}
+            mock_state.integrated_system_settings_cache = {"trade_mode": "live"}
             mock_state.sector_summary_cache = None
 
             await _reset_realtime_fields()

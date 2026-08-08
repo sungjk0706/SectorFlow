@@ -359,7 +359,7 @@ class TestEnsureWsSubscriptionsForPositions:
         mock_cm.is_connected.return_value = True
         mock_state = _mock_state(connector_manager=mock_cm, login_ok=True)
         with patch("backend.app.services.engine_state.state", mock_state), \
-             patch("backend.app.core.trade_mode.is_test_mode", return_value=False), \
+             patch("backend.app.core.trade_mode.is_virtual_mode", return_value=False), \
              patch("backend.app.services.engine_ws._subscribe_account_realtime", new_callable=AsyncMock) as mock_acct, \
              patch("backend.app.services.engine_ws._subscribe_positions_stocks_realtime", new_callable=AsyncMock) as mock_pos, \
              patch("backend.app.services.engine_ws._ws_live", return_value=False):
@@ -373,7 +373,7 @@ class TestEnsureWsSubscriptionsForPositions:
         mock_cm.is_connected.return_value = True
         mock_state = _mock_state(connector_manager=mock_cm, login_ok=True)
         with patch("backend.app.services.engine_state.state", mock_state), \
-             patch("backend.app.core.trade_mode.is_test_mode", return_value=True), \
+             patch("backend.app.core.trade_mode.is_virtual_mode", return_value=True), \
              patch("backend.app.services.engine_ws._subscribe_account_realtime", new_callable=AsyncMock) as mock_acct, \
              patch("backend.app.services.engine_ws._subscribe_positions_stocks_realtime", new_callable=AsyncMock) as mock_pos, \
              patch("backend.app.services.engine_ws._ws_live", return_value=False):

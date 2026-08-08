@@ -59,7 +59,7 @@ async def reserve_buy_power(order_amount: int, daily_limit: int = 0, daily_spent
     매수 가능 여부 확인 + 즉시 차감 (원자적). TOCTOU 경쟁 상태 방지 (테스트모드 전용 — P18).
     검증 통과 시 _orderable에서 즉시 차감하고 영속화.
     반환: (ok, reason, cost) — cost는 차감된 금액 (롤백 시 release_buy_power에 전달).
-    실전은 증권사 서버가 SSOT이므로 이 함수 미호출 (engine_strategy_core.reserve_test_buy_power 경유, trading.py에서 is_test_mode 게이트).
+    실전은 증권사 서버가 SSOT이므로 이 함수 미호출 (engine_strategy_core.reserve_test_buy_power 경유, trading.py에서 is_virtual_mode 게이트).
     """
     cost = order_amount + round(order_amount * BUY_COMMISSION)
     effective = get_effective_buy_power(daily_limit, daily_spent)
@@ -175,7 +175,7 @@ def get_effective_buy_power(daily_limit: int = 0, daily_spent: int = 0) -> int:
     return _orderable
 
 
-def max_buy_qty_for_budget(price: int, budget: int, is_test: bool) -> int:
+def max_buy_qty_for_budget(price: int, budget: int, is_virtual: bool) -> int:
     """예산 내 최대 매수 수량 (수수료 포함, P10 SSOT, P18 부합).
 
     테스트모드: reserve_buy_power의 cost 공식(price*qty + round(price*qty*BUY_COMMISSION))
@@ -186,7 +186,7 @@ def max_buy_qty_for_budget(price: int, budget: int, is_test: bool) -> int:
     """
     if price <= 0 or budget <= 0:
         return 0
-    if not is_test:
+    if not is_virtual:
         return budget // price
     qty = budget // price
     while qty > 0 and qty * price + round(qty * price * BUY_COMMISSION) > budget:
@@ -255,7 +255,7 @@ async def _load(force_reload: bool = False, initial_deposit: int | None = None) 
         else:
             from backend.app.services.engine_state import state
             s = state.integrated_system_settings_cache
-            _initial_deposit = int(s["test_virtual_deposit"])
+            _initial_deposit = int(s["virtual_deposit"])
         _accumulated_investment = _initial_deposit
         _orderable = _initial_deposit
         _loaded = True
@@ -303,7 +303,7 @@ async def reconcile_with_trades() -> None:
         # accumulated_investment(초기투자금 + 충전 누적)을 재구축 시작 잔고로 사용.
         # _initial_deposit은 charge() 시 증가하지 않으므로 충전 후 재기동 시
         # 거짓 불일치로 충전금이 삭제되는 결함 방지 (P22 데이터 정합성).
-        expected = await trade_history.compute_expected_orderable(_accumulated_investment, "test")
+        expected = await trade_history.compute_expected_orderable(_accumulated_investment, "virtual")
         actual = _orderable
         if expected == actual:
             logger.info("[정산] 기동 대조 — 주문가능 %s원 (일치)", f"{actual:,}")
@@ -340,8 +340,8 @@ async def _broadcast_delta() -> None:
     try:
         from backend.app.services.engine_state import state
         from backend.app.services.engine_account import _refresh_account_snapshot_meta, _broadcast_account
-        from backend.app.core.trade_mode import is_test_mode
-        if is_test_mode(state.integrated_system_settings_cache):
+        from backend.app.core.trade_mode import is_virtual_mode
+        if is_virtual_mode(state.integrated_system_settings_cache):
             await _refresh_account_snapshot_meta()
             await _broadcast_account(reason="settlement_delta")
     except Exception as e:

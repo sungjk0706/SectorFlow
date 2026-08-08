@@ -330,8 +330,8 @@ def _build_misc_settings(merged: dict) -> dict:
         "scheduler_market_close_on": bool(merged["scheduler_market_close_on"]),
         "quote_auto_subscribe": bool(merged["quote_auto_subscribe"]),
         "confirmed_data_broker": str(merged["confirmed_data_broker"]).strip(),
-        "test_virtual_deposit": int(merged["test_virtual_deposit"]),
-        "test_virtual_balance": int(merged["test_virtual_balance"]),
+        "virtual_deposit": int(merged["virtual_deposit"]),
+        "virtual_balance": int(merged["virtual_balance"]),
         "broker_config": _normalize_broker_config(merged),
     }
     if "_broker_specs" in merged:

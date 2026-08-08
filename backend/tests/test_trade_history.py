@@ -50,7 +50,7 @@ async def test_daily_summary_no_duplicate_buy_total():
         "realized_pnl": 0,
         "pnl_rate": 0.0,
         "reason": "테스트",
-        "trade_mode": "test",
+        "trade_mode": "virtual",
     })
     # 매도 기록 (70000원 매수 → 69000원 매도, 10주)
     sell_total = 690000
@@ -79,12 +79,12 @@ async def test_daily_summary_no_duplicate_buy_total():
         "realized_pnl": realized_pnl,
         "pnl_rate": pnl_rate,
         "reason": "손절",
-        "trade_mode": "test",
+        "trade_mode": "virtual",
     })
 
     with patch("backend.app.services.trade_history._history_lock"):
         result = await trade_history.get_daily_summary(
-            date_from=today, date_to=today, trade_mode="test"
+            date_from=today, date_to=today, trade_mode="virtual"
         )
 
     today_entry = [r for r in result if r["date"] == today][0]
@@ -122,12 +122,12 @@ async def test_daily_summary_no_sell_zero_rate():
         "realized_pnl": 0,
         "pnl_rate": 0.0,
         "reason": "테스트",
-        "trade_mode": "test",
+        "trade_mode": "virtual",
     })
 
     with patch("backend.app.services.trade_history._history_lock"):
         result = await trade_history.get_daily_summary(
-            date_from=today, date_to=today, trade_mode="test"
+            date_from=today, date_to=today, trade_mode="virtual"
         )
 
     today_entry = [r for r in result if r["date"] == today][0]
@@ -168,7 +168,7 @@ async def test_daily_summary_fee_tax_aggregation():
         "realized_pnl": 0,
         "pnl_rate": 0.0,
         "reason": "테스트",
-        "trade_mode": "test",
+        "trade_mode": "virtual",
     })
     trade_history._sell_history.append({
         "ts": f"{today}T10:00:00",
@@ -187,12 +187,12 @@ async def test_daily_summary_fee_tax_aggregation():
         "realized_pnl": realized_pnl,
         "pnl_rate": round(realized_pnl / buy_total * 100, 2),
         "reason": "손절",
-        "trade_mode": "test",
+        "trade_mode": "virtual",
     })
 
     with patch("backend.app.services.trade_history._history_lock"):
         result = await trade_history.get_daily_summary(
-            date_from=today, date_to=today, trade_mode="test"
+            date_from=today, date_to=today, trade_mode="virtual"
         )
 
     entry = [r for r in result if r["date"] == today][0]
@@ -226,12 +226,12 @@ async def test_daily_summary_no_sell_zero_fee_tax():
         "realized_pnl": 0,
         "pnl_rate": 0.0,
         "reason": "테스트",
-        "trade_mode": "test",
+        "trade_mode": "virtual",
     })
 
     with patch("backend.app.services.trade_history._history_lock"):
         result = await trade_history.get_daily_summary(
-            date_from=today, date_to=today, trade_mode="test"
+            date_from=today, date_to=today, trade_mode="virtual"
         )
 
     entry = [r for r in result if r["date"] == today][0]
@@ -244,7 +244,7 @@ async def test_daily_summary_no_sell_zero_fee_tax():
 
 def _make_buy_rec(
     stk_cd="005930", stk_nm="삼성전자", price=70000, qty=10,
-    date="2026-07-08", time="09:10:00", fee=105, trade_mode="test",
+    date="2026-07-08", time="09:10:00", fee=105, trade_mode="virtual",
     reason="테스트", sector="", buy_rank=None,
 ):
     total_amt = price * qty
@@ -261,13 +261,13 @@ def _make_buy_rec(
 def _make_sell_rec(
     stk_cd="005930", stk_nm="삼성전자", price=69000, qty=10,
     date="2026-07-08", time="10:00:00", avg_buy_price=70000,
-    trade_mode="test", reason="손절", sector=None,
+    trade_mode="virtual", reason="손절", sector=None,
 ):
     total_amt = price * qty
-    fee = round(total_amt * 0.00015) if trade_mode == "test" else 0
-    tax = round(total_amt * 0.002) if trade_mode == "test" else 0
+    fee = round(total_amt * 0.00015) if trade_mode == "virtual" else 0
+    tax = round(total_amt * 0.002) if trade_mode == "virtual" else 0
     sell_net = total_amt - fee - tax
-    buy_fee = round(avg_buy_price * qty * 0.00015) if trade_mode == "test" and avg_buy_price > 0 else 0
+    buy_fee = round(avg_buy_price * qty * 0.00015) if trade_mode == "virtual" and avg_buy_price > 0 else 0
     buy_total = avg_buy_price * qty + buy_fee if avg_buy_price > 0 else 0
     realized_pnl = sell_net - buy_total if avg_buy_price > 0 else 0
     rec = {
@@ -381,8 +381,8 @@ class TestTrimExpired:
         from backend.app.services import trade_history
         trade_history._buy_history.clear()
         trade_history._sell_history.clear()
-        old_rec = _make_buy_rec(date="2025-12-01", trade_mode="test")
-        recent_rec = _make_buy_rec(date="2026-07-08", trade_mode="test")
+        old_rec = _make_buy_rec(date="2025-12-01", trade_mode="virtual")
+        recent_rec = _make_buy_rec(date="2026-07-08", trade_mode="virtual")
         trade_history._buy_history.extend([old_rec, recent_rec])
         from datetime import date as d
         mock_today = d(2026, 7, 15)  # cutoff = 2026-01-15
@@ -408,7 +408,7 @@ class TestTrimExpired:
         """실전모드: 90거래일 이내 데이터 보존."""
         from backend.app.services import trade_history
         trade_history._buy_history.clear()
-        real_rec = _make_buy_rec(date="2026-05-01", trade_mode="real")
+        real_rec = _make_buy_rec(date="2026-05-01", trade_mode="live")
         trade_history._buy_history.append(real_rec)
         from datetime import date as d
         mock_today = d(2026, 7, 15)
@@ -486,7 +486,7 @@ class TestRecordBuy:
                 with patch("backend.app.services.trade_history._broadcast_buy_append", new_callable=AsyncMock):
                     rec = await trade_history.record_buy(
                         stk_cd="005930", stk_nm="삼성전자", price=70000, qty=10,
-                        reason="테스트", trade_mode="test",
+                        reason="테스트", trade_mode="virtual",
                     )
         assert rec["side"] == "BUY"
         assert rec["stk_cd"] == "005930"
@@ -502,7 +502,7 @@ class TestRecordBuy:
                 with patch("backend.app.services.trade_history._broadcast_buy_append", new_callable=AsyncMock):
                     rec = await trade_history.record_buy(
                         stk_cd="005930", stk_nm="삼성전자", price=70000, qty=10,
-                        trade_mode="test",
+                        trade_mode="virtual",
                     )
         assert rec["fee"] == round(700000 * 0.00015)
 
@@ -514,7 +514,7 @@ class TestRecordBuy:
                 with patch("backend.app.services.trade_history._broadcast_buy_append", new_callable=AsyncMock):
                     rec = await trade_history.record_buy(
                         stk_cd="005930", stk_nm="삼성전자", price=70000, qty=10,
-                        trade_mode="real",
+                        trade_mode="live",
                     )
         assert rec["fee"] == 0
 
@@ -557,7 +557,7 @@ class TestRecordSell:
                     with patch("backend.app.services.trade_history._lookup_sector", new_callable=AsyncMock, return_value="반도체"):
                         rec = await trade_history.record_sell(
                             stk_cd="005930", stk_nm="삼성전자", price=71000, qty=10,
-                            avg_buy_price=70000, trade_mode="test",
+                            avg_buy_price=70000, trade_mode="virtual",
                         )
         assert rec["realized_pnl"] > 0
         assert rec["pnl_rate"] > 0
@@ -571,7 +571,7 @@ class TestRecordSell:
                     with patch("backend.app.services.trade_history._lookup_sector", new_callable=AsyncMock, return_value="미분류"):
                         rec = await trade_history.record_sell(
                             stk_cd="005930", stk_nm="삼성전자", price=71000, qty=10,
-                            avg_buy_price=0, trade_mode="test",
+                            avg_buy_price=0, trade_mode="virtual",
                         )
         assert rec["realized_pnl"] == 0
         assert rec["pnl_rate"] == 0.0
@@ -585,7 +585,7 @@ class TestRecordSell:
                     with patch("backend.app.services.trade_history._lookup_sector", new_callable=AsyncMock, return_value="미분류"):
                         rec = await trade_history.record_sell(
                             stk_cd="005930", stk_nm="삼성전자", price=71000, qty=10,
-                            avg_buy_price=70000, trade_mode="test",
+                            avg_buy_price=70000, trade_mode="virtual",
                         )
         assert rec["fee"] == round(710000 * 0.00015)
         assert rec["tax"] == round(710000 * 0.002)
@@ -599,7 +599,7 @@ class TestRecordSell:
                     with patch("backend.app.services.trade_history._lookup_sector", new_callable=AsyncMock, return_value="미분류"):
                         rec = await trade_history.record_sell(
                             stk_cd="005930", stk_nm="삼성전자", price=71000, qty=10,
-                            avg_buy_price=70000, trade_mode="real",
+                            avg_buy_price=70000, trade_mode="live",
                         )
         assert rec["fee"] == 0
         assert rec["tax"] == 0
@@ -613,7 +613,7 @@ class TestRecordSell:
                     with patch("backend.app.services.trade_history._lookup_sector", new_callable=AsyncMock, return_value="반도체"):
                         rec = await trade_history.record_sell(
                             stk_cd="005930", stk_nm="삼성전자", price=71000, qty=10,
-                            avg_buy_price=70000, trade_mode="test",
+                            avg_buy_price=70000, trade_mode="virtual",
                         )
         assert rec["sector"] == "반도체"
 
@@ -626,7 +626,7 @@ class TestRecordSell:
                     with patch("backend.app.services.trade_history._lookup_sector", new_callable=AsyncMock, side_effect=Exception("DB error")):
                         rec = await trade_history.record_sell(
                             stk_cd="005930", stk_nm="삼성전자", price=71000, qty=10,
-                            avg_buy_price=70000, trade_mode="test",
+                            avg_buy_price=70000, trade_mode="virtual",
                         )
         assert rec["sector"] == "미분류"
 
@@ -709,13 +709,13 @@ class TestGetBuySellHistory:
         trade_history._loaded = True
         trade_history._buy_history.clear()
         trade_history._buy_history.extend([
-            _make_buy_rec(trade_mode="test"),
-            _make_buy_rec(trade_mode="real"),
+            _make_buy_rec(trade_mode="virtual"),
+            _make_buy_rec(trade_mode="live"),
         ])
         with patch("backend.app.services.trade_history._history_lock"):
-            result = await trade_history.get_buy_history(trade_mode="real")
+            result = await trade_history.get_buy_history(trade_mode="live")
         assert len(result) == 1
-        assert result[0]["trade_mode"] == "real"
+        assert result[0]["trade_mode"] == "live"
 
     async def test_get_sell_history_empty(self):
         from backend.app.services import trade_history
@@ -730,8 +730,8 @@ class TestGetBuySellHistory:
         trade_history._loaded = True
         trade_history._buy_history.clear()
         trade_history._buy_history.extend([
-            _make_buy_rec(trade_mode="test"),
-            _make_buy_rec(trade_mode="real"),
+            _make_buy_rec(trade_mode="virtual"),
+            _make_buy_rec(trade_mode="live"),
         ])
         with patch("backend.app.services.trade_history._history_lock"):
             result = await trade_history.get_buy_history()
@@ -759,12 +759,12 @@ class TestGetTotalRealizedPnl:
         from backend.app.services import trade_history
         trade_history._loaded = True
         trade_history._sell_history.clear()
-        rec_test = _make_sell_rec(trade_mode="test")
-        rec_real = _make_sell_rec(trade_mode="real")
+        rec_test = _make_sell_rec(trade_mode="virtual")
+        rec_real = _make_sell_rec(trade_mode="live")
         trade_history._sell_history.extend([rec_test, rec_real])
         expected = rec_test["total_amt"] - rec_test["buy_total_amt"]
         with patch("backend.app.services.trade_history._history_lock"):
-            total = await trade_history.get_total_realized_pnl(trade_mode="test")
+            total = await trade_history.get_total_realized_pnl(trade_mode="virtual")
         assert total == expected
 
     async def test_total_pnl_date_range(self):
@@ -803,13 +803,13 @@ class TestGetRealizedPnlSummary:
         from backend.app.services import trade_history
         trade_history._loaded = True
         trade_history._sell_history.clear()
-        rec_test = _make_sell_rec(trade_mode="test")
-        rec_real = _make_sell_rec(trade_mode="real")
+        rec_test = _make_sell_rec(trade_mode="virtual")
+        rec_real = _make_sell_rec(trade_mode="live")
         trade_history._sell_history.extend([rec_test, rec_real])
         expected_pnl = rec_test["total_amt"] - rec_test["buy_total_amt"]
         expected_buy = rec_test["buy_total_amt"]
         with patch("backend.app.services.trade_history._history_lock"):
-            pnl, buy_total = await trade_history.get_realized_pnl_summary(trade_mode="test")
+            pnl, buy_total = await trade_history.get_realized_pnl_summary(trade_mode="virtual")
         assert pnl == expected_pnl
         assert buy_total == expected_buy
 
@@ -850,12 +850,12 @@ class TestGetDailySummaryExtended:
         trade_history._loaded = True
         trade_history._buy_history.clear()
         trade_history._buy_history.extend([
-            _make_buy_rec(date="2026-07-01", trade_mode="test"),
-            _make_buy_rec(date="2026-07-01", trade_mode="real"),
+            _make_buy_rec(date="2026-07-01", trade_mode="virtual"),
+            _make_buy_rec(date="2026-07-01", trade_mode="live"),
         ])
         with patch("backend.app.services.trade_history._history_lock"):
             result = await trade_history.get_daily_summary(
-                date_from="2026-07-01", date_to="2026-07-01", trade_mode="test"
+                date_from="2026-07-01", date_to="2026-07-01", trade_mode="virtual"
             )
         assert result[0]["buy_count"] == 1
 
@@ -972,18 +972,18 @@ class TestClearTestHistory:
         trade_history._buy_history.clear()
         trade_history._sell_history.clear()
         trade_history._buy_history.extend([
-            _make_buy_rec(trade_mode="test"),
-            _make_buy_rec(trade_mode="real"),
+            _make_buy_rec(trade_mode="virtual"),
+            _make_buy_rec(trade_mode="live"),
         ])
         trade_history._sell_history.extend([
-            _make_sell_rec(trade_mode="test"),
-            _make_sell_rec(trade_mode="real"),
+            _make_sell_rec(trade_mode="virtual"),
+            _make_sell_rec(trade_mode="live"),
         ])
         with patch("backend.app.services.trade_history._history_lock"):
             with patch("backend.app.db.db_writer.execute_db_write", new_callable=AsyncMock):
                 await trade_history.clear_test_history()
-        assert all(r["trade_mode"] == "real" for r in trade_history._buy_history)
-        assert all(r["trade_mode"] == "real" for r in trade_history._sell_history)
+        assert all(r["trade_mode"] == "live" for r in trade_history._buy_history)
+        assert all(r["trade_mode"] == "live" for r in trade_history._sell_history)
         assert len(trade_history._buy_history) == 1
         assert len(trade_history._sell_history) == 1
 
@@ -1001,7 +1001,7 @@ class TestClearTestHistory:
     async def test_db_delete_failure_handled(self):
         from backend.app.services import trade_history
         trade_history._buy_history.clear()
-        trade_history._buy_history.append(_make_buy_rec(trade_mode="test"))
+        trade_history._buy_history.append(_make_buy_rec(trade_mode="virtual"))
         with patch("backend.app.services.trade_history._history_lock"):
             with patch("backend.app.db.db_writer.execute_db_write", new_callable=AsyncMock, side_effect=Exception("DB error")):
                 await trade_history.clear_test_history()
@@ -1020,7 +1020,7 @@ class TestBuildPositionsFromTrades:
         trade_history._sell_history.clear()
         trade_history._buy_history.append(_make_buy_rec(price=70000, qty=10))
         with patch("backend.app.services.trade_history._history_lock"):
-            positions = await trade_history.build_positions_from_trades("test")
+            positions = await trade_history.build_positions_from_trades("virtual")
         assert "005930" in positions
         assert positions["005930"]["qty"] == 10
         assert positions["005930"]["avg_price"] == 70000
@@ -1035,7 +1035,7 @@ class TestBuildPositionsFromTrades:
             _make_buy_rec(price=72000, qty=10),
         ])
         with patch("backend.app.services.trade_history._history_lock"):
-            positions = await trade_history.build_positions_from_trades("test")
+            positions = await trade_history.build_positions_from_trades("virtual")
         pos = positions["005930"]
         assert pos["qty"] == 20
         assert pos["avg_price"] == (700000 + 720000) // 20
@@ -1048,7 +1048,7 @@ class TestBuildPositionsFromTrades:
         trade_history._buy_history.append(_make_buy_rec(price=70000, qty=10))
         trade_history._sell_history.append(_make_sell_rec(qty=4, avg_buy_price=70000))
         with patch("backend.app.services.trade_history._history_lock"):
-            positions = await trade_history.build_positions_from_trades("test")
+            positions = await trade_history.build_positions_from_trades("virtual")
         assert positions["005930"]["qty"] == 6
 
     async def test_full_sell_removes_position(self):
@@ -1059,7 +1059,7 @@ class TestBuildPositionsFromTrades:
         trade_history._buy_history.append(_make_buy_rec(price=70000, qty=10))
         trade_history._sell_history.append(_make_sell_rec(qty=10, avg_buy_price=70000))
         with patch("backend.app.services.trade_history._history_lock"):
-            positions = await trade_history.build_positions_from_trades("test")
+            positions = await trade_history.build_positions_from_trades("virtual")
         assert "005930" not in positions
 
     async def test_buy_date_tracks_earliest(self):
@@ -1073,7 +1073,7 @@ class TestBuildPositionsFromTrades:
             _make_buy_rec(date="2026-07-05", price=71000, qty=5),
         ])
         with patch("backend.app.services.trade_history._history_lock"):
-            positions = await trade_history.build_positions_from_trades("test")
+            positions = await trade_history.build_positions_from_trades("virtual")
         assert positions["005930"]["buy_date"] == "2026-07-05"
 
     async def test_trade_mode_filter(self):
@@ -1082,11 +1082,11 @@ class TestBuildPositionsFromTrades:
         trade_history._buy_history.clear()
         trade_history._sell_history.clear()
         trade_history._buy_history.extend([
-            _make_buy_rec(trade_mode="test"),
-            _make_buy_rec(trade_mode="real", stk_cd="000660"),
+            _make_buy_rec(trade_mode="virtual"),
+            _make_buy_rec(trade_mode="live", stk_cd="000660"),
         ])
         with patch("backend.app.services.trade_history._history_lock"):
-            positions = await trade_history.build_positions_from_trades("test")
+            positions = await trade_history.build_positions_from_trades("virtual")
         assert "005930" in positions
         assert "000660" not in positions
 
@@ -1144,7 +1144,7 @@ class TestBroadcastFunctions:
         with patch("backend.app.web.ws_manager.ws_manager", mock_ws):
             with patch("backend.app.services.trade_history.get_sell_history", new_callable=AsyncMock, return_value=[]):
                 with patch("backend.app.services.trade_history.get_daily_summary", new_callable=AsyncMock, return_value=[]):
-                    await trade_history._broadcast_full_sell_history("test")
+                    await trade_history._broadcast_full_sell_history("virtual")
         assert mock_ws.broadcast.call_count == 2
 
     async def test_broadcast_full_buy_history(self):
@@ -1153,7 +1153,7 @@ class TestBroadcastFunctions:
         mock_ws.broadcast = AsyncMock()
         with patch("backend.app.web.ws_manager.ws_manager", mock_ws):
             with patch("backend.app.services.trade_history.get_buy_history", new_callable=AsyncMock, return_value=[]):
-                await trade_history._broadcast_full_buy_history("test")
+                await trade_history._broadcast_full_buy_history("virtual")
         mock_ws.broadcast.assert_called_once()
 
     async def test_broadcast_exception_ignored(self):
@@ -1211,7 +1211,7 @@ class TestDailySummaryDaysCache:
             with patch("backend.app.web.ws_manager.ws_manager", mock_ws):
                 with patch("backend.app.services.trade_history.get_sell_history", new_callable=AsyncMock, return_value=[]):
                     with patch("backend.app.services.trade_history.get_daily_summary", new_callable=AsyncMock, return_value=[]) as mock_gds:
-                        await trade_history._broadcast_full_sell_history("test")
+                        await trade_history._broadcast_full_sell_history("virtual")
             mock_gds.assert_called_once()
             assert mock_gds.call_args.kwargs["days"] == 5
         finally:
@@ -1227,9 +1227,9 @@ class TestBroadcastHistory:
         from backend.app.services import trade_history
         with patch("backend.app.services.trade_history._broadcast_full_buy_history", new_callable=AsyncMock) as mock_buy:
             with patch("backend.app.services.trade_history._broadcast_full_sell_history", new_callable=AsyncMock) as mock_sell:
-                await trade_history.broadcast_history("test")
-        mock_buy.assert_called_once_with("test")
-        mock_sell.assert_called_once_with("test")
+                await trade_history.broadcast_history("virtual")
+        mock_buy.assert_called_once_with("virtual")
+        mock_sell.assert_called_once_with("virtual")
 
 
 # ── _backfill_sell_sector ──────────────────────────────────────────────────────

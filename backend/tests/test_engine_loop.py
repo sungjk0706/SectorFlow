@@ -60,8 +60,8 @@ def _mock_state(
         f"{broker}_app_secret": app_secret,
         f"{broker}_account_no": "12345678",
         "confirmed_data_broker": confirmed_data_broker,
-        "trade_mode": "test",
-        "test_virtual_deposit": 10000000,
+        "trade_mode": "virtual",
+        "virtual_deposit": 10000000,
     }
     mock.broker_tokens = broker_tokens if broker_tokens is not None else {}
     mock.broker_spec = broker_spec if broker_spec is not None else []
@@ -122,7 +122,7 @@ class TestCacheAndBootstrap:
     @pytest.mark.asyncio
     async def test_load_caches_preboot_called(self):
         """_cache_and_bootstrap → _load_caches_preboot 호출."""
-        settings = {"trade_mode": "test"}
+        settings = {"trade_mode": "virtual"}
         with (
             patch.object(engine_loop, "_load_caches_preboot", new_callable=AsyncMock) as mock_load,
             patch("backend.app.web.ws_manager.ws_manager") as mock_ws,
@@ -135,7 +135,7 @@ class TestCacheAndBootstrap:
     @pytest.mark.asyncio
     async def test_broadcast_engine_ready_success(self):
         """broadcast 성공 → info 로그."""
-        settings = {"trade_mode": "test"}
+        settings = {"trade_mode": "virtual"}
         with (
             patch.object(engine_loop, "_load_caches_preboot", new_callable=AsyncMock),
             patch("backend.app.web.ws_manager.ws_manager") as mock_ws,
@@ -151,7 +151,7 @@ class TestCacheAndBootstrap:
     @pytest.mark.asyncio
     async def test_broadcast_exception_handled(self):
         """broadcast 예외 → warning 로그, 계속 진행."""
-        settings = {"trade_mode": "test"}
+        settings = {"trade_mode": "virtual"}
         with (
             patch.object(engine_loop, "_load_caches_preboot", new_callable=AsyncMock),
             patch("backend.app.web.ws_manager.ws_manager") as mock_ws,
@@ -166,7 +166,7 @@ class TestCacheAndBootstrap:
     @pytest.mark.asyncio
     async def test_broadcast_payload_correct(self):
         """broadcast 페이로드가 정확한지 확인."""
-        settings = {"trade_mode": "test"}
+        settings = {"trade_mode": "virtual"}
         with (
             patch.object(engine_loop, "_load_caches_preboot", new_callable=AsyncMock),
             patch("backend.app.web.ws_manager.ws_manager") as mock_ws,
@@ -181,7 +181,7 @@ class TestCacheAndBootstrap:
     @pytest.mark.asyncio
     async def test_load_caches_preboot_exception_still_broadcasts(self):
         """_load_caches_preboot 예외 → error 로그 + engine-ready 브로드캐스트 여전히 실행 (B1-02-04, P21)."""
-        settings = {"trade_mode": "test"}
+        settings = {"trade_mode": "virtual"}
         with (
             patch.object(engine_loop, "_load_caches_preboot", new_callable=AsyncMock,
                          side_effect=RuntimeError("cache load failed")) as mock_load,
@@ -529,7 +529,7 @@ class TestRunEngineLoopInit:
         with (
             patch.object(engine_state, "state", mock_state),
             patch.object(engine_loop, "get_router", return_value=mock_router),
-            patch.object(engine_loop, "is_test_mode", return_value=True),
+            patch.object(engine_loop, "is_virtual_mode", return_value=True),
             patch.object(engine_loop, "_load_caches_preboot", new_callable=AsyncMock),
             patch.object(engine_loop, "_get_all_tokens_async", new_callable=AsyncMock),
             patch.object(engine_loop, "_load_broker_spec_async", new_callable=AsyncMock, return_value=[]),
@@ -564,7 +564,7 @@ class TestRunEngineLoopInit:
         with (
             patch.object(engine_state, "state", mock_state),
             patch.object(engine_loop, "get_router", return_value=mock_router),
-            patch.object(engine_loop, "is_test_mode", return_value=True),
+            patch.object(engine_loop, "is_virtual_mode", return_value=True),
             patch.object(engine_loop, "_load_caches_preboot", new_callable=AsyncMock),
             patch.object(engine_loop, "_get_all_tokens_async", new_callable=AsyncMock),
             patch.object(engine_loop, "_load_broker_spec_async", new_callable=AsyncMock, return_value=[]),
@@ -595,7 +595,7 @@ class TestRunEngineLoopInit:
         with (
             patch.object(engine_state, "state", mock_state),
             patch.object(engine_loop, "get_router", return_value=mock_router),
-            patch.object(engine_loop, "is_test_mode", return_value=True),
+            patch.object(engine_loop, "is_virtual_mode", return_value=True),
             patch.object(engine_loop, "_load_caches_preboot", new_callable=AsyncMock),
             patch.object(engine_loop, "_get_all_tokens_async", new_callable=AsyncMock),
             patch.object(engine_loop, "_load_broker_spec_async", new_callable=AsyncMock, return_value=[]),
@@ -627,7 +627,7 @@ class TestRunEngineLoopInit:
         with (
             patch.object(engine_state, "state", mock_state),
             patch.object(engine_loop, "get_router", return_value=mock_router),
-            patch.object(engine_loop, "is_test_mode", return_value=True),
+            patch.object(engine_loop, "is_virtual_mode", return_value=True),
             patch.object(engine_loop, "_load_caches_preboot", new_callable=AsyncMock),
             patch.object(engine_loop, "_get_all_tokens_async", new_callable=AsyncMock),
             patch.object(engine_loop, "_load_broker_spec_async", new_callable=AsyncMock, return_value=[]),
@@ -666,7 +666,7 @@ class TestRunEngineLoopInit:
         with (
             patch.object(engine_state, "state", mock_state),
             patch.object(engine_loop, "get_router", return_value=mock_router),
-            patch.object(engine_loop, "is_test_mode", return_value=True),
+            patch.object(engine_loop, "is_virtual_mode", return_value=True),
             patch.object(engine_loop, "_load_caches_preboot", new_callable=AsyncMock),
             patch.object(engine_loop, "_get_all_tokens_async", side_effect=_set_token),
             patch.object(engine_loop, "_load_broker_spec_async", new_callable=AsyncMock, return_value=[]),
@@ -703,7 +703,7 @@ class TestRunEngineLoopInit:
         with (
             patch.object(engine_state, "state", mock_state),
             patch.object(engine_loop, "get_router", return_value=mock_router),
-            patch.object(engine_loop, "is_test_mode", return_value=True),
+            patch.object(engine_loop, "is_virtual_mode", return_value=True),
             patch.object(engine_loop, "_load_caches_preboot", new_callable=AsyncMock),
             patch.object(engine_loop, "_get_all_tokens_async", new_callable=AsyncMock, side_effect=_set_permanent_failure),
             patch.object(engine_loop, "_load_broker_spec_async", new_callable=AsyncMock, return_value=[]),
@@ -746,7 +746,7 @@ class TestRunEngineLoopInit:
         with (
             patch.object(engine_state, "state", mock_state),
             patch.object(engine_loop, "get_router", return_value=mock_router),
-            patch.object(engine_loop, "is_test_mode", return_value=True),
+            patch.object(engine_loop, "is_virtual_mode", return_value=True),
             patch.object(engine_loop, "_load_caches_preboot", new_callable=AsyncMock),
             patch.object(engine_loop, "_get_all_tokens_async", new_callable=AsyncMock, side_effect=_set_transient_failure),
             patch.object(engine_loop, "_load_broker_spec_async", new_callable=AsyncMock, return_value=[]),
@@ -788,7 +788,7 @@ class TestRunEngineLoopInit:
         with (
             patch.object(engine_state, "state", mock_state),
             patch.object(engine_loop, "get_router", return_value=mock_router),
-            patch.object(engine_loop, "is_test_mode", return_value=True),
+            patch.object(engine_loop, "is_virtual_mode", return_value=True),
             patch.object(engine_loop, "_load_caches_preboot", new_callable=AsyncMock),
             patch.object(engine_loop, "_get_all_tokens_async", new_callable=AsyncMock),
             patch.object(engine_loop, "_load_broker_spec_async", new_callable=AsyncMock, return_value=[]),
@@ -820,7 +820,7 @@ class TestRunEngineLoopInit:
         with (
             patch.object(engine_state, "state", mock_state),
             patch.object(engine_loop, "get_router", return_value=mock_router),
-            patch.object(engine_loop, "is_test_mode", return_value=True),
+            patch.object(engine_loop, "is_virtual_mode", return_value=True),
             patch.object(engine_loop, "_load_caches_preboot", new_callable=AsyncMock),
             patch.object(engine_loop, "_get_all_tokens_async", new_callable=AsyncMock),
             patch.object(engine_loop, "_load_broker_spec_async", new_callable=AsyncMock, return_value=[]),
@@ -857,7 +857,7 @@ class TestRunEngineLoopInit:
         with (
             patch.object(engine_state, "state", mock_state),
             patch.object(engine_loop, "get_router", return_value=mock_router),
-            patch.object(engine_loop, "is_test_mode", return_value=True),
+            patch.object(engine_loop, "is_virtual_mode", return_value=True),
             patch.object(engine_loop, "_load_caches_preboot", new_callable=AsyncMock),
             patch.object(engine_loop, "_get_all_tokens_async", new_callable=AsyncMock),
             patch.object(engine_loop, "_load_broker_spec_async", new_callable=AsyncMock, return_value=[]),
@@ -890,7 +890,7 @@ class TestRunEngineLoopInit:
         with (
             patch.object(engine_state, "state", mock_state),
             patch.object(engine_loop, "get_router", return_value=mock_router),
-            patch.object(engine_loop, "is_test_mode", return_value=True),
+            patch.object(engine_loop, "is_virtual_mode", return_value=True),
             patch.object(engine_loop, "_load_caches_preboot", new_callable=AsyncMock),
             patch.object(engine_loop, "_get_all_tokens_async", new_callable=AsyncMock),
             patch.object(engine_loop, "_load_broker_spec_async", new_callable=AsyncMock, return_value=[]),
@@ -922,7 +922,7 @@ class TestRunEngineLoopInit:
         with (
             patch.object(engine_state, "state", mock_state),
             patch.object(engine_loop, "get_router", return_value=mock_router),
-            patch.object(engine_loop, "is_test_mode", return_value=True),
+            patch.object(engine_loop, "is_virtual_mode", return_value=True),
             patch.object(engine_loop, "_load_caches_preboot", new_callable=AsyncMock),
             patch.object(engine_loop, "_get_all_tokens_async", new_callable=AsyncMock),
             patch.object(engine_loop, "_load_broker_spec_async", new_callable=AsyncMock, return_value=[]),
@@ -965,7 +965,7 @@ def _apply_run_engine_loop_patches(stack: ExitStack, mock_state, mock_router):
 
     stack.enter_context(patch.object(engine_state, "state", mock_state))
     stack.enter_context(patch.object(engine_loop, "get_router", return_value=mock_router))
-    stack.enter_context(patch.object(engine_loop, "is_test_mode", return_value=True))
+    stack.enter_context(patch.object(engine_loop, "is_virtual_mode", return_value=True))
     stack.enter_context(patch.object(engine_loop, "_load_caches_preboot", new_callable=AsyncMock))
     stack.enter_context(patch.object(engine_loop, "_get_all_tokens_async", side_effect=_refill_tokens))
     stack.enter_context(patch.object(engine_loop, "_load_broker_spec_async", new_callable=AsyncMock, return_value=[]))
@@ -1122,7 +1122,7 @@ class TestRunEngineLoopRestApi:
         with (
             patch.object(engine_state, "state", mock_state),
             patch.object(engine_loop, "get_router", return_value=mock_router),
-            patch.object(engine_loop, "is_test_mode", return_value=True),
+            patch.object(engine_loop, "is_virtual_mode", return_value=True),
             patch.object(engine_loop, "_load_caches_preboot", new_callable=AsyncMock),
             patch.object(engine_loop, "_get_all_tokens_async", side_effect=_set_token),
             patch.object(engine_loop, "_load_broker_spec_async", new_callable=AsyncMock, return_value=_spec_list),
@@ -1160,7 +1160,7 @@ class TestRunEngineLoopRestApi:
         with (
             patch.object(engine_state, "state", mock_state),
             patch.object(engine_loop, "get_router", return_value=mock_router),
-            patch.object(engine_loop, "is_test_mode", return_value=True),
+            patch.object(engine_loop, "is_virtual_mode", return_value=True),
             patch.object(engine_loop, "_load_caches_preboot", new_callable=AsyncMock),
             patch.object(engine_loop, "_get_all_tokens_async", side_effect=_set_token),
             patch.object(engine_loop, "_load_broker_spec_async", new_callable=AsyncMock, return_value=[]),
@@ -1193,7 +1193,7 @@ class TestRunEngineLoopRestApi:
         with (
             patch.object(engine_state, "state", mock_state),
             patch.object(engine_loop, "get_router", return_value=mock_router),
-            patch.object(engine_loop, "is_test_mode", return_value=True),
+            patch.object(engine_loop, "is_virtual_mode", return_value=True),
             patch.object(engine_loop, "_load_caches_preboot", new_callable=AsyncMock),
             patch.object(engine_loop, "_get_all_tokens_async", new_callable=AsyncMock),
             patch.object(engine_loop, "_load_broker_spec_async", new_callable=AsyncMock, return_value=[]),
@@ -1225,7 +1225,7 @@ class TestRunEngineLoopRestApi:
         with (
             patch.object(engine_state, "state", mock_state),
             patch.object(engine_loop, "get_router", return_value=mock_router),
-            patch.object(engine_loop, "is_test_mode", return_value=True),
+            patch.object(engine_loop, "is_virtual_mode", return_value=True),
             patch.object(engine_loop, "_load_caches_preboot", new_callable=AsyncMock),
             patch.object(engine_loop, "_get_all_tokens_async", new_callable=AsyncMock),
             patch.object(engine_loop, "_load_broker_spec_async", new_callable=AsyncMock, return_value=[]),
@@ -1256,7 +1256,7 @@ class TestRunEngineLoopRestApi:
         with (
             patch.object(engine_state, "state", mock_state),
             patch.object(engine_loop, "get_router", return_value=mock_router),
-            patch.object(engine_loop, "is_test_mode", return_value=True),
+            patch.object(engine_loop, "is_virtual_mode", return_value=True),
             patch.object(engine_loop, "_load_caches_preboot", new_callable=AsyncMock),
             patch.object(engine_loop, "_get_all_tokens_async", new_callable=AsyncMock),
             patch.object(engine_loop, "_load_broker_spec_async", new_callable=AsyncMock, return_value=[]),
@@ -1294,7 +1294,7 @@ class TestRunEngineLoopAccountMasking:
         with (
             patch.object(engine_state, "state", mock_state),
             patch.object(engine_loop, "get_router", return_value=mock_router),
-            patch.object(engine_loop, "is_test_mode", return_value=True),
+            patch.object(engine_loop, "is_virtual_mode", return_value=True),
             patch.object(engine_loop, "_load_caches_preboot", new_callable=AsyncMock),
             patch.object(engine_loop, "_get_all_tokens_async", new_callable=AsyncMock),
             patch.object(engine_loop, "_load_broker_spec_async", new_callable=AsyncMock, return_value=[]),
@@ -1328,7 +1328,7 @@ class TestRunEngineLoopAccountMasking:
         with (
             patch.object(engine_state, "state", mock_state),
             patch.object(engine_loop, "get_router", return_value=mock_router),
-            patch.object(engine_loop, "is_test_mode", return_value=True),
+            patch.object(engine_loop, "is_virtual_mode", return_value=True),
             patch.object(engine_loop, "_load_caches_preboot", new_callable=AsyncMock),
             patch.object(engine_loop, "_get_all_tokens_async", new_callable=AsyncMock),
             patch.object(engine_loop, "_load_broker_spec_async", new_callable=AsyncMock, return_value=[]),
@@ -1361,7 +1361,7 @@ class TestRunEngineLoopAccountMasking:
         with (
             patch.object(engine_state, "state", mock_state),
             patch.object(engine_loop, "get_router", return_value=mock_router),
-            patch.object(engine_loop, "is_test_mode", return_value=False),  # 실전모드
+            patch.object(engine_loop, "is_virtual_mode", return_value=False),  # 실전모드
             patch.object(engine_loop, "_load_caches_preboot", new_callable=AsyncMock),
             patch.object(engine_loop, "_get_all_tokens_async", new_callable=AsyncMock),
             patch.object(engine_loop, "_load_broker_spec_async", new_callable=AsyncMock, return_value=[]),

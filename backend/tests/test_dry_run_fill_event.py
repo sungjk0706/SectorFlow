@@ -48,7 +48,7 @@ async def _do_buy(code: str, qty: int, price: int, stk_nm: str = "") -> None:
     fill_price = dry_run.estimate_fill_price(price, "BUY")
     await trade_history.record_buy(
         stk_cd=code, stk_nm=stk_nm, price=fill_price, qty=qty,
-        reason="test", trade_mode="test",
+        reason="test", trade_mode="virtual",
     )
     await dry_run.fake_fill_event("BUY", code, qty, price, stk_nm)
 
@@ -59,7 +59,7 @@ async def _do_sell(code: str, qty: int, price: int, stk_nm: str = "") -> None:
     await trade_history.record_sell(
         stk_cd=code, stk_nm=stk_nm, price=fill_price, qty=qty,
         avg_buy_price=dry_run.estimate_fill_price(_TEST_PRICE, "BUY"),
-        reason="test", trade_mode="test",
+        reason="test", trade_mode="virtual",
     )
     await dry_run.fake_fill_event("SELL", code, qty, price, stk_nm)
 
@@ -67,7 +67,7 @@ async def _do_sell(code: str, qty: int, price: int, stk_nm: str = "") -> None:
 # ── 픽스처 ───────────────────────────────────────────────────────────────────
 
 _TEST_SETTINGS = {
-    "trade_mode": "test",
+    "trade_mode": "virtual",
     "time_scheduler_on": False,
 }
 _TEST_CODE = "005930"
@@ -239,7 +239,7 @@ class TestFakeFillEventSell:
         await trade_history.record_sell(
             stk_cd=_TEST_CODE, stk_nm=_TEST_NM, price=fill_price, qty=_TEST_QTY,
             avg_buy_price=dry_run.estimate_fill_price(_TEST_PRICE, "BUY"),
-            reason="test", trade_mode="test",
+            reason="test", trade_mode="virtual",
         )
         assert dry_run._positions_dirty is True, \
             "record_sell 후 _positions_dirty=True여야 원천 변경이 캐시에 전파됨 (P10)"

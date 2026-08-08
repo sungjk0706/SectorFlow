@@ -67,7 +67,7 @@ class TestLoadIntegratedSystemSettingsDB:
         """테이블이 빈 경우 기본값이 반환되는지 확인."""
         result = await load_integrated_system_settings()
 
-        assert result["trade_mode"] == "test"
+        assert result["trade_mode"] == "virtual"
         assert result["time_scheduler_on"] is False
         assert result["broker"] == "kiwoom"
         assert result["sector_max_targets"] == 3
@@ -137,12 +137,12 @@ class TestLoadIntegratedSystemSettingsDB:
         """DB 값이 기본값보다 우선하는지 확인."""
         await in_memory_db.execute(
             "INSERT INTO integrated_system_settings (key, value, value_type) VALUES (?, ?, ?)",
-            ("trade_mode", "real", "string"),
+            ("trade_mode", "live", "string"),
         )
         await in_memory_db.commit()
 
         result = await load_integrated_system_settings()
-        assert result["trade_mode"] == "real"
+        assert result["trade_mode"] == "live"
 
     @pytest.mark.asyncio
     async def test_migrates_legacy_trade_mode_mock_to_test(self, in_memory_db):
@@ -154,7 +154,7 @@ class TestLoadIntegratedSystemSettingsDB:
         await in_memory_db.commit()
 
         result = await load_integrated_system_settings()
-        assert result["trade_mode"] == "test"
+        assert result["trade_mode"] == "virtual"
 
     @pytest.mark.asyncio
     async def test_migrates_loss_val_positive_to_negative(self, in_memory_db):

@@ -12,7 +12,7 @@ from backend.app.services import data_manager
 from backend.app.services.auto_trading_effective import auto_buy_effective, auto_sell_effective
 from backend.app.core.broker_factory import get_router
 from backend.app.core import broker_registry
-from backend.app.core.trade_mode import is_test_mode
+from backend.app.core.trade_mode import is_virtual_mode
 from backend.app.core import journal as _journal
 from backend.app.services import dry_run
 from backend.app.services import trade_history
@@ -546,11 +546,11 @@ class AutoTradeManager:
         _orderable = get_risk_manager().get_withdrawable_deposit()
         # effective_buy_amt=None → 종목당 1회 매수금액 없음 → 주문가능 금액이 상한
         _max_available = min(effective_buy_amt, _orderable) if effective_buy_amt is not None else _orderable
-        _est_buy_price = dry_run.estimate_fill_price(int(current_price), "BUY") if is_test_mode(raw_all) else int(current_price)
+        _est_buy_price = dry_run.estimate_fill_price(int(current_price), "BUY") if is_virtual_mode(raw_all) else int(current_price)
         # 수수료 여유분 확보 (P10 SSOT — reserve_buy_power의 cost 공식과 정합, P22 정합성)
         from backend.app.services import settlement_engine
         buy_qty = settlement_engine.max_buy_qty_for_budget(
-            _est_buy_price, _max_available, is_test_mode(raw_all),
+            _est_buy_price, _max_available, is_virtual_mode(raw_all),
         )
         if buy_qty <= 0:
             return False, BUY_REJECT_QTY_ZERO
@@ -593,7 +593,7 @@ class AutoTradeManager:
 
         # ── 테스트모드: 예수금 검증 + 즉시 차감 (TOCTOU 경쟁 상태 방지, P22) ────
         _reserved_cost: int = 0
-        if is_test_mode(raw_all):
+        if is_virtual_mode(raw_all):
             from backend.app.services.engine_strategy_core import reserve_test_buy_power
             _check_price = int(order_price) if order_price > 0 else int(current_price)
             _check_price = dry_run.estimate_fill_price(_check_price, "BUY")
@@ -608,7 +608,7 @@ class AutoTradeManager:
                 return False, BUY_REJECT_TEST_CASH
 
         # ── 테스트모드 가드: 테스트모드면 실전 서버에 절대 주문 안 보냄 ─────────
-        if is_test_mode(raw_all):
+        if is_virtual_mode(raw_all):
             _dry_price = int(order_price) if order_price > 0 else int(current_price)
             res = await dry_run.fake_send_order(
                 raw_all, access_token, "BUY", stk_cd, buy_qty, _dry_price, trde_tp,
@@ -633,7 +633,7 @@ class AutoTradeManager:
 
         # ── 저널링: 주문 요청 기록 ─────────────────────────────────────────────
         order_id = res.get("order_id", f"buy_{stk_cd}_{int(time.time())}")
-        _mode = "test" if is_test_mode(raw_all) else "real"
+        _mode = "virtual" if is_virtual_mode(raw_all) else "live"
         await _journal.record_order_request(
             order_id=order_id,
             stock_code=stk_cd,
@@ -644,12 +644,12 @@ class AutoTradeManager:
         )
 
         fill_price = int(order_price) if order_price > 0 else int(current_price)
-        if is_test_mode(raw_all):
+        if is_virtual_mode(raw_all):
             fill_price = dry_run.estimate_fill_price(fill_price, "BUY")
         # 일일 누적 한도 기준 = trade_history.record_buy의 total_amt 공식과 동일 (P10/P22)
         # 테스트모드: 수수료 포함 / 실전모드: 순수 매수가 (P18 — 실전은 증권사 서버가 SSOT, 앱 수수료 계산 금지)
         _base = int(buy_qty * fill_price)
-        _fee = round(_base * BUY_COMMISSION) if is_test_mode(raw_all) else 0
+        _fee = round(_base * BUY_COMMISSION) if is_virtual_mode(raw_all) else 0
         spent = _base + _fee
         self._daily_buy_spent += max(0, spent)
 
@@ -661,7 +661,7 @@ class AutoTradeManager:
         # ── 체결 이력 기록 ────────────────────────────────────────────────────
         # P20(폴백 금지): reason은 buy_order_executor가 가산점 통합 문자열로 명시 전달.
         # 가산점 미발생 시 빈 문자열 그대로 저장 (자동매수 폴백 제거).
-        _mode = "test" if is_test_mode(raw_all) else "real"
+        _mode = "virtual" if is_virtual_mode(raw_all) else "live"
         await trade_history.record_buy(
             stk_cd=stk_cd, stk_nm=stk_nm,
             price=fill_price, qty=buy_qty,
@@ -680,7 +680,7 @@ class AutoTradeManager:
         # ── 테스트모드: 가상 체결 동기 대기 (실전 WS "00"과 동일한 downstream, P18 동등성) ──
         # 주문 흐름 내에서 가상 체결 완료까지 대기 — "주문 → 대기 → 응답 → 다음" 흐름 (결정 4).
         # fake_fill_event 내부에서 on_fill_update가 _fill_event를 설정 → _end_fill_await가 즉시 통과.
-        if is_test_mode(raw_all):
+        if is_virtual_mode(raw_all):
             _dry_fill_price = int(order_price) if order_price > 0 else int(current_price)
             await dry_run.fake_fill_event("BUY", stk_cd, buy_qty, _dry_fill_price, stk_nm, pre_reserved=True)
 
@@ -705,7 +705,7 @@ class AutoTradeManager:
             logger.warning("[매매] 리스크 관리자 성공 보고 실패", exc_info=True)
 
         # ── 테스트모드 매수 성공 시 잔고 부족 칩 해제 (P21) ──
-        if is_test_mode(raw_all):
+        if is_virtual_mode(raw_all):
             await _broadcast_test_cash_resolved()
 
         # ── 체결·잔고 응답 대기 (결정 2 — 잠금 해제 시점을 체결 응답 후로 이동) ──
@@ -827,13 +827,13 @@ class AutoTradeManager:
         # 있으나 현행 유지 — 테스트모드는 build_positions_from_trades로 유령 포지션
         # 차단 검사(qty 부족 시 매도 중단)를 수행하는 안전장치이므로 분기가 의도적.
         # 실전모드는 get_positions()로 브로커 잔고를 직접 조회.
-        _mode = "test" if is_test_mode(base_settings) else "real"
+        _mode = "virtual" if is_virtual_mode(base_settings) else "live"
         _avg_buy = 0
         _buy_date = ""
         try:
-            if _mode == "test":
+            if _mode == "virtual":
                 from backend.app.services import trade_history
-                _computed = await trade_history.build_positions_from_trades("test")
+                _computed = await trade_history.build_positions_from_trades("virtual")
                 _computed_pos = _computed.get(_base_stk_cd(stk_cd))
                 if not _computed_pos or int(_computed_pos.get("qty", 0)) < qty:
                     logger.critical(
@@ -858,7 +858,7 @@ class AutoTradeManager:
             logger.warning("[매매] 평균 매수가 조회 실패", exc_info=True)
 
         # ── 테스트모드 가드: 테스트모드면 실전 서버에 절대 주문 안 보냄 ─────────
-        if is_test_mode(base_settings):
+        if is_virtual_mode(base_settings):
             _dry_sell_price = int(order_price) if order_price > 0 else int(cur_price)
             result = await dry_run.fake_send_order(
                 base_settings, access_token, "SELL", stk_cd, qty, _dry_sell_price, trde_tp,
@@ -896,7 +896,7 @@ class AutoTradeManager:
 
         # ── 체결 이력 기록 ────────────────────────────────────────────────────
         _sell_price = int(order_price) if order_price > 0 else int(cur_price)
-        if _mode == "test":
+        if _mode == "virtual":
             _sell_price = dry_run.estimate_fill_price(_sell_price, "SELL")
         await trade_history.record_sell(
             stk_cd=stk_cd, stk_nm=stk_nm,
@@ -909,7 +909,7 @@ class AutoTradeManager:
         # ── 테스트모드: 가상 체결 동기 대기 (실전 WS "00"과 동일한 downstream, P18 동등성) ──
         # 주문 흐름 내에서 가상 체결 완료까지 대기 — "주문 → 대기 → 응답 → 다음" 흐름 (결정 4).
         # fake_fill_event 내부에서 on_fill_update가 _fill_event를 설정 → _end_fill_await가 즉시 통과.
-        if is_test_mode(base_settings):
+        if is_virtual_mode(base_settings):
             _dry_sell_price = int(order_price) if order_price > 0 else int(cur_price)
             await dry_run.fake_fill_event("SELL", stk_cd, qty, _dry_sell_price, stk_nm)
 

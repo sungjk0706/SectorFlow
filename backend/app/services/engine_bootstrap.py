@@ -20,10 +20,10 @@ async def _login_post_pipeline() -> None:
         from backend.app.services.engine_ws import _cleanup_stale_ws_subscriptions_on_session_ready
         await _cleanup_stale_ws_subscriptions_on_session_ready()
 
-        from backend.app.core.trade_mode import is_test_mode
+        from backend.app.core.trade_mode import is_virtual_mode
 
         # 잔고 조회 — 테스트모드 생략, 실전모드는 account_rest_bootstrapped 기반만 (시간대 자의적 판정 제거)
-        if is_test_mode(engine_state.state.integrated_system_settings_cache):
+        if is_virtual_mode(engine_state.state.integrated_system_settings_cache):
             logger.info("[연산] 파이프라인 — 테스트모드 — REST 잔고 조회 생략 (가상잔고 사용)")
         elif not engine_state.state.account_rest_bootstrapped:
             logger.info("[연산] 파이프라인 — REST 잔고 선행 조회 시작")

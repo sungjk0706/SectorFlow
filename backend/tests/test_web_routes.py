@@ -31,7 +31,7 @@ class TestAccountRouter:
 
     async def test_snapshot_delegates_to_account_ssot(self):
         from backend.app.web.routes.account import get_account_snapshot
-        expected = {"trade_mode": "test", "deposit": 1_000_000}
+        expected = {"trade_mode": "virtual", "deposit": 1_000_000}
         with patch(
             "backend.app.web.routes.account.engine_account.get_account_snapshot",
             new_callable=AsyncMock,
@@ -532,9 +532,9 @@ class TestGetSettings:
 
     async def test_success(self):
         from backend.app.web.routes.settings import get_settings
-        with patch("backend.app.core.settings_store.build_masked_settings_dict", new_callable=AsyncMock, return_value={"trade_mode": "test"}):
+        with patch("backend.app.core.settings_store.build_masked_settings_dict", new_callable=AsyncMock, return_value={"trade_mode": "virtual"}):
             result = await get_settings(_="dev")
-        assert result == {"trade_mode": "test"}
+        assert result == {"trade_mode": "virtual"}
 
     async def test_exception_raises_500(self):
         from backend.app.web.routes.settings import get_settings
@@ -562,7 +562,7 @@ class TestPatchSettingField:
         with patch("backend.app.core.settings_store.apply_settings_updates", new_callable=AsyncMock, return_value={"trade_mode"}), \
              patch("backend.app.services.engine_lifecycle.is_engine_running", return_value=True), \
              patch("backend.app.services.engine_service.apply_settings_change", new_callable=AsyncMock) as mock_apply:
-            result = await patch_setting_field("trade_mode", {"value": "real"}, _="dev")
+            result = await patch_setting_field("trade_mode", {"value": "live"}, _="dev")
         assert result["ok"] is True
         mock_apply.assert_called_once_with({"trade_mode"})
 
@@ -571,7 +571,7 @@ class TestPatchSettingField:
         with patch("backend.app.core.settings_store.apply_settings_updates", new_callable=AsyncMock, return_value=set()), \
              patch("backend.app.services.engine_lifecycle.is_engine_running", return_value=True), \
              patch("backend.app.services.engine_service.apply_settings_change", new_callable=AsyncMock) as mock_apply:
-            result = await patch_setting_field("trade_mode", {"value": "test"}, _="dev")
+            result = await patch_setting_field("trade_mode", {"value": "virtual"}, _="dev")
         assert result["ok"] is True
         mock_apply.assert_not_called()
 
@@ -685,7 +685,7 @@ class TestResetTestData:
              patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock), \
              patch("backend.app.services.engine_account_notify._broadcast", new_callable=AsyncMock) as mock_broadcast:
             mock_state.integrated_system_settings_cache = {
-                "test_virtual_deposit": 10_000_000,
+                "virtual_deposit": 10_000_000,
                 "sector_stock_layout": [],
             }
             mock_state.master_stocks_cache.values.return_value = []
@@ -707,7 +707,7 @@ class TestResetTestData:
         with patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.services.trade_history.clear_test_history", new_callable=AsyncMock, side_effect=RuntimeError("db locked")):
             mock_state.integrated_system_settings_cache = {
-                "test_virtual_deposit": 10_000_000,
+                "virtual_deposit": 10_000_000,
                 "sector_stock_layout": [],
             }
             with pytest.raises(HTTPException) as exc_info:
@@ -742,7 +742,7 @@ class TestDepositHistoryRoute:
         ]
         with patch("backend.app.db.database.get_db_connection", new_callable=AsyncMock) as mock_conn, \
              patch("backend.app.db.stock_tables.get_deposit_history", new_callable=AsyncMock, return_value=mock_history) as mock_fn, \
-             patch("backend.app.services.engine_account.get_trade_mode", return_value="test"):
+             patch("backend.app.services.engine_account.get_trade_mode", return_value="virtual"):
             mock_conn.return_value = AsyncMock()
             result = await deposit_history(trade_mode=None, _="dev")
         assert result == {"deposit_history": mock_history}
@@ -752,9 +752,9 @@ class TestDepositHistoryRoute:
         from backend.app.web.routes.trade import deposit_history
         with patch("backend.app.db.database.get_db_connection", new_callable=AsyncMock) as mock_conn, \
              patch("backend.app.db.stock_tables.get_deposit_history", new_callable=AsyncMock, return_value=[]) as mock_fn, \
-             patch("backend.app.services.engine_account.get_trade_mode", return_value="test") as mock_mode:
+             patch("backend.app.services.engine_account.get_trade_mode", return_value="virtual") as mock_mode:
             mock_conn.return_value = AsyncMock()
-            result = await deposit_history(trade_mode="real", _="dev")
+            result = await deposit_history(trade_mode="live", _="dev")
         assert result == {"deposit_history": []}
         mock_fn.assert_called_once()
         # 명시적 trade_mode가 전달되면 get_trade_mode() 호출하지 않음
@@ -765,7 +765,7 @@ class TestDepositHistoryRoute:
         from backend.app.web.routes.trade import deposit_history
         with patch("backend.app.db.database.get_db_connection", new_callable=AsyncMock) as mock_conn, \
              patch("backend.app.db.stock_tables.get_deposit_history", new_callable=AsyncMock, return_value=[]), \
-             patch("backend.app.services.engine_account.get_trade_mode", return_value="test"):
+             patch("backend.app.services.engine_account.get_trade_mode", return_value="virtual"):
             mock_conn.return_value = AsyncMock()
             result = await deposit_history(trade_mode=None, _="dev")
         assert result == {"deposit_history": []}

@@ -93,8 +93,8 @@ async def _ensure_account_subscription() -> None:
 
     테스트모드에서는 계좌 구독 안 함.
     """
-    from backend.app.core.trade_mode import is_test_mode
-    if is_test_mode(engine_state.state.integrated_system_settings_cache):
+    from backend.app.core.trade_mode import is_virtual_mode
+    if is_virtual_mode(engine_state.state.integrated_system_settings_cache):
         return
 
     # 이미 구독 중이면 작업 없음 (멱등)

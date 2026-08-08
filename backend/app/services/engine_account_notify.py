@@ -441,7 +441,7 @@ def _apply_unaffordable_reject_reasons() -> None:
     from backend.app.services.engine_state import state
     from backend.app.services import dry_run
     from backend.app.services import settlement_engine
-    from backend.app.core.trade_mode import is_test_mode
+    from backend.app.core.trade_mode import is_virtual_mode
     from backend.app.services.trading import BUY_REJECT_REASON_TEXT, BUY_REJECT_RISK_CASH
 
     ss = state.sector_summary_cache
@@ -459,7 +459,7 @@ def _apply_unaffordable_reject_reasons() -> None:
         return
     if _available <= 0:
         return  # 잔액 0은 evaluate_buy_candidates에서 risk_cash로 일괄 처리
-    _is_test = is_test_mode(state.integrated_system_settings_cache)
+    _is_virtual = is_virtual_mode(state.integrated_system_settings_cache)
     _settings = state.integrated_system_settings_cache
     _buy_amt = int(_settings.get("buy_amt", 0))
     _buy_amt_on = bool(_settings.get("buy_amt_on", True))
@@ -486,9 +486,9 @@ def _apply_unaffordable_reject_reasons() -> None:
         _price = s.cur_price
         if _price is None or _price <= 0:
             continue
-        _est_price = dry_run.estimate_fill_price(_price, "BUY") if _is_test else _price
+        _est_price = dry_run.estimate_fill_price(_price, "BUY") if _is_virtual else _price
         _max_for_code = min(_effective_buy_amt, _available) if _effective_buy_amt is not None else _available
-        _can_buy = settlement_engine.max_buy_qty_for_budget(_est_price, _max_for_code, _is_test) > 0
+        _can_buy = settlement_engine.max_buy_qty_for_budget(_est_price, _max_for_code, _is_virtual) > 0
         if not _can_buy:
             if bt.reject_reason != _cash_short_text:
                 bt.reject_reason = _cash_short_text

@@ -120,7 +120,7 @@ def _build_risk_status_lines() -> str:
         return ""
 
 
-async def _build_account_brief_lines(snap: dict, is_test: bool) -> str:
+async def _build_account_brief_lines(snap: dict, is_virtual: bool) -> str:
     """계좌 요약 라인 생성 — 모드별 라벨/데이터 소스 분리 (P10 SSOT, P21 투명성, P23 일관성).
 
     프론트엔드 수익현황 페이지(profit-shared.ts renderAccountVals)와 동일 기준:
@@ -133,7 +133,7 @@ async def _build_account_brief_lines(snap: dict, is_test: bool) -> str:
     """
     from backend.app.services.trade_history import get_realized_pnl_summary
 
-    if is_test:
+    if is_virtual:
         row0_label = "누적 투자금"
         row0_val = int(snap.get("initial_deposit", 0) or 0)
     else:
@@ -147,7 +147,7 @@ async def _build_account_brief_lines(snap: dict, is_test: bool) -> str:
     snap_at    = (snap.get("snapshot_at") or "")[:19].replace("T", " ")
 
     # 누적 실현 손익 — trade_history SSOT에서 집계 (프론트엔드 aggregatePnl과 동일)
-    trade_mode = "test" if is_test else "real"
+    trade_mode = "virtual" if is_virtual else "live"
     realized_pnl, realized_buy_total = await get_realized_pnl_summary(trade_mode=trade_mode)
     # 수익률 분모: 매수원금 합계 (프론트엔드 computeCumulativePnl/aggregatePnl과 동일 — P10 SSOT)
     cum_denominator = realized_buy_total
@@ -166,7 +166,7 @@ async def _build_account_brief_lines(snap: dict, is_test: bool) -> str:
     )
 
 
-async def _compute_period_pnl(label: str, *, today_only: bool = False, date_from: str = "", date_to: str = "", is_test: bool) -> str:
+async def _compute_period_pnl(label: str, *, today_only: bool = False, date_from: str = "", date_to: str = "", is_virtual: bool) -> str:
     """기간별 실현 손익 라인 1줄 생성 (P10 SSOT — trade_history.get_realized_pnl_summary, 프론트엔드 aggregatePnl과 동일 공식).
 
     수익률 분모 = 매수원금 합계(buy_total) — 프론트엔드 computeCumulativePnl과 동일.
@@ -174,12 +174,12 @@ async def _compute_period_pnl(label: str, *, today_only: bool = False, date_from
     """
     from backend.app.services.trade_history import get_realized_pnl_summary
 
-    trade_mode = "test" if is_test else "real"
+    trade_mode = "virtual" if is_virtual else "live"
     pnl, buy_total = await get_realized_pnl_summary(
         today_only=today_only, date_from=date_from, date_to=date_to, trade_mode=trade_mode,
     )
     pnl_txt = fmt_signed_won(pnl)
-    if is_test:
+    if is_virtual:
         rate = pnl / buy_total * 100 if buy_total > 0 else 0.0
         rate_txt = f"  ({fmt_rate(rate)})"
     else:
@@ -200,8 +200,8 @@ def _build_settings_lines(flat: dict) -> str:
         return "ON" if bool(flat.get(key)) else "OFF"
 
     # 자동매매
-    mode = flat.get("trade_mode") or "test"
-    mode_txt = "테스트" if mode == "test" else "실전"
+    mode = flat.get("trade_mode") or "virtual"
+    mode_txt = "테스트" if mode == "virtual" else "실전"
     auto_lines = [
         f"🔰 마스터: {on_off('time_scheduler_on')}",
         f" 매수: {on_off('auto_buy_on')} ({flat.get('buy_time_start', '?')}~{flat.get('buy_time_end', '?')})",
@@ -621,10 +621,10 @@ class TelegramBot(TaskGuardMixin):
         실전모드: 수익률은 증권사 서버 SSOT이므로 앱에서 재계산 금지 (AGENTS.md).
         """
         try:
-            from backend.app.core.trade_mode import is_test_mode
+            from backend.app.core.trade_mode import is_virtual_mode
             from backend.app.services.engine_state import state
 
-            _is_test = is_test_mode(state.integrated_system_settings_cache)
+            _is_virtual = is_virtual_mode(state.integrated_system_settings_cache)
             now_str = datetime.now(_KST).strftime("%H:%M")
 
             from datetime import date as _date
@@ -636,20 +636,20 @@ class TelegramBot(TaskGuardMixin):
             ref_iso = ref.isoformat()
             label = period
             if period == "당일":
-                line = await _compute_period_pnl("당일", date_from=ref_iso, date_to=ref_iso, is_test=_is_test)
+                line = await _compute_period_pnl("당일", date_from=ref_iso, date_to=ref_iso, is_virtual=_is_virtual)
             elif period == "5일":
                 recent5 = get_recent_trading_days(5, from_date=ref)
                 if recent5:
                     line = await _compute_period_pnl(
-                        "5거래일", date_from=recent5[0].isoformat(), date_to=recent5[-1].isoformat(), is_test=_is_test,
+                        "5거래일", date_from=recent5[0].isoformat(), date_to=recent5[-1].isoformat(), is_virtual=_is_virtual,
                     )
                 else:
                     line = "  5거래일: 데이터 없음"
             elif period == "당월":
                 month_start = _date(ref.year, ref.month, 1).isoformat()
-                line = await _compute_period_pnl("당월", date_from=month_start, date_to=ref_iso, is_test=_is_test)
+                line = await _compute_period_pnl("당월", date_from=month_start, date_to=ref_iso, is_virtual=_is_virtual)
             else:  # 누적
-                line = await _compute_period_pnl("누적", is_test=_is_test)
+                line = await _compute_period_pnl("누적", is_virtual=_is_virtual)
 
             text = f"📈 <b>{label} 실현 손익</b> ({now_str})\n\n{line}"
             await self._send(token, chat_id, text)
@@ -693,7 +693,7 @@ class TelegramBot(TaskGuardMixin):
     async def _cmd_account(self, token: str, chat_id: str):
         try:
             from backend.app.services.engine_account import get_account_snapshot
-            from backend.app.core.trade_mode import is_test_mode
+            from backend.app.core.trade_mode import is_virtual_mode
             from backend.app.services.engine_state import state
 
             snap = await get_account_snapshot()
@@ -701,8 +701,8 @@ class TelegramBot(TaskGuardMixin):
                 await self._send(token, chat_id, " 계좌 데이터가 없습니다.\n엔진이 실행 중인지 확인하세요.")
                 return
 
-            _is_test = is_test_mode(state.integrated_system_settings_cache)
-            acct_lines = await _build_account_brief_lines(snap, _is_test)
+            _is_virtual = is_virtual_mode(state.integrated_system_settings_cache)
+            acct_lines = await _build_account_brief_lines(snap, _is_virtual)
             text = f"💼 <b>계좌 현황</b>\n\n{acct_lines}"
             await self._send(token, chat_id, text)
         except Exception as exc:

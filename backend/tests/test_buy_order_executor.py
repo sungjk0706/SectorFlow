@@ -200,7 +200,7 @@ class TestEarlyReturnGates:
         fresh_state.integrated_system_settings_cache = _default_settings(max_stock_cnt=1)
         with patch("backend.app.services.engine_state.state", fresh_state), \
              patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
-             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_virtual_mode", return_value=True), \
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                    return_value=[{"qty": 1}, {"qty": 2}]):
             await evaluate_buy_candidates()
@@ -211,7 +211,7 @@ class TestEarlyReturnGates:
         fresh_state.integrated_system_settings_cache = _default_settings(buy_amt=0)
         with patch("backend.app.services.engine_state.state", fresh_state), \
              patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
-             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_virtual_mode", return_value=True), \
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                    return_value=[]):
             await evaluate_buy_candidates()
@@ -223,7 +223,7 @@ class TestEarlyReturnGates:
         fresh_state.integrated_system_settings_cache = _default_settings(buy_amt_on=False, buy_amt=0)
         with patch("backend.app.services.engine_state.state", fresh_state), \
              patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
-             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_virtual_mode", return_value=True), \
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                    return_value=[]), \
              patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm, \
@@ -240,7 +240,7 @@ class TestEarlyReturnGates:
         fresh_state.integrated_system_settings_cache = _default_settings(max_stock_cnt_on=False, max_stock_cnt=1)
         with patch("backend.app.services.engine_state.state", fresh_state), \
              patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
-             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_virtual_mode", return_value=True), \
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                    return_value=[{"qty": 1}, {"qty": 2}]), \
              patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm, \
@@ -258,7 +258,7 @@ class TestEarlyReturnGates:
         fresh_state.auto_trade._daily_buy_spent = 5_000_000
         with patch("backend.app.services.engine_state.state", fresh_state), \
              patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
-             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_virtual_mode", return_value=True), \
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                    return_value=[]):
             await evaluate_buy_candidates()
@@ -272,7 +272,7 @@ class TestCashInsufficientGate:
     async def test_zero_cash_sets_gate_and_returns(self, fresh_state, reset_cash_gate):
         with patch("backend.app.services.engine_state.state", fresh_state), \
              patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
-             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_virtual_mode", return_value=True), \
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                    return_value=[]), \
              patch("backend.app.services.settlement_engine.get_available_cash", return_value=0):
@@ -285,7 +285,7 @@ class TestCashInsufficientGate:
         buy_order_executor._cash_insufficient = True
         with patch("backend.app.services.engine_state.state", fresh_state), \
              patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
-             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_virtual_mode", return_value=True), \
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                    return_value=[]), \
              patch("backend.app.services.settlement_engine.get_available_cash", return_value=10_000_000), \
@@ -306,7 +306,7 @@ class TestBuyIntervalGate:
         fresh_state._last_global_buy_ts = _time.time()
         with patch("backend.app.services.engine_state.state", fresh_state), \
              patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
-             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_virtual_mode", return_value=True), \
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                    return_value=[]), \
              patch("backend.app.services.settlement_engine.get_available_cash", return_value=10_000_000):
@@ -322,7 +322,7 @@ class TestBuyIntervalGate:
         fresh_state._last_global_buy_ts = _time.time() - 120  # 120초 전 (간격 60초 초과)
         with patch("backend.app.services.engine_state.state", fresh_state), \
              patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
-             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_virtual_mode", return_value=True), \
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                    return_value=[]), \
              patch("backend.app.services.settlement_engine.get_available_cash", return_value=10_000_000), \
@@ -339,7 +339,7 @@ class TestBuyIntervalGate:
         fresh_state._last_global_buy_ts = _time.time()  # 간격 내라도 토글 OFF면 통과
         with patch("backend.app.services.engine_state.state", fresh_state), \
              patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
-             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_virtual_mode", return_value=True), \
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                    return_value=[]), \
              patch("backend.app.services.settlement_engine.get_available_cash", return_value=10_000_000), \
@@ -356,7 +356,7 @@ class TestBuyIntervalGate:
         fresh_state._last_global_buy_ts = _time.time()  # 간격 내라도 0초=비활성이면 통과
         with patch("backend.app.services.engine_state.state", fresh_state), \
              patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
-             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_virtual_mode", return_value=True), \
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                    return_value=[]), \
              patch("backend.app.services.settlement_engine.get_available_cash", return_value=10_000_000), \
@@ -373,7 +373,7 @@ class TestBuyExecution:
         fresh_state.auto_trade.execute_buy = AsyncMock(return_value=(True, ""))
         with patch("backend.app.services.engine_state.state", fresh_state), \
              patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
-             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_virtual_mode", return_value=True), \
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                    return_value=[]), \
              patch("backend.app.services.settlement_engine.get_available_cash", return_value=10_000_000), \
@@ -397,7 +397,7 @@ class TestBuyExecution:
         fresh_state.auto_trade.execute_buy = AsyncMock(return_value=(True, ""))
         with patch("backend.app.services.engine_state.state", fresh_state), \
              patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
-             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_virtual_mode", return_value=True), \
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                    return_value=[]), \
              patch("backend.app.services.settlement_engine.get_available_cash", return_value=10_000_000), \
@@ -417,7 +417,7 @@ class TestBuyExecution:
         fresh_state.auto_trade.execute_buy = AsyncMock(return_value=(True, ""))
         with patch("backend.app.services.engine_state.state", fresh_state), \
              patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
-             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_virtual_mode", return_value=True), \
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                    return_value=[]), \
              patch("backend.app.services.settlement_engine.get_available_cash", return_value=10_000_000), \
@@ -435,7 +435,7 @@ class TestBuyExecution:
         fresh_state.auto_trade.execute_buy = AsyncMock(return_value=(True, ""))
         with patch("backend.app.services.engine_state.state", fresh_state), \
              patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
-             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_virtual_mode", return_value=True), \
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                    return_value=[]), \
              patch("backend.app.services.settlement_engine.get_available_cash", return_value=10_000_000), \
@@ -453,7 +453,7 @@ class TestBuyExecution:
         fresh_state.auto_trade.execute_buy = AsyncMock(return_value=(True, ""))
         with patch("backend.app.services.engine_state.state", fresh_state), \
              patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
-             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_virtual_mode", return_value=True), \
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                    return_value=[]), \
              patch("backend.app.services.settlement_engine.get_available_cash", return_value=10_000_000), \
@@ -466,7 +466,7 @@ class TestBuyExecution:
         fresh_state.auto_trade.execute_buy = AsyncMock(side_effect=Exception("test error"))
         with patch("backend.app.services.engine_state.state", fresh_state), \
              patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
-             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_virtual_mode", return_value=True), \
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                    return_value=[]), \
              patch("backend.app.services.settlement_engine.get_available_cash", return_value=10_000_000), \
@@ -487,7 +487,7 @@ class TestGlobalSnapshotCache:
         patches = [
             patch("backend.app.services.engine_state.state", fresh_state),
             patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True),
-            patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True),
+            patch("backend.app.services.buy_order_executor.is_virtual_mode", return_value=True),
             patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                   return_value=[]),
             patch("backend.app.services.settlement_engine.get_available_cash", return_value=10_000_000),
@@ -516,7 +516,7 @@ class TestGlobalSnapshotCache:
         patches = [
             patch("backend.app.services.engine_state.state", fresh_state),
             patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True),
-            patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True),
+            patch("backend.app.services.buy_order_executor.is_virtual_mode", return_value=True),
             patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                   return_value=[]),
             patch("backend.app.services.settlement_engine.get_available_cash", return_value=10_000_000),
@@ -553,7 +553,7 @@ class TestGlobalSnapshotCache:
         patches = [
             patch("backend.app.services.engine_state.state", fresh_state),
             patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True),
-            patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True),
+            patch("backend.app.services.buy_order_executor.is_virtual_mode", return_value=True),
             patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                   return_value=[]),
             patch("backend.app.services.settlement_engine.get_available_cash", return_value=10_000_000),
@@ -600,7 +600,7 @@ class TestGlobalSnapshotCache:
         patches = [
             patch("backend.app.services.engine_state.state", fresh_state),
             patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True),
-            patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True),
+            patch("backend.app.services.buy_order_executor.is_virtual_mode", return_value=True),
             patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                   return_value=[]),
             patch("backend.app.services.settlement_engine.get_available_cash", return_value=10_000_000),
@@ -641,7 +641,7 @@ class TestGlobalSnapshotCache:
         patches = [
             patch("backend.app.services.engine_state.state", fresh_state),
             patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True),
-            patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True),
+            patch("backend.app.services.buy_order_executor.is_virtual_mode", return_value=True),
             patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                   return_value=[]),
             patch("backend.app.services.settlement_engine.get_available_cash", return_value=10_000_000),
@@ -682,7 +682,7 @@ class TestPriceBasedFiltering:
         # available=50_000 < 70100 → _buyable_codes에서 제외
         with patch("backend.app.services.engine_state.state", fresh_state), \
              patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
-             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_virtual_mode", return_value=True), \
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                    return_value=[]), \
              patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm, \
@@ -699,7 +699,7 @@ class TestPriceBasedFiltering:
         # available=10_000_000 >= 70100 → _buyable_codes에 포함
         with patch("backend.app.services.engine_state.state", fresh_state), \
              patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
-             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_virtual_mode", return_value=True), \
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                    return_value=[]), \
              patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm, \
@@ -717,7 +717,7 @@ class TestPriceBasedFiltering:
         fresh_state.integrated_system_settings_cache = _default_settings(buy_amt_on=False, buy_amt=0)
         with patch("backend.app.services.engine_state.state", fresh_state), \
              patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
-             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_virtual_mode", return_value=True), \
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                    return_value=[]), \
              patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm, \
@@ -733,7 +733,7 @@ class TestPriceBasedFiltering:
         fresh_state.auto_trade._bought_today = {"005930": 1234567890.0}
         with patch("backend.app.services.engine_state.state", fresh_state), \
              patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
-             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_virtual_mode", return_value=True), \
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                    return_value=[]), \
              patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm, \
@@ -750,7 +750,7 @@ class TestPriceBasedFiltering:
         fresh_state.auto_trade.execute_buy = AsyncMock(return_value=(False, BUY_REJECT_RISE_GUARD))
         with patch("backend.app.services.engine_state.state", fresh_state), \
              patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
-             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_virtual_mode", return_value=True), \
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                    return_value=[]), \
              patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm, \
@@ -805,7 +805,7 @@ class TestMultiRankBuyAlgorithm:
         fresh_state.auto_trade.execute_buy = AsyncMock(return_value=(True, ""))
         with patch("backend.app.services.engine_state.state", fresh_state), \
              patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
-             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_virtual_mode", return_value=True), \
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                    return_value=[]), \
              patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm, \
@@ -822,7 +822,7 @@ class TestMultiRankBuyAlgorithm:
         fresh_state.auto_trade.execute_buy = AsyncMock(return_value=(True, ""))
         with patch("backend.app.services.engine_state.state", fresh_state), \
              patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
-             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_virtual_mode", return_value=True), \
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                    return_value=[]), \
              patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm, \
@@ -841,7 +841,7 @@ class TestMultiRankBuyAlgorithm:
         fresh_state.auto_trade.execute_buy = AsyncMock(return_value=(True, ""))
         with patch("backend.app.services.engine_state.state", fresh_state), \
              patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
-             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_virtual_mode", return_value=True), \
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                    return_value=[]), \
              patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm, \
@@ -865,7 +865,7 @@ class TestMultiRankBuyAlgorithm:
         fresh_state.auto_trade.execute_buy = AsyncMock(side_effect=_set_daily_spent)
         with patch("backend.app.services.engine_state.state", fresh_state), \
              patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
-             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_virtual_mode", return_value=True), \
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                    return_value=[]), \
              patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm, \
@@ -882,7 +882,7 @@ class TestMultiRankBuyAlgorithm:
         fresh_state.auto_trade.execute_buy = AsyncMock(return_value=(False, BUY_REJECT_RISE_GUARD))
         with patch("backend.app.services.engine_state.state", fresh_state), \
              patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
-             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_virtual_mode", return_value=True), \
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                    return_value=[]), \
              patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm, \
@@ -899,7 +899,7 @@ class TestMultiRankBuyAlgorithm:
         fresh_state.auto_trade.execute_buy = AsyncMock(return_value=(False, BUY_REJECT_AUTO_BUY_OFF))
         with patch("backend.app.services.engine_state.state", fresh_state), \
              patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
-             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_virtual_mode", return_value=True), \
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                    return_value=[]), \
              patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm, \
@@ -916,7 +916,7 @@ class TestMultiRankBuyAlgorithm:
         fresh_state.auto_trade.execute_buy = AsyncMock(return_value=(False, BUY_REJECT_RISK_LOSS_RATE))
         with patch("backend.app.services.engine_state.state", fresh_state), \
              patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
-             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_virtual_mode", return_value=True), \
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                    return_value=[]), \
              patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm, \
@@ -933,7 +933,7 @@ class TestMultiRankBuyAlgorithm:
         fresh_state.auto_trade.execute_buy = AsyncMock(return_value=(False, BUY_REJECT_RISK_CONSEC_LOSS))
         with patch("backend.app.services.engine_state.state", fresh_state), \
              patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
-             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_virtual_mode", return_value=True), \
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                    return_value=[]), \
              patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm, \
@@ -950,7 +950,7 @@ class TestMultiRankBuyAlgorithm:
         fresh_state.auto_trade.execute_buy = AsyncMock(return_value=(False, BUY_REJECT_QTY_ZERO))
         with patch("backend.app.services.engine_state.state", fresh_state), \
              patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
-             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_virtual_mode", return_value=True), \
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                    return_value=[]), \
              patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm, \
@@ -969,7 +969,7 @@ class TestMultiRankBuyAlgorithm:
         fresh_state.auto_trade.execute_buy = AsyncMock(return_value=(False, BUY_REJECT_QTY_ZERO))
         with patch("backend.app.services.engine_state.state", fresh_state), \
              patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
-             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_virtual_mode", return_value=True), \
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                    return_value=[]), \
              patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm, \
@@ -986,7 +986,7 @@ class TestMultiRankBuyAlgorithm:
         fresh_state.auto_trade.execute_buy = AsyncMock(side_effect=Exception("test error"))
         with patch("backend.app.services.engine_state.state", fresh_state), \
              patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
-             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_virtual_mode", return_value=True), \
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                    return_value=[]), \
              patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm, \
@@ -1003,7 +1003,7 @@ class TestMultiRankBuyAlgorithm:
         fresh_state.auto_trade.execute_buy = AsyncMock(return_value=(True, ""))
         with patch("backend.app.services.engine_state.state", fresh_state), \
              patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
-             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_virtual_mode", return_value=True), \
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                    return_value=[]), \
              patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm, \
@@ -1039,7 +1039,7 @@ class TestRejectReasonRecording:
         fresh_state.integrated_system_settings_cache = _default_settings(max_stock_cnt=1)
         with patch("backend.app.services.engine_state.state", fresh_state), \
              patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
-             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_virtual_mode", return_value=True), \
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                    return_value=[{"qty": 1}, {"qty": 2}]):
             await evaluate_buy_candidates()
@@ -1055,7 +1055,7 @@ class TestRejectReasonRecording:
         fresh_state.integrated_system_settings_cache = _default_settings(buy_amt=0)
         with patch("backend.app.services.engine_state.state", fresh_state), \
              patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
-             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_virtual_mode", return_value=True), \
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                    return_value=[]):
             await evaluate_buy_candidates()
@@ -1073,7 +1073,7 @@ class TestRejectReasonRecording:
         fresh_state.auto_trade._daily_buy_spent = 5_000_000
         with patch("backend.app.services.engine_state.state", fresh_state), \
              patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
-             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_virtual_mode", return_value=True), \
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                    return_value=[]):
             await evaluate_buy_candidates()
@@ -1087,7 +1087,7 @@ class TestRejectReasonRecording:
         """예수금 부족 → 모든 guard_pass 후보 bt.reject_reason = "예수금 부족"."""
         with patch("backend.app.services.engine_state.state", fresh_state), \
              patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
-             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_virtual_mode", return_value=True), \
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                    return_value=[]), \
              patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm:
@@ -1109,7 +1109,7 @@ class TestRejectReasonRecording:
         )
         with patch("backend.app.services.engine_state.state", fresh_state), \
              patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
-             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_virtual_mode", return_value=True), \
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                    return_value=[]), \
              patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm, \
@@ -1132,7 +1132,7 @@ class TestRejectReasonRecording:
         fresh_state.auto_trade.execute_buy = AsyncMock(return_value=(False, BUY_REJECT_AUTO_BUY_OFF))
         with patch("backend.app.services.engine_state.state", fresh_state), \
              patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
-             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_virtual_mode", return_value=True), \
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                    return_value=[]), \
              patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm, \
@@ -1152,7 +1152,7 @@ class TestRejectReasonRecording:
         fresh_state.auto_trade.execute_buy = AsyncMock(return_value=(True, ""))
         with patch("backend.app.services.engine_state.state", fresh_state), \
              patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
-             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_virtual_mode", return_value=True), \
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                    return_value=[]), \
              patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm, \
@@ -1174,7 +1174,7 @@ class TestRejectReasonRecording:
         fresh_state.auto_trade.execute_buy = AsyncMock(return_value=(False, BUY_REJECT_QTY_ZERO))
         with patch("backend.app.services.engine_state.state", fresh_state), \
              patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
-             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_virtual_mode", return_value=True), \
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                    return_value=[]), \
              patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm, \
@@ -1306,7 +1306,7 @@ class TestBuyReasonBoostString:
         self._state_with_stock(s, fresh_state)
         with patch("backend.app.services.engine_state.state", fresh_state), \
              patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
-             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_virtual_mode", return_value=True), \
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock, return_value=[]), \
              patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm, \
              patch("backend.app.services.daily_time_scheduler.is_order_blocked_by_time", return_value=False):
@@ -1323,7 +1323,7 @@ class TestBuyReasonBoostString:
         self._state_with_stock(s, fresh_state)
         with patch("backend.app.services.engine_state.state", fresh_state), \
              patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
-             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_virtual_mode", return_value=True), \
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock, return_value=[]), \
              patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm, \
              patch("backend.app.services.daily_time_scheduler.is_order_blocked_by_time", return_value=False):
@@ -1340,7 +1340,7 @@ class TestBuyReasonBoostString:
         self._state_with_stock(s, fresh_state)
         with patch("backend.app.services.engine_state.state", fresh_state), \
              patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
-             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_virtual_mode", return_value=True), \
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock, return_value=[]), \
              patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm, \
              patch("backend.app.services.daily_time_scheduler.is_order_blocked_by_time", return_value=False):

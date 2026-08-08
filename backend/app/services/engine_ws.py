@@ -128,14 +128,14 @@ async def _ensure_ws_subscriptions_for_positions() -> None:
     테스트모드: 계좌 구독(00/04) 생략, 보유종목 시세(0B)만 구독.
     실전투자: 계좌 구독 + 보유종목 시세 모두 구독.
     """
-    from backend.app.core.trade_mode import is_test_mode
+    from backend.app.core.trade_mode import is_virtual_mode
     from backend.app.services.engine_account import _refresh_account_snapshot_meta
 
     try:
         ws = engine_state.state.connector_manager
         if not ws or not ws.is_connected() or not engine_state.state.login_ok:
             return
-        if not is_test_mode(engine_state.state.integrated_system_settings_cache):
+        if not is_virtual_mode(engine_state.state.integrated_system_settings_cache):
             await _subscribe_account_realtime()
         else:
             logger.info("[구독] 테스트모드 — 계좌 실시간 구독 생략")

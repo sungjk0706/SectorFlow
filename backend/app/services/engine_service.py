@@ -178,12 +178,12 @@ def _build_changed_dict(changed_keys: set[str]) -> dict:
 async def _apply_virtual_balance_change(changed_keys: set[str]) -> None:
     """테스트모드 가상 예수금 변경 시 Settlement Engine 동기화 + 계좌 스냅샷 갱신."""
     from backend.app.services import settlement_engine as _se
-    _VIRTUAL_BALANCE_KEYS = {"test_virtual_balance", "test_virtual_deposit"}
+    _VIRTUAL_BALANCE_KEYS = {"virtual_balance", "virtual_deposit"}
     if not (changed_keys & _VIRTUAL_BALANCE_KEYS):
         return
     try:
         _s = engine_state.state.integrated_system_settings_cache
-        _deposit = int(_s.get("test_virtual_balance", _s.get("test_virtual_deposit", 10_000_000)) or 0)
+        _deposit = int(_s.get("virtual_balance", _s.get("virtual_deposit", 10_000_000)) or 0)
         await _se.reset(_deposit)
         # 계좌 스냅샷 갱신 + WS account-update 발송
         await _refresh_account_snapshot_meta()

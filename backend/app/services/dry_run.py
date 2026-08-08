@@ -46,7 +46,7 @@ async def _refresh_positions_if_dirty() -> None:
         return
     _positions_loaded = True
     from backend.app.services import trade_history
-    computed = await trade_history.build_positions_from_trades("test")
+    computed = await trade_history.build_positions_from_trades("virtual")
     # 비파생 필드 보존: cur_price, change, change_rate, bid_depth, ask_depth (stk_nm은 별도 처리)
     _preserve_fields = ("cur_price", "change", "change_rate", "bid_depth", "ask_depth")
     for cd, new_pos in computed.items():
@@ -328,7 +328,7 @@ async def set_virtual_deposit(amount: int) -> None:
     """가상 예수금 설정값 저장."""
     from backend.app.core.settings_store import apply_settings_updates
     await apply_settings_updates({
-        "test_virtual_deposit": amount,
-        "test_virtual_balance": amount,
+        "virtual_deposit": amount,
+        "virtual_balance": amount,
     })
     logger.info("[매매] 가상 예수금 설정: %s원", f"{amount:,}")

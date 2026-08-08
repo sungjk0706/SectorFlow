@@ -83,7 +83,7 @@ async def _handle_sell_check(request: dict, state) -> None:
     1단계에서는 큐에 put하는 지점이 없으므로 본 분기는 실행되지 않음.
     2단계에서 시세 루프가 order_queue에 {type:"sell_check", codes:[nk_px]}를 put하면 호출됨.
     """
-    from backend.app.core.trade_mode import is_test_mode
+    from backend.app.core.trade_mode import is_virtual_mode
     from backend.app.services import dry_run
     from backend.app.services.auto_trading_effective import auto_sell_effective
     from backend.app.services.engine_symbol_utils import _base_stk_cd
@@ -93,7 +93,7 @@ async def _handle_sell_check(request: dict, state) -> None:
         return
 
     for nk_px in codes:
-        if is_test_mode(state.integrated_system_settings_cache):
+        if is_virtual_mode(state.integrated_system_settings_cache):
             _pos = await dry_run.get_position(nk_px)
             if _pos:
                 await state.auto_trade.check_sell_conditions(

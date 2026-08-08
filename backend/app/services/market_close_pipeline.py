@@ -544,7 +544,7 @@ async def _save_daily_snapshot(trade_mode: str) -> None:
     accumulated = int(snap.get("accumulated_investment", 0) or 0)
     daily_deposit = settlement_engine.get_daily_deposit_total()
 
-    if trade_mode == "test":
+    if trade_mode == "virtual":
         total_asset = orderable + total_eval
     else:
         total_asset = deposit + total_eval

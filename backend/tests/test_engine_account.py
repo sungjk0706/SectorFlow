@@ -24,19 +24,19 @@ class TestGetAccountSnapshot:
     @pytest.mark.asyncio
     async def test_existing_snapshot(self):
         with patch("backend.app.services.engine_account.state") as mock_state, \
-             patch("backend.app.services.engine_account.is_test_mode", return_value=False):
-            mock_state.account_snapshot = {"deposit": 5000000, "trade_mode": "real"}
+             patch("backend.app.services.engine_account.is_virtual_mode", return_value=False):
+            mock_state.account_snapshot = {"deposit": 5000000, "trade_mode": "live"}
             result = await get_account_snapshot()
             assert result["deposit"] == 5000000
-            assert result["trade_mode"] == "real"
+            assert result["trade_mode"] == "live"
 
     @pytest.mark.asyncio
     async def test_empty_snapshot_real_mode(self):
         with patch("backend.app.services.engine_account.state") as mock_state, \
-             patch("backend.app.services.engine_account.is_test_mode", return_value=False):
+             patch("backend.app.services.engine_account.is_virtual_mode", return_value=False):
             mock_state.account_snapshot = {}
             result = await get_account_snapshot()
-            assert result["trade_mode"] == "real"
+            assert result["trade_mode"] == "live"
             assert result["total_buy"] == 0
             assert result["total_eval"] == 0
             assert result["position_count"] == 0
@@ -44,12 +44,12 @@ class TestGetAccountSnapshot:
     @pytest.mark.asyncio
     async def test_empty_snapshot_test_mode(self):
         with patch("backend.app.services.engine_account.state") as mock_state, \
-             patch("backend.app.services.engine_account.is_test_mode", return_value=True), \
+             patch("backend.app.services.engine_account.is_virtual_mode", return_value=True), \
              patch("backend.app.services.settlement_engine.get_accumulated_investment", return_value=10000000), \
              patch("backend.app.services.settlement_engine.get_orderable", return_value=8000000):
             mock_state.account_snapshot = {}
             result = await get_account_snapshot()
-            assert result["trade_mode"] == "test"
+            assert result["trade_mode"] == "virtual"
             assert result["accumulated_investment"] == 10000000
             assert result["orderable"] == 8000000
             assert result["initial_deposit"] == 10000000
@@ -59,12 +59,12 @@ class TestGetAccountSnapshot:
 
 class TestGetTradeMode:
     def test_real(self):
-        with patch("backend.app.services.engine_account.is_test_mode", return_value=False):
-            assert get_trade_mode() == "real"
+        with patch("backend.app.services.engine_account.is_virtual_mode", return_value=False):
+            assert get_trade_mode() == "live"
 
     def test_test(self):
-        with patch("backend.app.services.engine_account.is_test_mode", return_value=True):
-            assert get_trade_mode() == "test"
+        with patch("backend.app.services.engine_account.is_virtual_mode", return_value=True):
+            assert get_trade_mode() == "virtual"
 
 
 # ── get_positions ───────────────────────────────────────────────────────────────────
@@ -73,14 +73,14 @@ class TestGetPositions:
     @pytest.mark.asyncio
     async def test_real_mode(self):
         with patch("backend.app.services.engine_account.state") as mock_state, \
-             patch("backend.app.services.engine_account.is_test_mode", return_value=False):
+             patch("backend.app.services.engine_account.is_virtual_mode", return_value=False):
             mock_state.positions = [{"stk_cd": "005930", "qty": 10}]
             result = await get_positions()
             assert result == [{"stk_cd": "005930", "qty": 10}]
 
     @pytest.mark.asyncio
     async def test_test_mode(self):
-        with patch("backend.app.services.engine_account.is_test_mode", return_value=True), \
+        with patch("backend.app.services.engine_account.is_virtual_mode", return_value=True), \
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock, return_value=[{"stk_cd": "005930", "qty": 5}]):
             result = await get_positions()
             assert result == [{"stk_cd": "005930", "qty": 5}]

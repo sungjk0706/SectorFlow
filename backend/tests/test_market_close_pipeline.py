@@ -528,7 +528,7 @@ class TestRunPostConfirmedPipeline:
     async def test_calls_save_daily_snapshot(self):
         """_save_daily_snapshot 호출 검증 (P25 격리 — 스냅샷 실패 시 파이프라인 중단 안 함)."""
         with patch("backend.app.services.market_close_pipeline._save_daily_snapshot", new_callable=AsyncMock) as mock_snap, \
-             patch("backend.app.services.engine_account.get_trade_mode", return_value="test"):
+             patch("backend.app.services.engine_account.get_trade_mode", return_value="virtual"):
             await _run_post_confirmed_pipeline()
             mock_snap.assert_awaited_once()
 
@@ -536,7 +536,7 @@ class TestRunPostConfirmedPipeline:
     async def test_snapshot_exception_does_not_raise(self):
         """스냅샷 저장 실패 시 예외 전파 없이 진행 (P25 격리)."""
         with patch("backend.app.services.market_close_pipeline._save_daily_snapshot", new_callable=AsyncMock, side_effect=Exception("boom")), \
-             patch("backend.app.services.engine_account.get_trade_mode", return_value="test"):
+             patch("backend.app.services.engine_account.get_trade_mode", return_value="virtual"):
             await _run_post_confirmed_pipeline()  # 예외 발생 안 함
 
     @pytest.mark.asyncio
@@ -551,7 +551,7 @@ class TestRunPostConfirmedPipeline:
         assert not hasattr(mcp, "_save_confirmed_cache"), "_save_confirmed_cache 가 제거되지 않았습니다 (세션 2 회귀)"
         # _run_post_confirmed_pipeline 호출 시 스냅샷만 수행 (DB 재저장 없음)
         with patch("backend.app.services.market_close_pipeline._save_daily_snapshot", new_callable=AsyncMock) as mock_snap, \
-             patch("backend.app.services.engine_account.get_trade_mode", return_value="test"):
+             patch("backend.app.services.engine_account.get_trade_mode", return_value="virtual"):
             await _run_post_confirmed_pipeline(eligible_codes={"005930"})
             mock_snap.assert_awaited_once()
 

@@ -41,7 +41,7 @@ def _mock_state(**overrides):
     mock.master_stocks_cache = overrides.get("master_stocks_cache", {"005930": {"name": "삼성전자"}})
     mock.sector_summary_cache = overrides.get("sector_summary_cache", None)
     mock.integrated_system_settings_cache = overrides.get(
-        "integrated_system_settings_cache", {"trade_mode": "test"}
+        "integrated_system_settings_cache", {"trade_mode": "virtual"}
     )
     mock.account_rest_bootstrapped = overrides.get("account_rest_bootstrapped", False)
     mock.sector_summary_ready_event = overrides.get("sector_summary_ready_event", MagicMock(is_set=MagicMock(return_value=True)))
@@ -78,7 +78,7 @@ class TestStockSubscriptionDerivation:
         """보유 종목 — 기존 보유 목록에서 수량 양수 코드만 추출."""
         reg = PageTargetRegistry()
         with patch("backend.app.services.engine_state.state", _mock_state()), \
-             patch("backend.app.core.trade_mode.is_test_mode", return_value=True), \
+             patch("backend.app.core.trade_mode.is_virtual_mode", return_value=True), \
              patch("backend.app.services.engine_account.get_held_codes",
                    new=AsyncMock(return_value={"005930", "000660"})):
             results = await reg.refresh("테스트", {PAGE_SELL_POSITION})
@@ -89,7 +89,7 @@ class TestStockSubscriptionDerivation:
         """수익 현황 — 보유 종목 대상 집합을 재사용 (같은 원본 결과)."""
         reg = PageTargetRegistry()
         with patch("backend.app.services.engine_state.state", _mock_state()), \
-             patch("backend.app.core.trade_mode.is_test_mode", return_value=True), \
+             patch("backend.app.core.trade_mode.is_virtual_mode", return_value=True), \
              patch("backend.app.services.engine_account.get_held_codes",
                    new=AsyncMock(return_value={"005930", "000660"})):
             results = await reg.refresh("테스트", {PAGE_SELL_POSITION, PAGE_PROFIT_OVERVIEW})
@@ -229,7 +229,7 @@ class TestHoldPositionChanges:
         reg = PageTargetRegistry()
         held_iter = iter([{"005930"}, {"005930", "000660"}])
         with patch("backend.app.services.engine_state.state", _mock_state()), \
-             patch("backend.app.core.trade_mode.is_test_mode", return_value=True), \
+             patch("backend.app.core.trade_mode.is_virtual_mode", return_value=True), \
              patch("backend.app.services.engine_account.get_held_codes",
                    new=AsyncMock(side_effect=lambda *a, **k: next(held_iter))):
             await reg.refresh("초기", {PAGE_SELL_POSITION})
@@ -242,7 +242,7 @@ class TestHoldPositionChanges:
         # 005930 수량 0으로 부분 매도 → 제거
         held_iter = iter([{"005930", "000660"}, {"000660"}])
         with patch("backend.app.services.engine_state.state", _mock_state()), \
-             patch("backend.app.core.trade_mode.is_test_mode", return_value=True), \
+             patch("backend.app.core.trade_mode.is_virtual_mode", return_value=True), \
              patch("backend.app.services.engine_account.get_held_codes",
                    new=AsyncMock(side_effect=lambda *a, **k: next(held_iter))):
             await reg.refresh("초기", {PAGE_SELL_POSITION})
@@ -255,7 +255,7 @@ class TestHoldPositionChanges:
         # 전량 매도 → 빈 집합 (실제 빈 대상 — ready 유지)
         held_iter = iter([{"005930"}, set()])
         with patch("backend.app.services.engine_state.state", _mock_state()), \
-             patch("backend.app.core.trade_mode.is_test_mode", return_value=True), \
+             patch("backend.app.core.trade_mode.is_virtual_mode", return_value=True), \
              patch("backend.app.services.engine_account.get_held_codes",
                    new=AsyncMock(side_effect=lambda *a, **k: next(held_iter))):
             await reg.refresh("초기", {PAGE_SELL_POSITION})
@@ -357,7 +357,7 @@ class TestFailurePreservesPreviousState:
         with patch("backend.app.services.engine_state.state") as mock_state:
             mock_state.master_stocks_cache = next(cache_iter)
             mock_state.sector_summary_cache = None
-            mock_state.integrated_system_settings_cache = {"trade_mode": "test"}
+            mock_state.integrated_system_settings_cache = {"trade_mode": "virtual"}
             mock_state.account_rest_bootstrapped = False
             with patch("backend.app.services.sector_data_provider.get_sector_summary_inputs",
                        new=AsyncMock(return_value={"all_filter_codes": ["005930"]})):
@@ -418,7 +418,7 @@ class TestInitializeAll:
     async def test_initialize_all_creates_all_allowed_pages(self):
         reg = PageTargetRegistry()
         with patch("backend.app.services.engine_state.state", _mock_state()), \
-             patch("backend.app.core.trade_mode.is_test_mode", return_value=True), \
+             patch("backend.app.core.trade_mode.is_virtual_mode", return_value=True), \
              patch("backend.app.services.engine_account.get_held_codes", new=AsyncMock(return_value=set())), \
              patch("backend.app.services.sector_data_provider.get_sector_summary_inputs",
                    new=AsyncMock(return_value={"all_filter_codes": []})), \
@@ -445,7 +445,7 @@ class TestInitializePageTargetsEntryPoint:
         ready_event.wait = AsyncMock()
         with patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.services.engine_lifecycle.is_engine_running", return_value=True), \
-             patch("backend.app.core.trade_mode.is_test_mode", return_value=True), \
+             patch("backend.app.core.trade_mode.is_virtual_mode", return_value=True), \
              patch("backend.app.services.engine_account.get_held_codes", new=AsyncMock(return_value=set())), \
              patch("backend.app.services.sector_data_provider.get_sector_summary_inputs",
                    new=AsyncMock(return_value={"all_filter_codes": []})), \
@@ -454,7 +454,7 @@ class TestInitializePageTargetsEntryPoint:
             mock_state.sector_summary_ready_event = ready_event
             mock_state.master_stocks_cache = {"A": {}}
             mock_state.sector_summary_cache = MagicMock()
-            mock_state.integrated_system_settings_cache = {"trade_mode": "test"}
+            mock_state.integrated_system_settings_cache = {"trade_mode": "virtual"}
             mock_state.account_rest_bootstrapped = False
             await initialize_page_targets()
         ready_event.wait.assert_awaited_once()
@@ -519,9 +519,9 @@ class TestRealModeHoldReadiness:
     async def test_real_mode_not_bootstrapped_not_ready(self):
         reg = PageTargetRegistry()
         with patch("backend.app.services.engine_state.state",
-                   _mock_state(integrated_system_settings_cache={"trade_mode": "real"},
+                   _mock_state(integrated_system_settings_cache={"trade_mode": "live"},
                                account_rest_bootstrapped=False)), \
-             patch("backend.app.core.trade_mode.is_test_mode", return_value=False):
+             patch("backend.app.core.trade_mode.is_virtual_mode", return_value=False):
             r = await reg.refresh("초기", {PAGE_SELL_POSITION})
         assert not r[PAGE_SELL_POSITION].ready
         assert not r[PAGE_SELL_POSITION].changed
@@ -529,9 +529,9 @@ class TestRealModeHoldReadiness:
     async def test_real_mode_bootstrapped_ready(self):
         reg = PageTargetRegistry()
         with patch("backend.app.services.engine_state.state",
-                   _mock_state(integrated_system_settings_cache={"trade_mode": "real"},
+                   _mock_state(integrated_system_settings_cache={"trade_mode": "live"},
                                account_rest_bootstrapped=True)), \
-             patch("backend.app.core.trade_mode.is_test_mode", return_value=False), \
+             patch("backend.app.core.trade_mode.is_virtual_mode", return_value=False), \
              patch("backend.app.services.engine_account.get_held_codes",
                    new=AsyncMock(return_value={"005930"})):
             r = await reg.refresh("잔고 조회 후", {PAGE_SELL_POSITION})

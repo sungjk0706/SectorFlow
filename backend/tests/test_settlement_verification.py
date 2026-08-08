@@ -51,7 +51,7 @@ def _noop_sync(*args, **kwargs) -> None:
 # ── 픽스처 ───────────────────────────────────────────────────────────────────
 
 _TEST_SETTINGS = {
-    "trade_mode": "test",
+    "trade_mode": "virtual",
     "time_scheduler_on": False,
 }
 _TEST_CODE = "005930"
@@ -115,7 +115,7 @@ async def _do_buy(code: str, qty: int, price: int, stk_nm: str = "") -> None:
     fill_price = dry_run.estimate_fill_price(price, "BUY")
     await trade_history.record_buy(
         stk_cd=code, stk_nm=stk_nm, price=fill_price, qty=qty,
-        reason="test", trade_mode="test",
+        reason="test", trade_mode="virtual",
     )
     await dry_run.fake_fill_event("BUY", code, qty, price, stk_nm)
 
@@ -129,7 +129,7 @@ async def _do_sell(code: str, qty: int, price: int, stk_nm: str = "") -> None:
     await trade_history.record_sell(
         stk_cd=code, stk_nm=stk_nm, price=fill_price, qty=qty,
         avg_buy_price=dry_run.estimate_fill_price(_TEST_PRICE, "BUY"),
-        reason="test", trade_mode="test",
+        reason="test", trade_mode="virtual",
     )
     await dry_run.fake_fill_event("SELL", code, qty, price, stk_nm)
 
@@ -224,7 +224,7 @@ class TestAsyncTaskCancellation:
         fill_price = dry_run.estimate_fill_price(_TEST_PRICE, "BUY")
         await trade_history.record_buy(
             stk_cd=_TEST_CODE, stk_nm=_TEST_NM, price=fill_price, qty=10,
-            reason="test", trade_mode="test",
+            reason="test", trade_mode="virtual",
         )
         # 체결 이력이 기록되었는지 확인
         assert len(trade_history._buy_history) == 1, "record_buy 후 매수 이력이 존재해야 함"
@@ -358,7 +358,7 @@ class TestRealDbReplay:
         cur = conn.cursor()
         cur.execute(
             "SELECT ts, side, stk_cd, stk_nm, price, qty, trade_mode "
-            "FROM trades WHERE trade_mode = 'test' ORDER BY ts ASC"
+            "FROM trades WHERE trade_mode = 'virtual' ORDER BY ts ASC"
         )
         trades = [dict(r) for r in cur.fetchall()]
         cur.execute(

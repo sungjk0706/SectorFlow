@@ -140,29 +140,29 @@ async def _trim_expired() -> None:
         from backend.app.db.database import get_db_connection
         conn = await get_db_connection()
         async with conn.execute(
-            "SELECT COUNT(*) FROM trades WHERE trade_mode = 'test' AND date < ?",
+            "SELECT COUNT(*) FROM trades WHERE trade_mode = 'virtual' AND date < ?",
             (test_cutoff,),
         ) as cur:
             test_db_count = (await cur.fetchone())[0]
         async with conn.execute(
-            "SELECT COUNT(*) FROM trades WHERE trade_mode = 'real' AND date < ?",
+            "SELECT COUNT(*) FROM trades WHERE trade_mode = 'live' AND date < ?",
             (real_cutoff,),
         ) as cur:
             real_db_count = (await cur.fetchone())[0]
 
         # 메모리 정리 — 항상 수행 (메모리에 오래된 데이터가 있을 수 있음)
         async with _history_lock:
-            _buy_history[:] = [r for r in _buy_history if not (r["trade_mode"] == "test" and r["date"] < test_cutoff)]
-            _buy_history[:] = [r for r in _buy_history if not (r["trade_mode"] == "real" and r["date"] < real_cutoff)]
-            _sell_history[:] = [r for r in _sell_history if not (r["trade_mode"] == "test" and r["date"] < test_cutoff)]
-            _sell_history[:] = [r for r in _sell_history if not (r["trade_mode"] == "real" and r["date"] < real_cutoff)]
+            _buy_history[:] = [r for r in _buy_history if not (r["trade_mode"] == "virtual" and r["date"] < test_cutoff)]
+            _buy_history[:] = [r for r in _buy_history if not (r["trade_mode"] == "live" and r["date"] < real_cutoff)]
+            _sell_history[:] = [r for r in _sell_history if not (r["trade_mode"] == "virtual" and r["date"] < test_cutoff)]
+            _sell_history[:] = [r for r in _sell_history if not (r["trade_mode"] == "live" and r["date"] < real_cutoff)]
 
         # DB 레벨 정리 — 삭제 대상이 있을 때만 DELETE 실행
         from backend.app.db.db_writer import execute_db_write, DBWriteOperation
         if test_db_count > 0:
             await execute_db_write(DBWriteOperation(
                 table="trades", operation="DELETE", data={},
-                query="DELETE FROM trades WHERE trade_mode = 'test' AND date < ?",
+                query="DELETE FROM trades WHERE trade_mode = 'virtual' AND date < ?",
                 params=(test_cutoff,),
             ))
             logger.info(
@@ -172,7 +172,7 @@ async def _trim_expired() -> None:
         if real_db_count > 0:
             await execute_db_write(DBWriteOperation(
                 table="trades", operation="DELETE", data={},
-                query="DELETE FROM trades WHERE trade_mode = 'real' AND date < ?",
+                query="DELETE FROM trades WHERE trade_mode = 'live' AND date < ?",
                 params=(real_cutoff,),
             ))
             logger.info(
@@ -292,7 +292,7 @@ async def _broadcast_sell_append(rec: dict) -> None:
     try:
         from backend.app.services.engine_account_notify import _safe_broadcast
         from backend.app.services import engine_state
-        trade_mode = rec.get("trade_mode", "test")
+        trade_mode = rec.get("trade_mode", "virtual")
         days = int(engine_state.state.integrated_system_settings_cache.get("daily_summary_days", 20))
         summary = await get_daily_summary(days=days, trade_mode=trade_mode)
         await _safe_broadcast("sell-history-append", {"trade": rec, "daily_summary": summary}, group="trade_history")
@@ -358,7 +358,7 @@ async def record_buy(
     price: int,
     qty: int,
     reason: str = "",
-    trade_mode: str = "test",
+    trade_mode: str = "virtual",
 ) -> dict:
     """매수 체결 기록. 반환: 저장된 레코드.
 
@@ -368,7 +368,7 @@ async def record_buy(
     now = datetime.now()
     total_amt = price * qty
     # 테스트모드만 앱에서 수수료 계산 / 실전은 증권사 데이터 그대로 사용 (P18 — 실전은 증권사 SSOT)
-    fee = round(total_amt * BUY_COMMISSION) if trade_mode == "test" else 0
+    fee = round(total_amt * BUY_COMMISSION) if trade_mode == "virtual" else 0
     rec = {
         "ts": now.isoformat(timespec="seconds"),
         "date": now.strftime("%Y-%m-%d"),
@@ -408,7 +408,7 @@ async def record_sell(
     avg_buy_price: int = 0,
     reason: str = "",
     pnl_rate: float = 0.0,  # Legacy field
-    trade_mode: str = "test",
+    trade_mode: str = "virtual",
     buy_date: str = "",
 ) -> dict:
     """매도 체결 기록. 실현손익 자동 계산.
@@ -429,12 +429,12 @@ async def record_sell(
         # realized_pnl 및 pnl_rate를 0으로 처리 (이후 코드에서 avg_buy_price > 0 체크로 안전하게 처리됨)
     total_amt = price * qty
     # 테스트모드만 앱에서 수수료/세금 계산 / 실전은 증권사 데이터 그대로 사용 (P18 — 실전은 증권사 SSOT)
-    fee = round(total_amt * SELL_COMMISSION) if trade_mode == "test" else 0
-    tax = round(total_amt * SECURITIES_TAX) if trade_mode == "test" else 0
+    fee = round(total_amt * SELL_COMMISSION) if trade_mode == "virtual" else 0
+    tax = round(total_amt * SECURITIES_TAX) if trade_mode == "virtual" else 0
     # 매도금액(실수령) = 매도가×수량 - 수수료 - 세금
     sell_net = total_amt - fee - tax
     # 매수금액(실지출) = 매수가×수량 + 매수수수료
-    buy_fee = round(avg_buy_price * qty * BUY_COMMISSION) if trade_mode == "test" and avg_buy_price > 0 else 0
+    buy_fee = round(avg_buy_price * qty * BUY_COMMISSION) if trade_mode == "virtual" and avg_buy_price > 0 else 0
     buy_total = avg_buy_price * qty + buy_fee if avg_buy_price > 0 else 0
     # 현금 기준 실현손익 = 매도 실수령 - 매수 실지출 (수수료/세금 포함)
     realized_pnl = sell_net - buy_total if avg_buy_price > 0 else 0
@@ -471,7 +471,7 @@ async def record_sell(
     return rec
 
 
-async def compute_expected_orderable(starting_balance: int, trade_mode: str = "test") -> int:
+async def compute_expected_orderable(starting_balance: int, trade_mode: str = "virtual") -> int:
     """거래 이력에서 주문가능금액(orderable)을 재계산하여 반환.
 
     Settlement Engine 정합성 대조용 (P22 데이터 정합성).
@@ -723,8 +723,8 @@ async def get_daily_summary(
 async def clear_test_history() -> None:
     """테스트모드(trade_mode=='test') 이력만 즉시 삭제 (비동기적 수행). 실전 이력은 보존."""
     async with _history_lock:
-        _buy_history[:] = [r for r in _buy_history if r["trade_mode"] != "test"]
-        _sell_history[:] = [r for r in _sell_history if r["trade_mode"] != "test"]
+        _buy_history[:] = [r for r in _buy_history if r["trade_mode"] != "virtual"]
+        _sell_history[:] = [r for r in _sell_history if r["trade_mode"] != "virtual"]
     # dry_run 포지션 캐시 무횜화
     try:
         from backend.app.services import dry_run
@@ -735,7 +735,7 @@ async def clear_test_history() -> None:
         from backend.app.db.db_writer import execute_db_write, DBWriteOperation
         await execute_db_write(DBWriteOperation(
             table="trades", operation="DELETE", data={},
-            query="DELETE FROM trades WHERE trade_mode = 'test'", params=(),
+            query="DELETE FROM trades WHERE trade_mode = 'virtual'", params=(),
         ))
     except Exception as e:
         logger.warning("[정산] DB 테스트 이력 삭제 실패: %s", e)

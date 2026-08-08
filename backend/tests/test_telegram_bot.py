@@ -1044,7 +1044,7 @@ class TestCmdPeriodPnl:
 
     def _setup_test_mode(self):
         mock_state = MagicMock()
-        mock_state.integrated_system_settings_cache = {"trade_mode": "test"}
+        mock_state.integrated_system_settings_cache = {"trade_mode": "virtual"}
         return mock_state
 
     @pytest.mark.asyncio
@@ -1120,7 +1120,7 @@ class TestCmdPeriodPnl:
         """실전모드 — 수익률은 증권사 서버 SSOT이므로 앱에서 재계산 금지 (AGENTS.md)."""
         bot = TelegramBot()
         mock_state = MagicMock()
-        mock_state.integrated_system_settings_cache = {"trade_mode": "real"}
+        mock_state.integrated_system_settings_cache = {"trade_mode": "live"}
         with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.trade_history.get_realized_pnl_summary", new_callable=AsyncMock, return_value=(500_000, 5_000_000)), \
              patch("backend.app.core.trading_calendar.get_chart_reference_trading_day", return_value=__import__("datetime").date(2026, 7, 31)), \
@@ -1188,7 +1188,7 @@ class TestCmdStatusFull:
         mock_rm = MagicMock()
         mock_rm.circuit_breaker = mock_cb
         mock_state = MagicMock()
-        mock_state.integrated_system_settings_cache = {"trade_mode": "real"}
+        mock_state.integrated_system_settings_cache = {"trade_mode": "live"}
         mock_state.krx_circuit_breaker_active = False
         mock_state.market_phase = {}
         with patch("backend.app.services.engine_lifecycle.get_engine_status", return_value={"running": True}), \
@@ -1456,7 +1456,7 @@ class TestCmdAccount:
             "snapshot_at": "2026-07-11T14:00:00",
         }
         mock_state = MagicMock()
-        mock_state.integrated_system_settings_cache = {"trade_mode": "real"}
+        mock_state.integrated_system_settings_cache = {"trade_mode": "live"}
         with patch("backend.app.services.engine_account.get_account_snapshot", new_callable=AsyncMock, return_value=snap), \
              patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.trade_history.get_realized_pnl_summary", new_callable=AsyncMock, return_value=(276_000, 10_000_000)), \
@@ -1501,7 +1501,7 @@ class TestCmdAccount:
             "snapshot_at": "2026-07-11T14:00:00",
         }
         mock_state = MagicMock()
-        mock_state.integrated_system_settings_cache = {"trade_mode": "test"}
+        mock_state.integrated_system_settings_cache = {"trade_mode": "virtual"}
         with patch("backend.app.services.engine_account.get_account_snapshot", new_callable=AsyncMock, return_value=snap), \
              patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.trade_history.get_realized_pnl_summary", new_callable=AsyncMock, return_value=(150_000, 8_000_000)), \
@@ -1958,7 +1958,7 @@ class TestBuildSettingsLines:
             "buy_time_end": "15:20",
             "sell_time_start": "09:00",
             "sell_time_end": "15:20",
-            "trade_mode": "test",
+            "trade_mode": "virtual",
             "max_stock_cnt_on": True,
             "max_stock_cnt": 5,
             "buy_amt_on": True,
@@ -2010,7 +2010,7 @@ class TestBuildSettingsLines:
 
     def test_real_mode_label(self):
         flat = self._full_flat()
-        flat["trade_mode"] = "real"
+        flat["trade_mode"] = "live"
         text = _build_settings_lines(flat)
         assert "투자모드: 실전" in text
 
@@ -2120,7 +2120,7 @@ class TestCmdSettings:
             "buy_time_end": "15:20",
             "sell_time_start": "09:00",
             "sell_time_end": "15:20",
-            "trade_mode": "test",
+            "trade_mode": "virtual",
             "max_stock_cnt_on": True,
             "max_stock_cnt": 5,
             "buy_amt_on": True,

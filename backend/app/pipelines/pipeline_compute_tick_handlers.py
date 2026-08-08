@@ -150,7 +150,7 @@ async def _apply_01_price_to_positions(
     Returns: 보유종목 가격 갱신 발생 여부.
     """
     import backend.app.pipelines.pipeline_compute as _pc
-    from backend.app.core.trade_mode import is_test_mode
+    from backend.app.core.trade_mode import is_virtual_mode
     from backend.app.services import dry_run
     from backend.app.services.engine_account_rest import (
         apply_last_price_to_positions_inplace,
@@ -159,7 +159,7 @@ async def _apply_01_price_to_positions(
 
     state = _pc.state
     _price_hit = False
-    if is_test_mode(state.integrated_system_settings_cache):
+    if is_virtual_mode(state.integrated_system_settings_cache):
         _price_hit = await dry_run.update_price(nk_px, last_px)
         if _price_hit:
             _dr_pos = await dry_run.get_position(nk_px)
