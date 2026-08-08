@@ -128,7 +128,12 @@ async def _handle_trade_mode_change(changed_keys: set[str]) -> bool:
     if not (changed_keys & TRADE_MODE_KEYS):
         return False
     if is_engine_running():
-        schedule_engine_task(on_trade_mode_switched(), context="투자모드 전환")
+        # 구독 전환을 백그라운드 예약이 아닌 직접 await로 순차 진행 —
+        # 캐시 갱신(동기) 완료 후 구독 전환(비동기 예약)이 끝나기 전 주문이 발생하면
+        # 주문은 새 모드·체결 수신은 이전 모드로 엇갈리는 경쟁 상태 방지 (W4 단계 간 정합성).
+        # await는 이벤트 루프 양보이지 블로킹이 아님 — 단일 루프 원칙 유지 (W1).
+        # 모드 전환은 사용자 수동 조작의 드문 이벤트라 수십~수백 ms 대기는 체감 미미 (설계서 결정 2).
+        await on_trade_mode_switched()
         logger.info("[설정] 투자모드 전환 감지 — 저장데이터 갱신 + 계좌 구독 전환 (엔진 재기동 없음)")
     await notify_desktop_header_refresh()
     await notify_desktop_settings_toggled()
