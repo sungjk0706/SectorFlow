@@ -37,7 +37,7 @@ allowed-tools:
 | `.devin/state/STOP` | 비상 정지 신호 파일 (존재 시 루프 즉시 종료) | 제외 |
 | `.devin/scripts/continuity-loop.sh` | SessionEnd 훅이 호출하는 자동 재실행 스크립트 | 추적 |
 | `.devin/hooks.v1.json` | SessionEnd 훅 설정 | 추적 |
-| `docs/조사보고서/<주제>_<날짜>.md` | 최종 보고서 (완료 시 1회 생성) | 추적 |
+| `docs/조사보고서/<주제>_<날짜>.md` | 최종 보고서 (완료 시 1회 생성, 전체 작업 완료 시 규칙 10에 따라 삭제) | 추적 |
 
 ## 상태 파일 구조 (investigation_status.json)
 
