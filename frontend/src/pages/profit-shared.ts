@@ -215,9 +215,10 @@ export function renderAccountVals(params: AccountValsParams): void {
   //   가상매매: 백엔드가 종목 현재가 캐시 기반으로 계산한 값.
   //   실전매매: 증권사 서버에서 받은 값을 백엔드가 그대로 전달한 값.
   // 화면 단 자체 합산 계산 제거 — 미수신 종목은 백엔드 계산 단계에서 합산 제외됨 (P20 폴백 금지).
-  const evalTotal = a?.total_eval_amount ?? 0
-  const evalPnl = a?.total_pnl ?? 0
-  const evalRate = a?.total_pnl_rate ?? 0
+  // None = 데이터 없음(증권사/가상 시뮬레이터 데이터 미도착) → '-' 표시 (P20 폴백 금지, P21 투명성).
+  const evalTotal = a?.total_eval_amount ?? null
+  const evalPnl = a?.total_pnl ?? null
+  const evalRate = a?.total_pnl_rate ?? null
 
   // 누적 실현 손익 + 수익률: SSOT 함수 사용 (도넛 차트 중앙과 동일 소스 — P10/P22)
   // 분모: 매수원금 기반 (aggregatePnl — 설계서 0절 최상위 원칙).
@@ -234,29 +235,39 @@ export function renderAccountVals(params: AccountValsParams): void {
   }
 
   // 11행 공통 값 조립 (행 0만 모드별 상이: 가상매매=누적투자금, 실전=예수금)
-  const row0 = isTestMode ? (a?.initial_deposit ?? 0) : (a?.deposit ?? 0)
-  const orderable = a?.orderable ?? 0
-  const evalText = `${evalTotal.toLocaleString()}원`
-  const evalPnlText = `${evalPnl > 0 ? '+' : ''}${evalPnl.toLocaleString()}원`
-  const evalRateText = `${evalRate > 0 ? '+' : ''}${evalRate.toFixed(2)}%`
-  const evalColor = pnlColor(evalPnl)
+  // None = 데이터 없음 → '-' 표시 (0원과 구분 — P20 폴백 금지, P23 일관성).
+  const row0 = isTestMode ? (a?.initial_deposit ?? null) : (a?.deposit ?? null)
+  const orderable = a?.orderable ?? null
+  const fmtWonOrDash = (v: number | null | undefined): string => (v == null ? '-' : `${v.toLocaleString()}원`)
+  const fmtPnlWonOrDash = (v: number | null | undefined): string => {
+    if (v == null) return '-'
+    return `${v > 0 ? '+' : ''}${v.toLocaleString()}원`
+  }
+  const fmtRateOrDash = (v: number | null | undefined): string => {
+    if (v == null) return '-'
+    return `${v > 0 ? '+' : ''}${v.toFixed(2)}%`
+  }
+  const evalColor = evalPnl != null ? pnlColor(evalPnl) : ''
   const cumSign = cumPnl.pnl > 0 ? '+' : ''
   const cumColor = pnlColor(cumPnl.pnl)
 
   const values = [
-    `${row0.toLocaleString()}원`,
-    `${orderable.toLocaleString()}원`,
+    fmtWonOrDash(row0),
+    fmtWonOrDash(orderable),
     `${todayBuyAmt.toLocaleString()}원`,
     `${todaySellAmt.toLocaleString()}원`,
-    evalText,
-    evalPnlText,
-    evalRateText,
+    fmtWonOrDash(evalTotal),
+    fmtPnlWonOrDash(evalPnl),
+    fmtRateOrDash(evalRate),
     `${todayFeeTax.toLocaleString()}원`,
     `${cumFeeTax.toLocaleString()}원`,
     `${cumSign}${cumPnl.pnl.toLocaleString()}원`,
     cumRate == null ? '-' : `${cumSign}${cumRate.toFixed(2)}%`,
   ]
-  const colorMap = new Map<number, string>([[5, evalColor], [6, evalColor], [9, cumColor], [10, cumColor]])
+  const colorMap = new Map<number, string>()
+  if (evalColor) { colorMap.set(5, evalColor); colorMap.set(6, evalColor) }
+  colorMap.set(9, cumColor)
+  colorMap.set(10, cumColor)
 
   if (isTestMode) {
     if (params.holdingCountSpanTest) params.holdingCountSpanTest.textContent = String(positionCount)

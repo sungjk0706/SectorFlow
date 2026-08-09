@@ -180,7 +180,7 @@ class EngineState:
         self.index_subscribed: bool = False  # 업종지수(0J, grp 2) 구독 상태 — ws-subscribe-status payload SSOT (P10/P21)
         self.account_rest_bootstrapped: bool = False
         self.broker_rest_totals: dict = {
-            "total_eval": 0, "total_pnl": 0, "total_buy": 0, "total_rate": 0.0,
+            "total_eval": None, "total_pnl": None, "total_buy": None, "total_rate": None,
         }
         self.auto_trade: AutoTradeManager | None = None
         self.integrated_system_settings_cache: dict = {}

@@ -37,6 +37,11 @@ _daily_deposit_total: int = 0       # 당일 입금액 누적 (장마감 스냅�
 
 # ── 기본 getters ────────────────────────────────────────────────────────────
 
+def is_loaded() -> bool:
+    """상태 로드 완료 여부. 로드 전에는 돈 데이터가 없음(None)을 의미 (P20 폴백 금지)."""
+    return _loaded
+
+
 def get_available_cash() -> int:
     """주문가능금액 반환 (하위 호환 — orderable과 동일)."""
     return _orderable

@@ -32,9 +32,9 @@ async def get_account_snapshot() -> dict:
             snap.setdefault("initial_deposit", settlement_engine.get_accumulated_investment())
         for k in ("total_buy", "total_eval", "total_pnl",
                    "total_buy_amount", "total_eval_amount"):
-            snap.setdefault(k, 0)
+            snap.setdefault(k, None)
         for k in ("total_rate", "total_pnl_rate"):
-            snap.setdefault(k, 0.0)
+            snap.setdefault(k, None)
         snap.setdefault("position_count", 0)
     return snap
 
@@ -202,7 +202,7 @@ async def _update_account_memory_inner(settings: dict) -> None:
     if not yield_data.get("success"):
         logger.warning(
             "[계좌] 조회 실패함 — 기존 스냅샷 유지 (총평가=%s원)",
-            f"{state.account_snapshot.get('total_eval', 0):,}",
+            f"{state.account_snapshot.get('total_eval') or 0:,}",
         )
         return
 
@@ -299,8 +299,8 @@ def _apply_account_yield_to_state(yield_data: dict, s: dict) -> None:
         else str(_ps)
     )
     logger.info(
-        f"[계좌] 갱신 — 평가금: {state.account_snapshot.get('total_eval', 0):,}원 | "
-        f"손익: {state.account_snapshot.get('total_pnl', 0):,}원 | 포지션: {state.account_snapshot.get('position_count', 0)}개 | "
+        f"[계좌] 갱신 — 평가금: {state.account_snapshot.get('total_eval') or 0:,}원 | "
+        f"손익: {state.account_snapshot.get('total_pnl') or 0:,}원 | 포지션: {state.account_snapshot.get('position_count', 0)}개 | "
         f"가격소스: {_ps_kr}"
     )
 
@@ -333,19 +333,28 @@ async def _refresh_account_snapshot_meta() -> None:
     pos = await dry_run.get_positions() if _is_virtual else state.positions
 
     if _is_virtual:
-        # 가상매매: settlement_engine 누적투자금/주문가능금액 반영 + 종목 마스터 캐시 기반 파생 값 합산으로 totals 구성
-        accumulated_investment = settlement_engine.get_accumulated_investment()
-        orderable = settlement_engine.get_orderable()
-        total_buy = sum(int(p.get("buy_amt", 0) or 0) for p in pos)
-        # eval_amt가 None(종목 마스터 캐시 현재가 미수신)인 종목은 합산에서 제외 (P20 폴백 금지, P25 격리)
-        total_eval = sum(int(p["eval_amt"]) for p in pos if p.get("eval_amt") is not None)
-        total_pnl = total_eval - total_buy
-        total_rate = round((total_pnl / total_buy) * 100, 2) if total_buy > 0 else 0.0
+        # 가상매매: settlement_engine 로드 여부에 따라 돈 데이터 결정.
+        # 로드 전(기동 직후/모드 전환 직후): None(데이터 없음) — 0으로 폴백 금지 (P20).
+        # 로드 후: 실제 값 사용. 포지션이 0종목이면 0(진짜 0원 — 매수한 적 없음).
+        _se_loaded = settlement_engine.is_loaded()
+        accumulated_investment = settlement_engine.get_accumulated_investment() if _se_loaded else None
+        orderable = settlement_engine.get_orderable() if _se_loaded else None
+        if _se_loaded:
+            total_buy = sum(int(p.get("buy_amt", 0) or 0) for p in pos)
+            # eval_amt가 None(종목 마스터 캐시 현재가 미수신)인 종목은 합산에서 제외 (P20 폴백 금지, P25 격리)
+            total_eval = sum(int(p["eval_amt"]) for p in pos if p.get("eval_amt") is not None)
+            total_pnl = total_eval - total_buy
+            total_rate = round((total_pnl / total_buy) * 100, 2) if total_buy > 0 else 0.0
+        else:
+            total_buy = None
+            total_eval = None
+            total_pnl = None
+            total_rate = None
 
         state.account_snapshot["accumulated_investment"] = accumulated_investment
         state.account_snapshot["orderable"] = orderable
         state.account_snapshot["initial_deposit"] = accumulated_investment
-        
+
         test_totals = {
             "total_eval": total_eval,
             "total_pnl": total_pnl,

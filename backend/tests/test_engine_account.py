@@ -38,8 +38,9 @@ class TestGetAccountSnapshot:
             mock_state.account_snapshot = {}
             result = await get_account_snapshot()
             assert result["trade_mode"] == "live"
-            assert result["total_buy"] == 0
-            assert result["total_eval"] == 0
+            # 빈 snapshot = 데이터 없음 → None (0이 아님 — P20 폴백 금지, P21 투명성)
+            assert result["total_buy"] is None
+            assert result["total_eval"] is None
             assert result["position_count"] == 0
 
     @pytest.mark.asyncio

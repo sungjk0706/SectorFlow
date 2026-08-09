@@ -88,16 +88,16 @@ def build_account_snapshot_meta(
     예수금·주문가능은 kt00001(entr·ord_alow_amt) 또는 REAL 930 추정치.
     """
     now_iso = datetime.now(timezone.utc).isoformat()
-    dep = int(account_snapshot.get("deposit", 0) or 0)
-    ord_a = int(account_snapshot.get("orderable", 0) or 0)
-    init_dep = int(account_snapshot.get("initial_deposit", 0) or 0)
+    dep = account_snapshot.get("deposit")
+    ord_a = account_snapshot.get("orderable")
+    init_dep = account_snapshot.get("initial_deposit")
     tot = broker_rest_totals
     ps = "websocket" if price_source_ws else "rest_bootstrap"
-    t_eval = int(tot.get("total_eval", 0))
-    t_pnl = int(tot.get("total_pnl", 0))
-    t_buy = int(tot.get("total_buy", 0))
-    t_sell = int(tot.get("total_sell", 0))
-    t_rate = float(tot.get("total_rate", 0.0))
+    t_eval = tot.get("total_eval")
+    t_pnl = tot.get("total_pnl")
+    t_buy = tot.get("total_buy")
+    t_sell = tot.get("total_sell")
+    t_rate = tot.get("total_rate")
     return {
         "broker":           account_snapshot.get("broker", ""),
         "trade_mode":       trade_mode,

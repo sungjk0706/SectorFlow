@@ -151,7 +151,7 @@ def reset_broker_session_state() -> None:
 
     # 계좌 데이터 (이전 증권사 데이터 무효화)
     engine_state.state.account_snapshot = {}
-    engine_state.state.broker_rest_totals = {"total_eval": 0, "total_pnl": 0, "total_buy": 0, "total_rate": 0.0}
+    engine_state.state.broker_rest_totals = {"total_eval": None, "total_pnl": None, "total_buy": None, "total_rate": None}
     engine_state.state.positions = []
     engine_state.state.auto_trade = None
 
@@ -239,6 +239,19 @@ async def on_trade_mode_switched() -> None:
     _new_virtual = is_virtual_mode(engine_state.state.integrated_system_settings_cache)
     _mode_str = "가상매매" if _new_virtual else "실전매매"
     logger.info("[연산] 매매모드 전환 — %s (엔진 재기동 없음)", _mode_str)
+
+    # 돈 데이터 보관함 초기화 — 이전 모드의 돈 데이터(예수금·주문가능·평가금액·평가손익·수익률·보유종목)를
+    # None(데이터 없음) 상태로 초기화. 시세 데이터는 모드와 무관하므로 건드리지 않는다 (P10 SSOT, P20 폴백 금지).
+    # 새 모드의 데이터 소스(가상: settlement_engine / 실전: 증권사 서버)에서 값이 도착하면 그 자리에 채워진다.
+    engine_state.state.account_snapshot = {}
+    engine_state.state.broker_rest_totals = {
+        "total_eval": None, "total_pnl": None, "total_buy": None, "total_rate": None,
+    }
+    engine_state.state.positions = []
+    engine_state.state.account_rest_bootstrapped = False
+    # 알림 delta 캐시 초기화 — 모드 전환 후 첫 브로드캐스트가 전체 데이터로 전송되도록 기준점 리셋 (P22 정합성)
+    from backend.app.services.engine_account_notify import notify_cache
+    notify_cache.clear_all()
 
     # BrokerRouter를 통해 현재 연결된 커넥터 확인 (증권사 하드코딩 제거)
     ws = engine_state.state.connector_manager

@@ -14,15 +14,15 @@ export interface FreshnessSnapshot {
 }
 
 export interface AccountSnapshot {
-  total_buy_amount: number;
-  total_sell_amount: number;
-  total_eval_amount: number;
-  total_pnl: number;
-  total_pnl_rate: number;
-  deposit: number;
-  orderable?: number;
-  initial_deposit?: number;
-  accumulated_investment?: number;  // 가상매매: 누적투자금 (초기투자금 + 충전금액)
+  total_buy_amount: number | null;
+  total_sell_amount: number | null;
+  total_eval_amount: number | null;
+  total_pnl: number | null;
+  total_pnl_rate: number | null;
+  deposit: number | null;
+  orderable?: number | null;
+  initial_deposit?: number | null;
+  accumulated_investment?: number | null;  // 가상매매: 누적투자금 (초기투자금 + 충전금액)
   daily_deposit?: number;           // 당일 입금액 (실시간, 당일 카드 분모 보정용)
   total_asset?: number;             // 실전 증권사 API 총자산 (평가금 + 예수금) — P10 SSOT, 재계산 금지
   trade_mode: string;
