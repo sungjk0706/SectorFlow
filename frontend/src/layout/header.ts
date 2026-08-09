@@ -605,15 +605,19 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
         // 자동매수/매도 칩: 토글 ON + 현재 시간이 작동 시간 창 내일 때만 활성(녹색).
         // 시간 창 외면 회색(비활성) — 백엔드 _on_auto_trade_transition이 시간 전환 시점에
         // settings-changed WS를 push하므로 별도 타이머 없이 자동 갱신 (P10 SSOT, P21 투명성).
+        // 휴장일에는 "매수대기/매도대기" 라벨 + 회색 — "자동매매" 칩의 "매매대기"와 동일 패턴 (P23 일관성, P21 투명성).
+        // 토글 OFF 시에는 휴장일 여부와 무관하게 "자동매수/매도" 회색 유지 — "자동매매" 칩이 마스터 OFF 시 "자동매매" 회색인 것과 동일.
+        const buyTimeRange = `${(settings.buy_time_start || '09:00').slice(0, 5)}~${(settings.buy_time_end || '15:20').slice(0, 5)}`
+        const sellTimeRange = `${(settings.sell_time_start || '09:00').slice(0, 5)}~${(settings.sell_time_end || '15:20').slice(0, 5)}`
         applyStatusChip(
           autoBuyChip,
-          `자동매수 ${(settings.buy_time_start || '09:00').slice(0, 5)}~${(settings.buy_time_end || '15:20').slice(0, 5)}`,
-          !!settings.auto_buy_on && isInTradeTimeWindow(settings, 'buy'),
+          isHoliday && settings.auto_buy_on ? `매수대기 ${buyTimeRange}` : `자동매수 ${buyTimeRange}`,
+          !!settings.auto_buy_on && !isHoliday && isInTradeTimeWindow(settings, 'buy'),
         )
         applyStatusChip(
           autoSellChip,
-          `자동매도 ${(settings.sell_time_start || '09:00').slice(0, 5)}~${(settings.sell_time_end || '15:20').slice(0, 5)}`,
-          !!settings.auto_sell_on && isInTradeTimeWindow(settings, 'sell'),
+          isHoliday && settings.auto_sell_on ? `매도대기 ${sellTimeRange}` : `자동매도 ${sellTimeRange}`,
+          !!settings.auto_sell_on && !isHoliday && isInTradeTimeWindow(settings, 'sell'),
         )
         applyStatusChip(teleChip, '텔레그램', settings.tele_on)
       } else {
