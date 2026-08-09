@@ -1,0 +1,395 @@
+국내주식
+	•	REST
+계좌
+기본 정보
+
+Method
+POST
+운영 도메인
+https://api.kiwoom.com
+모의투자 도메인
+https://mockapi.kiwoom.com(KRX만 지원가능)
+URL
+/api/dostk/acnt
+Format
+JSON
+Content-Type
+application/json;charset=UTF-8
+TR명
+미체결요청
+ka10075
+요청Header
+
+Element
+한글명
+type
+Required
+Length
+Description
+authorization
+접근토큰
+String
+Y
+1000
+토큰 지정시 토큰타입("Bearer") 붙혀서 호출
+예) Bearer Egicyx...
+cont-yn
+연속조회여부
+String
+N
+1
+응답 Header의 연속조회여부값이 Y일 경우 다음데이터 요청시 응답 Header의 cont-yn값 세팅
+next-key
+연속조회키
+String
+N
+50
+응답 Header의 연속조회여부값이 Y일 경우 다음데이터 요청시 응답 Header의 next-key값 세팅
+api-id
+TR명
+String
+Y
+10
+8자리 TR코드, ex) ka00001, usa10099
+Body
+
+Element
+한글명
+type
+Required
+Length
+Description
+all_stk_tp
+전체종목구분
+String
+Y
+1
+0:전체, 1:종목
+trde_tp
+매매구분
+String
+Y
+1
+0:전체, 1:매도, 2:매수
+stk_cd
+종목코드
+String
+N
+6
+종목코드 6자리 (단건 조회 시 사용)
+stex_tp
+거래소구분
+String
+Y
+1
+0 : 통합, 1 : KRX, 2 : NXT
+응답Header
+
+Element
+한글명
+type
+Required
+Length
+Description
+cont-yn
+연속조회여부
+String
+N
+1
+다음 데이터가 있을시 Y값 전달
+next-key
+연속조회키
+String
+N
+50
+다음 데이터가 있을시 다음 키값 전달
+api-id
+TR명
+String
+Y
+10
+8자리 TR코드, ex) ka00001, usa10099
+Body
+
+Element
+한글명
+type
+Required
+Length
+Description
+oso
+미체결
+List<Map>
+N
+
+미체결 주문 배열
+- acnt_no
+계좌번호
+String
+N
+20
+고유 계좌번호 10자리 숫자
+- ord_no
+주문번호
+String
+N
+20
+고유 주문번호 7자리 숫자
+- mang_empno
+관리사번
+String
+N
+20
+
+- stk_cd
+종목코드
+String
+N
+20
+
+- tsk_tp
+업무구분
+String
+N
+20
+
+- ord_stt
+주문상태
+String
+N
+20
+
+- stk_nm
+종목명
+String
+N
+40
+
+- ord_qty
+주문수량
+String
+N
+20
+단위: 1주
+- ord_pric
+주문가격
+String
+N
+20
+단위: 원
+- oso_qty
+미체결수량
+String
+N
+20
+단위: 1주
+- cntr_tot_amt
+체결누계금액
+String
+N
+20
+단위: 원
+- orig_ord_no
+원주문번호
+String
+N
+20
+원 주문이 없는 경우 '0000000'으로 출력
+- io_tp_nm
+주문구분
+String
+N
+20
+
+- trde_tp
+매매구분
+String
+N
+20
+
+- tm
+시간
+String
+N
+20
+주문 시간, HHmmss
+- cntr_no
+체결번호
+String
+N
+20
+
+- cntr_pric
+체결가
+String
+N
+20
+단위: 원
+- cntr_qty
+체결량
+String
+N
+20
+단위: 1주
+- cur_prc
+현재가
+String
+N
+20
+
+- sel_bid
+매도호가
+String
+N
+20
+단위: 원, 현재 첫번째 매도호가
+- buy_bid
+매수호가
+String
+N
+20
+단위: 원, 현재 첫번째 매수호가
+- unit_cntr_pric
+단위체결가
+String
+N
+20
+단위: 원
+- unit_cntr_qty
+단위체결량
+String
+N
+20
+단위: 1주
+- tdy_trde_cmsn
+당일매매수수료
+String
+N
+20
+단위: 원
+- tdy_trde_tax
+당일매매세금
+String
+N
+20
+단위: 원
+- ind_invsr
+개인투자자
+String
+N
+20
+
+- stex_tp
+거래소구분
+String
+N
+20
+0 : 통합, 1 : KRX, 2 : NXT
+- stex_tp_txt
+거래소구분텍스트
+String
+N
+20
+통합,KRX,NXT
+- sor_yn
+SOR 여부값
+String
+N
+20
+Y,N
+- stop_pric
+스톱가
+String
+N
+20
+스톱지정가주문 스톱가
+	•	Python
+
+import requests
+import json
+
+# 미체결요청
+def fn_ka10075(token, data, cont_yn='N', next_key=''):
+	# 1. 요청할 API URL
+	#host = 'https://mockapi.kiwoom.com' # 모의투자
+	host = 'https://api.kiwoom.com' # 실전투자
+	endpoint = '/api/dostk/acnt'
+	url =  host + endpoint
+
+	# 2. header 데이터
+	headers = {
+		'Content-Type': 'application/json;charset=UTF-8', # 컨텐츠타입
+		'authorization': f'Bearer {token}', # 접근토큰
+		'cont-yn': cont_yn, # 연속조회여부
+		'next-key': next_key, # 연속조회키
+		'api-id': 'ka10075', # TR명
+	}
+
+	# 3. http POST 요청
+	response = requests.post(url, headers=headers, json=data)
+
+	# 4. 응답 상태 코드와 데이터 출력
+	print('Code:', response.status_code)
+	print('Header:', json.dumps({key: response.headers.get(key) for key in ['next-key', 'cont-yn', 'api-id']}, indent=4, ensure_ascii=False))
+	print('Body:', json.dumps(response.json(), indent=4, ensure_ascii=False))  # JSON 응답을 파싱하여 출력
+
+# 실행 구간
+if __name__ == '__main__':
+	# 1. 토큰 설정
+	MY_ACCESS_TOKEN = '사용자 AccessToken' # 접근토큰
+
+	# 2. 요청 데이터
+	params = {
+		'all_stk_tp': '0', # 전체종목구분 0:전체, 1:종목
+		'trde_tp': '0', # 매매구분 0:전체, 1:매도, 2:매수
+		'stex_tp': '0', # 거래소구분 0:통합, 1:KRX, 2:NXT
+	}
+
+	# 3. API 실행
+	fn_ka10075(token=MY_ACCESS_TOKEN, data=params)
+Example
+
+Request
+{
+	"all_stk_tp" : "0",
+	"trde_tp" : "0",
+	"stex_tp" : "0"
+}
+Response
+{
+	"oso": [
+		{
+			"acnt_no": "1234567890",
+			"ord_no": "0000069",
+			"mang_empno": "",
+			"stk_cd": "005930",
+			"tsk_tp": "",
+			"ord_stt": "접수",
+			"stk_nm": "삼성전자",
+			"ord_qty": "1",
+			"ord_pric": "0",
+			"oso_qty": "1",
+			"cntr_tot_amt": "0",
+			"orig_ord_no": "0000000",
+			"io_tp_nm": "+매수",
+			"trde_tp": "시장가",
+			"tm": "154113",
+			"cntr_no": "",
+			"cntr_pric": "0",
+			"cntr_qty": "0",
+			"cur_prc": "+74100",
+			"sel_bid": "0",
+			"buy_bid": "+74100",
+			"unit_cntr_pric": "",
+			"unit_cntr_qty": "",
+			"tdy_trde_cmsn": "0",
+			"tdy_trde_tax": "0",
+			"ind_invsr": "",
+			"stex_tp": "1",
+			"stex_tp_txt": "KRX",
+			"sor_yn": "N"
+		}
+	],
+	"return_code": 0,
+	"return_msg": "조회가 완료되었습니다."
+}
