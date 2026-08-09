@@ -177,3 +177,7 @@ class LsAccountProvider(AccountProvider):
         결정 4: deposit·ordablemny 필드 기반 계좌 갱신.
         """
         return ls_account_parsing.sc1_account_delta(vals)
+
+    def parse_unfilled_orders(self, raw: dict) -> list:
+        """LS t0425 미체결 응답 파싱 — ls_account_parsing.parse_ls_unfilled_orders 위임."""
+        return ls_account_parsing.parse_ls_unfilled_orders(raw)

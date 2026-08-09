@@ -11,7 +11,7 @@
 from __future__ import annotations
 from backend.app.core.numeric_utils import _parse_float_loose
 from backend.app.core.symbol_utils import _base_stk_cd, _real_item_stk_cd
-from backend.app.services.engine_ws_parsing import _parse_fid10_price
+from backend.app.services.engine_ws_parsing import _parse_fid10_price, _rest_row_int
 
 
 def _parse_int_loose(v) -> int:
@@ -232,3 +232,38 @@ def parse_kt00018_balance(
         })
 
     return dep_out, tot_eval, tot_pnl, tot_buy, total_rate, stock_list
+
+
+# ── 미체결 주문 파싱 (ka10075 — 결정 6) ──────────────────────────────────────
+# 공통 dict 키: ord_no·stk_cd·stk_nm·ord_qty·ord_price·unfilled_qty·
+#              ord_status·orig_ord_no·ord_type(매도/매수)
+# KiwoomAccountProvider.parse_unfilled_orders 가 호출 — 공통 서비스는 Provider 경유 (P23 일관성).
+
+def parse_kiwoom_unfilled_orders(raw: dict) -> list:
+    """키움 ka10075 미체결 응답 파싱 — oso 배열을 공통 미체결 주문 dict 리스트로 변환."""
+    if not isinstance(raw, dict):
+        return []
+    body = raw.get("body") or raw
+    items = body.get("oso") if isinstance(body, dict) else None
+    if items is None:
+        items = raw.get("oso")
+    if not isinstance(items, list):
+        return []
+    result: list = []
+    for r in items:
+        if not isinstance(r, dict):
+            continue
+        trde_tp = str(r.get("trde_tp", r.get("trde_tp_code", "")) or "").strip()
+        ord_type = "매도" if trde_tp == "1" else "매수" if trde_tp == "2" else ""
+        result.append({
+            "ord_no":       str(r.get("ord_no", r.get("ordno", "")) or "").strip(),
+            "stk_cd":       _base_stk_cd(str(r.get("stk_cd", r.get("stkcd", "")) or "").strip()),
+            "stk_nm":       str(r.get("stk_nm", r.get("stknm", "")) or "").strip(),
+            "ord_qty":      _rest_row_int(r, "ord_qty", "ordqty"),
+            "ord_price":    _rest_row_int(r, "ord_uv", "ord_price", "ordprc"),
+            "unfilled_qty": _rest_row_int(r, "unfilled_qty", "cncl_qty", "unfilledqty"),
+            "ord_status":   str(r.get("ord_stat", r.get("ord_status", "")) or "").strip(),
+            "orig_ord_no":  str(r.get("orig_ord_no", r.get("orgordno", "")) or "").strip(),
+            "ord_type":     ord_type,
+        })
+    return result

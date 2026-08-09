@@ -241,16 +241,13 @@ async def _fetch_and_store_unfilled_orders(settings: dict) -> None:
         state.unfilled_orders = []
         return
 
-    from backend.app.services.engine_account_rest import (
-        parse_kiwoom_unfilled_orders,
-        parse_ls_unfilled_orders,
-    )
-    if broker == "kiwoom":
-        orders = parse_kiwoom_unfilled_orders(raw)
-    elif broker == "ls":
-        orders = parse_ls_unfilled_orders(raw)
-    else:
-        logger.warning("[계좌] 미체결 주문 파싱 미지원 증권사: %s", broker)
+    # AccountProvider 인터페이스 경유 파싱 — 공통 로직은 증권사 식별자 분기 없이 처리 (P23 일관성).
+    # Provider 조회·파싱 실패 시 빈 리스트로 격리 (P25 격리된 실패 — 미체결 표시용이므로 전파 금지).
+    try:
+        from backend.app.core.broker_factory import get_router
+        orders = get_router().account.parse_unfilled_orders(raw)
+    except Exception as e:
+        logger.warning("[계좌] 미체결 주문 파싱 실패: %s", e, exc_info=True)
         orders = []
 
     state.unfilled_orders = orders

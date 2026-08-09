@@ -10,6 +10,8 @@ LS 전용 파싱 로직(parse_t0424_deposit, parse_t0424_balance, SC1 실시간 
 """
 from __future__ import annotations
 from backend.app.core.numeric_utils import _parse_float_loose
+from backend.app.core.symbol_utils import _base_stk_cd
+from backend.app.services.engine_ws_parsing import _rest_row_int
 
 
 def _parse_int_loose(v) -> int:
@@ -184,3 +186,35 @@ def sc1_account_delta(vals: dict) -> dict:
     if "ordablemny" in vals:
         out["orderable"] = _parse_int_loose(vals.get("ordablemny"))
     return out
+
+
+# ── 미체결 주문 파싱 (t0425 — 결정 6) ──────────────────────────────────────────
+# 공통 dict 키: ord_no·stk_cd·stk_nm·ord_qty·ord_price·unfilled_qty·
+#              ord_status·orig_ord_no·ord_type(매도/매수)
+# LsAccountProvider.parse_unfilled_orders 가 호출 — 공통 서비스는 Provider 경유 (P23 일관성).
+
+def parse_ls_unfilled_orders(raw: dict) -> list:
+    """LS t0425 미체결 응답 파싱 — t0425OutBlock1 배열을 공통 미체결 주문 dict 리스트로 변환."""
+    if not isinstance(raw, dict):
+        return []
+    items = raw.get("t0425OutBlock1")
+    if not isinstance(items, list):
+        return []
+    result: list = []
+    for r in items:
+        if not isinstance(r, dict):
+            continue
+        medosu = str(r.get("medosu", r.get("bnstp", "")) or "").strip()
+        ord_type = "매도" if medosu == "1" else "매수" if medosu == "2" else ""
+        result.append({
+            "ord_no":       str(r.get("ordno", r.get("ord_no", "")) or "").strip(),
+            "stk_cd":       _base_stk_cd(str(r.get("expcode", r.get("stk_cd", "")) or "").strip()),
+            "stk_nm":       str(r.get("ordmenuname", r.get("hname", r.get("stk_nm", ""))) or "").strip(),
+            "ord_qty":      _rest_row_int(r, "ordqty", "ord_qty"),
+            "ord_price":    _rest_row_int(r, "ordprice", "ord_price"),
+            "unfilled_qty": _rest_row_int(r, "unfilledqty", "cnclqty", "unfilled_qty"),
+            "ord_status":   str(r.get("ordstatus", r.get("ord_stat", "")) or "").strip(),
+            "orig_ord_no":  str(r.get("orgordno", r.get("orig_ord_no", "")) or "").strip(),
+            "ord_type":     ord_type,
+        })
+    return result

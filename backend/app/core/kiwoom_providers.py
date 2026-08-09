@@ -222,3 +222,7 @@ class KiwoomAccountProvider(AccountProvider):
         from backend.app.core.kiwoom_account_parsing import real04_official_account_delta
         return real04_official_account_delta(vals)
 
+    def parse_unfilled_orders(self, raw: dict) -> list:
+        from backend.app.core.kiwoom_account_parsing import parse_kiwoom_unfilled_orders
+        return parse_kiwoom_unfilled_orders(raw)
+

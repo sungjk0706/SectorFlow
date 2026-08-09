@@ -133,3 +133,13 @@ class AccountProvider(ABC):
     def compute_realtime_account_delta(self, vals: dict) -> dict:
         """실시간 계좌 단위 레코드에서 부분 갱신할 계좌 필드 딕셔너리 반환."""
         ...
+
+    @abstractmethod
+    def parse_unfilled_orders(self, raw: dict) -> list:
+        """미체결 주문 조회 응답 파싱 — 공통 미체결 주문 dict 리스트 반환.
+
+        공통 dict 키: ord_no·stk_cd·stk_nm·ord_qty·ord_price·unfilled_qty·
+                     ord_status·orig_ord_no·ord_type(매도/매수).
+        파싱 로직 자체는 각 증권사 전용 파싱 모듈에 위임 (P10 SSOT · P23 일관성).
+        """
+        ...
