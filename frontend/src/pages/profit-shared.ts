@@ -10,14 +10,13 @@
 // profit-math.ts에서 계산 함수 import (DOM 렌더용 — 내부 사용)
 import {
   computeCumulativePnl,
-  computeHoldingsSummary,
   computeTodayAggregates,
   getRecent5TradingDays,
 } from './profit-math'
 
 import { FONT_SIZE, FONT_WEIGHT, pnlColor, fmtWon, COLOR, RADIUS, SHADOW } from '../components/common/ui-styles'
 import { getTradingToday } from '../utils/date'
-import type { AccountSnapshot, MasterStock, Position } from '../types'
+import type { AccountSnapshot } from '../types'
 
 /* ── 요약 카드 공통 함수 ── */
 
@@ -179,8 +178,6 @@ export function updateSummaryCards(
 
 export interface AccountValsParams {
   account: AccountSnapshot | null
-  positions: Position[]
-  masterStocks: Readonly<Record<string, MasterStock>>
   positionCount: number
   isTestMode: boolean
   buyHistory: Record<string, unknown>[]
@@ -209,13 +206,18 @@ function renderAccountRowSet(
 }
 
 export function renderAccountVals(params: AccountValsParams): void {
-  const { account: a, positionCount, isTestMode, buyHistory, sellHistory, masterStocks } = params
+  const { account: a, positionCount, isTestMode, buyHistory, sellHistory } = params
 
   const today = getTradingToday()
   const { todayBuyAmt, todaySellAmt, todayFeeTax, cumFeeTax } = computeTodayAggregates(buyHistory, sellHistory, today)
 
-  // 보유 종목 평가금액/평가손익/수익률: masterStocks 기준으로 공통 계산 (개별 행과 동일 소스·공식)
-  const { evalTotal, evalPnl, evalRate, hasNullPrice } = computeHoldingsSummary(params.positions, masterStocks)
+  // 보유 종목 평가금액/평가손익/수익률: 백엔드 account-update snapshot 값을 그대로 표시 (P10 SSOT).
+  //   가상매매: 백엔드가 종목 현재가 캐시 기반으로 계산한 값.
+  //   실전매매: 증권사 서버에서 받은 값을 백엔드가 그대로 전달한 값.
+  // 화면 단 자체 합산 계산 제거 — 미수신 종목은 백엔드 계산 단계에서 합산 제외됨 (P20 폴백 금지).
+  const evalTotal = a?.total_eval_amount ?? 0
+  const evalPnl = a?.total_pnl ?? 0
+  const evalRate = a?.total_pnl_rate ?? 0
 
   // 누적 실현 손익 + 수익률: SSOT 함수 사용 (도넛 차트 중앙과 동일 소스 — P10/P22)
   // 분모: 매수원금 기반 (aggregatePnl — 설계서 0절 최상위 원칙).
@@ -234,11 +236,10 @@ export function renderAccountVals(params: AccountValsParams): void {
   // 11행 공통 값 조립 (행 0만 모드별 상이: 가상매매=누적투자금, 실전=예수금)
   const row0 = isTestMode ? (a?.initial_deposit ?? 0) : (a?.deposit ?? 0)
   const orderable = a?.orderable ?? 0
-  // P21/P23: cur_price null인 보유종목 있으면 평가금액/평가손익/수익률 3행 '-' 표시 (개별 행과 동일 null 패턴)
-  const evalText = hasNullPrice ? '-' : `${evalTotal.toLocaleString()}원`
-  const evalPnlText = hasNullPrice ? '-' : `${evalPnl > 0 ? '+' : ''}${evalPnl.toLocaleString()}원`
-  const evalRateText = hasNullPrice ? '-' : `${evalRate > 0 ? '+' : ''}${evalRate.toFixed(2)}%`
-  const evalColor = hasNullPrice ? '' : pnlColor(evalPnl)
+  const evalText = `${evalTotal.toLocaleString()}원`
+  const evalPnlText = `${evalPnl > 0 ? '+' : ''}${evalPnl.toLocaleString()}원`
+  const evalRateText = `${evalRate > 0 ? '+' : ''}${evalRate.toFixed(2)}%`
+  const evalColor = pnlColor(evalPnl)
   const cumSign = cumPnl.pnl > 0 ? '+' : ''
   const cumColor = pnlColor(cumPnl.pnl)
 

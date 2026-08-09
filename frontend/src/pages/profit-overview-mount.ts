@@ -38,8 +38,6 @@ export function renderAccountVals(state: ProfitOverviewState): void {
   const settings = globalSettingsManager.getSettings()
   const params: AccountValsParams = {
     account: hotState.account,
-    positions: hotState.positions,
-    masterStocks: hotState.masterStocks,
     positionCount: hotState.positionCount ?? 0,
     isTestMode: settings?.trade_mode === 'virtual',
     buyHistory: state.buyHistory,
