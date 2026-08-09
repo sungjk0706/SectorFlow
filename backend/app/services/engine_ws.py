@@ -137,8 +137,6 @@ async def _ensure_ws_subscriptions_for_positions() -> None:
             return
         if not is_virtual_mode(engine_state.state.integrated_system_settings_cache):
             await _subscribe_account_realtime()
-        else:
-            logger.info("[구독] 가상매매 — 계좌 실시간 구독 생략")
         await _subscribe_positions_stocks_realtime()
     except Exception as e:
         logger.warning("[구독] 실시간 구독 전송 실패: %s", e, exc_info=True)

@@ -132,7 +132,10 @@ async def start_quote() -> dict:
         try:
             await engine_ws_reg.subscribe_sector_stocks_0b(nxt_only=is_nxt_only_window())
             _set_status(quote=True)
-            await _ensure_account_subscription()
+            # 계좌 구독 보장 — 실전매매에서만 (1차 경로 분리)
+            from backend.app.core.trade_mode import is_virtual_mode
+            if not is_virtual_mode(engine_state.state.integrated_system_settings_cache):
+                await _ensure_account_subscription()
             logger.info("[구독] 실시간시세(0B, 그룹 4) 구독 시작")
             return {"ok": True, "status": get_subscribe_status()}
         except Exception as e:
@@ -191,8 +194,10 @@ async def run_conditional_reg_pipeline() -> None:
         except Exception as e:
             logger.debug("[구독] 업종지수 자동 구독 실패: %s", e, exc_info=True)
 
-        # 실전매매에서 구독 시작했으면 계좌 구독 보장
-        await _ensure_account_subscription()
+        # 실전매매에서 구독 시작했으면 계좌 구독 보장 — 1차 경로 분리
+        from backend.app.core.trade_mode import is_virtual_mode
+        if not is_virtual_mode(engine_state.state.integrated_system_settings_cache):
+            await _ensure_account_subscription()
 
 
 # ---------------------------------------------------------------------------

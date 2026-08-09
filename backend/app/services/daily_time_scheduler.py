@@ -1424,9 +1424,12 @@ async def _do_unreg_all() -> None:
         # Broker Abstraction: subscribe_stocks / unsubscribe_stocks 추상 API 사용
         ok = await ws.unsubscribe_stocks(all_codes)
 
-        # 계좌 실시간 구독 해지 — 커넥터 unsubscribe_account()가 내부에서 증권사 분기 처리
+        # 계좌 실시간 구독 해지 — 실전모드에서만 (가상모드는 구독 자체를 안 했으므로)
+        # 커넥터 unsubscribe_account()가 내부에서 증권사 분기 처리
         # (키움: grp 10 REMOVE 전송, LS: no-op). 계좌번호 확인도 구현체 내부에서 수행.
-        await ws.unsubscribe_account()
+        from backend.app.core.trade_mode import is_virtual_mode
+        if not is_virtual_mode(engine_state.state.integrated_system_settings_cache):
+            await ws.unsubscribe_account()
 
         # 구독 상태 초기화
         for cd in subscribed:
