@@ -297,9 +297,13 @@ async def restore_subscriptions_after_reconnect(broker_id: str) -> None:
     except Exception as e:
         logger.warning("[구독] %s 업종지수 구독 복원 실패: %s", BROKER_DISPLAY_NAMES.get(broker_id, broker_id.upper()), e, exc_info=True)
 
-    # 계좌(00/04) 복원
-    try:
-        await subscribe_account_realtime()
-        logger.info("[계좌] %s 계좌 구독 복원", BROKER_DISPLAY_NAMES.get(broker_id, broker_id.upper()))
-    except Exception as e:
-        logger.warning("[계좌] %s 계좌 구독 복원 실패: %s", BROKER_DISPLAY_NAMES.get(broker_id, broker_id.upper()), e, exc_info=True)
+    # 계좌(00/04) 복원 — 실전매매 전용 (가상매매는 계좌 구독 미사용)
+    from backend.app.core.trade_mode import is_virtual_mode
+    if is_virtual_mode(engine_state.state.integrated_system_settings_cache):
+        logger.info("[계좌] %s 가상매매 — 계좌 구독 복원 생략", BROKER_DISPLAY_NAMES.get(broker_id, broker_id.upper()))
+    else:
+        try:
+            await subscribe_account_realtime()
+            logger.info("[계좌] %s 계좌 구독 복원", BROKER_DISPLAY_NAMES.get(broker_id, broker_id.upper()))
+        except Exception as e:
+            logger.warning("[계좌] %s 계좌 구독 복원 실패: %s", BROKER_DISPLAY_NAMES.get(broker_id, broker_id.upper()), e, exc_info=True)
