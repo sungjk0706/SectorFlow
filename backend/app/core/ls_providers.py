@@ -7,6 +7,7 @@ import logging
 from backend.app.core.broker_providers import (
     AccountProvider, AuthProvider, OrderProvider, WebSocketProvider
 )
+from backend.app.core import ls_account_parsing
 from backend.app.core.ls_rest import LsRestAPI
 from backend.app.core.broker_urls import BROKER_DISPLAY_NAMES
 
@@ -108,12 +109,12 @@ class LsWebSocketProvider(WebSocketProvider):
 
 # ── Account Provider ────────────────────────────────────────────────────────
 class LsAccountProvider(AccountProvider):
-    """LS증권 계좌 데이터 파싱 — 최소 인터페이스 구현.
+    """LS증권 계좌 데이터 파싱 — 파싱 모듈 위임.
 
-    LS 실전 체결·잔고 응답 구조가 확정되지 않은 메서드는 NotImplementedError로 두고
-    G-2(LS 실전 체결·잔고 구현) 보완 갭에서 완성한다.
-    LS는 소켓 연결 시 계좌 등록을 수행하므로 실시간 계좌 파싱은 LS 실시간 메시지
-    형식에 맞춰 G-2에서 구현 예정.
+    parse_deposit·parse_balance는 ls_account_parsing 모듈의 함수 호출 위임 (1단계 완성).
+    실시간 3개 메서드(is_realtime_stock_item·apply_realtime_position_line·
+    compute_realtime_account_delta)는 SC1 메시지 구조 확정 후 4단계에서 완성 —
+    1단계에서는 스텁(빈 반환)으로 NotImplementedError 제거.
     """
 
     def __init__(self, auth_provider: AuthProvider | None = None):
@@ -126,21 +127,32 @@ class LsAccountProvider(AccountProvider):
         return "ls"
 
     def parse_deposit(self, raw: dict) -> tuple:
-        # LS 실전 예수금 조회 응답 구조 확정 후 G-2에서 구현.
-        raise NotImplementedError("LS 예수금 파싱은 G-2(LS 실전 체결·잔고 구현)에서 완성 예정")
+        """t0424 응답에서 예수금 추출 — ls_account_parsing.parse_t0424_deposit 위임."""
+        return ls_account_parsing.parse_t0424_deposit(raw)
 
     def parse_balance(self, raw: dict, deposit) -> tuple:
-        # LS 실전 잔고 조회 응답 구조 확정 후 G-2에서 구현.
-        raise NotImplementedError("LS 잔고 파싱은 G-2(LS 실전 체결·잔고 구현)에서 완성 예정")
+        """t0424 응답에서 잔고·보유종목 추출 — ls_account_parsing.parse_t0424_balance 위임."""
+        return ls_account_parsing.parse_t0424_balance(raw, deposit)
 
     def is_realtime_stock_item(self, item: dict) -> bool:
-        # LS 실시간 메시지 형식 확정 후 G-2에서 구현.
-        raise NotImplementedError("LS 실시간 종목 판별은 G-2(LS 실전 체결·잔고 구현)에서 완성 예정")
+        """LS SC1/US3 메시지 종목 판별 — 4단계 완성 예정 (SC1 메시지 구조 확정 후).
+
+        1단계에서는 스텁 — False 반환. 4단계에서 ls_account_parsing._sc1_is_stock_item 위임.
+        """
+        return ls_account_parsing._sc1_is_stock_item(item)
 
     def apply_realtime_position_line(self, item, vals, positions, extra) -> None:
-        # LS 실시간 보유 종목 반영 형식 확정 후 G-2에서 구현.
-        raise NotImplementedError("LS 실시간 보유 종목 반영은 G-2(LS 실전 체결·잔고 구현)에서 완성 예정")
+        """LS SC1 체결 메시지 보유 종목 반영 — 4단계 완성 예정.
+
+        결정 4: SC1 체결 확인 시 t0424 REST 재조회로 갱신 (자체 델타 계산 금지 — P18).
+        1단계에서는 스텁 — no-op. 4단계에서 ls_account_parsing.sc1_apply_position_line 위임.
+        """
+        return ls_account_parsing.sc1_apply_position_line(item, vals, positions, extra)
 
     def compute_realtime_account_delta(self, vals: dict) -> dict:
-        # LS 실시간 계좌 단위 갱신 형식 확정 후 G-2에서 구현.
-        raise NotImplementedError("LS 실시간 계좌 갱신은 G-2(LS 실전 체결·잔고 구현)에서 완성 예정")
+        """LS SC1 계좌 단위 갱신 — 4단계 완성 예정.
+
+        결정 4: deposit·ordablemny 필드 기반 계좌 갱신.
+        1단계에서는 스텁 — 빈 dict 반환. 4단계에서 ls_account_parsing.sc1_account_delta 위임.
+        """
+        return ls_account_parsing.sc1_account_delta(vals)

@@ -277,3 +277,100 @@ class TestLsOrderProvider:
         await provider.send_order({}, "token", "sell", "035420", 5, price=200000)
         call_kwargs = mock_api.sell_order.call_args.kwargs
         assert call_kwargs["stock_code"] == "A035420"
+
+
+# ── LsAccountProvider ─────────────────────────────────────────────────────────
+
+class TestLsAccountProvider:
+    """LsAccountProvider 파싱 위임 검증 — ls_account_parsing 함수 호출 위임 확인."""
+
+    def test_broker_name_returns_ls(self):
+        from backend.app.core.ls_providers import LsAccountProvider
+        provider = LsAccountProvider()
+        assert provider.broker_name == "ls"
+
+    def test_init_accepts_auth_provider_none(self):
+        from backend.app.core.ls_providers import LsAccountProvider
+        provider = LsAccountProvider(None)
+        assert provider is not None
+
+    def test_init_accepts_auth_provider(self):
+        from backend.app.core.ls_providers import LsAccountProvider
+        provider = LsAccountProvider(MagicMock())
+        assert provider is not None
+
+    def test_parse_deposit_delegates_to_parsing_module(self):
+        """parse_deposit이 ls_account_parsing.parse_t0424_deposit 위임 검증."""
+        from backend.app.core.ls_providers import LsAccountProvider
+        raw = {
+            "rsp_cd": "00000",
+            "t0424OutBlock": {"sunamt1": 5_000_000, "tappamt": 0, "tdtsunik": 0, "mamt": 0, "sunikrt": 0},
+            "t0424OutBlock1": [],
+        }
+        provider = LsAccountProvider()
+        ok, body, deposit, orderable, withdrawable = provider.parse_deposit(raw)
+        assert ok is True
+        assert deposit == 5_000_000
+        assert orderable == 0
+        assert withdrawable == 0
+
+    def test_parse_deposit_empty_raw(self):
+        from backend.app.core.ls_providers import LsAccountProvider
+        provider = LsAccountProvider()
+        ok, _, deposit, *_ = provider.parse_deposit(None)
+        assert ok is False
+        assert deposit == 0
+
+    def test_parse_balance_delegates_to_parsing_module(self):
+        """parse_balance가 ls_account_parsing.parse_t0424_balance 위임 검증."""
+        from backend.app.core.ls_providers import LsAccountProvider
+        raw = {
+            "rsp_cd": "00000",
+            "t0424OutBlock": {
+                "sunamt1": 5_000_000, "sunamt": 17_000_000,
+                "tappamt": 12_000_000, "tdtsunik": 1_500_000,
+                "mamt": 10_500_000, "sunikrt": 14.28,
+            },
+            "t0424OutBlock1": [
+                {"expcode": "A005930", "hname": "삼성전자", "janqty": 10, "mdposqt": 10,
+                 "pamt": 70000, "price": 75000, "mamt": 700000, "appamt": 750000,
+                 "dtsunik": 50000, "sunikrt": 7.14, "janrt": 6.25},
+            ],
+        }
+        provider = LsAccountProvider()
+        deposit, tot_eval, tot_pnl, tot_buy, total_rate, stock_list = provider.parse_balance(raw, 5_000_000)
+        assert deposit == 5_000_000
+        assert tot_eval == 12_000_000
+        assert tot_pnl == 1_500_000
+        assert tot_buy == 10_500_000
+        assert len(stock_list) == 1
+        assert stock_list[0]["stk_cd"] == "005930"
+
+    def test_parse_balance_empty_raw(self):
+        from backend.app.core.ls_providers import LsAccountProvider
+        provider = LsAccountProvider()
+        deposit, tot_eval, *_ = provider.parse_balance(None, 5_000_000)
+        assert deposit == 5_000_000
+        assert tot_eval == 0
+
+    def test_is_realtime_stock_item_returns_stub(self):
+        """1단계 스텁 — False 반환 (4단계에서 SC1 구조 확정 후 완성)."""
+        from backend.app.core.ls_providers import LsAccountProvider
+        provider = LsAccountProvider()
+        assert provider.is_realtime_stock_item({}) is False
+
+    def test_apply_realtime_position_line_is_noop(self):
+        """1단계 스텁 — no-op (4단계에서 SC1 체결 시 t0424 재조회로 완성)."""
+        from backend.app.core.ls_providers import LsAccountProvider
+        provider = LsAccountProvider()
+        positions = []
+        result = provider.apply_realtime_position_line({}, {}, positions, {})
+        assert result is None
+        assert positions == []  # 변경 없음
+
+    def test_compute_realtime_account_delta_returns_empty(self):
+        """1단계 스텁 — 빈 dict 반환 (4단계에서 SC1 deposit·ordablemny로 완성)."""
+        from backend.app.core.ls_providers import LsAccountProvider
+        provider = LsAccountProvider()
+        result = provider.compute_realtime_account_delta({})
+        assert result == {}

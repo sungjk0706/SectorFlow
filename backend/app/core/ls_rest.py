@@ -423,3 +423,106 @@ class LsRestAPI:
             credit_code=credit_code, loan_date=loan_date, member_code=member_code,
         )
 
+    # ========== 계좌 조회 관련 메서드 ==========
+
+    async def _account_request(
+        self,
+        tr_cd: str,
+        in_block: dict,
+    ) -> Optional[dict]:
+        """계좌 조회 TR 공통 호출 (POST /stock/accno).
+
+        LS 계좌 조회 TR(t0424·t0425)은 /stock/accno 엔드포인트 사용.
+        토큰 갱신(401) 시 1회 재시도 — 주문 경로와 동일 패턴 (설계서 결정 3 예외).
+        실패 시 None 반환 (P20 폴백 금지).
+        """
+        await self.ensure_client()
+        if self._client is None:
+            logger.warning("[연결] %s HTTP 클라이언트 초기화 안됨", _BROKER_DISPLAY)
+            return None
+
+        if not await self.ensure_token():
+            logger.warning("[연결] %s 토큰 없음 — 계좌 조회 건너뜀 (TR=%s)", _BROKER_DISPLAY, tr_cd)
+            return None
+
+        assert self._token_info is not None
+        url = f"{self.base_url}/stock/accno"
+        headers = {
+            "Content-Type": "application/json; charset=UTF-8",
+            "Authorization": f"Bearer {self._token_info.access_token}",
+            "tr_cd": tr_cd,
+            "tr_cont": "N",
+            "tr_cont_key": "",
+        }
+        body = {f"{tr_cd}InBlock1": in_block}
+
+        try:
+            resp = await self._client.post(url, headers=headers, json=body, timeout=15)
+
+            # 401 감지 — 토큰 재발급 후 1회 재시도 (주문 경로와 동일 — 중복 조회 위험 없음)
+            if resp.status_code == 401:
+                logger.info("[연결] %s 계좌 조회 401 감지 — 토큰 재발급 후 1회 재시도 (TR=%s)", _BROKER_DISPLAY, tr_cd)
+
+                async def _do_post():
+                    r = await self._client.post(url, headers=headers, json=body, timeout=15)
+                    return r, r.status_code
+
+                async def _reissue_token() -> bool:
+                    ok, _ = await self._issue_token()
+                    return ok
+
+                async def _refresh_auth_header() -> None:
+                    if self._token_info:
+                        headers["Authorization"] = f"Bearer {self._token_info.access_token}"
+
+                result = await retry_once_on_401(
+                    _reissue_token, _do_post, on_reissue_success=_refresh_auth_header
+                )
+                if isinstance(result, tuple) and result[1] == 200:
+                    r = result[0]
+                    return r.json() if r.text else None
+                retry_status = result[1] if isinstance(result, tuple) else "?"
+                logger.warning(
+                    "[연결] %s 계좌 조회 401 재발급 후에도 실패 (응답코드=%s, TR=%s)",
+                    _BROKER_DISPLAY, retry_status, tr_cd,
+                )
+                return None
+
+            if resp.status_code != 200:
+                logger.warning(
+                    "[연결] %s 계좌 조회 실패 (응답코드=%s, TR=%s)",
+                    _BROKER_DISPLAY, resp.status_code, tr_cd,
+                )
+                return None
+            return resp.json() if resp.text else None
+
+        except Exception as e:
+            logger.warning(
+                "[연결] %s 계좌 조회 오류 (TR=%s): %s: %s",
+                _BROKER_DISPLAY, tr_cd, type(e).__name__, e, exc_info=True,
+            )
+            return None
+
+    async def get_deposit_detail(self, acnt_no: str = "") -> Optional[dict]:
+        """t0424 잔고평가내역 조회 — 예수금 추출용 (결정 2).
+
+        LS는 예수금 상세 전용 TR이 없으므로 t0424 합계 블록의 sunamt1(추정D2예수금)을
+        예수금으로 추출. 파싱은 ls_account_parsing.parse_t0424_deposit에서 수행.
+        키움 get_deposit_detail과 동일명·동일 반환 구조(원시 응답 dict).
+        """
+        resolved_acnt = acnt_no or getattr(self, "_acnt_no", "")
+        in_block = {"acno": resolved_acnt, "prcb": "1"}
+        return await self._account_request("t0424", in_block)
+
+    async def get_balance_detail(self, qry_tp: str = "1") -> Optional[dict]:
+        """t0424 잔고평가내역 조회 — 잔고·보유종목 추출용 (결정 2).
+
+        get_deposit_detail과 동일 TR(t0424) 호출 — LS는 잔고·예수금이 한 TR에 함께 포함.
+        공통 경로 호환을 위해 동일명 메서드 유지 (키움 kt00018과 TR은 다르나
+        반환값은 동일 튜플 구조 — 파싱 모듈에서 변환).
+        qry_tp: '1'=추정조회(기본). LS t0424 조회 구분.
+        """
+        acnt_no = getattr(self, "_acnt_no", "")
+        in_block = {"acno": acnt_no, "prcb": "1", "qry_tp": qry_tp}
+        return await self._account_request("t0424", in_block)
+
