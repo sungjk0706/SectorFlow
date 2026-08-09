@@ -418,6 +418,21 @@ async def _apply_balance_realtime(item: dict, vals: dict) -> None:
     except Exception:
         logger.warning("[계좌] 잔고 회복 후 매수 재평가 실패 — 사용자가 수동으로 매수 후보 확인 필요", exc_info=True)
 
+    # ── 잔고 갱신 완료 → 주문 잠금 해제 트리거 (결정 2·3 — 2단계) ──
+    # 종목 단위 갱신 후: 해당 종목 대기 중 주문 잠금 해제
+    # 계좌 단위 갱신 후: 대기 중 주문 무조건 잠금 해제 (예수금·주문가능금액 갱신)
+    try:
+        _auto_trade = state.auto_trade
+        if _auto_trade is not None:
+            if _account_provider.is_realtime_stock_item(item):
+                from backend.app.services.engine_symbol_utils import _real_item_stk_cd
+                _stk_cd = _real_item_stk_cd(item, vals)
+                _auto_trade.signal_balance_updated(_stk_cd)
+            else:
+                _auto_trade.signal_balance_updated_any()
+    except Exception:
+        logger.warning("[계좌] 잔고 갱신 완료 잠금 해제 트리거 실패 (계속)", exc_info=True)
+
 
 async def _on_fill_after_ws(fill_code: str = "") -> None:
     """주문체결(00) 완료 직후 — REST 없이 메모리·매도조건만 갱신.

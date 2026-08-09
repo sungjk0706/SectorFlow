@@ -218,6 +218,16 @@ async def _refetch_t0424_and_apply(raw_cd: str, vals: dict, item: dict, _account
         f"{tot_eval:,}", f"{tot_pnl:,}", len(engine_state.state.positions),
     )
 
+    # ── 잔고 갱신 완료 → 주문 잠금 해제 트리거 (결정 2·3 — 2단계) ──
+    # t0424 재조회 완료 = 계좌 단위 잔고 갱신 완료 → 대기 중 주문 잠금 해제.
+    # 실패·응답 없음 경로는 위에서 이미 return하므로 여기 도달 = 갱신 성공.
+    try:
+        _auto_trade = engine_state.state.auto_trade
+        if _auto_trade is not None:
+            _auto_trade.signal_balance_updated_any()
+    except Exception:
+        logger.warning("[계좌] LS t0424 재조회 완료 후 잠금 해제 트리거 실패 (계속)", exc_info=True)
+
 
 async def _handle_ls_sc1(item: dict, vals: dict) -> None:
     """LS SC1(주문체결) 처리 — 체결 콜백 + 잔고 갱신 (결정 4·7).

@@ -197,6 +197,14 @@ async def fake_fill_event(
     # 3. _on_fill_after_ws (실전 _handle_real_00과 동일) — 체결 종목 코드 전달
     await engine_account._on_fill_after_ws(code)
 
+    # 4. 잔고 갱신 완료 → 주문 잠금 해제 트리거 (결정 2·3 — 2단계)
+    #    가상 체결은 동기식이므로 _on_fill_after_ws 완료 = 잔고 갱신 완료 → 즉시 잠금 해제.
+    if state.auto_trade:
+        try:
+            state.auto_trade.signal_balance_updated(code)
+        except Exception:
+            logger.warning("[매매] 가상 체결 후 잠금 해제 트리거 실패 (계속)", exc_info=True)
+
 
 # ── 2. 인메모리 잔고 관리 ───────────────────────────────────────────────────
 

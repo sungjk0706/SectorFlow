@@ -282,10 +282,10 @@ class AutoTradeManager:
         self._bought_today: dict[str, float] = {}  # stk_cd -> buy timestamp
         # ── 글로벌 주문 락: 매수·매도 공통 주문 직렬화 (한 번에 하나의 주문만 실행, P22) ──
         self._order_lock: asyncio.Lock | None = None
-        # ── 체결 응답 대기: 주문 접수 후 체결·잔고 응답 수신까지 대기 (결정 2, P22 정합성) ──
-        # 잠금은 체결 응답 수신 후 해제 — 한 번에 하나의 주문만 잔고에 영향.
-        # _fill_event: 현재 대기 중인 주문의 체결 응답 이벤트 (잠금으로 1주문만 실행되므로 단일)
-        # _fill_awaiting_cd: 대기 중인 주문의 종목코드 (on_fill_update에서 일치 시 이벤트 설정)
+        # ── 잔고 갱신 완료 대기: 주문 체결 후 잔고 갱신 완료까지 대기 (결정 2·3, P22 정합성) ──
+        # 잠금은 잔고 갱신 완료 후 해제 — 한 번에 하나의 주문만 잔고에 영향.
+        # _fill_event: 현재 대기 중인 주문의 잔고 갱신 완료 이벤트 (잠금으로 1주문만 실행되므로 단일)
+        # _fill_awaiting_cd: 대기 중인 주문의 종목코드 (signal_balance_updated에서 일치 시 이벤트 설정)
         self._fill_event: asyncio.Event | None = None
         self._fill_awaiting_cd: str | None = None
 
@@ -332,20 +332,20 @@ class AutoTradeManager:
                 # P21: 로드 성공 시 차단 해제 알림 (이전 실패 상태가 화면에 남아있지 않도록)
                 await _broadcast_daily_buy_state_status(failed=False)
 
-    # ── 체결 응답 대기 (결정 2 — 주문 접수 후 체결·잔고 응답 수신까지 대기) ──────
-    # 타임아웃: 키움 10초 / LS 15초 (결정 5 — 재시도 폐지 후 타임아웃은 알림 시점 기준)
+    # ── 잔고 갱신 완료 대기 (결정 2·3 — 주문 체결 후 잔고 갱신 완료까지 대기) ──────
+    # 타임아웃: 키움 15초 / LS 20초 (결정 5 — 잔고 갱신 완료 대기 범위 확대 반영)
     # 증권사별 값은 broker_registry.BROKER_TIMEOUTS에서 단일 관리 (P10).
 
     def _fill_timeout_for(self, settings: dict) -> float:
-        """설정의 증권사별 체결 응답 타임아웃 반환 (P18 — 모드 무관 동일)."""
+        """설정의 증권사별 잔고 갱신 완료 대기 타임아웃 반환 (P18 — 모드 무관 동일)."""
         broker = str(settings.get("broker", "") or "").lower()
         return broker_registry.BROKER_TIMEOUTS.get(broker, broker_registry.BROKER_TIMEOUT_DEFAULT)
 
     def _begin_fill_await(self, stk_cd: str) -> None:
-        """체결 응답 대기 시작 — 이벤트 생성 (가상 체결 동기 호출 전 또는 실전 주문 전송 전 호출).
+        """잔고 갱신 완료 대기 시작 — 이벤트 생성 (가상 체결 동기 호출 전 또는 실전 주문 전송 전 호출).
 
         반드시 가상 체결(fake_fill_event) 동기 호출 또는 실전 주문 전송 전에 호출.
-        on_fill_update가 체결 응답 수신 시 self._fill_event.set() 호출.
+        잔고 갱신 완료 핸들러(signal_balance_updated*)가 잔고 갱신 완료 시 self._fill_event.set() 호출.
         """
         self._fill_event = asyncio.Event()
         self._fill_awaiting_cd = _base_stk_cd(str(stk_cd))
@@ -353,29 +353,30 @@ class AutoTradeManager:
     async def _end_fill_await(
         self, stk_cd: str, stk_nm: str, side: str, settings: dict,
     ) -> bool:
-        """체결 응답 대기 완료 — 이벤트 대기 + 타임아웃 처리 (결정 2, P22 정합성).
+        """잔고 갱신 완료 대기 완료 — 이벤트 대기 + 타임아웃 처리 (결정 2·3·5, P22 정합성).
 
-        잠금 해제 시점을 체결 응답 수신 후로 이동 — 한 번에 하나의 주문만 잔고에 영향.
-        가상매매: 가상 체결 이벤트(fake_fill_event) → on_fill_update가 이벤트 설정.
-        실전매매: 실시간 체결 이벤트(키움 "00" / LS 체결 채널) → on_fill_update가 이벤트 설정.
+        잠금 해제 시점을 잔고 갱신 완료 후로 이동 — 한 번에 하나의 주문만 잔고에 영향.
+        가상매매: 가상 체결(fake_fill_event) → _on_fill_after_ws 완료 후 signal_balance_updated가 이벤트 설정.
+        실전매매(키움): REAL 04 실시간 잔고 메시지 갱신 완료 후 signal_balance_updated*가 이벤트 설정.
+        실전매매(LS): t0424 REST 재조회 완료 후 signal_balance_updated_any가 이벤트 설정.
         타임아웃 시 사용자 알림(화면 + 텔레그램) 후 False 반환 (잠금은 호출자 try/finally로 해제).
 
-        반환: True=체결 응답 수신, False=타임아웃 (사용자 알림 완료)
+        반환: True=잔고 갱신 완료, False=타임아웃 (사용자 알림 완료)
         """
         if self._fill_event is None:
             return True  # 대기 미시작 — 대기 없이 진행 (호출 순서 오류 안전 장치)
         timeout = self._fill_timeout_for(settings)
         try:
             await asyncio.wait_for(self._fill_event.wait(), timeout=timeout)
-            logger.info("[매매] [체결응답] %s(%s) %s 체결 응답 수신 — 잠금 해제", stk_nm, stk_cd, side)
+            logger.info("[매매] [잔고갱신] %s(%s) %s 잔고 갱신 완료 — 잠금 해제", stk_nm, stk_cd, side)
             return True
         except asyncio.TimeoutError:
             logger.warning(
-                "[매매] [체결응답 타임아웃] %s(%s) %s — %s초 내 체결 응답 미수신. 알림 후 잠금 해제.",
+                "[매매] [잔고갱신 타임아웃] %s(%s) %s — %s초 내 잔고 갱신 미완료. 알림 후 잠금 해제.",
                 stk_nm, stk_cd, side, timeout,
             )
             _fire_and_forget_telegram(
-                f"⚠️ [주문 응답 시간 초과] {stk_nm}({_base_stk_cd(stk_cd)}) {side} 주문 체결 응답이 {timeout}초 내 오지 않았습니다.",
+                f"⚠️ [잔고 갱신 시간 초과] {stk_nm}({_base_stk_cd(stk_cd)}) {side} 주문 후 잔고 갱신이 {timeout}초 내 완료되지 않았습니다.",
                 settings,
             )
             await _broadcast_order_fill_timeout(stk_cd=stk_cd, stk_nm=stk_nm, side=side)
@@ -636,7 +637,7 @@ class AutoTradeManager:
             await _handle_order_failure()
             return False, BUY_REJECT_ORDER_FAIL
 
-        # ── 체결 응답 대기 시작 (결정 2 — 가상 체결 예약/WS 응답 전에 이벤트 생성) ──
+        # ── 잔고 갱신 완료 대기 시작 (결정 2·3 — 가상 체결 예약/WS 응답 전에 이벤트 생성) ──
         self._begin_fill_await(stk_cd)
 
         # ── 저널링: 주문 요청 기록 ─────────────────────────────────────────────
@@ -687,7 +688,7 @@ class AutoTradeManager:
 
         # ── 가상매매: 가상 체결 동기 대기 (실전 WS "00"과 동일한 downstream, P18 동등성) ──
         # 주문 흐름 내에서 가상 체결 완료까지 대기 — "주문 → 대기 → 응답 → 다음" 흐름 (결정 4).
-        # fake_fill_event 내부에서 on_fill_update가 _fill_event를 설정 → _end_fill_await가 즉시 통과.
+        # fake_fill_event 내부에서 _on_fill_after_ws 완료 후 signal_balance_updated가 _fill_event를 설정 → _end_fill_await가 통과.
         if is_virtual_mode(raw_all):
             _dry_fill_price = int(order_price) if order_price > 0 else int(current_price)
             await dry_run.fake_fill_event("BUY", stk_cd, buy_qty, _dry_fill_price, stk_nm, pre_reserved=True)
@@ -716,10 +717,11 @@ class AutoTradeManager:
         if is_virtual_mode(raw_all):
             await _broadcast_virtual_cash_resolved()
 
-        # ── 체결·잔고 응답 대기 (결정 2 — 잠금 해제 시점을 체결 응답 후로 이동) ──
-        # 가상매매: 가상 체결(fake_fill_event) → on_fill_update가 이벤트 설정.
-        # 실전매매: WS "00" 체결 이벤트 → on_fill_update가 이벤트 설정.
-        # 타임아웃 시 사용자 알림 후 차단 반환 — 주문은 접수되었으나 체결 미확정 (P21 투명성).
+        # ── 잔고 갱신 완료 대기 (결정 2·3 — 2단계: 잠금 해제 시점을 잔고 갱신 완료 후로 이동) ──
+        # 가상매매: 가상 체결(fake_fill_event) → _on_fill_after_ws 완료 후 signal_balance_updated가 이벤트 설정.
+        # 실전매매(키움): REAL 04 잔고 갱신 완료 후 signal_balance_updated*가 이벤트 설정.
+        # 실전매매(LS): t0424 재조회 완료 후 signal_balance_updated_any가 이벤트 설정.
+        # 타임아웃 시 사용자 알림 후 차단 반환 — 주문은 접수되었으나 잔고 갱신 미확정 (P21 투명성).
         _fill_ok = await self._end_fill_await(stk_cd, stk_nm, "매수", raw_all)
         if not _fill_ok:
             return False, BUY_REJECT_FILL_TIMEOUT
@@ -760,12 +762,33 @@ class AutoTradeManager:
             state["has_open_buy"] = False
         self._buy_state[stk_cd] = state
 
-        # ── 체결 응답 대기 이벤트 설정 (결정 2 — 잠금 해제 시점을 체결 응답 후로) ──
-        # 전량 체결(side 1/2, unex=0) 또는 취소·거부(side 3/4) 시 대기 중인 주문이면 이벤트 설정.
-        # 종목코드 일치 시에만 설정 — 다른 종목의 체결 응답으로 오해 방지 (P22 정합성).
-        _is_fill_done = (str(side) in ("1", "2") and unex == 0) or str(side) in ("3", "4")
-        if _is_fill_done and self._fill_event is not None and self._fill_awaiting_cd == nk:
+        # ── 잔고 갱신 완료 대기 이벤트는 on_fill_update에서 설정하지 않음 (결정 2 — 2단계) ──
+        # 잠금 해제 시점을 "잔고 갱신 완료"로 이동 — 체결 응답만으로는 잔고가 아직 갱신되지 않았으므로
+        # 잠금을 유지하고, 잔고 갱신 완료 핸들러(signal_balance_updated*)가 이벤트를 설정한다.
+        # on_fill_update는 buy_state·telegram 알림만 담당.
+
+    def signal_balance_updated(self, stk_cd: str) -> None:
+        """잔고 갱신 완료 알림 — 종목 단위 갱신 후 잠금 해제 트리거 (결정 2·3 — 2단계).
+
+        종목 단위 잔고 갱신(키움 REAL 04 종목 레코드·가상 체결) 완료 후 호출.
+        대기 중인 주문의 종목코드와 일치할 때만 잠금 해제 이벤트 설정 (P22 정합성).
+        """
+        if self._fill_event is None:
+            return
+        nk = _base_stk_cd(str(stk_cd or ""))
+        if self._fill_awaiting_cd == nk:
             self._fill_event.set()
+
+    def signal_balance_updated_any(self) -> None:
+        """잔고 갱신 완료 알림 — 계좌 단위 갱신 후 잠금 해제 트리거 (결정 2·3 — 2단계).
+
+        계좌 단위 잔고 갱신(LS t0424 재조회·키움 REAL 04 계좌 레코드) 완료 후 호출.
+        계좌 단위 갱신은 예수금·주문가능금액 갱신이므로 종목 무관 다음 주문에 필요 —
+        대기 중인 주문이 있으면 무조건 잠금 해제 이벤트 설정.
+        """
+        if self._fill_event is None:
+            return
+        self._fill_event.set()
 
     async def execute_sell(
         self,
@@ -886,7 +909,7 @@ class AutoTradeManager:
             await _handle_order_failure()
             return False
 
-        # ── 체결 응답 대기 시작 (결정 2 — 가상 체결 예약/WS 응답 전에 이벤트 생성) ──
+        # ── 잔고 갱신 완료 대기 시작 (결정 2·3 — 가상 체결 예약/WS 응답 전에 이벤트 생성) ──
         self._begin_fill_await(stk_cd)
 
         # ── 매도 주문 전송 성공 — 간격 타이머 갱신 (P22: 실제 실행만 기록) ──
@@ -921,7 +944,7 @@ class AutoTradeManager:
 
         # ── 가상매매: 가상 체결 동기 대기 (실전 WS "00"과 동일한 downstream, P18 동등성) ──
         # 주문 흐름 내에서 가상 체결 완료까지 대기 — "주문 → 대기 → 응답 → 다음" 흐름 (결정 4).
-        # fake_fill_event 내부에서 on_fill_update가 _fill_event를 설정 → _end_fill_await가 즉시 통과.
+        # fake_fill_event 내부에서 _on_fill_after_ws 완료 후 signal_balance_updated가 _fill_event를 설정 → _end_fill_await가 통과.
         if is_virtual_mode(base_settings):
             _dry_sell_price = int(order_price) if order_price > 0 else int(cur_price)
             await dry_run.fake_fill_event("SELL", stk_cd, qty, _dry_sell_price, stk_nm)
@@ -939,10 +962,11 @@ class AutoTradeManager:
         except Exception:
             logger.warning("[매매] 리스크 관리자 성공 보고 실패", exc_info=True)
 
-        # ── 체결·잔고 응답 대기 (결정 2 — 잠금 해제 시점을 체결 응답 후로 이동) ──
-        # 가상매매: 가상 체결(fake_fill_event) → on_fill_update가 이벤트 설정.
-        # 실전매매: WS "00" 체결 이벤트 → on_fill_update가 이벤트 설정.
-        # 타임아웃 시 사용자 알림 후 차단 반환 — 주문은 접수되었으나 체결 미확정 (P21 투명성).
+        # ── 잔고 갱신 완료 대기 (결정 2·3 — 2단계: 잠금 해제 시점을 잔고 갱신 완료 후로 이동) ──
+        # 가상매매: 가상 체결(fake_fill_event) → _on_fill_after_ws 완료 후 signal_balance_updated가 이벤트 설정.
+        # 실전매매(키움): REAL 04 잔고 갱신 완료 후 signal_balance_updated*가 이벤트 설정.
+        # 실전매매(LS): t0424 재조회 완료 후 signal_balance_updated_any가 이벤트 설정.
+        # 타임아웃 시 사용자 알림 후 차단 반환 — 주문은 접수되었으나 잔고 갱신 미확정 (P21 투명성).
         _fill_ok = await self._end_fill_await(stk_cd, stk_nm, "매도", base_settings)
         if not _fill_ok:
             return False
