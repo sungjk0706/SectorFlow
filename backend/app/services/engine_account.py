@@ -323,21 +323,21 @@ async def _refresh_account_snapshot_meta() -> None:
     """
     스냅샷 시각·보유종목수·가격소스 갱신.
     실전매매: 총평가·총손익·총매입·총수익률은 _broker_rest_totals(REST kt00018 또는 REAL 04 공식 FID 932~934) 사용.
-    가상매매: positions 합산으로 totals 구성 + 가상 예수금 반영.
+    가상매매: dry_run.get_positions()가 종목 마스터 캐시 기반으로 파생한 eval_amt/buy_amt 합산 + 가상 예수금 반영 (W3 SSOT, P10).
     """
     from backend.app.services.engine_account_rest import build_account_snapshot_meta
     from backend.app.services import dry_run, settlement_engine
     from backend.app.services.engine_ws import _ws_live
-    
+
     _is_virtual = is_virtual_mode(state.integrated_system_settings_cache)
     pos = await dry_run.get_positions() if _is_virtual else state.positions
 
     if _is_virtual:
-        # 가상매매: settlement_engine 누적투자금/주문가능금액 반영 + 포지션 합산으로 totals 구성
+        # 가상매매: settlement_engine 누적투자금/주문가능금액 반영 + 종목 마스터 캐시 기반 파생 값 합산으로 totals 구성
         accumulated_investment = settlement_engine.get_accumulated_investment()
         orderable = settlement_engine.get_orderable()
         total_buy = sum(int(p.get("buy_amt", 0) or 0) for p in pos)
-        # eval_amt가 None(시세 미수신)인 종목은 합산에서 제외 (P20 폴백 금지, P25 격리)
+        # eval_amt가 None(종목 마스터 캐시 현재가 미수신)인 종목은 합산에서 제외 (P20 폴백 금지, P25 격리)
         total_eval = sum(int(p["eval_amt"]) for p in pos if p.get("eval_amt") is not None)
         total_pnl = total_eval - total_buy
         total_rate = round((total_pnl / total_buy) * 100, 2) if total_buy > 0 else 0.0

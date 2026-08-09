@@ -4,12 +4,12 @@
 이 파일은 미커버 영역을 보완:
   - _refresh_positions_if_dirty (캐시 재구축/스킵/비파생 필드 보존)
   - _next_fake_order_no (시퀀스)
-  - update_price (가격 변경/동일/미보유/손익 재계산)
+  - update_price (보유종목 가격 갱신 발생 여부)
   - set_stock_name (설정/미보유)
-  - get_positions / get_position (전체/단일/미보유)
+  - get_positions / get_position (전체/단일/미보유 — 종목 마스터 캐시 기반 파생)
   - position_codes (보유/codes)
   - clear (포지션 클리어)
-  - _recalc_pnl (손익 계산/buy_amt=0)
+  - _derive_pnl_fields (종목 마스터 캐시 기반 손익 파생/buy_amt=0)
   - 가상 예수금 (set_virtual_deposit)
 """
 from __future__ import annotations
@@ -18,6 +18,7 @@ import pytest
 from unittest.mock import AsyncMock, patch
 
 from backend.app.services import dry_run
+from backend.app.services import engine_state
 from backend.app.services import settlement_engine
 from backend.app.services import trade_history
 
@@ -37,7 +38,7 @@ _TEST_PRICE = 70_000
 
 @pytest.fixture(autouse=True)
 def _setup_dry_run_env(monkeypatch):
-    """각 테스트 전: DB I/O 차단, 가상 잔고 초기화, state 설정."""
+    """각 테스트 전: DB I/O 차단, 가상 잔고 초기화, 종목 마스터 캐시 초기화."""
     # DB I/O 경로 차단
     monkeypatch.setattr(settlement_engine, "_persist", _noop_async)
     monkeypatch.setattr(settlement_engine, "_broadcast_delta", _noop_async)
@@ -56,30 +57,37 @@ def _setup_dry_run_env(monkeypatch):
     settlement_engine._orderable = 10_000_000
     settlement_engine._initial_deposit = 10_000_000
 
+    # 종목 마스터 캐시 초기화 (빈 dict — 각 테스트에서 필요 시 설정)
+    _saved_cache = engine_state.state.master_stocks_cache
+    engine_state.state.master_stocks_cache = {}
+
     yield
 
     # 정리
     dry_run._test_positions.clear()
     trade_history._buy_history.clear()
     trade_history._sell_history.clear()
+    engine_state.state.master_stocks_cache = _saved_cache
 
 
-def _make_position(cd=_TEST_CODE, qty=10, avg_price=70_000, cur_price=70_000, stk_nm=_TEST_NM):
+def _make_position(cd=_TEST_CODE, qty=10, avg_price=70_000, stk_nm=_TEST_NM, total_fee=105):
+    """포지션 원본 — 수량·평단가·매입금액만 유지 (cur_price/eval_amt/pnl_*는 파생)."""
     buy_amount = avg_price * qty
     return {
         "stk_cd": cd,
         "stk_nm": stk_nm,
         "qty": qty,
         "avg_price": avg_price,
-        "cur_price": cur_price,
-        "total_fee": 105,
+        "total_fee": total_fee,
         "buy_amount": buy_amount,
-        "buy_amt": buy_amount + 105,
-        "eval_amt": cur_price * qty,
-        "pnl_amount": (cur_price - avg_price) * qty,
-        "pnl_rate": round(((cur_price - avg_price) * qty) / buy_amount * 100, 2) if buy_amount else 0.0,
+        "buy_amt": buy_amount + total_fee,
         "buy_date": "2026-07-08",
     }
+
+
+def _set_master_cur_price(code: str, cur_price):
+    """종목 마스터 캐시에 현재가 설정 (파생 계산 입력)."""
+    engine_state.state.master_stocks_cache[code] = {"cur_price": cur_price}
 
 
 # ── _refresh_positions_if_dirty ───────────────────────────────────────────────
@@ -112,24 +120,29 @@ class TestRefreshPositionsIfDirty:
         mock_build.assert_not_called()
 
     async def test_preserves_non_derived_fields(self):
-        """재구축 시 cur_price/stk_nm 등 비파생 필드가 기존 캐시에서 보존되는지 확인."""
+        """재구축 시 change/stk_nm 등 비파생 필드가 기존 캐시에서 보존되는지 확인 (cur_price는 보존 제외 — 파생)."""
         dry_run._positions_loaded = True
         dry_run._positions_dirty = True
         # 기존 캐시에 비파생 필드 설정
-        dry_run._test_positions[_TEST_CODE] = _make_position(cur_price=75_000, stk_nm="커스텀명")
-        # build_positions_from_trades가 새 포지션 반환 (cur_price/stk_nm 없음)
+        old_pos = _make_position(stk_nm="커스텀명")
+        old_pos["change"] = 1500
+        old_pos["change_rate"] = 2.14
+        dry_run._test_positions[_TEST_CODE] = old_pos
+        # build_positions_from_trades가 새 포지션 반환 (change/stk_nm 없음)
         new_pos = {
             "stk_cd": _TEST_CODE, "stk_nm": "", "qty": 10, "avg_price": 70_000,
-            "cur_price": 70_000, "total_fee": 105, "buy_amt": 700105,
-            "eval_amt": 700000, "pnl_amount": -105, "pnl_rate": 0.0,
+            "total_fee": 105, "buy_amt": 700105,
             "buy_date": "2026-07-08",
         }
         with patch("backend.app.services.trade_history._history_lock"):
             with patch("backend.app.services.trade_history.build_positions_from_trades", new_callable=AsyncMock, return_value={_TEST_CODE: new_pos}):
                 await dry_run._refresh_positions_if_dirty()
         pos = dry_run._test_positions[_TEST_CODE]
-        # cur_price는 보존되어야 함 (기존 75,000)
-        assert pos["cur_price"] == 75_000
+        # change/change_rate는 보존되어야 함
+        assert pos["change"] == 1500
+        assert pos["change_rate"] == 2.14
+        # stk_nm은 기존값 보존
+        assert pos["stk_nm"] == "커스텀명"
 
 
 # ── _next_fake_order_no ───────────────────────────────────────────────────────
@@ -152,30 +165,31 @@ class TestNextFakeOrderNo:
 # ── update_price ──────────────────────────────────────────────────────────────
 
 class TestUpdatePrice:
-    """update_price: 0B 틱으로 가상 잔고 현재가/수익률 갱신."""
+    """update_price: 보유종목 가격 갱신 발생 여부 반환 (포지션 자체 갱신 없음)."""
 
-    async def test_price_change_returns_true(self):
-        dry_run._test_positions[_TEST_CODE] = _make_position(cur_price=70_000)
+    async def test_held_valid_price_returns_true(self):
+        dry_run._test_positions[_TEST_CODE] = _make_position()
         result = await dry_run.update_price(_TEST_CODE, 75_000)
         assert result is True
-        assert dry_run._test_positions[_TEST_CODE]["cur_price"] == 75_000
 
-    async def test_same_price_returns_false(self):
-        dry_run._test_positions[_TEST_CODE] = _make_position(cur_price=70_000)
-        result = await dry_run.update_price(_TEST_CODE, 70_000)
+    async def test_zero_price_returns_false(self):
+        dry_run._test_positions[_TEST_CODE] = _make_position()
+        result = await dry_run.update_price(_TEST_CODE, 0)
         assert result is False
 
     async def test_not_held_returns_false(self):
         result = await dry_run.update_price("999999", 75_000)
         assert result is False
 
-    async def test_pnl_recalculated(self):
-        dry_run._test_positions[_TEST_CODE] = _make_position(cur_price=70_000, avg_price=70_000)
+    async def test_no_position_mutation(self):
+        """update_price는 포지션 자체를 갱신하지 않음 (종목 마스터 캐시 기반 파생)."""
+        dry_run._test_positions[_TEST_CODE] = _make_position()
         await dry_run.update_price(_TEST_CODE, 80_000)
         pos = dry_run._test_positions[_TEST_CODE]
-        assert pos["eval_amt"] == 80_000 * 10
-        assert pos["pnl_amount"] > 0
-        assert pos["pnl_rate"] > 0
+        # 포지션은 cur_price/eval_amt/pnl_*를 갖지 않음
+        assert "cur_price" not in pos
+        assert "eval_amt" not in pos
+        assert "pnl_amount" not in pos
 
 
 # ── set_stock_name ────────────────────────────────────────────────────────────
@@ -196,7 +210,7 @@ class TestSetStockName:
 # ── get_positions / get_position ──────────────────────────────────────────────
 
 class TestGetPositions:
-    """get_positions / get_position: 전체 목록, 단일 조회, 미보유."""
+    """get_positions / get_position: 전체 목록, 단일 조회, 미보유 — 종목 마스터 캐시 기반 파생."""
 
     async def test_get_positions_returns_list(self):
         dry_run._test_positions[_TEST_CODE] = _make_position()
@@ -213,6 +227,33 @@ class TestGetPositions:
     async def test_get_position_not_found(self):
         pos = await dry_run.get_position("999999")
         assert pos is None
+
+    async def test_get_position_derives_pnl_from_master_cache(self):
+        dry_run._test_positions[_TEST_CODE] = _make_position(avg_price=70_000, qty=10)
+        _set_master_cur_price(_TEST_CODE, 80_000)
+        pos = await dry_run.get_position(_TEST_CODE)
+        assert pos is not None
+        assert pos["cur_price"] == 80_000
+        assert pos["eval_amt"] == 800_000
+        assert pos["pnl_amount"] == 100_000
+
+    async def test_get_position_none_pnl_when_no_master_price(self):
+        dry_run._test_positions[_TEST_CODE] = _make_position(avg_price=70_000, qty=10)
+        # master_stocks_cache 빈 dict (cur_price 없음)
+        pos = await dry_run.get_position(_TEST_CODE)
+        assert pos is not None
+        assert pos["cur_price"] is None
+        assert pos["eval_amt"] is None
+        assert pos["pnl_amount"] is None
+
+    async def test_get_positions_does_not_mutate_cache(self):
+        """get_positions는 원본 캐시를 오염시키지 않음 (복사본에 파생)."""
+        dry_run._test_positions[_TEST_CODE] = _make_position()
+        _set_master_cur_price(_TEST_CODE, 80_000)
+        await dry_run.get_positions()
+        pos = dry_run._test_positions[_TEST_CODE]
+        assert "cur_price" not in pos
+        assert "eval_amt" not in pos
 
 
 # ── position_codes ────────────────────────────────────────────────────────────
@@ -243,24 +284,34 @@ class TestClear:
         assert dry_run._positions_dirty is False
 
 
-# ── _recalc_pnl ───────────────────────────────────────────────────────────────
+# ── _derive_pnl_fields ───────────────────────────────────────────────────────
 
-class TestRecalcPnl:
-    """_recalc_pnl: 현재가 기준 손익 재계산."""
+class TestDerivePnlFields:
+    """_derive_pnl_fields: 종목 마스터 캐시 기준 손익 파생."""
 
-    def test_normal_pnl_calculation(self):
-        pos = _make_position(avg_price=70_000, cur_price=80_000, qty=10)
-        dry_run._recalc_pnl(pos)
+    def test_normal_pnl_derivation(self):
+        _set_master_cur_price(_TEST_CODE, 80_000)
+        pos = _make_position(avg_price=70_000, qty=10)
+        dry_run._derive_pnl_fields(pos, engine_state.state.master_stocks_cache)
+        assert pos["cur_price"] == 80_000
         assert pos["eval_amt"] == 800_000
         assert pos["buy_amount"] == 700_000
         assert pos["buy_amt"] == 700_000 + 105
         assert pos["pnl_amount"] == 800_000 - 700_000
         assert pos["pnl_rate"] == round((800_000 - 700_000) / 700_000 * 100, 2)
 
+    def test_no_cur_price_yields_none(self):
+        pos = _make_position(avg_price=70_000, qty=10)
+        dry_run._derive_pnl_fields(pos, engine_state.state.master_stocks_cache)
+        assert pos["cur_price"] is None
+        assert pos["eval_amt"] is None
+        assert pos["pnl_amount"] is None
+        assert pos["pnl_rate"] is None
+
     def test_zero_buy_amt_pnl_rate_zero(self):
-        pos = _make_position(avg_price=0, cur_price=80_000, qty=10)
-        pos["total_fee"] = 0
-        dry_run._recalc_pnl(pos)
+        _set_master_cur_price(_TEST_CODE, 80_000)
+        pos = _make_position(avg_price=0, qty=10, total_fee=0)
+        dry_run._derive_pnl_fields(pos, engine_state.state.master_stocks_cache)
         assert pos["buy_amt"] == 0
         assert pos["pnl_rate"] == 0.0
 

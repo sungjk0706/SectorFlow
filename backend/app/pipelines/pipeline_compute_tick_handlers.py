@@ -147,6 +147,9 @@ async def _apply_01_price_to_positions(
 ) -> bool:
     """보유종목 현재가 반영 — 평가손익·수익률 실시간 재계산.
 
+    가상매매: 종목 마스터 캐시 현재가는 engine_radar에서 이미 갱신됨. 포지션 자체 갱신 없음 —
+    보유종목 가격 갱신 발생 여부만 반환 (W3 SSOT, P10). 평가손익은 get_positions() 반환 시 파생.
+    실전매매: 실시간 체결가로 포지션 평가손익·합계 재계산 (2단계에서 자체 계산 제거 예정).
     Returns: 보유종목 가격 갱신 발생 여부.
     """
     import backend.app.pipelines.pipeline_compute as _pc
@@ -160,12 +163,9 @@ async def _apply_01_price_to_positions(
     state = _pc.state
     _price_hit = False
     if is_virtual_mode(state.integrated_system_settings_cache):
+        # 가상매매: 종목 마스터 캐시 현재가는 engine_radar에서 이미 갱신됨.
+        # 포지션 자체 갱신 없음 — 보유종목 가격 갱신 발생 여부만 반환 (W3 SSOT, P10).
         _price_hit = await dry_run.update_price(nk_px, last_px)
-        if _price_hit:
-            _dr_pos = await dry_run.get_position(nk_px)
-            if _dr_pos:
-                _dr_pos["change"] = diff
-                _dr_pos["change_rate"] = rate
     else:
         _price_hit = apply_last_price_to_positions_inplace(state.positions, raw_cd, last_px)
         if _price_hit:

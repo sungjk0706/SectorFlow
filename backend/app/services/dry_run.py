@@ -5,7 +5,7 @@ Dry-Run 모듈 — 가상매매 전용 가상 체결 엔진 + 영속 잔고.
 책임:
   1. fake_send_order()  — 키움 send_order 응답과 동일한 구조의 가짜 체결 반환
   2. _test_positions     — 가상 잔고 (trades 테이블 기반 파생, 인메모리 캐시)
-  3. update_price()      — 0B 틱으로 가상 잔고 현재가/수익률 갱신
+  3. update_price()      — 0B 틱 수신 시 보유종목 가격 갱신 발생 여부 반환 (포지션 자체 갱신 없음)
 """
 from __future__ import annotations
 from typing import Optional
@@ -19,7 +19,8 @@ logger = logging.getLogger(__name__)
 # _test_positions는 trade_history.build_positions_from_trades()의 파생 캐시이다.
 # record_buy/record_sell이 _insert_trade에서 _positions_dirty=True로 설정하면,
 # 다음 get_positions() 호출 시 build_positions_from_trades()로 재구축된다.
-# cur_price/stk_nm 등 비파생 필드는 재구축 시 기존 캐시에서 보존된다.
+# 포지션은 수량·평단가·매입금액만 유지. cur_price/eval_amt/pnl_amount/pnl_rate는
+# get_positions()/get_position() 반환 시 종목 마스터 캐시에서 파생 (W3 SSOT, P10).
 _test_positions: dict[str, dict] = {}
 _positions_loaded: bool = False
 _positions_dirty: bool = True   # 최초 로드 필요
@@ -38,7 +39,8 @@ async def _refresh_positions_if_dirty() -> None:
 
     SSOT: trade_history._buy_history/_sell_history가 유일한 진실 원천.
     _test_positions는 파생 캐시이며, record_buy/record_sell 후 무효화된다.
-    재구축 시 cur_price/stk_nm 등 비파생 필드는 기존 캐시에서 보존된다.
+    재구축 시 change/change_rate/bid_depth/ask_depth/stk_nm 등 비파생 필드는 기존 캐시에서 보존된다.
+    cur_price/eval_amt/pnl_amount/pnl_rate는 포지션에 저장하지 않고 get_positions() 반환 시 종목 마스터 캐시에서 파생 (W3 SSOT, P10).
     재구축 실패 시 _positions_dirty를 True로 유지하여 다음 호출에서 재시도한다.
     """
     global _positions_loaded, _positions_dirty
@@ -47,8 +49,9 @@ async def _refresh_positions_if_dirty() -> None:
     _positions_loaded = True
     from backend.app.services import trade_history
     computed = await trade_history.build_positions_from_trades("virtual")
-    # 비파생 필드 보존: cur_price, change, change_rate, bid_depth, ask_depth (stk_nm은 별도 처리)
-    _preserve_fields = ("cur_price", "change", "change_rate", "bid_depth", "ask_depth")
+    # 비파생 필드 보존: change, change_rate, bid_depth, ask_depth (stk_nm은 별도 처리).
+    # cur_price는 더 이상 포지션이 갖지 않음 — 종목 마스터 캐시 기반 파생 (W3 SSOT, P10).
+    _preserve_fields = ("change", "change_rate", "bid_depth", "ask_depth")
     for cd, new_pos in computed.items():
         old = _test_positions.get(cd)
         if old:
@@ -58,7 +61,6 @@ async def _refresh_positions_if_dirty() -> None:
             # stk_nm: 기존 캐시에 있고 새 값이 비어있으면 보존
             if old.get("stk_nm") and not new_pos.get("stk_nm"):
                 new_pos["stk_nm"] = old["stk_nm"]
-        _recalc_pnl(new_pos)
     _test_positions.clear()
     _test_positions.update(computed)
     _positions_dirty = False
@@ -236,25 +238,33 @@ async def _apply_sell(code: str, qty: int, price: int) -> None:
     stk_nm = _test_positions.get(norm_code, {}).get("stk_nm", "")
     await settlement_engine.on_sell_fill(price, qty, norm_code, stk_nm)
 
-def _recalc_pnl(pos: dict) -> None:
-    """현재가 기준 손익 재계산 (순수 차익: 수수료/세금 제외).
+def _derive_pnl_fields(pos: dict, master_cache: dict) -> None:
+    """종목 마스터 캐시 기준 평가손익 파생 (순수 차익: 수수료/세금 제외).
 
-    cur_price가 None(시세 미수신)인 경우 eval_amt/pnl_amount/pnl_rate를 None으로 설정하여
-    avg_price 폴백 위장을 제거 (P20). 하위 소비자는 None을 명시적으로 처리 (P21/P25).
+    포지션은 수량·평단가·매입금액만 유지하고, cur_price/eval_amt/pnl_amount/pnl_rate는
+    계산 시점에 종목 마스터 캐시에서 파생한다 (W3 SSOT, P10).
+    종목 마스터 캐시 cur_price가 None(시세 미수신)인 경우 eval_amt/pnl_amount/pnl_rate를
+    None으로 설정하여 avg_price 폴백 위장을 제거 (P20). 하위 소비자는 None 명시 처리 (P21/P25).
     """
-    avg = int(pos.get("avg_price", 0))
-    cur_raw = pos.get("cur_price")
-    qty = int(pos.get("qty", 0))
-    total_fee = int(pos.get("total_fee", 0))
+    from backend.app.services.engine_symbol_utils import _base_stk_cd
+
+    avg = int(pos.get("avg_price", 0) or 0)
+    qty = int(pos.get("qty", 0) or 0)
+    total_fee = int(pos.get("total_fee", 0) or 0)
     buy_amount = avg * qty
     pos["buy_amount"] = buy_amount
     pos["buy_amt"] = buy_amount + total_fee
+    code = _base_stk_cd(str(pos.get("stk_cd", "") or ""))
+    entry = master_cache.get(code) if code else None
+    cur_raw = entry.get("cur_price") if entry else None
     if cur_raw is None:
+        pos["cur_price"] = None
         pos["eval_amt"] = None
         pos["pnl_amount"] = None
         pos["pnl_rate"] = None
         return
     cur = int(cur_raw)
+    pos["cur_price"] = cur
     pos["eval_amt"] = cur * qty
     pos["pnl_amount"] = pos["eval_amt"] - buy_amount
     pos["pnl_rate"] = round((pos["pnl_amount"] / buy_amount) * 100, 2) if buy_amount > 0 else 0.0
@@ -264,21 +274,19 @@ def _recalc_pnl(pos: dict) -> None:
 
 async def update_price(code: str, price: int) -> bool:
     """
-    0B 틱 수신 시 호출 — 가상 잔고의 현재가/수익률 갱신.
-    반환: True=가격 변경됨, False=해당 종목 미보유 또는 가격 동일
+    0B 틱 수신 시 호출 — 보유종목 가격 갱신 발생 여부만 반환.
+    포지션 자체는 갱신하지 않음. 종목 마스터 캐시 현재가는 engine_radar에서 이미 갱신됨 (W3 SSOT, P10).
+    반환: True=보유종목이고 유효 가격, False=미보유 또는 무효 가격
     """
     from backend.app.services.engine_symbol_utils import _base_stk_cd
 
+    if price <= 0:
+        return False
     await _refresh_positions_if_dirty()
     norm_code = _base_stk_cd(code)
     pos = _test_positions.get(norm_code)
     if not pos:
         return False
-    cur_price = pos.get("cur_price")
-    if cur_price is not None and int(cur_price) == price:
-        return False  # 가격 변경 없음 — 재계산 스킵
-    pos["cur_price"] = price
-    _recalc_pnl(pos)
     return True
 
 
@@ -304,17 +312,34 @@ async def get_positions() -> list[dict]:
     """engine_service가 잔고 목록으로 사용할 수 있는 리스트 반환.
 
     _positions_dirty가 True면 build_positions_from_trades로 재구축 후 반환.
+    반환 시 각 포지션의 복사본에 종목 마스터 캐시 기반 평가손익 필드를 파생하여 채운다 (W3 SSOT, P10).
+    원본 캐시는 수량·평단가·매입금액만 유지.
     """
+    from backend.app.services.engine_state import state
+
     await _refresh_positions_if_dirty()
-    return list(_test_positions.values())
+    master = state.master_stocks_cache
+    result: list[dict] = []
+    for pos in _test_positions.values():
+        out = dict(pos)
+        _derive_pnl_fields(out, master)
+        result.append(out)
+    return result
 
 
 async def get_position(code: str) -> Optional[dict]:
+    """단일 포지션 반환 — 종목 마스터 캐시 기반 평가손익 필드 파생 (W3 SSOT, P10)."""
     from backend.app.services.engine_symbol_utils import _base_stk_cd
+    from backend.app.services.engine_state import state
 
     await _refresh_positions_if_dirty()
     norm_code = _base_stk_cd(code)
-    return _test_positions.get(norm_code)
+    pos = _test_positions.get(norm_code)
+    if not pos:
+        return None
+    out = dict(pos)
+    _derive_pnl_fields(out, state.master_stocks_cache)
+    return out
 
 
 async def position_codes() -> set[str]:
