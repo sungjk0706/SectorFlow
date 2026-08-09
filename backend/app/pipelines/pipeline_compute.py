@@ -506,6 +506,13 @@ async def _dispatch_real_item(item: dict, broadcast_queue: asyncio.Queue) -> boo
         return False
     # 04/80 잔고 처리 (실시간 잔고 변동 반영)
     if norm_type in ("04", "80"):
+        # 가상매매 — 04/80 디스패치 2차 안전망 (F8).
+        # 정상 상태에서는 계좌 구독이 비활성화되어 미수신이나, 재연결 등 예외 시 수신되면
+        # _handle_real_balance로 전달되어 가상 상태가 실전 데이터로 오염되므로 디스패치 단계에서 차단 (P25 격리된 실패).
+        from backend.app.core.trade_mode import is_virtual_mode
+        if is_virtual_mode(state.integrated_system_settings_cache):
+            logger.info("[계좌] 가상매매 — 04/80 잔고 메시지 디스패치 무시 (상태 덮어쓰기 방지)")
+            return False
         from backend.app.services.engine_ws_dispatch import _handle_real_balance
         await _handle_real_balance(item, vals)
         return False

@@ -48,6 +48,7 @@ class TestHandleReal00Isolation:
         mock_state = MagicMock()
         mock_state.auto_trade = mock_auto_trade
         mock_state.access_token = "tok"
+        mock_state.integrated_system_settings_cache = {"trade_mode": "live"}  # 실전모드 — 00 핸들러 가드 통과
 
         mock_queue = MagicMock()
 
@@ -75,6 +76,7 @@ class TestHandleReal00Isolation:
         mock_state = MagicMock()
         mock_state.auto_trade = mock_auto_trade
         mock_state.access_token = "tok"
+        mock_state.integrated_system_settings_cache = {"trade_mode": "live"}  # 실전모드 — 00 핸들러 가드 통과
 
         mock_queue = MagicMock()
         mock_queue.put_nowait.side_effect = _asyncio.QueueFull()
@@ -96,6 +98,7 @@ class TestHandleReal00Isolation:
         mock_state = MagicMock()
         mock_state.auto_trade = None
         mock_state.access_token = "tok"
+        mock_state.integrated_system_settings_cache = {"trade_mode": "live"}  # 실전모드 — 00 핸들러 가드 통과
 
         mock_queue = MagicMock()
 

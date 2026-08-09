@@ -453,7 +453,8 @@ class TestHandleRealTick:
         mock_bq = AsyncMock()
         data = {"data": {"type": "04", "values": {"90001": "005930"}}}
         with patch("backend.app.services.engine_ws_dispatch._handle_real_balance", new_callable=AsyncMock) as mock_bal, \
-             patch("backend.app.services.engine_ws_parsing._normalize_real_type", return_value="04"):
+             patch("backend.app.services.engine_ws_parsing._normalize_real_type", return_value="04"), \
+             patch("backend.app.pipelines.pipeline_compute.state.integrated_system_settings_cache", {"trade_mode": "live"}):
             await _handle_real_tick(data, mock_bq)
             mock_bal.assert_awaited_once()
 
@@ -462,7 +463,8 @@ class TestHandleRealTick:
         mock_bq = AsyncMock()
         data = {"data": {"type": "80", "values": {"90001": "005930"}}}
         with patch("backend.app.services.engine_ws_dispatch._handle_real_balance", new_callable=AsyncMock) as mock_bal, \
-             patch("backend.app.services.engine_ws_parsing._normalize_real_type", return_value="80"):
+             patch("backend.app.services.engine_ws_parsing._normalize_real_type", return_value="80"), \
+             patch("backend.app.pipelines.pipeline_compute.state.integrated_system_settings_cache", {"trade_mode": "live"}):
             await _handle_real_tick(data, mock_bq)
             mock_bal.assert_awaited_once()
 

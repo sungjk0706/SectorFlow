@@ -186,6 +186,7 @@ class TestHandleReal00PassesFillCode:
         mock_state = MagicMock()
         mock_state.auto_trade = mock_auto_trade
         mock_state.access_token = "tok"
+        mock_state.integrated_system_settings_cache = {"trade_mode": "live"}  # 실전모드 — 00 핸들러 가드 통과
 
         mock_queue = MagicMock()
 

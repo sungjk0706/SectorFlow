@@ -319,6 +319,13 @@ async def _apply_balance_realtime(item: dict, vals: dict) -> None:
     계좌 단위(item=계좌번호): FID 930~934 계좌 합계 갱신.
     종목 단위(item=종목코드): FID 930~933·950·8019·10 포지션 갱신.
     """
+    # 가상매매 — 실시간 잔고 핸들러 2차 안전망 (F6).
+    # 정상 상태에서는 계좌 구독이 비활성화되어 04/80 미수신이나, 재연결 등 예외 시 수신되면
+    # 가상 상태가 실전 데이터로 오염되므로 진입부에서 차단 (P25 격리된 실패).
+    if is_virtual_mode(state.integrated_system_settings_cache):
+        logger.info("[계좌] 가상매매 — 실시간 잔고 메시지 무시 (상태 덮어쓰기 방지)")
+        return
+
     from backend.app.core.broker_factory import get_router
     from backend.app.services.engine_account_notify import _rebuild_positions_cache
 

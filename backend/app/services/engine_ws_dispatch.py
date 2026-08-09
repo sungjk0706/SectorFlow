@@ -127,6 +127,14 @@ def _broadcast_realtime_latency_status(*, blocked: bool) -> None:
 
 async def _handle_real_00(item: dict, vals: dict) -> None:
     """주문체결(00) 처리 — 자동매매 체결 콜백 + 잔고 갱신 트리거."""
+    # 가상매매 — 주문체결 핸들러 2차 안전망 (F7).
+    # 정상 상태에서는 계좌 구독이 비활성화되어 00 미수신이나, 재연결 등 예외 시 수신되면
+    # 가상 체결(dry_run)과 별개로 실전 체결 핸들러가 실행되어 이중 체결/상태 꼬임 유발 (P25 격리된 실패).
+    from backend.app.core.trade_mode import is_virtual_mode
+    if is_virtual_mode(engine_state.state.integrated_system_settings_cache):
+        logger.info("[매매] 가상매매 — 주문체결(00) 메시지 무시 (이중 체결 방지)")
+        return
+
     _ts = int(time.time() * 1000)
     raw_cd = _real_item_stk_cd(item, vals)
     side = str(vals.get("907", ""))
