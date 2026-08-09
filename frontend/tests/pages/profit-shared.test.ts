@@ -20,7 +20,7 @@ import type { MasterStock, Position } from '../../src/types'
 function makePosition(code: string, qty: number, avgPrice: number, curPrice: number | null = null): Position {
   return {
     stk_cd: code, stk_nm: `종목${code}`, qty, avg_price: avgPrice,
-    cur_price: curPrice, buy_amt: avgPrice * qty, pnl_rate: 0, buy_date: '20260720',
+    cur_price: curPrice, buy_amt: avgPrice * qty, pnl_amount: null, pnl_rate: 0, eval_amount: null, buy_date: '20260720',
   }
 }
 

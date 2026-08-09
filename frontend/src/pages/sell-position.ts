@@ -15,7 +15,6 @@ import { rateColor, pnlColor, fmtComma, fmtRate, createCodeCell, createStockName
 import { createBadgeRow, createBadge, updateBadge, type BadgeHandle } from '../components/common/badge'
 import { computeOrderBlockStatus } from '../utils/order-block-status'
 import { getLocalToday } from '../utils/date'
-import { computeHoldingsSummary, computePositionValuation, getPositionValuationPrice } from './profit-math'
 import { createFrameScheduler, type FrameScheduler } from '../components/common/frame-scheduler'
 import type { Position } from '../types'
 
@@ -41,7 +40,7 @@ const COLUMNS: ColumnDef<Position>[] = [
   ),
   {
     // 표시 소스: masterStocks(백엔드 master_stocks_cache 프론트 사본) — 매수후보·업종별 종목과 동일 소스 (P23 일관성).
-    // 계산(pnl/rate/요약)은 computePositionValuation가 positions.cur_price를 계속 사용 (역할 분리 — 설계서 결정 1·2).
+    // 현재가 표시만 masterStocks 기반. 평가손익/수익률은 백엔드(증권사/가상 시뮬레이터) 계산값을 그대로 표시 (P10 SSOT).
     // masterStocks에 종목이 없거나 cur_price가 null/undefined → '-' (P20 폴백 금지 — p.cur_price 참조 안 함).
     key: 'cur_price', label: '현재가', align: 'right', type: 'price', flash: true,
     render: (p) => {
@@ -62,32 +61,31 @@ const COLUMNS: ColumnDef<Position>[] = [
     render: (p) => createNumberCell(p.buy_amt),
   },
   {
+    // 평가손익 — 백엔드(증권사/가상 시뮬레이터) 계산값 그대로 표시 (P10 SSOT). 화면 자체 계산 금지.
+    // null = 시세 미수신 → '-' 표시 (P20 폴백 금지, P21 투명성).
     key: 'pnl', label: '평가손익', align: 'right', type: 'pnl',
     render: (p) => {
-      const state = hotStore.getState()
-      const v = computePositionValuation(p, getPositionValuationPrice(p, state.masterStocks))
       const span = document.createElement('span')
-      if (v.isNull) {
+      if (p.pnl_amount == null) {
         span.textContent = '-'
         return span
       }
-      span.style.color = rateColor(v.pnl)
-      span.textContent = fmtComma(v.pnl)
+      span.style.color = rateColor(p.pnl_amount)
+      span.textContent = fmtComma(p.pnl_amount)
       return span
     },
   },
   {
+    // 수익률 — 백엔드 계산값 그대로 표시 (P10 SSOT). null = 시세 미수신 → '-' 표시.
     key: 'rate', label: '수익률', align: 'right', type: 'pnl_rate',
     render: (p) => {
-      const state = hotStore.getState()
-      const v = computePositionValuation(p, getPositionValuationPrice(p, state.masterStocks))
       const span = document.createElement('span')
-      if (v.isNull) {
+      if (p.pnl_rate == null) {
         span.textContent = '-'
         return span
       }
-      span.style.color = rateColor(v.rate)
-      span.textContent = fmtRate(v.rate) + '%'
+      span.style.color = rateColor(p.pnl_rate)
+      span.textContent = fmtRate(p.pnl_rate) + '%'
       return span
     },
   },
@@ -160,8 +158,9 @@ let summaryPnlBadge: BadgeHandle | null = null
 let summaryRateBadge: BadgeHandle | null = null
 let summaryStatusBadge: BadgeHandle | null = null
 
-/** 보유 종목 요약 행 렌더 — positions + masterStocks에서 직접 계산 (개별 종목 행과 동일 소스·공식)
- *  P21/P23: cur_price null인 보유종목 있으면 평가금액/평가손익/수익률 '-' 표시 (개별 행과 동일 null 패턴) */
+/** 보유 종목 요약 행 렌더 — account snapshot의 백엔드 계산값 그대로 표시 (P10 SSOT).
+ *  개별 행과 동일하게 백엔드(증권사/가상 시뮬레이터)가 계산한 총평가·총손익·총수익률을 사용.
+ *  P21/P23: account 값이 없으면 '-' 표시 (개별 행과 동일 null 패턴). */
 function renderSummary(): void {
   if (!pageDataReady) {
     if (summaryEvalBadge) updateBadge(summaryEvalBadge, '—')
@@ -171,18 +170,21 @@ function renderSummary(): void {
   }
   const state = hotStore.getState()
   const count = state.positionCount
-  const { evalTotal, evalPnl, evalRate, hasNullPrice } = computeHoldingsSummary(state.positions, state.masterStocks)
+  const account = state.account
+  const evalTotal = account?.total_eval_amount ?? null
+  const evalPnl = account?.total_pnl ?? null
+  const evalRate = account?.total_pnl_rate ?? null
 
   if (summaryEvalBadge) {
-    updateBadge(summaryEvalBadge, hasNullPrice ? '-' : fmtComma(evalTotal), {
+    updateBadge(summaryEvalBadge, evalTotal == null ? '-' : fmtComma(evalTotal), {
       statusNumber: String(count),
       statusLabel: '종목',
     })
   }
 
-  const color = hasNullPrice ? '' : pnlColor(evalPnl)
-  const pnlText = hasNullPrice ? '-' : `${evalPnl > 0 ? '+' : ''}${fmtComma(evalPnl)}`
-  const rateText = hasNullPrice ? '-' : `${evalRate > 0 ? '+' : ''}${evalRate.toFixed(2)}`
+  const color = evalPnl == null ? '' : pnlColor(evalPnl)
+  const pnlText = evalPnl == null ? '-' : `${evalPnl > 0 ? '+' : ''}${fmtComma(evalPnl)}`
+  const rateText = evalRate == null ? '-' : `${evalRate > 0 ? '+' : ''}${evalRate.toFixed(2)}`
 
   if (summaryPnlBadge) {
     updateBadge(summaryPnlBadge, pnlText, { valueColor: color })
@@ -291,7 +293,8 @@ function buildTableArea(root: HTMLElement): void {
 /* ── 구독 콜백 — mount에서 등록 (P24 책임 분할) ── */
 
 /** hotStore 구독 콜백 — reference equality guard + rAF 배칭
- *  account 변경 시 요약 행 즉시 갱신, positions/masterStocks 변경 시 rAF로 updateRows */
+ *  account 변경 시 요약 행 즉시 갱신 (요약은 account snapshot 기반 — P10 SSOT),
+ *  positions/masterStocks 변경 시 rAF로 updateRows (개별 행 현재가·배지는 masterStocks 기반) */
 function onHotStoreChange(state: HotState): void {
   if (!pageDataReady) return
   const positionsChanged = state.positions !== _prevPositions
@@ -302,9 +305,9 @@ function onHotStoreChange(state: HotState): void {
   _prevMasterStocks = state.masterStocks
   _prevAccount = state.account
 
-  // account 또는 masterStocks 변경 시 요약 행 즉시 갱신 (rAF 배칭 불필요 — 텍스트 4개만 교체)
-  // masterStocks 변경 시 갱신 필수 — cur_price null → 실시간 틱 도달 후 정상 값 표시 (P21 투명성)
-  if (accountChanged || masterStocksChanged) {
+  // account 변경 시 요약 행 즉시 갱신 (rAF 배칭 불필요 — 텍스트 4개만 교체)
+  // 요약의 평가손익·수익률은 account snapshot의 백엔드 계산값 기반 (P10 SSOT)
+  if (accountChanged) {
     renderSummary()
   }
 

@@ -36,7 +36,9 @@ export interface Position {
   avg_price: number;
   cur_price: number | null;  // 계산용 현재가 (손익·평가금액·매도조건·리스크 계산 입력값). 화면 표시 소스 아님 — 표시는 masterStocks 기반 (역할 분리, P22). null = 틱 미수신 (백엔드 _reset_realtime_fields None 설정과 일치)
   buy_amt: number;
-  pnl_rate: number;
+  pnl_amount?: number | null;  // 평가손익 — 백엔드(증권사/가상 시뮬레이터) 계산값 그대로 표시 (P10 SSOT). null/undefined = 시세 미수신
+  pnl_rate: number | null;     // 수익률(%) — 백엔드 계산값 그대로 표시 (P10 SSOT). null = 시세 미수신
+  eval_amount?: number | null; // 평가금액 — 백엔드 계산값. null/undefined = 시세 미수신
   nxt_enable?: boolean;
   buy_date: string;
 }
