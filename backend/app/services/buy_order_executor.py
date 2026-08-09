@@ -147,6 +147,13 @@ async def evaluate_buy_candidates() -> None:
     if not ss or not ss.buy_targets:
         return
 
+    # ── 잔고 확인 완료 전 매수 후보 평가 차단 (P22 정합성 — 잔고 미준비 상태 주문 금지) ──
+    if not state.account_rest_bootstrapped:
+        from backend.app.services.trading import BUY_REJECT_BALANCE_NOT_READY
+        logger.info("[매수] 잔고 확인 미완료 — 매수 후보 평가 차단 (기동 중 잔고 조회 완료 후 허용)")
+        await _mark_all_reject_reasons(ss, BUY_REJECT_BALANCE_NOT_READY)
+        return
+
     # ── 자동매수 게이트 (auto_buy_on + 시간 범위 + 마스터 스위치 통합 체크) ──
     # 사유별 분기 → 모든 매수 후보 "원인" 컬럼에 차단 사유 표시 (P21 사용자 투명성).
     # 기존 전역 게이트(max_holding 등)와 동일 패턴 — _mark_all_reject_reasons 일관성 (P23).

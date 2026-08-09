@@ -49,6 +49,7 @@ BUY_REJECT_VIRTUAL_CASH = "virtual_cash"       # 가상매매 예수금 검증 �
 BUY_REJECT_ORDER_FAIL = "order_fail"             # 주문 전송 실패
 BUY_REJECT_ORDER_BUSY = "order_busy"             # 주문 직렬화 잠금 점유 중 (다른 주문 처리 중)
 BUY_REJECT_FILL_TIMEOUT = "fill_timeout"         # 주문 체결 응답 타임아웃 (접수 후 체결 응답 미수신)
+BUY_REJECT_BALANCE_NOT_READY = "balance_not_ready"  # 잔고 확인 미완료 (기동 시 잔고 조회 완료 전 주문 차단)
 
 # 종목별 차단 사유 (차순위 시도 유효 → continue)
 BUY_REJECT_TIME_BLOCKED = "time_blocked"         # 체결 불가 시간대 (nxt 여부)
@@ -85,6 +86,7 @@ BUY_GLOBAL_REJECT_REASONS: frozenset[str] = frozenset({
     BUY_REJECT_ORDER_FAIL,
     BUY_REJECT_ORDER_BUSY,
     BUY_REJECT_FILL_TIMEOUT,
+    BUY_REJECT_BALANCE_NOT_READY,
 })
 
 # ── 매수 차단 사유 → UI "원인" 컬럼 표시 텍스트 (P10 SSOT, P21 사용자 투명성) ──
@@ -108,6 +110,7 @@ BUY_REJECT_REASON_TEXT: dict[str, str] = {
     BUY_REJECT_ORDER_FAIL:        "주문 전송 실패",
     BUY_REJECT_ORDER_BUSY:        "주문 처리 중",
     BUY_REJECT_FILL_TIMEOUT:      "주문 응답 시간 초과",
+    BUY_REJECT_BALANCE_NOT_READY: "잔고 확인 미완료",
     BUY_REJECT_VIRTUAL_CASH:      "가상매매 잔고 부족",
     BUY_REJECT_AUTO_BUY_OFF:      "자동매수 OFF",
     BUY_REJECT_MASTER_OFF:        "자동매매 OFF",
@@ -389,6 +392,11 @@ class AutoTradeManager:
         반환값: (True, "")=주문 전송 성공, (False, 사유코드)=가드에 의해 차단/실패
         결정 6: 잠금이 이미 점유 중이면 대기하지 않고 즉시 차단 반환 (다음 평가 주기 재시도).
         """
+        # ── 잔고 확인 완료 전 주문 차단 (P22 정합성 — 잔고 미준비 상태 주문 금지) ──
+        from backend.app.services.engine_state import state as engine_state
+        if not engine_state.account_rest_bootstrapped:
+            logger.info("[매매] [매수차단] %s 잔고 확인 미완료 — 주문 차단 (기동 중 잔고 조회 완료 후 허용)", stk_cd)
+            return False, BUY_REJECT_BALANCE_NOT_READY
         if self._order_lock is None:
             self._order_lock = asyncio.Lock()
         if self._order_lock.locked():
@@ -777,6 +785,11 @@ class AutoTradeManager:
         결정 1·6: 글로벌 주문 락으로 매수·매도 공통 직렬화 — 즉시 시도, 점유 시 차단 반환.
         """
         if not trade_settings.get("is_sell_auto", False):
+            return False
+        # ── 잔고 확인 완료 전 주문 차단 (P22 정합성 — 잔고 미준비 상태 주문 금지) ──
+        from backend.app.services.engine_state import state as engine_state
+        if not engine_state.account_rest_bootstrapped:
+            logger.info("[매매] [매도차단] %s(%s) 잔고 확인 미완료 — 주문 차단 (기동 중 잔고 조회 완료 후 허용)", stk_nm, stk_cd)
             return False
         if self._order_lock is None:
             self._order_lock = asyncio.Lock()

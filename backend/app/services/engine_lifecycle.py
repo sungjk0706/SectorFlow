@@ -44,6 +44,8 @@ async def start_engine(user_id: str = "") -> bool:
         from backend.app.services import dry_run
         try:
             await dry_run._refresh_positions_if_dirty()
+            # 가상매매 잔고 확인 완료 표시 — 가상 잔고는 동기식으로 준비되므로 즉시 주문 허용 (P22 정합성)
+            engine_state.state.account_rest_bootstrapped = True
         except Exception as e:
             engine_state.state.position_build_failed = True
             logger.warning("[연산] 가상매매 포지션 구축 실패 — 엔진은 계속 가동: %s", e, exc_info=True)
