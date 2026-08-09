@@ -145,11 +145,11 @@ async def _apply_01_price_to_positions(
     diff,
     rate,
 ) -> bool:
-    """보유종목 현재가 반영 — 평가손익·수익률 실시간 재계산.
+    """보유종목 현재가 반영.
 
     가상매매: 종목 마스터 캐시 현재가는 engine_radar에서 이미 갱신됨. 포지션 자체 갱신 없음 —
     보유종목 가격 갱신 발생 여부만 반환 (W3 SSOT, P10). 평가손익은 get_positions() 반환 시 파생.
-    실전매매: 실시간 체결가로 포지션 평가손익·합계 재계산 (2단계에서 자체 계산 제거 예정).
+    실전매매: 체결가(cur_price)만 갱신. 평가손익·합계는 증권사 서버가 보낸 값 유지 (W7 실전 SSOT).
     Returns: 보유종목 가격 갱신 발생 여부.
     """
     import backend.app.pipelines.pipeline_compute as _pc
@@ -157,7 +157,6 @@ async def _apply_01_price_to_positions(
     from backend.app.services import dry_run
     from backend.app.services.engine_account_rest import (
         apply_last_price_to_positions_inplace,
-        recalc_broker_totals_from_positions,
     )
 
     state = _pc.state
@@ -167,11 +166,8 @@ async def _apply_01_price_to_positions(
         # 포지션 자체 갱신 없음 — 보유종목 가격 갱신 발생 여부만 반환 (W3 SSOT, P10).
         _price_hit = await dry_run.update_price(nk_px, last_px)
     else:
+        # 실전매매: 체결가(cur_price)만 갱신. 평가손익·합계는 증권사 서버 값 유지 (W7 실전 SSOT).
         _price_hit = apply_last_price_to_positions_inplace(state.positions, raw_cd, last_px)
-        if _price_hit:
-            state.broker_rest_totals = recalc_broker_totals_from_positions(
-                state.positions, state.broker_rest_totals
-            )
     return _price_hit
 
 

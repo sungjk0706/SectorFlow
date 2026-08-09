@@ -11,7 +11,6 @@ from __future__ import annotations
 from backend.app.services.engine_account_rest import (
     merge_positions_from_rest,
     broker_totals_from_summary,
-    recalc_broker_totals_from_positions,
     build_account_snapshot_meta,
     apply_last_price_to_positions_inplace,
 )
@@ -139,34 +138,6 @@ class TestBrokerTotalsFromSummary:
         result = broker_totals_from_summary(summary)
         assert result["total_eval"] == 10000000
         assert result["total_pnl"] == 500000
-
-
-# ── recalc_broker_totals_from_positions ───────────────────────────────────────────
-
-class TestRecalcBrokerTotalsFromPositions:
-    def test_empty_positions(self):
-        result = recalc_broker_totals_from_positions([], {"total_buy": 1000})
-        assert result["total_eval"] == 0
-        assert result["total_pnl"] == 0
-        assert result["total_buy"] == 1000  # REST 기준 유지
-        assert result["total_rate"] == 0.0
-
-    def test_with_positions(self):
-        positions = [
-            {"qty": 10, "eval_amount": 800000, "buy_amount": 700000, "pnl_amount": 100000},
-            {"qty": 5, "eval_amount": 400000, "buy_amount": 350000, "pnl_amount": 50000},
-        ]
-        result = recalc_broker_totals_from_positions(positions, {"total_buy": 1050000})
-        assert result["total_eval"] == 1200000
-        assert result["total_pnl"] == 150000
-        assert result["total_buy"] == 1050000  # REST 기준 유지
-        assert result["total_rate"] == round(150000 / 1050000 * 100, 2)
-
-    def test_zero_qty_skipped(self):
-        positions = [{"qty": 0, "eval_amount": 100, "buy_amount": 50, "pnl_amount": 10}]
-        result = recalc_broker_totals_from_positions(positions, {"total_buy": 50})
-        assert result["total_eval"] == 0
-        assert result["total_pnl"] == 0
 
 
 # ── _real04_is_stock_item ──────────────────────────────────────────────────────────
@@ -319,8 +290,8 @@ class TestApplyLastPriceToPositionsInplace:
         result = apply_last_price_to_positions_inplace(positions, "005930", 80000)
         assert result is True
         assert positions[0]["cur_price"] == 80000
-        assert positions[0]["eval_amount"] == 80000 * 10
-        assert positions[0]["pnl_amount"] == 80000 * 10 - 700000
+        # 평가손익·평가금액은 증권사 서버 값 유지 — 자체 계산하지 않음 (W7 실전 SSOT)
+        assert "eval_amount" not in positions[0] or positions[0].get("eval_amount") != 80000 * 10
 
     def test_no_change(self):
         positions = [{"stk_cd": "005930", "qty": 10, "cur_price": 80000, "buy_amount": 700000}]
@@ -342,13 +313,16 @@ class TestApplyLastPriceToPositionsInplace:
         result = apply_last_price_to_positions_inplace(positions, "005930_AL", 80000)
         assert result is True
 
-    def test_with_cmsn_and_tax(self):
-        positions = [{"stk_cd": "005930", "qty": 10, "cur_price": 70000, "buy_amount": 700000, "sum_cmsn": 5000, "tax": 3000}]
+    def test_cmsn_and_tax_not_recalculated(self):
+        # 자체 계산 제거 — 수수료/세금 필드는 갱신하지 않고 증권사 서버 값 유지
+        positions = [{"stk_cd": "005930", "qty": 10, "cur_price": 70000, "buy_amount": 700000,
+                      "sum_cmsn": 5000, "tax": 3000, "total_fee": 5000, "buy_amt": 705000}]
         result = apply_last_price_to_positions_inplace(positions, "005930", 80000)
         assert result is True
-        assert positions[0]["pnl_amount"] == 80000 * 10 - 700000
+        assert positions[0]["cur_price"] == 80000
+        # 기존 증권사 값 유지 — 자체 재계산 없음
         assert positions[0]["total_fee"] == 5000
-        assert positions[0]["buy_amt"] == 700000 + 5000
+        assert positions[0]["buy_amt"] == 705000
 
 
 # ── parse_kt00001_deposit ───────────────────────────────────────────────────────────

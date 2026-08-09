@@ -933,7 +933,6 @@ class TestHandleReal01Tick:
              patch("backend.app.services.engine_ws_parsing._ws_fid_raw", return_value="2.0"), \
              patch("backend.app.core.trade_mode.is_virtual_mode", return_value=False), \
              patch("backend.app.services.engine_account_rest.apply_last_price_to_positions_inplace", return_value=True), \
-             patch("backend.app.services.engine_account_rest.recalc_broker_totals_from_positions", return_value={}), \
              patch("backend.app.pipelines.pipeline_compute.state", mock_state):
             result = await _handle_real_01_tick(item, vals, mock_bq)
             assert result is True

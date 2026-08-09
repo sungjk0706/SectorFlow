@@ -415,11 +415,11 @@ class TestUpdateScatterInventory:
             f"positions 갱신 위치 수: {len(locs)} (예상 3). 위치: {locs}"
         )
 
-    def test_broker_rest_totals_scatter_3_locations(self, write_locations_by_attr):
-        """broker_rest_totals: 3곳에서 갱신."""
+    def test_broker_rest_totals_scatter_2_locations(self, write_locations_by_attr):
+        """broker_rest_totals: 2곳에서 갱신 (틱 핸들러 자체 계산 제거 후 — 평가손익 SSOT 2단계)."""
         locs = write_locations_by_attr.get("broker_rest_totals", set())
-        assert len(locs) == 3, (
-            f"broker_rest_totals 갱신 위치 수: {len(locs)} (예상 3). 위치: {locs}"
+        assert len(locs) == 2, (
+            f"broker_rest_totals 갱신 위치 수: {len(locs)} (예상 2). 위치: {locs}"
         )
 
 

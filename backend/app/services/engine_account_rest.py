@@ -75,28 +75,6 @@ def broker_totals_from_summary(summary: dict) -> dict:
     }
 
 
-def recalc_broker_totals_from_positions(positions: list, broker_rest_totals: dict) -> dict:
-    """
-    REAL 01 틱마다 positions 합산으로 총평가·총손익·총수익률 실시간 갱신.
-    총매입은 REST 기준 고정(buy_amount 합산).
-    """
-    tot_eval = 0
-    tot_buy = 0
-    tot_pnl = 0
-    for p in positions:
-        if int(p.get("qty", 0) or 0) > 0:
-            tot_eval += int(p.get("eval_amount", 0) or 0)
-            tot_buy += int(p.get("buy_amount", 0) or 0)
-            tot_pnl += int(p.get("pnl_amount", 0) or 0)
-    tot_rate = round(tot_pnl / tot_buy * 100, 2) if tot_buy else 0.0
-    return {
-        "total_eval": tot_eval,
-        "total_pnl":  tot_pnl,
-        "total_buy":  broker_rest_totals.get("total_buy", tot_buy),  # REST 기준 유지
-        "total_rate": tot_rate,
-    }
-
-
 def build_account_snapshot_meta(
     account_snapshot: dict,
     broker_rest_totals: dict,
@@ -148,28 +126,16 @@ def apply_last_price_to_positions_inplace(
     stk_cd: str,
     price: int,
 ) -> bool:
-    """실시간 체결(REAL 01) -- 체결가 반영 + 평가손익·수익률·평가금액 실시간 재계산. 가격 변경 시에만 True."""
+    """실시간 체결(REAL 01) -- 체결가(cur_price)만 반영. 평가손익·수익률·평가금액은
+    증권사 서버가 보낸 값을 유지 (자체 계산 제거 — W7 실전 SSOT). 가격 변경 시에만 True."""
     if price <= 0:
         return False
     key = _base_stk_cd(stk_cd)
     for s in positions:
         if _base_stk_cd(str(s.get("stk_cd", "") or "")) == key:
             if int(s.get("cur_price", 0) or 0) == price:
-                return False  # 가격 변경 없음 — 재계산 스킵
+                return False  # 가격 변경 없음
             s["cur_price"] = price
-            # 평가손익·수익률·평가금액 실시간 재계산 (순수 차익: 수수료/세금 제외)
-            qty = int(s.get("qty", 0) or 0)
-            buy_amount = int(s.get("buy_amount", 0) or 0)
-            if qty > 0 and buy_amount > 0:
-                cmsn = int(s.get("sum_cmsn", s.get("pur_cmsn", 0)) or 0)
-                eval_amt = price * qty
-                pnl = eval_amt - buy_amount
-                rate = round(pnl / buy_amount * 100, 2) if buy_amount else 0.0
-                s["eval_amount"] = eval_amt
-                s["pnl_amount"] = pnl
-                s["pnl_rate"] = rate
-                s["total_fee"] = cmsn
-                s["buy_amt"] = buy_amount + cmsn
             return True
     return False
 

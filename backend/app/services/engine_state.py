@@ -45,8 +45,7 @@
                 engine_sector_confirm ×2, sector_data_provider, engine_initial_data)
   - confirmed_done: 5곳 (daily_time_scheduler 단일 파일 내 5곳)
   - positions: 3곳 (engine_account, engine_lifecycle, web/routes/settings)
-  - broker_rest_totals: 3곳 (pipeline_compute_tick_handlers, engine_account,
-                engine_lifecycle)
+  - broker_rest_totals: 2곳 (engine_account, engine_lifecycle)
   - access_token: 3곳 (engine_lifecycle, engine_loop ×2)
 
 D/E/F 소유권 계약 (세션 11 — CACHE-STATE-IMPL-11, 비거래 상태 단일화):
