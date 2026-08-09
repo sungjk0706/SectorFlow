@@ -484,3 +484,44 @@ class KiwoomRestAPI:
         body = {"qry_tp": qry_tp, "dmst_stex_tp": dmst_stex_tp}
         return await self._paginated_request(api_id, body=body)
 
+    async def get_unfilled_orders(
+        self,
+        acnt_no: str = "",
+        all_stk_tp: str = "0",
+        trde_tp: str = "0",
+        stex_tp: str = "0",
+        stk_cd: str = "",
+    ) -> Optional[dict]:
+        """미체결 주문 요청 조회 (api-id: ka10075, POST /api/dostk/acnt) — 결정 6.
+
+        Args:
+            acnt_no: 계좌번호 (빈 값 시 _acnt_no 사용)
+            all_stk_tp: '0'=전체, '1'=종목별
+            trde_tp: '0'=전체, '1'=매도, '2'=매수
+            stex_tp: '0'=통합, '1'=KRX, '2'=NXT
+            stk_cd: 종목코드 (all_stk_tp='1' 시 사용)
+
+        Returns:
+            원시 응답 dict (oso 배열 포함) 또는 None (실패 시).
+        """
+        api_id = "ka10075"
+        url = f"{self.base_url}{self.ACCOUNT_URL}"
+        resolved_acnt = acnt_no or getattr(self, "_acnt_no", "")
+        body: dict = {
+            "all_stk_tp": all_stk_tp,
+            "trde_tp": trde_tp,
+            "stex_tp": stex_tp,
+        }
+        if resolved_acnt:
+            body["acnt_no"] = resolved_acnt
+        if stk_cd:
+            body["stk_cd"] = stk_cd
+        resp, _ = await self._call_api(url, api_id, body=body, label="ka10075")
+        if resp is None:
+            return None
+        try:
+            return resp.json()
+        except Exception as e:
+            logger.warning("[연결] %s 미체결 주문 응답 파싱 실패: %s", _BROKER_DISPLAY, e, exc_info=True)
+            return None
+

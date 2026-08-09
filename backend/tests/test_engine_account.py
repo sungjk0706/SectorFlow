@@ -15,6 +15,7 @@ from backend.app.services.engine_account import (
     get_buy_limit_status,
     _merge_positions_from_rest,
     _apply_broker_totals_from_summary,
+    _fetch_and_store_unfilled_orders,
 )
 
 
@@ -132,3 +133,114 @@ class TestApplyBrokerTotalsFromSummary:
             _apply_broker_totals_from_summary({"tot_eval": 10000000})
             assert mock_state.broker_rest_totals == {"total_eval": 10000000}
             mock_fn.assert_called_once()
+
+
+# ── _fetch_and_store_unfilled_orders (결정 6 — 미체결 주문 조회) ──────────────────
+
+class TestFetchAndStoreUnfilledOrders:
+    @pytest.mark.asyncio
+    async def test_virtual_mode_skips_fetch(self):
+        """가상매매 모드 — 미체결 조회 수행하지 않고 빈 리스트."""
+        with patch("backend.app.services.engine_account.is_virtual_mode", return_value=True), \
+             patch("backend.app.services.engine_account.state") as mock_state:
+            await _fetch_and_store_unfilled_orders({"broker": "kiwoom"})
+            assert mock_state.unfilled_orders == []
+
+    @pytest.mark.asyncio
+    async def test_no_rest_api_returns_empty(self):
+        """REST API 인스턴스 없음 — 빈 리스트."""
+        with patch("backend.app.services.engine_account.is_virtual_mode", return_value=False), \
+             patch("backend.app.services.engine_account.state") as mock_state:
+            mock_state.broker_rest_apis.get.return_value = None
+            await _fetch_and_store_unfilled_orders({"broker": "kiwoom"})
+            assert mock_state.unfilled_orders == []
+
+    @pytest.mark.asyncio
+    async def test_kiwoom_success(self):
+        """키움 — 미체결 주문 조회 성공 → 파싱 후 state 저장."""
+        mock_rest_api = MagicMock()
+        mock_rest_api.get_unfilled_orders = AsyncMock(return_value={
+            "oso": [{"ord_no": "12345", "stk_cd": "005930", "stk_nm": "삼성전자", "ord_qty": 10, "ord_uv": 70000, "unfilled_qty": 5, "ord_stat": "미체결", "trde_tp": "2"}]
+        })
+        with patch("backend.app.services.engine_account.is_virtual_mode", return_value=False), \
+             patch("backend.app.services.engine_account.state") as mock_state:
+            mock_state.broker_rest_apis.get.return_value = mock_rest_api
+            mock_state.rest_api_thread_sem = MagicMock()
+            mock_state.rest_api_thread_sem.__aenter__ = AsyncMock(return_value=mock_state.rest_api_thread_sem)
+            mock_state.rest_api_thread_sem.__aexit__ = AsyncMock(return_value=None)
+            await _fetch_and_store_unfilled_orders({"broker": "kiwoom"})
+            assert len(mock_state.unfilled_orders) == 1
+            order = mock_state.unfilled_orders[0]
+            assert order["ord_no"] == "12345"
+            assert order["stk_cd"] == "005930"
+            assert order["stk_nm"] == "삼성전자"
+            assert order["ord_qty"] == 10
+            assert order["ord_price"] == 70000
+            assert order["unfilled_qty"] == 5
+            assert order["ord_type"] == "매수"
+
+    @pytest.mark.asyncio
+    async def test_ls_success(self):
+        """LS — 미체결 주문 조회 성공 → 파싱 후 state 저장."""
+        mock_rest_api = MagicMock()
+        mock_rest_api.get_unfilled_orders = AsyncMock(return_value={
+            "t0425OutBlock1": [{"ordno": "67890", "expcode": "005930", "ordmenuname": "삼성전자", "ordqty": 20, "ordprice": 71000, "unfilledqty": 10, "ordstatus": "미체결", "medosu": "1"}]
+        })
+        with patch("backend.app.services.engine_account.is_virtual_mode", return_value=False), \
+             patch("backend.app.services.engine_account.state") as mock_state:
+            mock_state.broker_rest_apis.get.return_value = mock_rest_api
+            mock_state.rest_api_thread_sem = MagicMock()
+            mock_state.rest_api_thread_sem.__aenter__ = AsyncMock(return_value=mock_state.rest_api_thread_sem)
+            mock_state.rest_api_thread_sem.__aexit__ = AsyncMock(return_value=None)
+            await _fetch_and_store_unfilled_orders({"broker": "ls"})
+            assert len(mock_state.unfilled_orders) == 1
+            order = mock_state.unfilled_orders[0]
+            assert order["ord_no"] == "67890"
+            assert order["stk_cd"] == "005930"
+            assert order["stk_nm"] == "삼성전자"
+            assert order["ord_qty"] == 20
+            assert order["ord_price"] == 71000
+            assert order["unfilled_qty"] == 10
+            assert order["ord_type"] == "매도"
+
+    @pytest.mark.asyncio
+    async def test_fetch_returns_none(self):
+        """조회 응답 None — 빈 리스트 유지."""
+        mock_rest_api = MagicMock()
+        mock_rest_api.get_unfilled_orders = AsyncMock(return_value=None)
+        with patch("backend.app.services.engine_account.is_virtual_mode", return_value=False), \
+             patch("backend.app.services.engine_account.state") as mock_state:
+            mock_state.broker_rest_apis.get.return_value = mock_rest_api
+            mock_state.rest_api_thread_sem = MagicMock()
+            mock_state.rest_api_thread_sem.__aenter__ = AsyncMock(return_value=mock_state.rest_api_thread_sem)
+            mock_state.rest_api_thread_sem.__aexit__ = AsyncMock(return_value=None)
+            await _fetch_and_store_unfilled_orders({"broker": "kiwoom"})
+            assert mock_state.unfilled_orders == []
+
+    @pytest.mark.asyncio
+    async def test_fetch_exception_returns_empty(self):
+        """조회 예외 — 빈 리스트 유지 (P25 격리된 실패)."""
+        mock_rest_api = MagicMock()
+        mock_rest_api.get_unfilled_orders = AsyncMock(side_effect=Exception("net error"))
+        with patch("backend.app.services.engine_account.is_virtual_mode", return_value=False), \
+             patch("backend.app.services.engine_account.state") as mock_state:
+            mock_state.broker_rest_apis.get.return_value = mock_rest_api
+            mock_state.rest_api_thread_sem = MagicMock()
+            mock_state.rest_api_thread_sem.__aenter__ = AsyncMock(return_value=mock_state.rest_api_thread_sem)
+            mock_state.rest_api_thread_sem.__aexit__ = AsyncMock(return_value=None)
+            await _fetch_and_store_unfilled_orders({"broker": "kiwoom"})
+            assert mock_state.unfilled_orders == []
+
+    @pytest.mark.asyncio
+    async def test_unsupported_broker_returns_empty(self):
+        """지원하지 않는 증권사 — 빈 리스트."""
+        mock_rest_api = MagicMock()
+        mock_rest_api.get_unfilled_orders = AsyncMock(return_value={"some": "data"})
+        with patch("backend.app.services.engine_account.is_virtual_mode", return_value=False), \
+             patch("backend.app.services.engine_account.state") as mock_state:
+            mock_state.broker_rest_apis.get.return_value = mock_rest_api
+            mock_state.rest_api_thread_sem = MagicMock()
+            mock_state.rest_api_thread_sem.__aenter__ = AsyncMock(return_value=mock_state.rest_api_thread_sem)
+            mock_state.rest_api_thread_sem.__aexit__ = AsyncMock(return_value=None)
+            await _fetch_and_store_unfilled_orders({"broker": "unknown"})
+            assert mock_state.unfilled_orders == []

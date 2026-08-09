@@ -743,3 +743,64 @@ class TestKiwoomRestFetchNxtEnable:
         with patch.object(api, "_call_api", AsyncMock(return_value=(mock_resp, False))):
             result = await fetch_ka10001_nxt_enable(api, "005930")
             assert result == "N"
+
+
+# ── KiwoomRestAPI.get_unfilled_orders (ka10075 — 결정 6) ──────────────────────
+
+class TestKiwoomRestGetUnfilledOrders:
+    async def test_success(self):
+        """미체결 주문 조회 성공 — ka10075 TR 호출, oso 배열 반환."""
+        api = _make_kiwoom_rest()
+        api._token_info = _make_token_info()
+        mock_resp = mock_httpx_response(200, {"oso": [{"ord_no": "12345"}]})
+        with patch.object(api, "_call_api", AsyncMock(return_value=(mock_resp, False))) as mock_call:
+            result = await api.get_unfilled_orders(acnt_no="12345")
+            assert result is not None
+            assert result["oso"] == [{"ord_no": "12345"}]
+            # _call_api 호출 인자 검증
+            call_args = mock_call.call_args
+            assert call_args.args[1] == "ka10075"  # api_id
+            body = call_args.kwargs.get("body", {})
+            assert body.get("acnt_no") == "12345"
+            assert body.get("all_stk_tp") == "0"
+            assert body.get("trde_tp") == "0"
+            assert body.get("stex_tp") == "0"
+
+    async def test_no_acnt_uses_default(self):
+        """계좌번호 미전달 시 _acnt_no 기본값 사용."""
+        api = _make_kiwoom_rest()
+        api._token_info = _make_token_info()
+        api._acnt_no = "default_acnt"
+        mock_resp = mock_httpx_response(200, {"oso": []})
+        with patch.object(api, "_call_api", AsyncMock(return_value=(mock_resp, False))) as mock_call:
+            await api.get_unfilled_orders()
+            body = mock_call.call_args.kwargs.get("body", {})
+            assert body.get("acnt_no") == "default_acnt"
+
+    async def test_stk_cd_included(self):
+        """종목코드 전달 시 body에 포함."""
+        api = _make_kiwoom_rest()
+        api._token_info = _make_token_info()
+        mock_resp = mock_httpx_response(200, {"oso": []})
+        with patch.object(api, "_call_api", AsyncMock(return_value=(mock_resp, False))) as mock_call:
+            await api.get_unfilled_orders(acnt_no="12345", stk_cd="005930")
+            body = mock_call.call_args.kwargs.get("body", {})
+            assert body.get("stk_cd") == "005930"
+
+    async def test_call_api_returns_none(self):
+        """_call_api 실패 시 None 반환."""
+        api = _make_kiwoom_rest()
+        api._token_info = _make_token_info()
+        with patch.object(api, "_call_api", AsyncMock(return_value=(None, False))):
+            result = await api.get_unfilled_orders(acnt_no="12345")
+            assert result is None
+
+    async def test_json_parse_failure_returns_none(self):
+        """응답 JSON 파싱 실패 시 None 반환."""
+        api = _make_kiwoom_rest()
+        api._token_info = _make_token_info()
+        mock_resp = MagicMock()
+        mock_resp.json.side_effect = Exception("parse error")
+        with patch.object(api, "_call_api", AsyncMock(return_value=(mock_resp, False))):
+            result = await api.get_unfilled_orders(acnt_no="12345")
+            assert result is None

@@ -207,6 +207,61 @@ async def _update_account_memory_inner(settings: dict) -> None:
         return
 
     _apply_account_yield_to_state(yield_data, s)
+    # 미체결 주문 조회 — 잔고 반영 이후 1회 조회 (결정 6, P25 격리된 실패)
+    await _fetch_and_store_unfilled_orders(s)
+
+
+async def _fetch_and_store_unfilled_orders(settings: dict) -> None:
+    """미체결 주문 조회 → 공통 dict 리스트로 파싱 → state.unfilled_orders 저장 + 화면 전달.
+
+    조회 실패 시 state.unfilled_orders = [] 유지 — 예외 전파 없음 (P25 격리된 실패).
+    가상매매 모드에서는 미체결 조회를 수행하지 않는다 (가상 주문은 미체결 개념 없음).
+    """
+    if is_virtual_mode(state.integrated_system_settings_cache):
+        state.unfilled_orders = []
+        return
+
+    broker = str(settings.get("broker", "") or "").lower().strip()
+    _rest_api = state.broker_rest_apis.get(broker)
+    if _rest_api is None:
+        state.unfilled_orders = []
+        return
+
+    _rest_api_thread_sem = state.rest_api_thread_sem or _ensure_rest_api_thread_sem()
+    try:
+        async with _rest_api_thread_sem:
+            raw = await _rest_api.get_unfilled_orders()
+    except Exception as e:
+        logger.warning("[계좌] 미체결 주문 조회 예외: %s", e, exc_info=True)
+        state.unfilled_orders = []
+        return
+
+    if raw is None:
+        logger.info("[계좌] 미체결 주문 조회 응답 없음 — 빈 목록 유지")
+        state.unfilled_orders = []
+        return
+
+    from backend.app.services.engine_account_rest import (
+        parse_kiwoom_unfilled_orders,
+        parse_ls_unfilled_orders,
+    )
+    if broker == "kiwoom":
+        orders = parse_kiwoom_unfilled_orders(raw)
+    elif broker == "ls":
+        orders = parse_ls_unfilled_orders(raw)
+    else:
+        logger.warning("[계좌] 미체결 주문 파싱 미지원 증권사: %s", broker)
+        orders = []
+
+    state.unfilled_orders = orders
+    logger.info("[계좌] 미체결 주문 조회 완료 — %d건", len(orders))
+
+    # 화면 브로드캐스트 — 미체결 주문 데이터 프론트 전달 (프론트 표시는 후속 태스크)
+    try:
+        from backend.app.services.engine_account_notify import _safe_broadcast
+        await _safe_broadcast("unfilled-orders", {"orders": orders}, group="unfilled_orders")
+    except Exception as e:
+        logger.warning("[계좌] 미체결 주문 화면 전송 실패: %s", e, exc_info=True)
 
 
 async def _resolve_account_settings(settings: dict) -> dict:

@@ -5,13 +5,13 @@
 모든 engine_*.py 모듈은 이 파일에서 전역 상태를 직접 import한다.
 순환 import 방지: 이 모듈은 다른 engine_*.py를 import하지 않는다.
 
-속성 그룹 분류 (세션 10 — CACHE-STATE-IMPL-10, 67개 속성):
+속성 그룹 분류 (세션 10 — CACHE-STATE-IMPL-10, 73개 속성):
   A. 브로커 연결 (5)   — connector_manager, broker_tokens,
                          access_token, login_ok, broker_spec
-  B. 계좌 (12)          — engine_user_id, ws_account_subscribed, ws_connection_status,
+  B. 계좌 (13)          — engine_user_id, ws_account_subscribed, ws_connection_status,
                          quote_subscribed, index_subscribed, account_rest_bootstrapped, broker_rest_totals,
                          auto_trade, broker_rest_apis, account_rest_lock,
-                         account_snapshot, positions
+                         account_snapshot, positions, unfilled_orders
   C. 업종 분석 (8)      — sector_summary_cache, master_stocks_cache, index_data_cache,
                          market_phase, krx_circuit_breaker_active,
                          news_keywords_cache, news_boost_score, news_boost_ttl_sec
@@ -189,6 +189,11 @@ class EngineState:
         self.broker_rest_apis: dict[str, Any] = {}  # {broker_id: RestApi}
         self.account_snapshot: dict = {}
         self.positions: list = []
+        # ── 미체결 주문 (그룹 B — 엔진 기동 시 1회 조회, 결정 6) ──────────────────
+        # 공통 dict 키: ord_no·stk_cd·stk_nm·ord_qty·ord_price·unfilled_qty·
+        #              ord_status·orig_ord_no·ord_type(매도/매수)
+        # 조회 실패 시 빈 리스트 유지 (P25 격리된 실패).
+        self.unfilled_orders: list = []
 
         # ── 상수 (그룹 E) ────────────────────────────────────────────────────────
         self.REG_POST_ACK_GAP_SEC = 0.35

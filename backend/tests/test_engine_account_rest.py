@@ -14,6 +14,8 @@ from backend.app.services.engine_account_rest import (
     recalc_broker_totals_from_positions,
     build_account_snapshot_meta,
     apply_last_price_to_positions_inplace,
+    parse_kiwoom_unfilled_orders,
+    parse_ls_unfilled_orders,
 )
 from backend.app.core.kiwoom_account_parsing import (
     _parse_int_loose,
@@ -452,3 +454,130 @@ class TestParseKt00018Balance:
         }
         dep, _, _, _, _, _ = parse_kt00018_balance(raw, 0)
         assert dep == 3000000
+
+
+# ── parse_kiwoom_unfilled_orders (ka10075 — 결정 6) ──────────────────────────────
+
+class TestParseKiwoomUnfilledOrders:
+    def test_basic(self):
+        """키움 미체결 응답 파싱 — oso 배열을 공통 dict 리스트로 변환."""
+        raw = {
+            "oso": [
+                {"ord_no": "12345", "stk_cd": "005930", "stk_nm": "삼성전자",
+                 "ord_qty": 10, "ord_uv": 70000, "unfilled_qty": 5,
+                 "ord_stat": "미체결", "orig_ord_no": "", "trde_tp": "2"},
+            ]
+        }
+        result = parse_kiwoom_unfilled_orders(raw)
+        assert len(result) == 1
+        order = result[0]
+        assert order["ord_no"] == "12345"
+        assert order["stk_cd"] == "005930"
+        assert order["stk_nm"] == "삼성전자"
+        assert order["ord_qty"] == 10
+        assert order["ord_price"] == 70000
+        assert order["unfilled_qty"] == 5
+        assert order["ord_status"] == "미체결"
+        assert order["orig_ord_no"] == ""
+        assert order["ord_type"] == "매수"
+
+    def test_sell_order(self):
+        """매도 주문 — trde_tp='1' → ord_type='매도'."""
+        raw = {"oso": [{"ord_no": "1", "stk_cd": "005930", "trde_tp": "1"}]}
+        result = parse_kiwoom_unfilled_orders(raw)
+        assert result[0]["ord_type"] == "매도"
+
+    def test_empty_oso(self):
+        """빈 oso 배열 — 빈 리스트."""
+        assert parse_kiwoom_unfilled_orders({"oso": []}) == []
+
+    def test_no_oso_key(self):
+        """oso 키 없음 — 빈 리스트."""
+        assert parse_kiwoom_unfilled_orders({"other": "data"}) == []
+
+    def test_non_dict_input(self):
+        """dict가 아닌 입력 — 빈 리스트."""
+        assert parse_kiwoom_unfilled_orders(None) == []
+        assert parse_kiwoom_unfilled_orders([]) == []
+
+    def test_non_dict_item_skipped(self):
+        """oso 배열 내 dict가 아닌 항목 — 스킵."""
+        assert parse_kiwoom_unfilled_orders({"oso": ["not_dict", 123]}) == []
+
+    def test_body_wrapper(self):
+        """body 래퍼 구조 — body.oso 배열에서 파싱."""
+        raw = {"body": {"oso": [{"ord_no": "999", "stk_cd": "000660"}]}}
+        result = parse_kiwoom_unfilled_orders(raw)
+        assert len(result) == 1
+        assert result[0]["ord_no"] == "999"
+
+    def test_multiple_orders(self):
+        """여러 주문 — 모두 파싱."""
+        raw = {"oso": [
+            {"ord_no": "1", "stk_cd": "005930", "trde_tp": "2"},
+            {"ord_no": "2", "stk_cd": "000660", "trde_tp": "1"},
+        ]}
+        result = parse_kiwoom_unfilled_orders(raw)
+        assert len(result) == 2
+        assert result[0]["ord_type"] == "매수"
+        assert result[1]["ord_type"] == "매도"
+
+
+# ── parse_ls_unfilled_orders (t0425 — 결정 6) ────────────────────────────────────
+
+class TestParseLsUnfilledOrders:
+    def test_basic(self):
+        """LS 미체결 응답 파싱 — t0425OutBlock1 배열을 공통 dict 리스트로 변환."""
+        raw = {
+            "t0425OutBlock1": [
+                {"ordno": "67890", "expcode": "005930", "ordmenuname": "삼성전자",
+                 "ordqty": 20, "ordprice": 71000, "unfilledqty": 10,
+                 "ordstatus": "미체결", "orgordno": "", "medosu": "1"},
+            ]
+        }
+        result = parse_ls_unfilled_orders(raw)
+        assert len(result) == 1
+        order = result[0]
+        assert order["ord_no"] == "67890"
+        assert order["stk_cd"] == "005930"
+        assert order["stk_nm"] == "삼성전자"
+        assert order["ord_qty"] == 20
+        assert order["ord_price"] == 71000
+        assert order["unfilled_qty"] == 10
+        assert order["ord_status"] == "미체결"
+        assert order["orig_ord_no"] == ""
+        assert order["ord_type"] == "매도"
+
+    def test_buy_order(self):
+        """매수 주문 — medosu='2' → ord_type='매수'."""
+        raw = {"t0425OutBlock1": [{"ordno": "1", "expcode": "005930", "medosu": "2"}]}
+        result = parse_ls_unfilled_orders(raw)
+        assert result[0]["ord_type"] == "매수"
+
+    def test_empty_block(self):
+        """빈 t0425OutBlock1 — 빈 리스트."""
+        assert parse_ls_unfilled_orders({"t0425OutBlock1": []}) == []
+
+    def test_no_block_key(self):
+        """t0425OutBlock1 키 없음 — 빈 리스트."""
+        assert parse_ls_unfilled_orders({"other": "data"}) == []
+
+    def test_non_dict_input(self):
+        """dict가 아닌 입력 — 빈 리스트."""
+        assert parse_ls_unfilled_orders(None) == []
+        assert parse_ls_unfilled_orders([]) == []
+
+    def test_non_dict_item_skipped(self):
+        """t0425OutBlock1 내 dict가 아닌 항목 — 스킵."""
+        assert parse_ls_unfilled_orders({"t0425OutBlock1": ["not_dict", 123]}) == []
+
+    def test_multiple_orders(self):
+        """여러 주문 — 모두 파싱."""
+        raw = {"t0425OutBlock1": [
+            {"ordno": "1", "expcode": "005930", "medosu": "2"},
+            {"ordno": "2", "expcode": "000660", "medosu": "1"},
+        ]}
+        result = parse_ls_unfilled_orders(raw)
+        assert len(result) == 2
+        assert result[0]["ord_type"] == "매수"
+        assert result[1]["ord_type"] == "매도"

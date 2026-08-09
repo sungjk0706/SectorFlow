@@ -739,3 +739,30 @@ class LsRestAPI:
         in_block = {"acno": acnt_no, "prcb": "1", "qry_tp": qry_tp}
         return await self._account_request("t0424", in_block)
 
+    async def get_unfilled_orders(
+        self,
+        acnt_no: str = "",
+        chegb: str = "2",
+        medosu: str = "0",
+        sortgb: str = "1",
+    ) -> Optional[dict]:
+        """미체결 주문 조회 (t0425 TR, POST /stock/accno) — 결정 6.
+
+        Args:
+            acnt_no: 계좌번호 (빈 값 시 _acnt_no 사용)
+            chegb: '2'=미체결 (기본)
+            medosu: '0'=전체 (기본)
+            sortgb: '1'=주문번호 역순 (기본)
+
+        Returns:
+            원시 응답 dict (t0425OutBlock1 주문 배열 포함) 또는 None (실패 시).
+        """
+        resolved_acnt = acnt_no or getattr(self, "_acnt_no", "")
+        in_block = {
+            "acno": resolved_acnt,
+            "chegb": chegb,
+            "medosu": medosu,
+            "sortgb": sortgb,
+        }
+        return await self._account_request("t0425", in_block)
+

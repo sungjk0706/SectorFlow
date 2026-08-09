@@ -881,3 +881,60 @@ class TestLsRestCancelOrder:
             result = await api.cancel_order("A005930", "99999", 10)
         assert result["rsp_cd"] == "10001"
 
+
+# ── LsRestAPI.get_unfilled_orders (t0425 — 결정 6) ─────────────────────────────
+
+class TestLsRestGetUnfilledOrders:
+    async def test_success(self):
+        """미체결 주문 조회 성공 — t0425 TR 호출, t0425OutBlock1 배열 반환."""
+        api = _make_ls_rest()
+        api._token_info = _make_ls_token_info()
+        mock_resp = mock_httpx_response(200, {"t0425OutBlock1": [{"ordno": "12345"}]})
+        mock_client = mock_httpx_client(post_return=mock_resp)
+        api._client = mock_client
+        with (
+            patch.object(api, "ensure_client", AsyncMock()),
+            patch.object(api, "ensure_token", AsyncMock(return_value=True)),
+            patch.object(api, "_account_request", AsyncMock(return_value={"t0425OutBlock1": [{"ordno": "12345"}]})) as mock_req,
+        ):
+            result = await api.get_unfilled_orders(acnt_no="12345")
+            assert result is not None
+            assert result["t0425OutBlock1"] == [{"ordno": "12345"}]
+            # _account_request 호출 인자 검증
+            call_args = mock_req.call_args
+            assert call_args.args[0] == "t0425"  # tr_cd
+            in_block = call_args.args[1]
+            assert in_block["acno"] == "12345"
+            assert in_block["chegb"] == "2"
+            assert in_block["medosu"] == "0"
+            assert in_block["sortgb"] == "1"
+
+    async def test_no_acnt_uses_default(self):
+        """계좌번호 미전달 시 _acnt_no 기본값 사용."""
+        api = _make_ls_rest()
+        api._token_info = _make_ls_token_info()
+        api._acnt_no = "default_acnt"
+        with patch.object(api, "_account_request", AsyncMock(return_value={"t0425OutBlock1": []})) as mock_req:
+            await api.get_unfilled_orders()
+            in_block = mock_req.call_args.args[1]
+            assert in_block["acno"] == "default_acnt"
+
+    async def test_custom_params(self):
+        """chegb·medosu·sortgb 커스텀 값 전달."""
+        api = _make_ls_rest()
+        api._token_info = _make_ls_token_info()
+        with patch.object(api, "_account_request", AsyncMock(return_value={"t0425OutBlock1": []})) as mock_req:
+            await api.get_unfilled_orders(acnt_no="12345", chegb="1", medosu="1", sortgb="2")
+            in_block = mock_req.call_args.args[1]
+            assert in_block["chegb"] == "1"
+            assert in_block["medosu"] == "1"
+            assert in_block["sortgb"] == "2"
+
+    async def test_account_request_returns_none(self):
+        """_account_request 실패 시 None 반환."""
+        api = _make_ls_rest()
+        api._token_info = _make_ls_token_info()
+        with patch.object(api, "_account_request", AsyncMock(return_value=None)):
+            result = await api.get_unfilled_orders(acnt_no="12345")
+            assert result is None
+
