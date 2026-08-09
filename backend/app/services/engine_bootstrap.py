@@ -20,18 +20,16 @@ async def _login_post_pipeline() -> None:
         from backend.app.services.engine_ws import _cleanup_stale_ws_subscriptions_on_session_ready
         await _cleanup_stale_ws_subscriptions_on_session_ready()
 
+        # REST 잔고 조회 — 실전매매 전용 경로 (가상매매는 가상 잔고 사용으로 경로 분리)
         from backend.app.core.trade_mode import is_virtual_mode
-
-        # 잔고 조회 — 가상매매 생략, 실전매매는 account_rest_bootstrapped 기반만 (시간대 자의적 판정 제거)
-        if is_virtual_mode(engine_state.state.integrated_system_settings_cache):
-            logger.info("[연산] 파이프라인 — 가상매매 — REST 잔고 조회 생략 (가상잔고 사용)")
-        elif not engine_state.state.account_rest_bootstrapped:
-            logger.info("[연산] 파이프라인 — REST 잔고 선행 조회 시작")
-            from backend.app.services.engine_account import _update_account_memory
-            await _update_account_memory(engine_state.state.integrated_system_settings_cache)
-            logger.info("[연산] 파이프라인 — REST 잔고 선행 조회 (보유 %d종목)", len(engine_state.state.positions))
-        else:
-            logger.info("[연산] 파이프라인 — 잔고 이미 앱 기동 — 재조회 생략 (보유 %d종목)", len(engine_state.state.positions))
+        if not is_virtual_mode(engine_state.state.integrated_system_settings_cache):
+            if not engine_state.state.account_rest_bootstrapped:
+                logger.info("[연산] 파이프라인 — REST 잔고 선행 조회 시작")
+                from backend.app.services.engine_account import _update_account_memory
+                await _update_account_memory(engine_state.state.integrated_system_settings_cache)
+                logger.info("[연산] 파이프라인 — REST 잔고 선행 조회 (보유 %d종목)", len(engine_state.state.positions))
+            else:
+                logger.info("[연산] 파이프라인 — 잔고 이미 앱 기동 — 재조회 생략 (보유 %d종목)", len(engine_state.state.positions))
 
         stale = {cd for cd, entry in engine_state.state.master_stocks_cache.items() if entry.get("_subscribed", False)}
         if stale:

@@ -230,14 +230,10 @@ def _apply_account_yield_to_state(yield_data: dict, s: dict) -> None:
     broker = str(s.get("broker", "") or "").lower().strip()
 
     _apply_broker_totals_from_summary(summary)
-    # 가상매매: 실전 잔고로 _positions 덮어쓰지 않음 — 모의투자 가상 잔고 격리
-    if is_virtual_mode(s):
-        logger.info("[계좌] 가상매매 — 실전 잔고 %d건 무시, 모의투자 가상 잔고 유지", len(stock_list))
-    else:
-        # 수량·매입은 REST 기준
-        merged = _merge_positions_from_rest(stock_list)
-        state.positions = merged
-        _rebuild_positions_cache(merged)
+    # 수량·매입은 REST 기준 (본 함수는 실전매매 경로에서만 호출 — 가상매매는 _login_post_pipeline에서 REST 조회 자체 미수행)
+    merged = _merge_positions_from_rest(stock_list)
+    state.positions = merged
+    _rebuild_positions_cache(merged)
 
     state.account_rest_bootstrapped = True
     state.account_snapshot["broker"] = broker
