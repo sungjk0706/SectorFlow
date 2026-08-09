@@ -423,6 +423,219 @@ class LsRestAPI:
             credit_code=credit_code, loan_date=loan_date, member_code=member_code,
         )
 
+    async def modify_order(
+        self,
+        stock_code: str,
+        orig_ord_no: str,
+        quantity: int,
+        price: float,
+        order_type: str = "00",  # 00:지정가, 03:시장가
+        order_condition: str = "0",  # 0:없음, 1:IOC, 2:FOK
+        member_code: str = "NXT",  # KRX, NXT
+    ) -> Optional[dict]:
+        """현물 주문 정정 (CSPAT00701) — 설계서 결정 5.
+
+        Args:
+            stock_code: 종목번호 (A+종목코드 형식)
+            orig_ord_no: 원주문번호
+            quantity: 주문수량
+            price: 주문가
+            order_type: 호가유형코드 (00:지정가, 03:시장가)
+            order_condition: 주문조건구분 (0:없음, 1:IOC, 2:FOK)
+            member_code: 회원사번호 (KRX, NXT)
+
+        Returns:
+            주문 정정 결과 {rsp_cd, rsp_msg, CSPAT00701OutBlock1, CSPAT00701OutBlock2}
+        """
+        await self.ensure_client()
+        if self._client is None:
+            logger.warning("[연결] %s HTTP 클라이언트 초기화 안됨", _BROKER_DISPLAY)
+            return None
+
+        if not await self.ensure_token():
+            logger.warning("[연결] %s 토큰 없음", _BROKER_DISPLAY)
+            return None
+
+        assert self._token_info is not None
+        url = f"{self.base_url}/stock/order"
+        headers = {
+            "Content-Type": "application/json; charset=UTF-8",
+            "Authorization": f"Bearer {self._token_info.access_token}",
+            "tr_cd": "CSPAT00701",
+            "tr_cont": "N",
+            "tr_cont_key": "",
+        }
+
+        body = {
+            "CSPAT00701InBlock1": {
+                "OrgOrdNo": orig_ord_no,
+                "IsuNo": stock_code,
+                "OrdQty": quantity,
+                "OrdprcPtnCode": order_type,
+                "OrdCndiTpCode": order_condition,
+                "OrdPrc": price,
+                "MbrNo": member_code,
+            }
+        }
+
+        # 401 재발급 패턴 — _place_order와 동일 (설계서 결정 3 예외)
+        try:
+            resp = await self._client.post(url, headers=headers, json=body, timeout=15)
+            data = resp.json() if resp.text else {}
+
+            if resp.status_code == 401:
+                logger.info("[연결] %s 주문정정 401 감지 — 토큰 재발급 후 1회 재시도", _BROKER_DISPLAY)
+
+                async def _do_post():
+                    r = await self._client.post(url, headers=headers, json=body, timeout=15)
+                    return r, r.status_code
+
+                async def _reissue_token() -> bool:
+                    ok, _ = await self._issue_token()
+                    return ok
+
+                async def _refresh_auth_header() -> None:
+                    if self._token_info:
+                        headers["Authorization"] = f"Bearer {self._token_info.access_token}"
+
+                result = await retry_once_on_401(
+                    _reissue_token, _do_post, on_reissue_success=_refresh_auth_header
+                )
+                if isinstance(result, tuple) and result[1] == 200:
+                    r = result[0]
+                    data = r.json() if r.text else {}
+                    rsp_cd = data.get("rsp_cd", "")
+                    rsp_msg = data.get("rsp_msg", "")
+                    if rsp_cd == "00040" or rsp_cd == "00000":
+                        logger.info(f"[연결] {_BROKER_DISPLAY} 주문정정 성공: {rsp_msg}")
+                    else:
+                        logger.warning(f"[연결] {_BROKER_DISPLAY} 주문정정 실패: {rsp_cd} - {rsp_msg}")
+                    return data
+                retry_status = result[1] if isinstance(result, tuple) else "?"
+                logger.warning(
+                    "[연결] %s 주문정정 401 재발급 후에도 실패 (응답코드=%s)",
+                    _BROKER_DISPLAY, retry_status,
+                )
+                return None
+
+            if resp.status_code != 200:
+                logger.warning(f"[연결] {_BROKER_DISPLAY} 주문정정 실패 (응답코드={resp.status_code})")
+                return data
+
+            rsp_cd = data.get("rsp_cd", "")
+            rsp_msg = data.get("rsp_msg", "")
+            if rsp_cd == "00040" or rsp_cd == "00000":
+                logger.info(f"[연결] {_BROKER_DISPLAY} 주문정정 성공: {rsp_msg}")
+            else:
+                logger.warning(f"[연결] {_BROKER_DISPLAY} 주문정정 실패: {rsp_cd} - {rsp_msg}")
+            return data
+
+        except Exception as e:
+            logger.warning(f"[연결] {_BROKER_DISPLAY} 주문정정 오류: {e}", exc_info=True)
+            return None
+
+    async def cancel_order(
+        self,
+        stock_code: str,
+        orig_ord_no: str,
+        quantity: int,
+        member_code: str = "NXT",  # KRX, NXT
+    ) -> Optional[dict]:
+        """현물 주문 취소 (CSPAT00801) — 설계서 결정 5.
+
+        Args:
+            stock_code: 종목번호 (A+종목코드 형식)
+            orig_ord_no: 원주문번호
+            quantity: 주문수량
+            member_code: 회원사번호 (KRX, NXT)
+
+        Returns:
+            주문 취소 결과 {rsp_cd, rsp_msg, CSPAT00801OutBlock1, CSPAT00801OutBlock2}
+        """
+        await self.ensure_client()
+        if self._client is None:
+            logger.warning("[연결] %s HTTP 클라이언트 초기화 안됨", _BROKER_DISPLAY)
+            return None
+
+        if not await self.ensure_token():
+            logger.warning("[연결] %s 토큰 없음", _BROKER_DISPLAY)
+            return None
+
+        assert self._token_info is not None
+        url = f"{self.base_url}/stock/order"
+        headers = {
+            "Content-Type": "application/json; charset=UTF-8",
+            "Authorization": f"Bearer {self._token_info.access_token}",
+            "tr_cd": "CSPAT00801",
+            "tr_cont": "N",
+            "tr_cont_key": "",
+        }
+
+        body = {
+            "CSPAT00801InBlock1": {
+                "OrgOrdNo": orig_ord_no,
+                "IsuNo": stock_code,
+                "OrdQty": quantity,
+                "MbrNo": member_code,
+            }
+        }
+
+        # 401 재발급 패턴 — _place_order와 동일 (설계서 결정 3 예외)
+        try:
+            resp = await self._client.post(url, headers=headers, json=body, timeout=15)
+            data = resp.json() if resp.text else {}
+
+            if resp.status_code == 401:
+                logger.info("[연결] %s 주문취소 401 감지 — 토큰 재발급 후 1회 재시도", _BROKER_DISPLAY)
+
+                async def _do_post():
+                    r = await self._client.post(url, headers=headers, json=body, timeout=15)
+                    return r, r.status_code
+
+                async def _reissue_token() -> bool:
+                    ok, _ = await self._issue_token()
+                    return ok
+
+                async def _refresh_auth_header() -> None:
+                    if self._token_info:
+                        headers["Authorization"] = f"Bearer {self._token_info.access_token}"
+
+                result = await retry_once_on_401(
+                    _reissue_token, _do_post, on_reissue_success=_refresh_auth_header
+                )
+                if isinstance(result, tuple) and result[1] == 200:
+                    r = result[0]
+                    data = r.json() if r.text else {}
+                    rsp_cd = data.get("rsp_cd", "")
+                    rsp_msg = data.get("rsp_msg", "")
+                    if rsp_cd == "00040" or rsp_cd == "00000":
+                        logger.info(f"[연결] {_BROKER_DISPLAY} 주문취소 성공: {rsp_msg}")
+                    else:
+                        logger.warning(f"[연결] {_BROKER_DISPLAY} 주문취소 실패: {rsp_cd} - {rsp_msg}")
+                    return data
+                retry_status = result[1] if isinstance(result, tuple) else "?"
+                logger.warning(
+                    "[연결] %s 주문취소 401 재발급 후에도 실패 (응답코드=%s)",
+                    _BROKER_DISPLAY, retry_status,
+                )
+                return None
+
+            if resp.status_code != 200:
+                logger.warning(f"[연결] {_BROKER_DISPLAY} 주문취소 실패 (응답코드={resp.status_code})")
+                return data
+
+            rsp_cd = data.get("rsp_cd", "")
+            rsp_msg = data.get("rsp_msg", "")
+            if rsp_cd == "00040" or rsp_cd == "00000":
+                logger.info(f"[연결] {_BROKER_DISPLAY} 주문취소 성공: {rsp_msg}")
+            else:
+                logger.warning(f"[연결] {_BROKER_DISPLAY} 주문취소 실패: {rsp_cd} - {rsp_msg}")
+            return data
+
+        except Exception as e:
+            logger.warning(f"[연결] {_BROKER_DISPLAY} 주문취소 오류: {e}", exc_info=True)
+            return None
+
     # ========== 계좌 조회 관련 메서드 ==========
 
     async def _account_request(

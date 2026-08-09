@@ -68,35 +68,57 @@ class LsOrderProvider(OrderProvider):
             return {"success": False, "error": "LS Rest API Not initialized"}
 
         hoga_gb = trde_tp  # 호가구분 매핑
+        ot_lower = (order_type or "").lower()
 
-        if order_type == 'buy':
+        # 정정·취소는 원주문번호 필수 — 빈 값 시 즉시 실패 (설계서 결정 5)
+        if ot_lower in ("modify", "cancel") and not str(orig_ord_no or "").strip():
+            return {"success": False, "error": "원주문번호 없음"}
+
+        if ot_lower == 'buy':
             res = await self._rest_api.buy_order(
                 stock_code=f"A{code}",
                 quantity=qty,
                 price=float(price),
                 order_type=hoga_gb
             )
-        elif order_type == 'sell':
+            out_block_key = "CSPAT00601OutBlock2"
+        elif ot_lower == 'sell':
             res = await self._rest_api.sell_order(
                 stock_code=f"A{code}",
                 quantity=qty,
                 price=float(price),
                 order_type=hoga_gb
             )
+            out_block_key = "CSPAT00601OutBlock2"
+        elif ot_lower == 'modify':
+            res = await self._rest_api.modify_order(
+                stock_code=f"A{code}",
+                orig_ord_no=orig_ord_no,
+                quantity=qty,
+                price=float(price),
+                order_type=hoga_gb
+            )
+            out_block_key = "CSPAT00701OutBlock2"
+        elif ot_lower == 'cancel':
+            res = await self._rest_api.cancel_order(
+                stock_code=f"A{code}",
+                orig_ord_no=orig_ord_no,
+                quantity=qty
+            )
+            out_block_key = "CSPAT00801OutBlock2"
         else:
             return {"success": False, "error": f"Unsupported order_type: {order_type}"}
 
         if res and res.get("rsp_cd") in ("00040", "00000"):
-            # 주문 성공
-            # LS증권 CSPAT00601OutBlock2에서 주문번호(OrdNo) 반환
-            block2 = res.get("CSPAT00601OutBlock2", {})
+            # 주문 성공 — OutBlock2에서 주문번호(OrdNo) 추출 (TR별 키 상이)
+            block2 = res.get(out_block_key, {})
             order_no = str(block2.get("OrdNo", ""))
             return {
                 "success": True,
                 "order_no": order_no,
                 "raw_res": res
             }
-        
+
         err_msg = res.get("rsp_msg") if res else "Network Error"
         return {"success": False, "error": err_msg, "raw_res": res}
 

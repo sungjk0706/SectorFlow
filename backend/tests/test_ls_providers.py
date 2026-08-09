@@ -278,6 +278,158 @@ class TestLsOrderProvider:
         call_kwargs = mock_api.sell_order.call_args.kwargs
         assert call_kwargs["stock_code"] == "A035420"
 
+    # ── modify/cancel (결정 5) ──────────────────────────────────────────────
+
+    @pytest.mark.asyncio
+    async def test_modify_order_success(self):
+        """정정 주문 성공 — modify_order 호출, CSPAT00701OutBlock2에서 OrdNo 추출 (결정 5)."""
+        auth = MagicMock()
+        mock_api = AsyncMock()
+        mock_api.modify_order = AsyncMock(return_value={
+            "rsp_cd": "00000",
+            "CSPAT00701OutBlock2": {"OrdNo": "M12345"},
+        })
+        auth.rest_api = mock_api
+        from backend.app.core.ls_providers import LsOrderProvider
+        provider = LsOrderProvider(auth)
+        result = await provider.send_order({}, "token", "modify", "005930", 10, price=50000, trde_tp="00", orig_ord_no="99999")
+        assert result["success"] is True
+        assert result["order_no"] == "M12345"
+        mock_api.modify_order.assert_called_once_with(
+            stock_code="A005930", orig_ord_no="99999", quantity=10, price=50000.0, order_type="00"
+        )
+
+    @pytest.mark.asyncio
+    async def test_cancel_order_success(self):
+        """취소 주문 성공 — cancel_order 호출, CSPAT00801OutBlock2에서 OrdNo 추출 (결정 5)."""
+        auth = MagicMock()
+        mock_api = AsyncMock()
+        mock_api.cancel_order = AsyncMock(return_value={
+            "rsp_cd": "00040",
+            "CSPAT00801OutBlock2": {"OrdNo": "C67890"},
+        })
+        auth.rest_api = mock_api
+        from backend.app.core.ls_providers import LsOrderProvider
+        provider = LsOrderProvider(auth)
+        result = await provider.send_order({}, "token", "cancel", "005930", 10, orig_ord_no="99999")
+        assert result["success"] is True
+        assert result["order_no"] == "C67890"
+        mock_api.cancel_order.assert_called_once_with(
+            stock_code="A005930", orig_ord_no="99999", quantity=10
+        )
+
+    @pytest.mark.asyncio
+    async def test_modify_empty_orig_ord_no_returns_failure(self):
+        """정정 — 원주문번호 빈 값 시 즉시 실패 (결정 5)."""
+        auth = MagicMock()
+        mock_api = AsyncMock()
+        mock_api.modify_order = AsyncMock(return_value=None)
+        auth.rest_api = mock_api
+        from backend.app.core.ls_providers import LsOrderProvider
+        provider = LsOrderProvider(auth)
+        result = await provider.send_order({}, "token", "modify", "005930", 10, price=50000, orig_ord_no="")
+        assert result["success"] is False
+        assert result["error"] == "원주문번호 없음"
+        mock_api.modify_order.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_cancel_empty_orig_ord_no_returns_failure(self):
+        """취소 — 원주문번호 빈 값 시 즉시 실패 (결정 5)."""
+        auth = MagicMock()
+        mock_api = AsyncMock()
+        mock_api.cancel_order = AsyncMock(return_value=None)
+        auth.rest_api = mock_api
+        from backend.app.core.ls_providers import LsOrderProvider
+        provider = LsOrderProvider(auth)
+        result = await provider.send_order({}, "token", "cancel", "005930", 10, orig_ord_no="")
+        assert result["success"] is False
+        assert result["error"] == "원주문번호 없음"
+        mock_api.cancel_order.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_modify_whitespace_orig_ord_no_returns_failure(self):
+        """정정 — 원주문번호 공백만 있을 때 즉시 실패 (결정 5)."""
+        auth = MagicMock()
+        mock_api = AsyncMock()
+        mock_api.modify_order = AsyncMock(return_value=None)
+        auth.rest_api = mock_api
+        from backend.app.core.ls_providers import LsOrderProvider
+        provider = LsOrderProvider(auth)
+        result = await provider.send_order({}, "token", "modify", "005930", 10, price=50000, orig_ord_no="   ")
+        assert result["success"] is False
+        assert result["error"] == "원주문번호 없음"
+
+    @pytest.mark.asyncio
+    async def test_modify_failure_rsp_cd(self):
+        """정정 — rsp_cd 실패 시 에러 메시지 반환."""
+        auth = MagicMock()
+        mock_api = AsyncMock()
+        mock_api.modify_order = AsyncMock(return_value={
+            "rsp_cd": "99999",
+            "rsp_msg": "정정불가",
+        })
+        auth.rest_api = mock_api
+        from backend.app.core.ls_providers import LsOrderProvider
+        provider = LsOrderProvider(auth)
+        result = await provider.send_order({}, "token", "modify", "005930", 10, price=50000, orig_ord_no="99999")
+        assert result["success"] is False
+        assert result["error"] == "정정불가"
+
+    @pytest.mark.asyncio
+    async def test_cancel_failure_rsp_cd(self):
+        """취소 — rsp_cd 실패 시 에러 메시지 반환."""
+        auth = MagicMock()
+        mock_api = AsyncMock()
+        mock_api.cancel_order = AsyncMock(return_value={
+            "rsp_cd": "99999",
+            "rsp_msg": "취소불가",
+        })
+        auth.rest_api = mock_api
+        from backend.app.core.ls_providers import LsOrderProvider
+        provider = LsOrderProvider(auth)
+        result = await provider.send_order({}, "token", "cancel", "005930", 10, orig_ord_no="99999")
+        assert result["success"] is False
+        assert result["error"] == "취소불가"
+
+    @pytest.mark.asyncio
+    async def test_modify_none_response_returns_network_error(self):
+        """정정 — 응답 None 시 Network Error 반환."""
+        auth = MagicMock()
+        mock_api = AsyncMock()
+        mock_api.modify_order = AsyncMock(return_value=None)
+        auth.rest_api = mock_api
+        from backend.app.core.ls_providers import LsOrderProvider
+        provider = LsOrderProvider(auth)
+        result = await provider.send_order({}, "token", "modify", "005930", 10, price=50000, orig_ord_no="99999")
+        assert result["success"] is False
+        assert result["error"] == "Network Error"
+
+    @pytest.mark.asyncio
+    async def test_modify_prepends_a_prefix(self):
+        """정정 — 종목코드에 A 접두어 추가 확인."""
+        auth = MagicMock()
+        mock_api = AsyncMock()
+        mock_api.modify_order = AsyncMock(return_value={"rsp_cd": "00000", "CSPAT00701OutBlock2": {"OrdNo": "1"}})
+        auth.rest_api = mock_api
+        from backend.app.core.ls_providers import LsOrderProvider
+        provider = LsOrderProvider(auth)
+        await provider.send_order({}, "token", "modify", "035420", 5, price=200000, orig_ord_no="99999")
+        call_kwargs = mock_api.modify_order.call_args.kwargs
+        assert call_kwargs["stock_code"] == "A035420"
+
+    @pytest.mark.asyncio
+    async def test_cancel_prepends_a_prefix(self):
+        """취소 — 종목코드에 A 접두어 추가 확인."""
+        auth = MagicMock()
+        mock_api = AsyncMock()
+        mock_api.cancel_order = AsyncMock(return_value={"rsp_cd": "00000", "CSPAT00801OutBlock2": {"OrdNo": "1"}})
+        auth.rest_api = mock_api
+        from backend.app.core.ls_providers import LsOrderProvider
+        provider = LsOrderProvider(auth)
+        await provider.send_order({}, "token", "cancel", "035420", 5, orig_ord_no="99999")
+        call_kwargs = mock_api.cancel_order.call_args.kwargs
+        assert call_kwargs["stock_code"] == "A035420"
+
 
 # ── LsAccountProvider ─────────────────────────────────────────────────────────
 

@@ -59,10 +59,15 @@ async def send_order(settings: dict, access_token: str, order_type: str, code: s
     exchange = resolve_exchange(settings, code)
     acnt_no = str(settings.get("kiwoom_account_no", "") or "")
 
-    api_map = {"BUY": "kt10000", "SELL": "kt10001"}
+    api_map = {"BUY": "kt10000", "SELL": "kt10001", "MODIFY": "kt10002", "CANCEL": "kt10003"}
     api_id = api_map.get(order_type.upper())
     if not api_id:
         return {"success": False, "msg": "알 수 없는 주문 타입", "data": None}
+
+    # 정정·취소는 원주문번호 필수 — 빈 값 시 즉시 실패 (설계서 결정 5)
+    ot_upper = order_type.upper()
+    if ot_upper in ("MODIFY", "CANCEL") and not str(orig_ord_no or "").strip():
+        return {"success": False, "msg": "원주문번호 없음", "data": None}
 
     ord_uv = "" if str(trde_tp) == "3" else str(price)
     # NXT 장외 시간대(프리마켓/애프터마켓)면 trde_tp 자동 조정
@@ -71,7 +76,23 @@ async def send_order(settings: dict, access_token: str, order_type: str, code: s
         trde_tp = get_nxt_trde_tp(trde_tp)
         if trde_tp in ("P", "U"):
             ord_uv = ""  # 장외 시간대는 가격 불필요
-    params = {"acnt_no": acnt_no, "dmst_stex_tp": exchange, "stk_cd": str(code), "ord_qty": str(qty), "ord_uv": ord_uv, "trde_tp": str(trde_tp), "cond_uv": ""}
+
+    if ot_upper == "MODIFY":
+        # 정정: mdfy_qty·mdfy_uv·mdfy_cond_uv 사용 (설계서 결정 5)
+        params = {
+            "acnt_no": acnt_no, "dmst_stex_tp": exchange, "stk_cd": str(code),
+            "orig_ord_no": str(orig_ord_no), "mdfy_qty": str(qty), "mdfy_uv": ord_uv,
+            "trde_tp": str(trde_tp), "mdfy_cond_uv": "",
+        }
+    elif ot_upper == "CANCEL":
+        # 취소: cncl_qty 사용 ('0' 시 잔량 전부 취소 — 설계서 3.2)
+        params = {
+            "acnt_no": acnt_no, "dmst_stex_tp": exchange, "stk_cd": str(code),
+            "orig_ord_no": str(orig_ord_no), "cncl_qty": str(qty),
+        }
+    else:
+        # BUY/SELL 기존 로직 (변경 없음)
+        params = {"acnt_no": acnt_no, "dmst_stex_tp": exchange, "stk_cd": str(code), "ord_qty": str(qty), "ord_uv": ord_uv, "trde_tp": str(trde_tp), "cond_uv": ""}
 
     url = f"{host}/api/dostk/ordr"
     headers = {"Content-Type": "application/json;charset=UTF-8", "authorization": f"Bearer {access_token}", "api-id": api_id}

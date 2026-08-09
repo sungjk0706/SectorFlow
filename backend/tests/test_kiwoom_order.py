@@ -151,7 +151,7 @@ class TestSendOrder:
         from backend.app.core.kiwoom_order import send_order
         settings = {"kiwoom_account_no": "12345678"}
         with patch("backend.app.core.kiwoom_order.build_broker_urls", return_value={"rest_base": "https://api.kiwoom.com"}):
-            result = await send_order(settings, "token123", "CANCEL", "005930", 10)
+            result = await send_order(settings, "token123", "INVALID", "005930", 10)
         assert result["success"] is False
         assert "알 수 없는 주문 타입" in result["msg"]
 
@@ -257,3 +257,156 @@ class TestSendOrder:
         ):
             result = await send_order(settings, "token123", "buy", "005930", 10, price=50000)
         assert result["success"] is True
+
+
+# ── send_order MODIFY/CANCEL (결정 5) ──────────────────────────────────────────
+
+class TestSendOrderModifyCancel:
+    @pytest.mark.asyncio
+    async def test_modify_success(self):
+        """정정 주문 성공 — kt10002 호출, mdfy_qty·mdfy_uv 파라미터 전송 (결정 5)."""
+        from backend.app.core.kiwoom_order import send_order
+        mock_resp = mock_httpx_response(200, {"rt_cd": "0", "msg1": "정정 성공"})
+        mock_client = mock_httpx_client(post_return=mock_resp, as_context_manager=True)
+        settings = {"kiwoom_account_no": "12345678"}
+        with (
+            patch("backend.app.core.kiwoom_order.build_broker_urls", return_value={"rest_base": "https://api.kiwoom.com"}),
+            patch("backend.app.core.kiwoom_order.httpx.AsyncClient", return_value=mock_client),
+            patch("backend.app.core.kiwoom_order.asyncio.sleep", new_callable=AsyncMock),
+        ):
+            result = await send_order(settings, "token123", "MODIFY", "005930", 10, price=50000, orig_ord_no="99999")
+        assert result["success"] is True
+        assert result["msg"] == "정정 성공"
+        # api-id 헤더가 kt10002인지 확인
+        call_args = mock_client.post.call_args
+        headers = call_args.kwargs.get("headers", {})
+        assert headers.get("api-id") == "kt10002"
+        # 파라미터에 mdfy_qty·mdfy_uv·orig_ord_no 포함 확인
+        sent_params = call_args.kwargs.get("json", {})
+        assert sent_params["orig_ord_no"] == "99999"
+        assert sent_params["mdfy_qty"] == "10"
+        assert "mdfy_uv" in sent_params
+        assert "mdfy_cond_uv" in sent_params
+        # ord_qty는 MODIFY에서 사용 안 함
+        assert "ord_qty" not in sent_params
+
+    @pytest.mark.asyncio
+    async def test_cancel_success(self):
+        """취소 주문 성공 — kt10003 호출, cncl_qty 파라미터 전송 (결정 5)."""
+        from backend.app.core.kiwoom_order import send_order
+        mock_resp = mock_httpx_response(200, {"rt_cd": "0", "msg1": "취소 성공"})
+        mock_client = mock_httpx_client(post_return=mock_resp, as_context_manager=True)
+        settings = {"kiwoom_account_no": "12345678"}
+        with (
+            patch("backend.app.core.kiwoom_order.build_broker_urls", return_value={"rest_base": "https://api.kiwoom.com"}),
+            patch("backend.app.core.kiwoom_order.httpx.AsyncClient", return_value=mock_client),
+            patch("backend.app.core.kiwoom_order.asyncio.sleep", new_callable=AsyncMock),
+        ):
+            result = await send_order(settings, "token123", "CANCEL", "005930", 10, orig_ord_no="99999")
+        assert result["success"] is True
+        assert result["msg"] == "취소 성공"
+        call_args = mock_client.post.call_args
+        headers = call_args.kwargs.get("headers", {})
+        assert headers.get("api-id") == "kt10003"
+        sent_params = call_args.kwargs.get("json", {})
+        assert sent_params["orig_ord_no"] == "99999"
+        assert sent_params["cncl_qty"] == "10"
+        # ord_qty는 CANCEL에서 사용 안 함
+        assert "ord_qty" not in sent_params
+
+    @pytest.mark.asyncio
+    async def test_cancel_zero_qty_all_cancel(self):
+        """취소 수량 '0' — 잔량 전부 취소 (설계서 3.2)."""
+        from backend.app.core.kiwoom_order import send_order
+        mock_resp = mock_httpx_response(200, {"rt_cd": "0", "msg1": "취소 성공"})
+        mock_client = mock_httpx_client(post_return=mock_resp, as_context_manager=True)
+        settings = {"kiwoom_account_no": "12345678"}
+        with (
+            patch("backend.app.core.kiwoom_order.build_broker_urls", return_value={"rest_base": "https://api.kiwoom.com"}),
+            patch("backend.app.core.kiwoom_order.httpx.AsyncClient", return_value=mock_client),
+            patch("backend.app.core.kiwoom_order.asyncio.sleep", new_callable=AsyncMock),
+        ):
+            result = await send_order(settings, "token123", "CANCEL", "005930", 0, orig_ord_no="99999")
+        assert result["success"] is True
+        sent_params = mock_client.post.call_args.kwargs.get("json", {})
+        assert sent_params["cncl_qty"] == "0"
+
+    @pytest.mark.asyncio
+    async def test_modify_empty_orig_ord_no_returns_failure(self):
+        """정정 — 원주문번호 빈 값 시 즉시 실패 (결정 5)."""
+        from backend.app.core.kiwoom_order import send_order
+        settings = {"kiwoom_account_no": "12345678"}
+        with patch("backend.app.core.kiwoom_order.build_broker_urls", return_value={"rest_base": "https://api.kiwoom.com"}):
+            result = await send_order(settings, "token123", "MODIFY", "005930", 10, price=50000, orig_ord_no="")
+        assert result["success"] is False
+        assert result["msg"] == "원주문번호 없음"
+        assert result["data"] is None
+
+    @pytest.mark.asyncio
+    async def test_cancel_empty_orig_ord_no_returns_failure(self):
+        """취소 — 원주문번호 빈 값 시 즉시 실패 (결정 5)."""
+        from backend.app.core.kiwoom_order import send_order
+        settings = {"kiwoom_account_no": "12345678"}
+        with patch("backend.app.core.kiwoom_order.build_broker_urls", return_value={"rest_base": "https://api.kiwoom.com"}):
+            result = await send_order(settings, "token123", "CANCEL", "005930", 10, orig_ord_no="")
+        assert result["success"] is False
+        assert result["msg"] == "원주문번호 없음"
+        assert result["data"] is None
+
+    @pytest.mark.asyncio
+    async def test_modify_whitespace_orig_ord_no_returns_failure(self):
+        """정정 — 원주문번호 공백만 있을 때 즉시 실패 (결정 5)."""
+        from backend.app.core.kiwoom_order import send_order
+        settings = {"kiwoom_account_no": "12345678"}
+        with patch("backend.app.core.kiwoom_order.build_broker_urls", return_value={"rest_base": "https://api.kiwoom.com"}):
+            result = await send_order(settings, "token123", "MODIFY", "005930", 10, price=50000, orig_ord_no="   ")
+        assert result["success"] is False
+        assert result["msg"] == "원주문번호 없음"
+
+    @pytest.mark.asyncio
+    async def test_modify_case_insensitive(self):
+        """정정 — order_type 소문자도 동작 (대소문자 무관)."""
+        from backend.app.core.kiwoom_order import send_order
+        mock_resp = mock_httpx_response(200, {"rt_cd": "0", "msg1": "OK"})
+        mock_client = mock_httpx_client(post_return=mock_resp, as_context_manager=True)
+        settings = {"kiwoom_account_no": "12345678"}
+        with (
+            patch("backend.app.core.kiwoom_order.build_broker_urls", return_value={"rest_base": "https://api.kiwoom.com"}),
+            patch("backend.app.core.kiwoom_order.httpx.AsyncClient", return_value=mock_client),
+            patch("backend.app.core.kiwoom_order.asyncio.sleep", new_callable=AsyncMock),
+        ):
+            result = await send_order(settings, "token123", "modify", "005930", 10, price=50000, orig_ord_no="99999")
+        assert result["success"] is True
+        headers = mock_client.post.call_args.kwargs.get("headers", {})
+        assert headers.get("api-id") == "kt10002"
+
+    @pytest.mark.asyncio
+    async def test_modify_communication_failure_returns_failure(self):
+        """정정 — 통신 장애 시 실패 반환."""
+        from backend.app.core.kiwoom_order import send_order
+        mock_client = mock_httpx_client(post_side_effect=Exception("network error"), as_context_manager=True)
+        settings = {"kiwoom_account_no": "12345678"}
+        with (
+            patch("backend.app.core.kiwoom_order.build_broker_urls", return_value={"rest_base": "https://api.kiwoom.com"}),
+            patch("backend.app.core.kiwoom_order.httpx.AsyncClient", return_value=mock_client),
+            patch("backend.app.core.kiwoom_order.asyncio.sleep", new_callable=AsyncMock),
+        ):
+            result = await send_order(settings, "token123", "MODIFY", "005930", 10, price=50000, orig_ord_no="99999")
+        assert result["success"] is False
+        assert "통신 장애" in result["msg"]
+
+    @pytest.mark.asyncio
+    async def test_modify_rt_cd_non_zero_returns_failure(self):
+        """정정 — rt_cd != '0' 시 실패 반환."""
+        from backend.app.core.kiwoom_order import send_order
+        mock_resp = mock_httpx_response(200, {"rt_cd": "1", "msg1": "정정불가"})
+        mock_client = mock_httpx_client(post_return=mock_resp, as_context_manager=True)
+        settings = {"kiwoom_account_no": "12345678"}
+        with (
+            patch("backend.app.core.kiwoom_order.build_broker_urls", return_value={"rest_base": "https://api.kiwoom.com"}),
+            patch("backend.app.core.kiwoom_order.httpx.AsyncClient", return_value=mock_client),
+            patch("backend.app.core.kiwoom_order.asyncio.sleep", new_callable=AsyncMock),
+        ):
+            result = await send_order(settings, "token123", "MODIFY", "005930", 10, price=50000, orig_ord_no="99999")
+        assert result["success"] is False
+        assert result["msg"] == "정정불가"

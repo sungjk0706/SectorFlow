@@ -638,3 +638,246 @@ class TestLsRestSellOrder:
             result = await api.sell_order("A005930", 10, 70000)
             assert result is None
 
+
+# ── LsRestAPI.modify_order (CSPAT00701 — 결정 5) ──────────────────────────────
+
+class TestLsRestModifyOrder:
+    async def test_success(self):
+        """정정 주문 성공 — CSPAT00701 호출, rsp_cd 00000 반환 (결정 5)."""
+        api = _make_ls_rest()
+        api._token_info = _make_ls_token_info()
+        mock_resp = mock_httpx_response(200, {"rsp_cd": "00000", "rsp_msg": "ok", "CSPAT00701OutBlock2": {"OrdNo": "M1"}})
+        mock_client = mock_httpx_client(post_return=mock_resp)
+        api._client = mock_client
+        with (
+            patch.object(api, "ensure_client", AsyncMock()),
+            patch.object(api, "ensure_token", AsyncMock(return_value=True)),
+        ):
+            result = await api.modify_order("A005930", "99999", 10, 70000)
+        assert result["rsp_cd"] == "00000"
+        # tr_cd 헤더가 CSPAT00701인지 확인
+        call_kwargs = mock_client.post.call_args.kwargs
+        headers = call_kwargs.get("headers", {})
+        assert headers.get("tr_cd") == "CSPAT00701"
+        # InBlock1에 OrgOrdNo·IsuNo·OrdQty·OrdPrc 포함 확인
+        body = call_kwargs.get("json", {})
+        in_block = body.get("CSPAT00701InBlock1", {})
+        assert in_block["OrgOrdNo"] == "99999"
+        assert in_block["IsuNo"] == "A005930"
+        assert in_block["OrdQty"] == 10
+        assert in_block["OrdPrc"] == 70000
+
+    async def test_http_failure(self):
+        """정정 — HTTP 500 시 data 반환 (재시도 없음 — 설계서 결정 3)."""
+        api = _make_ls_rest()
+        api._token_info = _make_ls_token_info()
+        mock_resp = mock_httpx_response(500, {"rsp_cd": "error"})
+        mock_client = mock_httpx_client(post_return=mock_resp)
+        api._client = mock_client
+        with (
+            patch.object(api, "ensure_client", AsyncMock()),
+            patch.object(api, "ensure_token", AsyncMock(return_value=True)),
+        ):
+            result = await api.modify_order("A005930", "99999", 10, 70000)
+        assert result is not None
+
+    async def test_exception(self):
+        """정정 — 예외 발생 시 None 반환 (설계서 결정 3)."""
+        api = _make_ls_rest()
+        api._token_info = _make_ls_token_info()
+        mock_client = mock_httpx_client(post_side_effect=Exception("err"))
+        api._client = mock_client
+        with (
+            patch.object(api, "ensure_client", AsyncMock()),
+            patch.object(api, "ensure_token", AsyncMock(return_value=True)),
+            patch("backend.app.core.ls_rest.asyncio.sleep", new_callable=AsyncMock),
+        ):
+            result = await api.modify_order("A005930", "99999", 10, 70000)
+        assert result is None
+
+    async def test_no_token(self):
+        """정정 — 토큰 없음 시 None 반환."""
+        api = _make_ls_rest()
+        api._client = mock_httpx_client()
+        with (
+            patch.object(api, "ensure_client", AsyncMock()),
+            patch.object(api, "ensure_token", AsyncMock(return_value=False)),
+        ):
+            result = await api.modify_order("A005930", "99999", 10, 70000)
+        assert result is None
+
+    async def test_no_client(self):
+        """정정 — 클라이언트 없음 시 None 반환."""
+        api = _make_ls_rest()
+        api._token_info = _make_ls_token_info()
+        api._client = None
+        with patch.object(api, "ensure_client", AsyncMock()):
+            result = await api.modify_order("A005930", "99999", 10, 70000)
+        assert result is None
+
+    async def test_401_reissue_then_retry_success(self):
+        """정정 — 401 감지 → 토큰 재발급 성공 → 1회 재시도 성공 (설계서 결정 3 예외)."""
+        api = _make_ls_rest()
+        api._token_info = _make_ls_token_info()
+        resp_401 = mock_httpx_response(401)
+        resp_200 = mock_httpx_response(200, {"rsp_cd": "00000", "rsp_msg": "ok"})
+        mock_client = mock_httpx_client(post_side_effect=[resp_401, resp_200])
+        api._client = mock_client
+        with (
+            patch.object(api, "ensure_client", AsyncMock()),
+            patch.object(api, "ensure_token", AsyncMock(return_value=True)),
+            patch.object(api, "_issue_token", AsyncMock(return_value=(True, None))),
+        ):
+            result = await api.modify_order("A005930", "99999", 10, 70000)
+        assert result["rsp_cd"] == "00000"
+
+    async def test_401_reissue_failure_returns_none(self):
+        """정정 — 401 감지 → 재발급 실패 → None 반환."""
+        api = _make_ls_rest()
+        api._token_info = _make_ls_token_info()
+        resp_401 = mock_httpx_response(401)
+        mock_client = mock_httpx_client(post_side_effect=[resp_401])
+        api._client = mock_client
+        with (
+            patch.object(api, "ensure_client", AsyncMock()),
+            patch.object(api, "ensure_token", AsyncMock(return_value=True)),
+            patch.object(api, "_issue_token", AsyncMock(return_value=(False, "permanent"))),
+        ):
+            result = await api.modify_order("A005930", "99999", 10, 70000)
+        assert result is None
+
+    async def test_rsp_cd_failure(self):
+        """정정 — rsp_cd 실패 시 data 반환."""
+        api = _make_ls_rest()
+        api._token_info = _make_ls_token_info()
+        mock_resp = mock_httpx_response(200, {"rsp_cd": "10001", "rsp_msg": "정정불가"})
+        mock_client = mock_httpx_client(post_return=mock_resp)
+        api._client = mock_client
+        with (
+            patch.object(api, "ensure_client", AsyncMock()),
+            patch.object(api, "ensure_token", AsyncMock(return_value=True)),
+        ):
+            result = await api.modify_order("A005930", "99999", 10, 70000)
+        assert result["rsp_cd"] == "10001"
+
+
+# ── LsRestAPI.cancel_order (CSPAT00801 — 결정 5) ──────────────────────────────
+
+class TestLsRestCancelOrder:
+    async def test_success(self):
+        """취소 주문 성공 — CSPAT00801 호출, rsp_cd 00000 반환 (결정 5)."""
+        api = _make_ls_rest()
+        api._token_info = _make_ls_token_info()
+        mock_resp = mock_httpx_response(200, {"rsp_cd": "00000", "rsp_msg": "ok", "CSPAT00801OutBlock2": {"OrdNo": "C1"}})
+        mock_client = mock_httpx_client(post_return=mock_resp)
+        api._client = mock_client
+        with (
+            patch.object(api, "ensure_client", AsyncMock()),
+            patch.object(api, "ensure_token", AsyncMock(return_value=True)),
+        ):
+            result = await api.cancel_order("A005930", "99999", 10)
+        assert result["rsp_cd"] == "00000"
+        # tr_cd 헤더가 CSPAT00801인지 확인
+        call_kwargs = mock_client.post.call_args.kwargs
+        headers = call_kwargs.get("headers", {})
+        assert headers.get("tr_cd") == "CSPAT00801"
+        # InBlock1에 OrgOrdNo·IsuNo·OrdQty 포함 확인
+        body = call_kwargs.get("json", {})
+        in_block = body.get("CSPAT00801InBlock1", {})
+        assert in_block["OrgOrdNo"] == "99999"
+        assert in_block["IsuNo"] == "A005930"
+        assert in_block["OrdQty"] == 10
+
+    async def test_http_failure(self):
+        """취소 — HTTP 500 시 data 반환 (재시도 없음)."""
+        api = _make_ls_rest()
+        api._token_info = _make_ls_token_info()
+        mock_resp = mock_httpx_response(500, {"rsp_cd": "error"})
+        mock_client = mock_httpx_client(post_return=mock_resp)
+        api._client = mock_client
+        with (
+            patch.object(api, "ensure_client", AsyncMock()),
+            patch.object(api, "ensure_token", AsyncMock(return_value=True)),
+        ):
+            result = await api.cancel_order("A005930", "99999", 10)
+        assert result is not None
+
+    async def test_exception(self):
+        """취소 — 예외 발생 시 None 반환 (설계서 결정 3)."""
+        api = _make_ls_rest()
+        api._token_info = _make_ls_token_info()
+        mock_client = mock_httpx_client(post_side_effect=Exception("err"))
+        api._client = mock_client
+        with (
+            patch.object(api, "ensure_client", AsyncMock()),
+            patch.object(api, "ensure_token", AsyncMock(return_value=True)),
+            patch("backend.app.core.ls_rest.asyncio.sleep", new_callable=AsyncMock),
+        ):
+            result = await api.cancel_order("A005930", "99999", 10)
+        assert result is None
+
+    async def test_no_token(self):
+        """취소 — 토큰 없음 시 None 반환."""
+        api = _make_ls_rest()
+        api._client = mock_httpx_client()
+        with (
+            patch.object(api, "ensure_client", AsyncMock()),
+            patch.object(api, "ensure_token", AsyncMock(return_value=False)),
+        ):
+            result = await api.cancel_order("A005930", "99999", 10)
+        assert result is None
+
+    async def test_no_client(self):
+        """취소 — 클라이언트 없음 시 None 반환."""
+        api = _make_ls_rest()
+        api._token_info = _make_ls_token_info()
+        api._client = None
+        with patch.object(api, "ensure_client", AsyncMock()):
+            result = await api.cancel_order("A005930", "99999", 10)
+        assert result is None
+
+    async def test_401_reissue_then_retry_success(self):
+        """취소 — 401 감지 → 토큰 재발급 성공 → 1회 재시도 성공 (설계서 결정 3 예외)."""
+        api = _make_ls_rest()
+        api._token_info = _make_ls_token_info()
+        resp_401 = mock_httpx_response(401)
+        resp_200 = mock_httpx_response(200, {"rsp_cd": "00000", "rsp_msg": "ok"})
+        mock_client = mock_httpx_client(post_side_effect=[resp_401, resp_200])
+        api._client = mock_client
+        with (
+            patch.object(api, "ensure_client", AsyncMock()),
+            patch.object(api, "ensure_token", AsyncMock(return_value=True)),
+            patch.object(api, "_issue_token", AsyncMock(return_value=(True, None))),
+        ):
+            result = await api.cancel_order("A005930", "99999", 10)
+        assert result["rsp_cd"] == "00000"
+
+    async def test_401_reissue_failure_returns_none(self):
+        """취소 — 401 감지 → 재발급 실패 → None 반환."""
+        api = _make_ls_rest()
+        api._token_info = _make_ls_token_info()
+        resp_401 = mock_httpx_response(401)
+        mock_client = mock_httpx_client(post_side_effect=[resp_401])
+        api._client = mock_client
+        with (
+            patch.object(api, "ensure_client", AsyncMock()),
+            patch.object(api, "ensure_token", AsyncMock(return_value=True)),
+            patch.object(api, "_issue_token", AsyncMock(return_value=(False, "permanent"))),
+        ):
+            result = await api.cancel_order("A005930", "99999", 10)
+        assert result is None
+
+    async def test_rsp_cd_failure(self):
+        """취소 — rsp_cd 실패 시 data 반환."""
+        api = _make_ls_rest()
+        api._token_info = _make_ls_token_info()
+        mock_resp = mock_httpx_response(200, {"rsp_cd": "10001", "rsp_msg": "취소불가"})
+        mock_client = mock_httpx_client(post_return=mock_resp)
+        api._client = mock_client
+        with (
+            patch.object(api, "ensure_client", AsyncMock()),
+            patch.object(api, "ensure_token", AsyncMock(return_value=True)),
+        ):
+            result = await api.cancel_order("A005930", "99999", 10)
+        assert result["rsp_cd"] == "10001"
+
