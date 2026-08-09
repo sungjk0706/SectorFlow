@@ -115,31 +115,72 @@ def parse_t0424_balance(
     return dep_out, tot_eval, tot_pnl, tot_buy, total_rate, stock_list
 
 
-# ── SC1 실시간 파싱 (4단계에서 완성) ──────────────────────────────────────
-# 1단계에서는 시그니처만 정의 — SC1 메시지 구조 확정 후 4단계에서 완성.
+# ── SC1 실시간 파싱 (4단계 구현) ───────────────────────────────────────────
+# SC1 주문체결 메시지 — ordxctptncode(주문체결유형코드)로 체결 여부 판별.
+# 11=체결 → t0424 REST 재조회로 잔고 갱신 (자체 델타 계산 금지 — P18).
+# 01/02/03/12/13/14 (주문·정정·취소·확인·거부) → 잔고 변동 없음.
+
+# 주문체결유형코드 — 11만 잔고 변동, 나머지는 잔고 변동 없음.
+_SC1_FILL_CODE = "11"
+
 
 def _sc1_is_stock_item(item: dict) -> bool:
-    """LS SC1/US3 메시지가 종목 단위인지 계좌 단위인지 구분 (4단계 완성 예정).
+    """LS SC1 메시지는 항상 종목 단위 (주문체결 메시지).
 
-    LS는 키움 REAL 04와 달리 TR 코드(SC1/US3)로 종목·계좌 구분이 이미 끝남 —
-    SC1은 주문체결 메시지로 종목 단위 처리. 4단계에서 SC1 메시지 구조 확정 후 완성.
+    SC1은 종목별 주문체결 알림 — 계좌 단위 레코드가 별도로 오지 않고
+    deposit·ordablemny 등 계좌 필드가 SC1 한 메시지에 함께 포함.
+    종목 코드(item 필드)가 존재하면 종목 단위로 판별.
     """
-    return False
+    if not isinstance(item, dict):
+        return False
+    item_field = item.get("item")
+    if item_field is None:
+        return False
+    if isinstance(item_field, (list, tuple)):
+        if not item_field:
+            return False
+        raw = str(item_field[0] or "").strip()
+    else:
+        raw = str(item_field).strip()
+    return bool(raw)
 
 
 def sc1_apply_position_line(item, vals, positions, extra) -> None:
-    """LS SC1 체결 메시지를 보유 종목 리스트에 반영 (4단계 완성 예정).
+    """LS SC1 체결 메시지 보유 종목 반영 (결정 4).
 
-    결정 4: SC1 체결 확인 시 t0424 REST 재조회로 잔고·매입단가 갱신.
-    자체 델타 계산 금지 (P18 실전 SSOT). 4단계에서 구현.
+    ordxctptncode=11(체결) 시 extra["t0424_stock_list"]로 보유 종목 갱신.
+    자체 델타 계산 금지 (P18 실전 SSOT) — t0424 REST 재조회 결과를 extra로 전달받아 적용.
+    01/02/03/12/13/14 (주문·정정·취소·확인·거부)는 잔고 변동 없음 → 갱신 생략.
+    t0424 재조회 결과가 extra에 없으면 갱신 불가 → 폴백 없이 생략 (P20).
     """
-    return None
+    ordxct = str(vals.get("ordxctptncode", "") or "").strip() if isinstance(vals, dict) else ""
+    if ordxct != _SC1_FILL_CODE:
+        return  # 체결(11)만 잔고 변동
+
+    stock_list = (extra or {}).get("t0424_stock_list") if extra else None
+    if not stock_list:
+        return  # t0424 재조회 결과 없음 → 자체 계산 금지 (P18·P20)
+
+    # t0424 재조회 결과로 보유 종목 전체 재구성 — REST가 SSOT (P18).
+    # merge_positions_from_rest는 수량·매입·종목명을 REST 기준으로 덮어쓰기.
+    from backend.app.services.engine_account_rest import merge_positions_from_rest
+    merged = merge_positions_from_rest(stock_list, {})
+    positions.clear()
+    positions.extend(merged)
 
 
 def sc1_account_delta(vals: dict) -> dict:
-    """LS SC1 계좌 단위 갱신 필드 반환 (4단계 완성 예정).
+    """LS SC1 계좌 단위 갱신 필드 반환 (결정 4).
 
-    결정 4: deposit·ordablemny·ordablesubstamt 필드 기반 계좌 갱신.
-    4단계에서 SC1 메시지 구조 확정 후 완성.
+    deposit(예수금)·ordablemny(주문가능현금) 필드 기반 계좌 갱신.
+    이 2개 필드는 실서버에서 정상 값 수신 확인 (결정 4).
+    체결 시 t0424 재조회로 확보한 예수금(sunamt1)이 최종 승리값.
     """
-    return {}
+    if not isinstance(vals, dict):
+        return {}
+    out: dict = {}
+    if "deposit" in vals:
+        out["deposit"] = _parse_int_loose(vals.get("deposit"))
+    if "ordablemny" in vals:
+        out["orderable"] = _parse_int_loose(vals.get("ordablemny"))
+    return out

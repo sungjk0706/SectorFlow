@@ -449,6 +449,16 @@ class TestHandleRealTick:
             mock_00.assert_awaited_once()
 
     @pytest.mark.asyncio
+    async def test_type_sc1_calls_handle_ls_sc1(self):
+        """SC1(LS 주문체결) → _handle_ls_sc1 디스패치 (결정 7)."""
+        mock_bq = AsyncMock()
+        data = {"data": {"type": "SC1", "item": "005930", "values": {"907": "2", "ordxctptncode": "11"}}}
+        with patch("backend.app.services.engine_ws_dispatch._handle_ls_sc1", new_callable=AsyncMock) as mock_sc1, \
+             patch("backend.app.services.engine_ws_parsing._normalize_real_type", return_value="SC1"):
+            await _handle_real_tick(data, mock_bq)
+            mock_sc1.assert_awaited_once()
+
+    @pytest.mark.asyncio
     async def test_type_04_calls_handle_real_balance(self):
         mock_bq = AsyncMock()
         data = {"data": {"type": "04", "values": {"90001": "005930"}}}

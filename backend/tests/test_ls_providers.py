@@ -505,24 +505,30 @@ class TestLsAccountProvider:
         assert deposit == 5_000_000
         assert tot_eval == 0
 
-    def test_is_realtime_stock_item_returns_stub(self):
-        """1단계 스텁 — False 반환 (4단계에서 SC1 구조 확정 후 완성)."""
+    def test_is_realtime_stock_item_delegates(self):
+        """SC1 종목 판별 — ls_account_parsing._sc1_is_stock_item 위임 (4단계 완성)."""
         from backend.app.core.ls_providers import LsAccountProvider
         provider = LsAccountProvider()
+        assert provider.is_realtime_stock_item({"item": "005930"}) is True
         assert provider.is_realtime_stock_item({}) is False
 
-    def test_apply_realtime_position_line_is_noop(self):
-        """1단계 스텁 — no-op (4단계에서 SC1 체결 시 t0424 재조회로 완성)."""
+    def test_apply_realtime_position_line_delegates(self):
+        """SC1 체결 시 보유 종목 반영 — ls_account_parsing.sc1_apply_position_line 위임 (4단계 완성)."""
         from backend.app.core.ls_providers import LsAccountProvider
         provider = LsAccountProvider()
-        positions = []
-        result = provider.apply_realtime_position_line({}, {}, positions, {})
-        assert result is None
-        assert positions == []  # 변경 없음
+        positions = [{"stk_cd": "005930", "qty": 5}]
+        # 비체결(01) — 변경 없음
+        provider.apply_realtime_position_line(
+            {"item": "005930"}, {"ordxctptncode": "01"}, positions, {"t0424_stock_list": []}
+        )
+        assert positions[0]["qty"] == 5
 
-    def test_compute_realtime_account_delta_returns_empty(self):
-        """1단계 스텁 — 빈 dict 반환 (4단계에서 SC1 deposit·ordablemny로 완성)."""
+    def test_compute_realtime_account_delta_delegates(self):
+        """SC1 계좌 갱신 — ls_account_parsing.sc1_account_delta 위임 (4단계 완성)."""
         from backend.app.core.ls_providers import LsAccountProvider
         provider = LsAccountProvider()
-        result = provider.compute_realtime_account_delta({})
-        assert result == {}
+        result = provider.compute_realtime_account_delta({"deposit": "5000000", "ordablemny": "4000000"})
+        assert result["deposit"] == 5000000
+        assert result["orderable"] == 4000000
+        # 빈 vals — 빈 dict
+        assert provider.compute_realtime_account_delta({}) == {}

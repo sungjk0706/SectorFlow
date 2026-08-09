@@ -170,6 +170,108 @@ async def _handle_real_balance(item: dict, vals: dict) -> None:
         logger.warning("[계좌] 실시간 잔고 갱신 오류 (계속): %s", e, exc_info=True)
 
 
+async def _refetch_t0424_and_apply(raw_cd: str, vals: dict, item: dict, _account_provider) -> None:
+    """LS 체결 시 t0424 REST 재조회로 잔고·합계·예수금 갱신 (결정 4, P18 실전 SSOT).
+
+    자체 델타 계산 금지 — t0424 응답(수수료·세금 포함)을 그대로 적용.
+    재조회 실패 시 잔고 갱신 보류 — 다음 체결 시 재시도 (P25 격리된 실패).
+    """
+    _rest_api = engine_state.state.broker_rest_apis.get("ls")
+    if _rest_api is None:
+        logger.warning("[계좌] LS REST API 없음 — t0424 재조회 생략 (체결 후)")
+        return
+    _sem = engine_state.state.rest_api_thread_sem or engine_state._get_rest_api_thread_sem()
+    try:
+        async with _sem:
+            balance_raw = await _rest_api.get_balance_detail()
+    except Exception as e:
+        logger.warning("[계좌] LS t0424 재조회 실패 (체결 후): %s", e, exc_info=True)
+        return
+    if balance_raw is None:
+        logger.info("[계좌] LS t0424 재조회 응답 없음 — 잔고 갱신 보류 (체결=%s)", raw_cd)
+        return
+
+    # t0424 파싱 — deposit + balance
+    ok_dep, _dep_body, deposit, _orderable, _withdrawable = _account_provider.parse_deposit(balance_raw)
+    deposit, tot_eval, tot_pnl, tot_buy, total_rate, stock_list = _account_provider.parse_balance(
+        balance_raw, deposit
+    )
+
+    # positions 갱신 — t0424가 SSOT (P18). apply_realtime_position_line이 종목 리스트 교체.
+    extra = {"t0424_stock_list": stock_list}
+    _prev_len = len(engine_state.state.positions)
+    _account_provider.apply_realtime_position_line(item, vals, engine_state.state.positions, extra)
+    if len(engine_state.state.positions) != _prev_len:
+        from backend.app.services.engine_account_notify import _rebuild_positions_cache
+        _rebuild_positions_cache(engine_state.state.positions)
+
+    # 합계 갱신 — broker_rest_totals 단일 소스 (결정 4-3)
+    engine_state.state.broker_rest_totals["total_eval"] = int(tot_eval)
+    engine_state.state.broker_rest_totals["total_pnl"] = int(tot_pnl)
+    engine_state.state.broker_rest_totals["total_buy"] = int(tot_buy)
+    engine_state.state.broker_rest_totals["total_rate"] = float(total_rate)
+    if deposit > 0:
+        engine_state.state.account_snapshot["deposit"] = int(deposit)
+
+    logger.info(
+        "[계좌] LS 체결 후 t0424 재조회 완료 — 총평가 %s원 | 손익 %s원 | 종목 %d건",
+        f"{tot_eval:,}", f"{tot_pnl:,}", len(engine_state.state.positions),
+    )
+
+
+async def _handle_ls_sc1(item: dict, vals: dict) -> None:
+    """LS SC1(주문체결) 처리 — 체결 콜백 + 잔고 갱신 (결정 4·7).
+
+    _handle_real_00과 동일한 체결 콜백 역할 + LS 전용 잔고 갱신.
+    SC1은 종목·계좌 필드가 한 메시지에 포함되므로 종목·계좌 모두 갱신.
+    체결(11) 시 t0424 REST 재조회로 잔고·합계·예수금을 증권사 서버 기준값으로 갱신 (P18).
+    """
+    from backend.app.core.trade_mode import is_virtual_mode
+    if is_virtual_mode(engine_state.state.integrated_system_settings_cache):
+        logger.info("[매매] 가상매매 — LS SC1 메시지 무시 (이중 체결 방지)")
+        return
+
+    _ts = int(time.time() * 1000)
+    raw_cd = _real_item_stk_cd(item, vals)
+    side = str(vals.get("907", ""))
+    try:
+        unex = int(str(vals.get("902", "0")).replace(",", "").replace("+", "") or 0)
+    except (ValueError, TypeError) as e:
+        logger.warning("[매매] LS SC1 파싱 실패 902=%r: %s", vals.get("902"), e)
+        unex = 0
+    ordxct = str(vals.get("ordxctptncode", "") or "").strip()
+
+    # P25 격리된 실패: 체결 콜백/잔고 갱신 예외 시에도 함수는 정상 반환.
+    try:
+        from backend.app.core.broker_factory import get_router
+        _account_provider = get_router().account
+
+        # 1. 체결 콜백 — 자동매매 체결 알림
+        if engine_state.state.auto_trade:
+            await engine_state.state.auto_trade.on_fill_update(
+                raw_cd, side, unex, engine_state.state.access_token
+            )
+
+        # 2. SC1 계좌 필드 즉시 반영 — deposit·ordablemny (interim, t0424 전 최신값)
+        delta = _account_provider.compute_realtime_account_delta(vals)
+        if delta:
+            if "deposit" in delta:
+                engine_state.state.account_snapshot["deposit"] = int(delta["deposit"])
+            if "orderable" in delta:
+                engine_state.state.account_snapshot["orderable"] = int(delta["orderable"])
+
+        # 3. 체결(11) 시 t0424 REST 재조회로 잔고·합계 갱신 (P18 실전 SSOT)
+        if ordxct == "11":
+            await _refetch_t0424_and_apply(raw_cd, vals, item, _account_provider)
+
+        # 4. fill_after 큐 적재 — 매도 조건 검사는 주문 루프에서 순차 실행 (W1/W2)
+        get_order_queue().put_nowait({"type": "fill_after", "code": raw_cd})
+    except Exception as e:
+        logger.warning("[매매] LS SC1 체결 처리 오류 (계속): %s", e, exc_info=True)
+
+    _check_realtime_latency(_ts)
+
+
 async def handle_ws_data(data: dict) -> None:
     """비동기 호출 — LOGIN/REG/JIF/NWS 처리. REAL은 tick_queue → pipeline_compute에서 처리."""
     try:

@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 _BROKER_DISPLAY = BROKER_DISPLAY_NAMES["ls"]
 
-_TR_KOR = {"UH1": "호가", "UPH": "프로그램매매", "US3": "체결", "JIF": "장운영정보", "IJ_": "업종지수", "NWS": "실시간뉴스"}
+_TR_KOR = {"UH1": "호가", "UPH": "프로그램매매", "US3": "체결", "JIF": "장운영정보", "IJ_": "업종지수", "NWS": "실시간뉴스", "SC1": "주문체결"}
 
 try:
     import websockets
@@ -307,6 +307,53 @@ class _LsSocket:
                 "trnm": "NWS",
                 "title": title,
                 "code": code_raw,
+            }
+        elif tr_cd == "SC1":
+            # 주문체결(SC1) — 체결·주문·정정·취소 알림 (결정 7)
+            # SC1 flat body를 내부 REAL 형식(type="SC1")으로 변환.
+            # _handle_ls_sc1이 on_fill_update + t0424 재조회 잔고 갱신 수행.
+            shtn = str(body.get("shtnIsuno", "") or "").strip()
+            isuno = str(body.get("Isuno", "") or "").strip()
+            raw_code = shtn or isuno
+            if not raw_code:
+                return None
+            from backend.app.core.symbol_utils import _base_stk_cd
+            # SC1 shtnIsuno는 A 접두사 포함 (A005930) — _base_stk_cd는 접미사만 제거하므로
+            # A 접두사는 인라인으로 제거 후 _base_stk_cd 적용.
+            _stripped = raw_code[1:] if raw_code and raw_code[0] in ("A", "a") else raw_code
+            code = _base_stk_cd(_stripped)
+            if not code or not code.isdigit():
+                # ISIN(KR7005930003) 등 순수 종목코드가 아니면 shtnIsuno 필수
+                if not shtn:
+                    return None
+                _shtn_stripped = shtn[1:] if shtn and shtn[0] in ("A", "a") else shtn
+                code = _base_stk_cd(_shtn_stripped)
+            if not code:
+                return None
+
+            return {
+                "trnm": "REAL",
+                "data": [{
+                    "type": "SC1",
+                    "item": code,
+                    "values": {
+                        # 키움 REAL 00 호환 FID — _handle_ls_sc1 체결 콜백에서 사용
+                        "907": str(body.get("bnstp", "") or "").strip(),       # 매매구분 (1:매도 2:매수)
+                        "902": str(body.get("unercqty", "0") or "0"),           # 미체결수량
+                        # SC1 전용 필드 — sc1_apply_position_line·sc1_account_delta에서 사용
+                        "ordxctptncode": str(body.get("ordxctptncode", "") or "").strip(),
+                        "execqty": str(body.get("execqty", "0") or "0"),
+                        "execprc": str(body.get("execprc", "0") or "0"),
+                        "ordqty": str(body.get("ordqty", "0") or "0"),
+                        "deposit": str(body.get("deposit", "0") or "0"),
+                        "ordablemny": str(body.get("ordablemny", "0") or "0"),
+                        "ordablesubstamt": str(body.get("ordablesubstamt", "0") or "0"),
+                        "ordno": str(body.get("ordno", "") or ""),
+                        "orgordno": str(body.get("orgordno", "") or ""),
+                        "Isunm": str(body.get("Isunm", "") or ""),
+                        "ordprc": str(body.get("ordprc", "0") or "0"),
+                    }
+                }]
             }
         else:
             return None

@@ -5,6 +5,7 @@ _safe_broadcast/_broadcast를 mock하여 검증.
 """
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import patch, AsyncMock, MagicMock
 
 import pytest
@@ -583,3 +584,213 @@ class TestJifConstants:
             if "장마감" in label and sec == 600
         ]
         assert len(close_10min) == 0, f"KRX 장마감 10분전 코드 존재 (API 문서 위반): {close_10min}"
+
+
+# ── _handle_ls_sc1 / _refetch_t0424_and_apply (4단계 — LS SC1 체결 처리) ────────
+
+from backend.app.services.engine_ws_dispatch import _handle_ls_sc1, _refetch_t0424_and_apply
+
+
+def _mock_ls_sc1_state():
+    """_handle_ls_sc1용 state mock 생성."""
+    mock_state = MagicMock()
+    mock_state.integrated_system_settings_cache = {"broker": "ls"}
+    mock_state.auto_trade = None
+    mock_state.access_token = "tok"
+    mock_state.broker_rest_apis = {"ls": MagicMock()}
+    mock_state.rest_api_thread_sem = asyncio.Semaphore(1)
+    mock_state.account_snapshot = {"deposit": 5000000, "orderable": 4000000}
+    mock_state.broker_rest_totals = {
+        "total_eval": 12000000,
+        "total_pnl": 1500000,
+        "total_buy": 10500000,
+        "total_rate": 14.28,
+    }
+    mock_state.positions = []
+    mock_state.realtime_latency_exceeded = False
+    return mock_state
+
+
+def _sc1_item(code="005930", ordxct="11", bnstp="2", unercqty="1"):
+    """SC1 내부 REAL 형식 item 생성."""
+    return {
+        "type": "SC1",
+        "item": code,
+        "values": {
+            "907": bnstp,
+            "902": unercqty,
+            "ordxctptncode": ordxct,
+            "execqty": "1",
+            "execprc": "60000",
+            "ordqty": "2",
+            "deposit": "79759964",
+            "ordablemny": "79459964",
+            "ordablesubstamt": "244160",
+            "ordno": "86382",
+            "orgordno": "0",
+            "Isunm": "삼성전자",
+            "ordprc": "60000",
+        },
+    }
+
+
+class TestHandleLsSc1:
+    async def test_virtual_mode_skips(self):
+        """가상매매 모드 — SC1 메시지 무시 (이중 체결 방지)."""
+        item = _sc1_item()
+        vals = item["values"]
+        with patch("backend.app.services.engine_ws_dispatch.engine_state") as mock_es, \
+             patch("backend.app.services.engine_ws_dispatch.is_virtual_mode", return_value=True, create=True), \
+             patch("backend.app.core.trade_mode.is_virtual_mode", return_value=True):
+            mock_es.state = _mock_ls_sc1_state()
+            await _handle_ls_sc1(item, vals)
+        # account_snapshot 변경 없음
+        assert mock_es.state.account_snapshot["deposit"] == 5000000
+
+    async def test_fill_callback_and_delta(self):
+        """실전모드 체결(11) — on_fill_update + 계좌 delta + fill_after 큐."""
+        item = _sc1_item(ordxct="11")
+        vals = item["values"]
+        mock_state = _mock_ls_sc1_state()
+        mock_auto = MagicMock()
+        mock_auto.on_fill_update = AsyncMock()
+        mock_state.auto_trade = mock_auto
+        mock_queue = MagicMock()
+        mock_queue.put_nowait = MagicMock()
+        mock_account = MagicMock()
+        mock_account.compute_realtime_account_delta = MagicMock(return_value={
+            "deposit": 79759964, "orderable": 79459964,
+        })
+        mock_account.apply_realtime_position_line = MagicMock()
+        mock_account.parse_deposit = MagicMock(return_value=(True, {}, 79759964, 0, 0))
+        mock_account.parse_balance = MagicMock(return_value=(79759964, 12000000, 1500000, 10500000, 14.28, []))
+        mock_router = MagicMock()
+        mock_router.account = mock_account
+        with patch("backend.app.services.engine_ws_dispatch.engine_state") as mock_es, \
+             patch("backend.app.core.trade_mode.is_virtual_mode", return_value=False), \
+             patch("backend.app.services.engine_ws_dispatch.get_order_queue", return_value=mock_queue), \
+             patch("backend.app.core.broker_factory.get_router", return_value=mock_router), \
+             patch("backend.app.services.engine_ws_dispatch._refetch_t0424_and_apply", new_callable=AsyncMock) as mock_refetch, \
+             patch("backend.app.services.engine_ws_dispatch._check_realtime_latency"):
+            mock_es.state = mock_state
+            await _handle_ls_sc1(item, vals)
+        # on_fill_update 호출
+        mock_auto.on_fill_update.assert_called_once()
+        # 계좌 delta 반영
+        assert mock_state.account_snapshot["deposit"] == 79759964
+        assert mock_state.account_snapshot["orderable"] == 79459964
+        # t0424 재조회 호출 (체결 11)
+        mock_refetch.assert_called_once()
+        # fill_after 큐 적재
+        mock_queue.put_nowait.assert_called_once()
+        assert mock_queue.put_nowait.call_args[0][0]["type"] == "fill_after"
+
+    async def test_non_fill_skips_t0424_refetch(self):
+        """주문(01) — t0424 재조회 생략, fill_after 큐는 적재."""
+        item = _sc1_item(ordxct="01")
+        vals = item["values"]
+        mock_state = _mock_ls_sc1_state()
+        mock_queue = MagicMock()
+        mock_queue.put_nowait = MagicMock()
+        mock_account = MagicMock()
+        mock_account.compute_realtime_account_delta = MagicMock(return_value={})
+        mock_router = MagicMock()
+        mock_router.account = mock_account
+        with patch("backend.app.services.engine_ws_dispatch.engine_state") as mock_es, \
+             patch("backend.app.core.trade_mode.is_virtual_mode", return_value=False), \
+             patch("backend.app.services.engine_ws_dispatch.get_order_queue", return_value=mock_queue), \
+             patch("backend.app.core.broker_factory.get_router", return_value=mock_router), \
+             patch("backend.app.services.engine_ws_dispatch._refetch_t0424_and_apply", new_callable=AsyncMock) as mock_refetch, \
+             patch("backend.app.services.engine_ws_dispatch._check_realtime_latency"):
+            mock_es.state = mock_state
+            await _handle_ls_sc1(item, vals)
+        mock_refetch.assert_not_called()
+        mock_queue.put_nowait.assert_called_once()
+
+    async def test_exception_isolated(self):
+        """예외 시 함수 정상 반환 (P25 격리된 실패)."""
+        item = _sc1_item()
+        vals = item["values"]
+        mock_state = _mock_ls_sc1_state()
+        with patch("backend.app.services.engine_ws_dispatch.engine_state") as mock_es, \
+             patch("backend.app.core.trade_mode.is_virtual_mode", return_value=False), \
+             patch("backend.app.services.engine_ws_dispatch.get_order_queue", side_effect=Exception("queue fail")), \
+             patch("backend.app.core.broker_factory.get_router", side_effect=Exception("router fail")), \
+             patch("backend.app.services.engine_ws_dispatch._check_realtime_latency"):
+            mock_es.state = mock_state
+            # 예외 전파 없이 정상 반환
+            await _handle_ls_sc1(item, vals)
+
+
+class TestRefetchT0424AndApply:
+    async def test_no_rest_api_skips(self):
+        """LS REST API 없음 — 재조회 생략."""
+        mock_state = _mock_ls_sc1_state()
+        mock_state.broker_rest_apis = {}
+        mock_account = MagicMock()
+        with patch("backend.app.services.engine_ws_dispatch.engine_state") as mock_es:
+            mock_es.state = mock_state
+            mock_es._get_rest_api_thread_sem = MagicMock(return_value=asyncio.Semaphore(1))
+            await _refetch_t0424_and_apply("005930", {}, {"item": "005930"}, mock_account)
+        mock_account.parse_deposit.assert_not_called()
+
+    async def test_refetch_success_updates_state(self):
+        """t0424 재조회 성공 — positions·합계·예수금 갱신."""
+        mock_state = _mock_ls_sc1_state()
+        mock_state.positions = [{"stk_cd": "005930", "qty": 5}]
+        mock_rest = MagicMock()
+        mock_rest.get_balance_detail = AsyncMock(return_value={"t0424OutBlock": {"sunamt1": 79759964}})
+        mock_state.broker_rest_apis = {"ls": mock_rest}
+        mock_account = MagicMock()
+        mock_account.parse_deposit = MagicMock(return_value=(True, {}, 79759964, 0, 0))
+        mock_account.parse_balance = MagicMock(return_value=(
+            79759964, 12000000, 1500000, 10500000, 14.28,
+            [{"stk_cd": "005930", "qty": 10, "avg_price": 70000}],
+        ))
+        mock_account.apply_realtime_position_line = MagicMock()
+        with patch("backend.app.services.engine_ws_dispatch.engine_state") as mock_es, \
+             patch("backend.app.services.engine_account_notify._rebuild_positions_cache"):
+            mock_es.state = mock_state
+            mock_es._get_rest_api_thread_sem = MagicMock(return_value=asyncio.Semaphore(1))
+            await _refetch_t0424_and_apply("005930", {"ordxctptncode": "11"}, {"item": "005930"}, mock_account)
+        # parse 호출
+        mock_account.parse_deposit.assert_called_once()
+        mock_account.parse_balance.assert_called_once()
+        # apply_realtime_position_line 호출 (extra에 t0424_stock_list 전달)
+        mock_account.apply_realtime_position_line.assert_called_once()
+        call_args = mock_account.apply_realtime_position_line.call_args
+        extra = call_args[0][3]
+        assert "t0424_stock_list" in extra
+        # 합계 갱신
+        assert mock_state.broker_rest_totals["total_eval"] == 12000000
+        assert mock_state.broker_rest_totals["total_pnl"] == 1500000
+        assert mock_state.broker_rest_totals["total_buy"] == 10500000
+        assert mock_state.broker_rest_totals["total_rate"] == 14.28
+        # 예수금 갱신
+        assert mock_state.account_snapshot["deposit"] == 79759964
+
+    async def test_refetch_none_response_skips(self):
+        """t0424 응답 None — 갱신 보류 (P25)."""
+        mock_state = _mock_ls_sc1_state()
+        mock_rest = MagicMock()
+        mock_rest.get_balance_detail = AsyncMock(return_value=None)
+        mock_state.broker_rest_apis = {"ls": mock_rest}
+        mock_account = MagicMock()
+        with patch("backend.app.services.engine_ws_dispatch.engine_state") as mock_es:
+            mock_es.state = mock_state
+            mock_es._get_rest_api_thread_sem = MagicMock(return_value=asyncio.Semaphore(1))
+            await _refetch_t0424_and_apply("005930", {}, {"item": "005930"}, mock_account)
+        mock_account.parse_deposit.assert_not_called()
+
+    async def test_refetch_exception_isolated(self):
+        """t0424 재조회 예외 — 갱신 보류, 예외 전파 없음 (P25)."""
+        mock_state = _mock_ls_sc1_state()
+        mock_rest = MagicMock()
+        mock_rest.get_balance_detail = AsyncMock(side_effect=Exception("network error"))
+        mock_state.broker_rest_apis = {"ls": mock_rest}
+        mock_account = MagicMock()
+        with patch("backend.app.services.engine_ws_dispatch.engine_state") as mock_es:
+            mock_es.state = mock_state
+            mock_es._get_rest_api_thread_sem = MagicMock(return_value=asyncio.Semaphore(1))
+            await _refetch_t0424_and_apply("005930", {}, {"item": "005930"}, mock_account)
+        mock_account.parse_deposit.assert_not_called()

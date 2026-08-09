@@ -467,6 +467,96 @@ class TestConvertLsToInternal:
         result = sock._convert_ls_to_internal("IJ_", {}, {"jisu": "2500"})
         assert result is None
 
+    # ── SC1 (주문체결) ──────────────────────────────────────────────────────
+
+    def _sc1_body(self, **overrides):
+        """SC1 표준 응답 body 생성 (명세서 예시 기반)."""
+        body = {
+            "shtnIsuno": "A005930",
+            "Isuno": "KR7005930003",
+            "Isunm": "삼성전자",
+            "ordxctptncode": "11",
+            "bnstp": "2",
+            "unercqty": "1",
+            "execqty": "1",
+            "execprc": "60000",
+            "ordqty": "2",
+            "deposit": "79759964",
+            "ordablemny": "79459964",
+            "ordablesubstamt": "244160",
+            "ordno": "86382",
+            "orgordno": "0",
+            "ordprc": "60000",
+        }
+        body.update(overrides)
+        return body
+
+    def test_sc1_normal_fill(self):
+        sock = _make_ls_socket()
+        result = sock._convert_ls_to_internal("SC1", {}, self._sc1_body())
+        assert result is not None
+        assert result["trnm"] == "REAL"
+        assert result["data"][0]["type"] == "SC1"
+        assert result["data"][0]["item"] == "005930"
+        vals = result["data"][0]["values"]
+        assert vals["907"] == "2"       # 매매구분 (매수)
+        assert vals["902"] == "1"       # 미체결수량
+        assert vals["ordxctptncode"] == "11"
+        assert vals["execqty"] == "1"
+        assert vals["execprc"] == "60000"
+        assert vals["deposit"] == "79759964"
+        assert vals["ordablemny"] == "79459964"
+        assert vals["ordno"] == "86382"
+        assert vals["Isunm"] == "삼성전자"
+
+    def test_sc1_no_shtn_isuno_returns_none(self):
+        sock = _make_ls_socket()
+        result = sock._convert_ls_to_internal("SC1", {}, self._sc1_body(shtnIsuno="", Isuno=""))
+        assert result is None
+
+    def test_sc1_shtn_isuno_a_prefix_stripped(self):
+        sock = _make_ls_socket()
+        result = sock._convert_ls_to_internal("SC1", {}, self._sc1_body(shtnIsuno="A035420"))
+        assert result is not None
+        assert result["data"][0]["item"] == "035420"
+
+    def test_sc1_order_code_01(self):
+        """주문(01) 접수 — 체결 아님, 변환은 동일 (핸들러에서 판별)."""
+        sock = _make_ls_socket()
+        result = sock._convert_ls_to_internal("SC1", {}, self._sc1_body(ordxctptncode="01"))
+        assert result is not None
+        assert result["data"][0]["values"]["ordxctptncode"] == "01"
+
+    def test_sc1_cancel_code_03(self):
+        sock = _make_ls_socket()
+        result = sock._convert_ls_to_internal("SC1", {}, self._sc1_body(ordxctptncode="03"))
+        assert result is not None
+        assert result["data"][0]["values"]["ordxctptncode"] == "03"
+
+    def test_sc1_reject_code_14(self):
+        sock = _make_ls_socket()
+        result = sock._convert_ls_to_internal("SC1", {}, self._sc1_body(ordxctptncode="14"))
+        assert result is not None
+        assert result["data"][0]["values"]["ordxctptncode"] == "14"
+
+    def test_sc1_sell_side_bnstp_1(self):
+        """매도(1) 체결 — bnstp=1."""
+        sock = _make_ls_socket()
+        result = sock._convert_ls_to_internal("SC1", {}, self._sc1_body(bnstp="1"))
+        assert result is not None
+        assert result["data"][0]["values"]["907"] == "1"
+
+    def test_sc1_empty_body_returns_none(self):
+        sock = _make_ls_socket()
+        assert sock._convert_ls_to_internal("SC1", {}, None) is None
+
+    def test_sc1_missing_all_codes_returns_none(self):
+        sock = _make_ls_socket()
+        body = self._sc1_body()
+        del body["shtnIsuno"]
+        del body["Isuno"]
+        assert sock._convert_ls_to_internal("SC1", {}, body) is None
+
 
 # ── LsConnector.__init__ / 기본 속성 ───────────────────────────────────────────
 

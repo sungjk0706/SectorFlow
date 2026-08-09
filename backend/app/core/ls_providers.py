@@ -157,24 +157,23 @@ class LsAccountProvider(AccountProvider):
         return ls_account_parsing.parse_t0424_balance(raw, deposit)
 
     def is_realtime_stock_item(self, item: dict) -> bool:
-        """LS SC1/US3 메시지 종목 판별 — 4단계 완성 예정 (SC1 메시지 구조 확정 후).
+        """LS SC1 메시지 종목 판별 — ls_account_parsing._sc1_is_stock_item 위임.
 
-        1단계에서는 스텁 — False 반환. 4단계에서 ls_account_parsing._sc1_is_stock_item 위임.
+        SC1은 항상 종목 단위 주문체결 메시지 — item 필드(종목코드) 존재 시 True.
         """
         return ls_account_parsing._sc1_is_stock_item(item)
 
     def apply_realtime_position_line(self, item, vals, positions, extra) -> None:
-        """LS SC1 체결 메시지 보유 종목 반영 — 4단계 완성 예정.
+        """LS SC1 체결 메시지 보유 종목 반영 — ls_account_parsing.sc1_apply_position_line 위임.
 
-        결정 4: SC1 체결 확인 시 t0424 REST 재조회로 갱신 (자체 델타 계산 금지 — P18).
-        1단계에서는 스텁 — no-op. 4단계에서 ls_account_parsing.sc1_apply_position_line 위임.
+        결정 4: SC1 체결(11) 시 extra["t0424_stock_list"]로 보유 종목 갱신.
+        자체 델타 계산 금지 (P18 실전 SSOT).
         """
         return ls_account_parsing.sc1_apply_position_line(item, vals, positions, extra)
 
     def compute_realtime_account_delta(self, vals: dict) -> dict:
-        """LS SC1 계좌 단위 갱신 — 4단계 완성 예정.
+        """LS SC1 계좌 단위 갱신 — ls_account_parsing.sc1_account_delta 위임.
 
         결정 4: deposit·ordablemny 필드 기반 계좌 갱신.
-        1단계에서는 스텁 — 빈 dict 반환. 4단계에서 ls_account_parsing.sc1_account_delta 위임.
         """
         return ls_account_parsing.sc1_account_delta(vals)

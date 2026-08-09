@@ -504,6 +504,11 @@ async def _dispatch_real_item(item: dict, broadcast_queue: asyncio.Queue) -> boo
         from backend.app.services.engine_ws_dispatch import _handle_real_00
         await _handle_real_00(item, vals)
         return False
+    # SC1 LS 주문체결 처리 (체결 콜백 + t0424 재조회 잔고 갱신 — 결정 7)
+    if norm_type == "SC1":
+        from backend.app.services.engine_ws_dispatch import _handle_ls_sc1
+        await _handle_ls_sc1(item, vals)
+        return False
     # 04/80 잔고 처리 (실시간 잔고 변동 반영)
     if norm_type in ("04", "80"):
         # 가상매매 — 04/80 디스패치 2차 안전망 (F8).
