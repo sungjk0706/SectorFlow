@@ -93,7 +93,7 @@ function updateStatCardSelection(state: ProfitDetailState): void {
  * selectedView에 따라 접두사(당일/5거래일/당월/누적)를 붙이고,
  * 날짜 직접 입력(selectedView=null) 시 월/일 축약 날짜(예: 7/1~8/4)를 접두사로 표시.
  * 단일 날짜(시작=종료)는 '8/4' 형태, 범위는 '7/1~8/4' 형태. */
-const STAT_BASE_LABELS = ['총 건수', '매수 지출(수수료 포함)', '매도 수령(실수령)', '실현손익', '실현 수익률', '승률']
+const STAT_BASE_LABELS = ['총 건수', '매수 지출(수수료 포함)', '매도 수령(실수령)', '실현손익', '실현 수익률']
 const VIEW_PREFIX: Record<string, string> = {
   today: '당일',
   fiveday: '5거래일',
@@ -176,8 +176,6 @@ function updateStatistics(state: ProfitDetailState): void {
   const buyAmt = filteredBuys.reduce((s, r) => s + Number(r.total_amt ?? 0), 0)
   const sellAmt = filteredSells.reduce((s, r) => s + Number(r.total_amt ?? 0), 0)
   const pnl = filteredSells.reduce((s, r) => s + Number(r.realized_pnl ?? 0), 0)
-  const winCount = filteredSells.filter(r => Number(r.realized_pnl ?? 0) > 0).length
-  const winRate = sellCount > 0 ? Math.round(winCount / sellCount * 10000) / 100 : 0
   // 수익률: computeCumulativePnl SSOT 사용 (분모 규칙 단일 소스 — P10/P22).
   //   매수원금 기반 (aggregatePnl — 설계서 0절 최상위 원칙).
   //   실전매매: 증권사 서버가 SSOT — rate null → '-' 표시 (AGENTS.md 실전vs가상 테이블).
@@ -193,7 +191,6 @@ function updateStatistics(state: ProfitDetailState): void {
   if (state.statBuyAmtEl) { state.statBuyAmtEl.textContent = fmtWon(buyAmt); state.statBuyAmtEl.style.color = COLOR.tertiary }
   if (state.statSellAmtEl) { state.statSellAmtEl.textContent = fmtWon(sellAmt); state.statSellAmtEl.style.color = COLOR.tertiary }
   if (state.statPnlEl) { state.statPnlEl.textContent = fmtWon(pnl); state.statPnlEl.style.color = pnlColor(pnl) }
-  if (state.statWinRateEl) { state.statWinRateEl.textContent = `${winRate.toFixed(2)}%`; state.statWinRateEl.style.color = COLOR.tertiary }
   if (state.statAvgRateEl) {
     state.statAvgRateEl.textContent = avgRate == null ? '-' : `${avgRate > 0 ? '+' : ''}${avgRate.toFixed(2)}%`
     state.statAvgRateEl.style.color = avgRate == null ? COLOR.tertiary : pnlColor(avgRate)

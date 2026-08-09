@@ -156,19 +156,19 @@ export function buildTableContainer(state: ProfitDetailState): HTMLDivElement {
   return state.tableViewContainer
 }
 
-/* ── mount 헬퍼: 통계 정보 행 (총 건수/매수금액/매도금액/실현손익/수익률/승률) ── */
+/* ── mount 헬퍼: 통계 정보 행 (총 건수/매수금액/매도금액/실현손익/수익률) ── */
 export function buildStatRow(state: ProfitDetailState): HTMLDivElement {
   const statRow = document.createElement('div')
   Object.assign(statRow.style, { display: 'flex', gap: '8px', padding: '6px 4px', borderTop: '1px solid ' + COLOR.borderLight, flex: 'none' })
 
   const STAT_STYLE = `flex:1;background:${COLOR.surfaceLight};border:1px solid ${COLOR.borderLight};border-radius:${RADIUS.xs};box-shadow:${SHADOW.card};padding:4px 8px;display:flex;flex-direction:column;align-items:center;gap:2px;`
   // 기본 라벨(접두사 없음) — 기간 카드 선택 시 updateStatLabels가 접두사를 붙임.
-  const STAT_LABELS = ['총 건수', '매수 지출(수수료 포함)', '매도 수령(실수령)', '실현손익', '실현 수익률', '승률']
+  const STAT_LABELS = ['총 건수', '매수 지출(수수료 포함)', '매도 수령(실수령)', '실현손익', '실현 수익률']
   const statEls: HTMLSpanElement[] = []
   state.statCardEls = []
   state.statLabelEls = []
 
-  for (let i = 0; i < 6; i++) {
+  for (let i = 0; i < 5; i++) {
     // P25: 카드 단위 격리 — 한 카드 생성 throw 시 다음 카드 계속 렌더링.
     // statEls/statCardEls/statLabelEls push는 인덱스 기반(state.statCountEl = statEls[0] 등)이므로
     // 더미 push로 인덱스 정합성 유지 (P22). buildSummaryCard 패턴과 일치 (P23).
@@ -208,7 +208,6 @@ export function buildStatRow(state: ProfitDetailState): HTMLDivElement {
   state.statSellAmtEl = statEls[2]
   state.statPnlEl = statEls[3]
   state.statAvgRateEl = statEls[4]
-  state.statWinRateEl = statEls[5]
 
   return statRow
 }

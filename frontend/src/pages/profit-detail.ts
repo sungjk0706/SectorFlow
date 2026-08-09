@@ -74,7 +74,6 @@ export interface ProfitDetailState {
   statBuyAmtEl: HTMLSpanElement | null
   statSellAmtEl: HTMLSpanElement | null
   statPnlEl: HTMLSpanElement | null
-  statWinRateEl: HTMLSpanElement | null
   statAvgRateEl: HTMLSpanElement | null
   // 하단 통계 카드 라벨 요소 (기간 접두사 동적 반영용)
   statLabelEls: HTMLSpanElement[]
@@ -113,7 +112,6 @@ function createState(): ProfitDetailState {
     statBuyAmtEl: null,
     statSellAmtEl: null,
     statPnlEl: null,
-    statWinRateEl: null,
     statAvgRateEl: null,
     statLabelEls: [],
     statCardEls: [],
