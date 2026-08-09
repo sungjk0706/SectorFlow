@@ -94,16 +94,13 @@ def _mock_router(with_rest_api=False):
     """BrokerRouter mock 생성.
 
     with_rest_api=False → auth에 rest_api 속성 없음 (REST API 경로 스킵).
-    with_rest_api=True → auth.rest_api 반환 (TR ID 할당 테스트용).
+    with_rest_api=True → auth.rest_api 반환 (REST API 계좌번호 설정 테스트용).
     """
     router = MagicMock()
     router._auth_cache = {}
     if with_rest_api:
         mock_rest_api = MagicMock()
         mock_rest_api._acnt_no = ""
-        mock_rest_api._deposit_tr_id = ""
-        mock_rest_api._balance_tr_id = ""
-        mock_rest_api._account_tr_id = ""
         # finally 블록에서 await 호출되는 메서드는 AsyncMock으로 설정
         mock_rest_api.revoke_token = AsyncMock()
         mock_rest_api._reset_client = AsyncMock()
@@ -1102,8 +1099,8 @@ class TestRunEngineLoopRealtimeWindow:
 
 class TestRunEngineLoopRestApi:
     @pytest.mark.asyncio
-    async def test_rest_api_tr_ids_assigned(self):
-        """broker_spec의 tr_id에 따라 REST API에 TR ID 할당."""
+    async def test_rest_api_acnt_no_assigned(self):
+        """REST API에 계좌번호가 설정됨 (TR ID 동적 할당 루프 제거 후)."""
         mock_state = _mock_state()
         mock_state.broker_spec = [
             {"tr_id": "kt00001"},
@@ -1140,10 +1137,9 @@ class TestRunEngineLoopRestApi:
             await engine_loop.run_engine_loop()
 
         mock_rest_api = mock_router.auth.rest_api
-        assert mock_rest_api._deposit_tr_id == "kt00001"
-        assert mock_rest_api._balance_tr_id == "kt00018"
-        assert mock_rest_api._account_tr_id == "ka00001"
-        # broker_rest_apis는 finally에서 clear()되므로 TR ID 할당만 검증
+        # 동적 할당 루프 제거: TR ID는 할당되지 않고 계좌번호만 설정됨
+        assert mock_rest_api._acnt_no == "12345678"
+        # broker_rest_apis는 finally에서 clear()되므로 계좌번호 설정만 검증
 
     @pytest.mark.asyncio
     async def test_auto_trade_created_with_token(self):

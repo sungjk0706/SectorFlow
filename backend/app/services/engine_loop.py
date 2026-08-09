@@ -497,14 +497,6 @@ async def run_engine_loop() -> None:
             # 증권사별 state 분리
             _rest_api = _auth_provider.rest_api
             _rest_api._acnt_no = str(settings.get(f"{broker_nm}_account_no", "") or "")
-            for spec in engine_state.state.broker_spec:
-                tr = spec.get("tr_id", "")
-                if tr == "kt00001":
-                    _rest_api._deposit_tr_id = tr
-                elif tr == "kt00018":
-                    _rest_api._balance_tr_id = tr
-                elif tr == "ka00001":
-                    _rest_api._account_tr_id = tr
             engine_state.state.broker_rest_apis[broker_nm] = _rest_api
             from backend.app.services.engine_lifecycle import log_message
             log_message(f"[연결] {BROKER_DISPLAY_NAMES.get(broker_nm, broker_nm)} 연결 (가상매매={_is_virtual})")
