@@ -106,6 +106,8 @@ docs/조사보고서/
 .devin/
 AGENTS.md
 scripts/pre-complete-check.sh
+scripts/session-commit.sh
+scripts/session-push.sh
 
 # Procedure documents
 docs/절차규칙/
