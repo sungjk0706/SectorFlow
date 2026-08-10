@@ -85,7 +85,7 @@ export const COLUMN_WIDTH: Record<ColumnType, ColumnWidth> = {
   order_ratio: { minWidth: 80, maxWidth: 140 },
   program_net: { minWidth: 60, maxWidth: 85 },
   boost: { minWidth: 36, maxWidth: 60 },
-  news: { minWidth: 60, maxWidth: 80 },
+  news: { minWidth: 60, maxWidth: 100 },
   guard: { minWidth: 36, maxWidth: 50 },
   reject_reason: { minWidth: 50, maxWidth: 130 },
   actions: { minWidth: 50, maxWidth: 120 },
