@@ -2,14 +2,16 @@
 """
 업종 점수 계산 - 3단계 누적 가산점 시스템 (순위별 차등 점수, 만점 자동화).
 
-1차 가산점: 업종 간 상승비율 순위 → tiered 점수 (0~조정 만점)
-2차 가산점: 통과 업종 종목들 가중 순위 합(Weighted Rank Sum) → 업종 간 순위 → tiered 점수 (0~조정 만점)
-3차 가산점: 업종 간 거래대금 순위 → tiered 점수 (0~조정 만점)
+1차 가산점: 업종 간 상승비율 순위 → 가중 tiered 점수 (0~조정 만점)
+2차 가산점: 통과 업종 종목들 가중 순위 합(Weighted Rank Sum) → 업종 간 순위 → 가중 tiered 점수 (0~조정 만점)
+3차 가산점: 업종 간 거래대금 순위 → 가중 tiered 점수 (0~조정 만점)
 종합 점수 = 1차 + 2차 + 3차 (0~조정 만점 합, float)
 
-만점 = 업종 수 × (1 + 슬라이더/100) — 업종 수에서 자동 도출 (P10 SSOT).
+기본 순위점수 = 업종 수 - 순위 + 1.
+조정 만점 = 업종 수 × (1 + 슬라이더/100) — 업종 수에서 자동 도출 (P10 SSOT).
+순위점수 전체에 (1 + 슬라이더/100) 배율을 적용하여 순위 간격도 함께 조정한다.
 슬라이더 -100% → 조정 만점 0 → 해당 가산점 무효화 (사용자 의도적, P20 폴백 아님).
-tiered 점수: 1위 = 조정 만점, 2위 = 조정 만점 - 1, ..., 조정 만점 순위 = 1, 그 아래 = 0.
+가중 tiered 점수: 1위 = 조정 만점, 2위 = 조정 만점 - 배율, ..., 각 순위 간격 = 배율.
 """
 from __future__ import annotations
 import logging
@@ -82,6 +84,25 @@ def compute_sector_total_max(
     )
 
 
+def _rank_to_weighted_tiered_score(
+    values: list[float],
+    *,
+    n_sectors: int,
+    slider: int,
+    higher_is_better: bool = True,
+) -> list[float]:
+    """기본 순위점수에 슬라이더 배율을 적용한다."""
+    if not values or n_sectors <= 0:
+        return []
+    scale = compute_adjusted_max(n_sectors, slider) / n_sectors
+    base_scores = rank_to_tiered_score(
+        values,
+        max_score=float(n_sectors),
+        higher_is_better=higher_is_better,
+    )
+    return [float(score * scale) for score in base_scores]
+
+
 def calculate_bonus_scores(
     sector_scores: list,  # list[SectorScore]
     *,
@@ -92,16 +113,18 @@ def calculate_bonus_scores(
     trade_amount_slider: int = 0,
 ) -> None:
     """
-    3단계 누적 가산점 계산 — 만점 자동화 + 슬라이더 + 가중 순위 합.
+    3단계 누적 가산점 계산 — 만점 자동화 + 순위점수 배율 + 가중 순위 합.
 
-    만점 = len(sector_scores) × (1 + slider/100)
-      - slider=0 → 만점 = 업종 수 (기본)
-      - slider=-50 → 만점 = 업종 수 × 0.5
+    기본 순위점수 = len(sector_scores) - 순위 + 1.
+    조정 만점 = len(sector_scores) × (1 + slider/100)
+      - slider=0 → 만점 = 업종 수, 순위 간격 = 1
+      - slider=-50 → 만점 = 업종 수 × 0.5, 순위 간격 = 0.5
       - slider=-100 → 만점 = 0 (해당 가산점 무효화)
+    슬라이더 배율은 각 순위점수 전체에 적용되며, 조정 만점과 순위 간격을 함께 변경한다.
 
     1패스:
-      1. 1차 가산점: 업종 간 상승비율 순위 → rank_to_tiered_score (0~조정 만점)
-      2. 3차 가산점: 업종 간 거래대금 순위 → rank_to_tiered_score (0~조정 만점)
+      1. 1차 가산점: 업종 간 상승비율 순위 → 가중 tiered 점수 (0~조정 만점)
+      2. 3차 가산점: 업종 간 거래대금 순위 → 가중 tiered 점수 (0~조정 만점)
       3. 임시 합산(1차+3차) 기반 정렬
 
     컷오프:
@@ -111,7 +134,7 @@ def calculate_bonus_scores(
       5. 2차 가산점: 통과 업종(is_cutoff_passed) 종목들 가중 순위 합
          - 모든 종목 상승률 내림차순 정렬 → 순위 1..N
          - 가중치 = (N - 순위 + 1) / N
-         - 업종별 가중치 합산 → 업종 간 순위 → rank_to_tiered_score (0~조정 만점)
+         - 업종별 가중치 합산 → 업종 간 순위 → 가중 tiered 점수 (0~조정 만점)
 
     종합:
       6. final_score = 1차 + 2차 + 3차 (float)
@@ -124,20 +147,28 @@ def calculate_bonus_scores(
     n_sectors = len(sector_scores)
 
     # ── 조정 만점 계산: 업종 수 × (1 + 슬라이더/100) — compute_adjusted_max SSOT 사용 ──
-    adjusted_rise_max = compute_adjusted_max(n_sectors, rise_ratio_slider)
     adjusted_relative_max = compute_adjusted_max(n_sectors, relative_strength_slider)
-    adjusted_trade_max = compute_adjusted_max(n_sectors, trade_amount_slider)
 
-    # ── 1패스: 1차 + 3차 가산점 (순위별 차등 점수) ──
+    # ── 1패스: 1차 + 3차 가산점 (순위점수 배율 적용) ──
     # 1차 가산점: 업종 간 상승비율 순위
     rise_values = [sc.rise_ratio for sc in sector_scores]
-    rise_scores = rank_to_tiered_score(rise_values, max_score=adjusted_rise_max, higher_is_better=True)
+    rise_scores = _rank_to_weighted_tiered_score(
+        rise_values,
+        n_sectors=n_sectors,
+        slider=rise_ratio_slider,
+        higher_is_better=True,
+    )
     for sc, score in zip(sector_scores, rise_scores):
         sc.bonus_rise_ratio = float(score)
 
     # 3차 가산점: 업종 간 평균 거래대금 순위
     ta_values = [float(sc.avg_trade_amount) for sc in sector_scores]
-    ta_scores = rank_to_tiered_score(ta_values, max_score=adjusted_trade_max, higher_is_better=True)
+    ta_scores = _rank_to_weighted_tiered_score(
+        ta_values,
+        n_sectors=n_sectors,
+        slider=trade_amount_slider,
+        higher_is_better=True,
+    )
     for sc, score in zip(sector_scores, ta_scores):
         sc.bonus_trade_amount = float(score)
 
@@ -183,8 +214,11 @@ def calculate_bonus_scores(
             # 통과 업종 간 가중 합 순위 → tiered 점수 부여
             passed_sector_names = [sc.sector for sc in passed_sectors]
             passed_weight_values = [sector_weight_sum.get(name, 0.0) for name in passed_sector_names]
-            relative_scores = rank_to_tiered_score(
-                passed_weight_values, max_score=adjusted_relative_max, higher_is_better=True
+            relative_scores = _rank_to_weighted_tiered_score(
+                passed_weight_values,
+                n_sectors=n_sectors,
+                slider=relative_strength_slider,
+                higher_is_better=True,
             )
 
             # tiered 점수를 각 업종에 할당

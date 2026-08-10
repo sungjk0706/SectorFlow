@@ -302,10 +302,10 @@ class TestCalculateBonusScores:
 
     # ── 슬라이더 테스트 ──
 
-    def test_slider_negative_50_halves_max_score(self):
-        """슬라이더 -50% → 조정 만점 = 업종 수 × 0.5.
+    def test_slider_negative_50_scales_rank_gap(self):
+        """슬라이더 -50% → 만점과 순위 간격을 0.5배로 조정.
         업종 4개, 슬라이더 -50% → 1차 조정 만점 = 2.0
-        1위=2.0, 2위=1.0, 3위=0.0, 4위=0.0
+        1위=2.0, 2위=1.5, 3위=1.0, 4위=0.5
         """
         scores = [
             _make_sector_score("A", rise_ratio=0.1, avg_trade_amount=100,
@@ -318,9 +318,16 @@ class TestCalculateBonusScores:
                                stocks=[_make_stock("d1", "D", 0.0)]),
         ]
         calculate_bonus_scores(scores, rise_ratio_slider=-50, trade_amount_slider=-50, relative_strength_slider=-50)
-        b = next(s for s in scores if s.sector == "B")
-        # B는 rise_ratio 1위 → 조정 만점 2.0
-        assert b.bonus_rise_ratio == 2.0
+        by_sector = {s.sector: s for s in scores}
+        # 각 단계 모두 순위 간격이 0.5점으로 조정됨.
+        assert by_sector["B"].bonus_rise_ratio == 2.0
+        assert by_sector["C"].bonus_rise_ratio == 1.5
+        assert by_sector["D"].bonus_rise_ratio == 1.0
+        assert by_sector["A"].bonus_rise_ratio == 0.5
+        assert by_sector["B"].bonus_trade_amount == 2.0
+        assert by_sector["C"].bonus_trade_amount == 1.5
+        assert by_sector["D"].bonus_trade_amount == 1.0
+        assert by_sector["A"].bonus_trade_amount == 0.5
 
     def test_slider_negative_100_disables_dimension(self):
         """슬라이더 -100% → 조정 만점 = 0 → 해당 가산점 무효화 (P20 폴백 아님)."""
@@ -342,10 +349,10 @@ class TestCalculateBonusScores:
             assert sc.bonus_trade_amount == 0.0
             assert sc.final_score == 0.0
 
-    def test_slider_positive_50_increases_max_score(self):
-        """슬라이더 +50% → 조정 만점 = 업종 수 × 1.5.
+    def test_slider_positive_50_scales_rank_gap(self):
+        """슬라이더 +50% → 만점과 순위 간격을 1.5배로 조정.
         업종 2개, 1차 슬라이더 +50% → 조정 만점 = 3.0
-        1위=3.0, 2위=2.0
+        1위=3.0, 2위=1.5
         """
         scores = [
             _make_sector_score("A", rise_ratio=0.3, avg_trade_amount=100,
@@ -356,9 +363,30 @@ class TestCalculateBonusScores:
         calculate_bonus_scores(scores, rise_ratio_slider=50)
         b = next(s for s in scores if s.sector == "B")
         a = next(s for s in scores if s.sector == "A")
-        # B rise_ratio 1위 → 3.0, A 2위 → 2.0
+        # B rise_ratio 1위 → 3.0, A 2위 → 1.5
         assert b.bonus_rise_ratio == 3.0
-        assert a.bonus_rise_ratio == 2.0
+        assert a.bonus_rise_ratio == 1.5
+
+    def test_slider_positive_50_scales_relative_strength_rank_gap(self):
+        """2차 가산점도 +50% 시 순위 간격이 1.5점으로 조정된다."""
+        scores = [
+            _make_sector_score("A", rise_ratio=0.5, avg_trade_amount=100,
+                               stocks=[_make_stock("a1", "A", 3.0)]),
+            _make_sector_score("B", rise_ratio=0.5, avg_trade_amount=100,
+                               stocks=[_make_stock("b1", "B", 2.0)]),
+            _make_sector_score("C", rise_ratio=0.5, avg_trade_amount=100,
+                               stocks=[_make_stock("c1", "C", 1.0)]),
+        ]
+        calculate_bonus_scores(
+            scores,
+            rise_ratio_slider=-100,
+            relative_strength_slider=50,
+            trade_amount_slider=-100,
+        )
+        by_sector = {s.sector: s for s in scores}
+        assert by_sector["A"].bonus_relative_strength == 4.5
+        assert by_sector["B"].bonus_relative_strength == 3.0
+        assert by_sector["C"].bonus_relative_strength == 1.5
 
     def test_slider_only_rise_ratio_negative_100(self):
         """1차 슬라이더만 -100% → 1차=0, 2차/3차 정상."""
