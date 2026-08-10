@@ -5,13 +5,14 @@
 모든 engine_*.py 모듈은 이 파일에서 전역 상태를 직접 import한다.
 순환 import 방지: 이 모듈은 다른 engine_*.py를 import하지 않는다.
 
-속성 그룹 분류 (세션 10 — CACHE-STATE-IMPL-10, 73개 속성):
+속성 그룹 분류 (세션 10 — CACHE-STATE-IMPL-10, 77개 속성):
   A. 브로커 연결 (5)   — connector_manager, broker_tokens,
                          access_token, login_ok, broker_spec
-  B. 계좌 (13)          — engine_user_id, ws_account_subscribed, ws_connection_status,
-                         quote_subscribed, index_subscribed, account_rest_bootstrapped, broker_rest_totals,
-                         auto_trade, broker_rest_apis, account_rest_lock,
-                         account_snapshot, positions, unfilled_orders
+  B. 계좌 (17)          — engine_user_id, ws_account_subscribed, ws_connection_status,
+                         quote_subscribed, index_subscribed, account_rest_bootstrapped,
+                         account_context_mode, account_context_ready, account_context_reason,
+                         buy_gate_reason, broker_rest_totals, auto_trade, broker_rest_apis,
+                         account_rest_lock, account_snapshot, positions, unfilled_orders
   C. 업종 분석 (8)      — sector_summary_cache, master_stocks_cache, index_data_cache,
                          market_phase, krx_circuit_breaker_active,
                          news_keywords_cache, news_boost_score, news_boost_ttl_sec
@@ -179,6 +180,10 @@ class EngineState:
         self.quote_subscribed: bool = False
         self.index_subscribed: bool = False  # 업종지수(0J, grp 2) 구독 상태 — ws-subscribe-status payload SSOT (P10/P21)
         self.account_rest_bootstrapped: bool = False
+        self.account_context_mode: str = ""
+        self.account_context_ready: bool = False
+        self.account_context_reason: str = "잔고 확인 미완료"
+        self.buy_gate_reason: str = ""
         self.broker_rest_totals: dict = {
             "total_eval": None, "total_pnl": None, "total_buy": None, "total_rate": None,
         }

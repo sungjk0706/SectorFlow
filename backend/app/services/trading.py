@@ -120,8 +120,8 @@ BUY_REJECT_REASON_TEXT: dict[str, str] = {
     BUY_REJECT_TIME_BLOCKED:      "체결 불가 시간대",
     BUY_REJECT_REBUY:             "재매수 차단",
     BUY_REJECT_PRICE_ZERO:        "현재가 0",
-    BUY_REJECT_RISE_GUARD:        "상승률 가드",
-    BUY_REJECT_FALL_GUARD:        "하락률 가드",
+    BUY_REJECT_RISE_GUARD:        "상승률",
+    BUY_REJECT_FALL_GUARD:        "하락률",
 }
 
 
@@ -393,10 +393,9 @@ class AutoTradeManager:
         반환값: (True, "")=주문 전송 성공, (False, 사유코드)=가드에 의해 차단/실패
         결정 6: 잠금이 이미 점유 중이면 대기하지 않고 즉시 차단 반환 (다음 평가 주기 재시도).
         """
-        # ── 잔고 확인 완료 전 주문 차단 (P22 정합성 — 잔고 미준비 상태 주문 금지) ──
-        from backend.app.services.engine_state import state as engine_state
-        if not engine_state.account_rest_bootstrapped:
-            logger.info("[매매] [매수차단] %s 잔고 확인 미완료 — 주문 차단 (기동 중 잔고 조회 완료 후 허용)", stk_cd)
+        from backend.app.services.engine_account import is_account_context_ready
+        if not is_account_context_ready():
+            logger.info("[매매] [매수차단] %s 계좌 데이터 준비 미완료 — 주문 차단", stk_cd)
             return False, BUY_REJECT_BALANCE_NOT_READY
         if self._order_lock is None:
             self._order_lock = asyncio.Lock()
@@ -809,10 +808,9 @@ class AutoTradeManager:
         """
         if not trade_settings.get("is_sell_auto", False):
             return False
-        # ── 잔고 확인 완료 전 주문 차단 (P22 정합성 — 잔고 미준비 상태 주문 금지) ──
-        from backend.app.services.engine_state import state as engine_state
-        if not engine_state.account_rest_bootstrapped:
-            logger.info("[매매] [매도차단] %s(%s) 잔고 확인 미완료 — 주문 차단 (기동 중 잔고 조회 완료 후 허용)", stk_nm, stk_cd)
+        from backend.app.services.engine_account import is_account_context_ready
+        if not is_account_context_ready():
+            logger.info("[매매] [매도차단] %s(%s) 계좌 데이터 준비 미완료 — 주문 차단", stk_nm, stk_cd)
             return False
         if self._order_lock is None:
             self._order_lock = asyncio.Lock()

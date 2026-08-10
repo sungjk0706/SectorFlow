@@ -28,7 +28,8 @@ from backend.app.services.engine_account_notify import (
     get_freshness,
     get_freshness_snapshot,
     _broadcast,
-    _apply_unaffordable_reject_reasons,
+    _clear_non_guard_reject_reasons,
+    publish_buy_gate_status,
 )
 from backend.app.services.engine_account_broadcast import (
     _build_lightweight_payload_for_profit_overview,
@@ -853,7 +854,7 @@ class TestNotifyBuyTargetsUpdate:
             notify_cache.prev_buy_targets_map = None
 
 
-# ── _apply_unaffordable_reject_reasons — 단가 초과 종목 "예수금 부족" 표시 ──────
+# ── _clear_non_guard_reject_reasons — 단가 초과 종목 "예수금 부족" 표시 ──────
 
 class TestApplyUnaffordableRejectReasons:
     """단가 초과 종목에 "예수금 부족" 사유 설정 검증 (P21 투명성)."""
@@ -901,8 +902,8 @@ class TestApplyUnaffordableRejectReasons:
              patch("backend.app.core.trade_mode.is_virtual_mode", return_value=True), \
              patch("backend.app.services.dry_run.estimate_fill_price", side_effect=lambda p, s: p):
             mock_rm.return_value.get_withdrawable_deposit.return_value = 50_000
-            _apply_unaffordable_reject_reasons()
-        assert bt.reject_reason == "예수금 부족"
+            _clear_non_guard_reject_reasons()
+        assert bt.reject_reason == ""
 
     def test_affordable_clears_reject_reason(self):
         """잔액 회복 (available >= price) → "예수금 부족" 해제."""
@@ -920,7 +921,7 @@ class TestApplyUnaffordableRejectReasons:
              patch("backend.app.core.trade_mode.is_virtual_mode", return_value=True), \
              patch("backend.app.services.dry_run.estimate_fill_price", side_effect=lambda p, s: p):
             mock_rm.return_value.get_withdrawable_deposit.return_value = 10_000_000
-            _apply_unaffordable_reject_reasons()
+            _clear_non_guard_reject_reasons()
         assert bt.reject_reason == ""
 
     def test_existing_reason_not_overwritten(self):
@@ -938,8 +939,8 @@ class TestApplyUnaffordableRejectReasons:
              patch("backend.app.core.trade_mode.is_virtual_mode", return_value=True), \
              patch("backend.app.services.dry_run.estimate_fill_price", side_effect=lambda p, s: p):
             mock_rm.return_value.get_withdrawable_deposit.return_value = 50_000
-            _apply_unaffordable_reject_reasons()
-        assert bt.reject_reason == "시장 지수 급락"
+            _clear_non_guard_reject_reasons()
+        assert bt.reject_reason == ""
 
     def test_guard_pass_false_skipped(self):
         """guard_pass=False 종목은 건드리지 않음."""
@@ -956,7 +957,7 @@ class TestApplyUnaffordableRejectReasons:
              patch("backend.app.core.trade_mode.is_virtual_mode", return_value=True), \
              patch("backend.app.services.dry_run.estimate_fill_price", side_effect=lambda p, s: p):
             mock_rm.return_value.get_withdrawable_deposit.return_value = 50_000
-            _apply_unaffordable_reject_reasons()
+            _clear_non_guard_reject_reasons()
         assert bt.reject_reason == ""
 
     def test_zero_available_skips(self):
@@ -973,6 +974,40 @@ class TestApplyUnaffordableRejectReasons:
              patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm, \
              patch("backend.app.core.trade_mode.is_virtual_mode", return_value=True):
             mock_rm.return_value.get_withdrawable_deposit.return_value = 0
-            _apply_unaffordable_reject_reasons()
+            _clear_non_guard_reject_reasons()
         assert bt.reject_reason == ""
+
+
+class TestPublishBuyGateStatus:
+    @pytest.mark.asyncio
+    async def test_publish_sets_state_and_broadcasts(self):
+        from unittest.mock import MagicMock
+        mock_state = MagicMock()
+        mock_state.integrated_system_settings_cache = {"trade_mode": "virtual"}
+        with patch("backend.app.services.engine_state.state", mock_state), \
+             patch("backend.app.services.engine_account_notify._safe_broadcast", new_callable=AsyncMock) as mock_broadcast:
+            await publish_buy_gate_status("일일 매수한도 초과", "daily_limit")
+        assert mock_state.buy_gate_reason == "일일 매수한도 초과"
+        mock_broadcast.assert_awaited_once_with("buy-gate-status", {
+            "blocked": True,
+            "reason": "일일 매수한도 초과",
+            "reason_code": "daily_limit",
+            "mode": "virtual",
+        })
+
+    @pytest.mark.asyncio
+    async def test_publish_empty_clears_state(self):
+        from unittest.mock import MagicMock
+        mock_state = MagicMock()
+        mock_state.integrated_system_settings_cache = {"trade_mode": "virtual"}
+        with patch("backend.app.services.engine_state.state", mock_state), \
+             patch("backend.app.services.engine_account_notify._safe_broadcast", new_callable=AsyncMock) as mock_broadcast:
+            await publish_buy_gate_status()
+        assert mock_state.buy_gate_reason == ""
+        mock_broadcast.assert_awaited_once_with("buy-gate-status", {
+            "blocked": False,
+            "reason": "",
+            "reason_code": "",
+            "mode": "virtual",
+        })
 

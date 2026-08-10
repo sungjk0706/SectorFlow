@@ -26,10 +26,14 @@ async def get_account_snapshot() -> dict:
     if not snap or "trade_mode" not in snap:
         _is_virtual = is_virtual_mode(state.integrated_system_settings_cache)
         snap.setdefault("trade_mode", "virtual" if _is_virtual else "live")
-        if _is_virtual:
+        if _is_virtual and settlement_engine.is_loaded():
             snap.setdefault("accumulated_investment", settlement_engine.get_accumulated_investment())
             snap.setdefault("orderable", settlement_engine.get_orderable())
             snap.setdefault("initial_deposit", settlement_engine.get_accumulated_investment())
+        elif _is_virtual:
+            snap.setdefault("accumulated_investment", None)
+            snap.setdefault("orderable", None)
+            snap.setdefault("initial_deposit", None)
         for k in ("total_buy", "total_eval", "total_pnl",
                    "total_buy_amount", "total_eval_amount"):
             snap.setdefault(k, None)
@@ -42,6 +46,40 @@ async def get_account_snapshot() -> dict:
 def get_trade_mode() -> str:
     """거래 모드 반환."""
     return "virtual" if is_virtual_mode(state.integrated_system_settings_cache) else "live"
+
+
+def _runtime_account_state():
+    from backend.app.services import engine_state
+    return engine_state.state
+
+
+def set_account_context_status(mode: str, ready: bool, reason: str = "") -> None:
+    """현재 거래 모드의 계좌 데이터 준비 상태를 갱신한다."""
+    runtime_state = _runtime_account_state()
+    runtime_state.account_context_mode = mode
+    runtime_state.account_context_ready = ready
+    runtime_state.account_context_reason = "" if ready else reason
+
+
+def is_account_context_ready() -> bool:
+    """현재 거래 모드의 계좌 데이터 준비 완료 여부를 반환한다."""
+    runtime_state = _runtime_account_state()
+    mode = "virtual" if is_virtual_mode(runtime_state.integrated_system_settings_cache) else "live"
+    context_mode = getattr(runtime_state, "account_context_mode", "")
+    context_ready = getattr(runtime_state, "account_context_ready", False)
+    if isinstance(context_mode, str) and isinstance(context_ready, bool):
+        return context_mode == mode and context_ready
+    return bool(getattr(runtime_state, "account_rest_bootstrapped", False))
+
+
+def get_account_context_status() -> dict[str, str | bool]:
+    """현재 거래 모드의 계좌 데이터 준비 상태를 반환한다."""
+    runtime_state = _runtime_account_state()
+    mode = "virtual" if is_virtual_mode(runtime_state.integrated_system_settings_cache) else "live"
+    if is_account_context_ready():
+        return {"mode": mode, "ready": True, "reason": ""}
+    reason = getattr(runtime_state, "account_context_reason", "잔고 확인 미완료")
+    return {"mode": mode, "ready": False, "reason": str(reason or "잔고 확인 미완료")}
 
 
 async def get_positions() -> list:
@@ -200,6 +238,7 @@ async def _update_account_memory_inner(settings: dict) -> None:
     yield_data = await _fetch_account_data(s)
 
     if not yield_data.get("success"):
+        set_account_context_status("live", False, "잔고 확인 미완료")
         logger.warning(
             "[계좌] 조회 실패함 — 기존 스냅샷 유지 (총평가=%s원)",
             f"{state.account_snapshot.get('total_eval') or 0:,}",
@@ -288,6 +327,7 @@ def _apply_account_yield_to_state(yield_data: dict, s: dict) -> None:
     _rebuild_positions_cache(merged)
 
     state.account_rest_bootstrapped = True
+    set_account_context_status("live", True)
     state.account_snapshot["broker"] = broker
     state.account_snapshot["deposit"] = int(summary.get("deposit", 0) or 0)
     state.account_snapshot["orderable"] = int(summary.get("orderable", 0) or 0)

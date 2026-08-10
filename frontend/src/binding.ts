@@ -35,6 +35,7 @@ import {
   applyRiskBlockStatus,
   applyRealtimeLatencyStatus,
   applyDailyBuyStateStatus,
+  applyBuyGateStatus,
   applyVirtualCashFailed,
   applyMarketPhase,
   applyIndexData,
@@ -324,6 +325,10 @@ export function bindWSToStore(
   /* ── buy-limit-status: 매수 한도 상태 실시간 갱신 ── */
   pricesClient.onEvent('buy-limit-status', (data) => {
     applyBuyLimitStatus(data as { daily_buy_spent: number })
+  })
+
+  pricesClient.onEvent('buy-gate-status', (data) => {
+    applyBuyGateStatus(data as { blocked?: boolean; reason?: string })
   })
 
   /* ── realtime-latency-status: 실시간 통신 지연 200ms 초과 상태 (매수/매도 공통 차단) ── */

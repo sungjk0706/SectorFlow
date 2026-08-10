@@ -17,8 +17,7 @@ from backend.app.services.risk_manager import MarketGuardStatus
 from backend.app.services.trading import (
     BUY_REJECT_RISE_GUARD, BUY_REJECT_AUTO_BUY_OFF, BUY_REJECT_QTY_ZERO,
     BUY_REJECT_RISK_LOSS_RATE, BUY_REJECT_RISK_CONSEC_LOSS,
-    BUY_REJECT_MAX_HOLDING, BUY_REJECT_DAILY_LIMIT, BUY_REJECT_RISK_CASH,
-    BUY_REJECT_BUY_AMT_ZERO, BUY_REJECT_REASON_TEXT,
+    BUY_REJECT_REASON_TEXT,
     BUY_REJECT_RISK_MARKET_DROP, BUY_REJECT_BUY_TIME_OUT, BUY_REJECT_MASTER_OFF,
 )
 from backend.app.domain.models import StockScore, SectorSummary, BuyTarget
@@ -90,6 +89,10 @@ def fresh_state():
     mock_state.auto_trade._ensure_daily_buy_counter = AsyncMock()
     mock_state.sector_summary_cache = _sector_summary()
     mock_state.integrated_system_settings_cache = _default_settings()
+    mock_state.account_context_mode = "virtual"
+    mock_state.account_context_ready = True
+    mock_state.account_context_reason = ""
+    mock_state.buy_gate_reason = ""
     mock_state.access_token = "test_token"
     mock_state._last_global_buy_ts = 0.0
     return mock_state
@@ -139,6 +142,17 @@ class TestEarlyReturnGates:
             await evaluate_buy_candidates()
 
     @pytest.mark.asyncio
+    async def test_account_context_not_ready_returns_early(self, fresh_state, reset_cash_gate):
+        fresh_state.account_context_ready = False
+        with patch("backend.app.services.engine_state.state", fresh_state), \
+             patch("backend.app.services.engine_account.is_account_context_ready", return_value=False):
+            await evaluate_buy_candidates()
+        fresh_state.auto_trade.execute_buy.assert_not_called()
+        assert fresh_state.buy_gate_reason == "잔고 확인 미완료"
+        for bt in fresh_state.sector_summary_cache.buy_targets:
+            assert bt.reject_reason == ""
+
+    @pytest.mark.asyncio
     async def test_auto_buy_not_effective_returns_early(self, fresh_state, reset_cash_gate):
         with patch("backend.app.services.engine_state.state", fresh_state), \
              patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=False), \
@@ -150,7 +164,7 @@ class TestEarlyReturnGates:
         ss = fresh_state.sector_summary_cache
         for bt in ss.buy_targets:
             if bt.stock.guard_pass:
-                assert bt.reject_reason == BUY_REJECT_REASON_TEXT[BUY_REJECT_BUY_TIME_OUT]
+                assert bt.reject_reason == ""
         reset_cash_gate.assert_awaited()
 
     @pytest.mark.asyncio
@@ -164,7 +178,7 @@ class TestEarlyReturnGates:
         ss = fresh_state.sector_summary_cache
         for bt in ss.buy_targets:
             if bt.stock.guard_pass:
-                assert bt.reject_reason == "자동매수 시간외"
+                assert bt.reject_reason == ""
         reset_cash_gate.assert_awaited()
 
     @pytest.mark.asyncio
@@ -178,7 +192,7 @@ class TestEarlyReturnGates:
         ss = fresh_state.sector_summary_cache
         for bt in ss.buy_targets:
             if bt.stock.guard_pass:
-                assert bt.reject_reason == "자동매수 OFF"
+                assert bt.reject_reason == ""
         reset_cash_gate.assert_awaited()
 
     @pytest.mark.asyncio
@@ -192,7 +206,7 @@ class TestEarlyReturnGates:
         ss = fresh_state.sector_summary_cache
         for bt in ss.buy_targets:
             if bt.stock.guard_pass:
-                assert bt.reject_reason == "자동매매 OFF"
+                assert bt.reject_reason == ""
         reset_cash_gate.assert_awaited()
 
     @pytest.mark.asyncio
@@ -1046,7 +1060,7 @@ class TestRejectReasonRecording:
         ss = fresh_state.sector_summary_cache
         for bt in ss.buy_targets:
             if bt.stock.guard_pass:
-                assert bt.reject_reason == BUY_REJECT_REASON_TEXT[BUY_REJECT_MAX_HOLDING]
+                assert bt.reject_reason == ""
         reset_cash_gate.assert_awaited_once()
 
     @pytest.mark.asyncio
@@ -1062,7 +1076,7 @@ class TestRejectReasonRecording:
         ss = fresh_state.sector_summary_cache
         for bt in ss.buy_targets:
             if bt.stock.guard_pass:
-                assert bt.reject_reason == BUY_REJECT_REASON_TEXT[BUY_REJECT_BUY_AMT_ZERO]
+                assert bt.reject_reason == ""
 
     @pytest.mark.asyncio
     async def test_daily_limit_sets_reason_on_all(self, fresh_state, reset_cash_gate):
@@ -1080,7 +1094,7 @@ class TestRejectReasonRecording:
         ss = fresh_state.sector_summary_cache
         for bt in ss.buy_targets:
             if bt.stock.guard_pass:
-                assert bt.reject_reason == BUY_REJECT_REASON_TEXT[BUY_REJECT_DAILY_LIMIT]
+                assert bt.reject_reason == ""
 
     @pytest.mark.asyncio
     async def test_cash_zero_sets_reason_on_all(self, fresh_state, reset_cash_gate):
@@ -1097,7 +1111,7 @@ class TestRejectReasonRecording:
         ss = fresh_state.sector_summary_cache
         for bt in ss.buy_targets:
             if bt.stock.guard_pass:
-                assert bt.reject_reason == BUY_REJECT_REASON_TEXT[BUY_REJECT_RISK_CASH]
+                assert bt.reject_reason == ""
 
     @pytest.mark.asyncio
     async def test_per_stock_reject_sets_reason_on_current(self, fresh_state, reset_cash_gate):
@@ -1142,9 +1156,9 @@ class TestRejectReasonRecording:
             await evaluate_buy_candidates()
         ss = fresh_state.sector_summary_cache
         bt1 = ss.buy_targets[0]
-        assert bt1.reject_reason == BUY_REJECT_REASON_TEXT[BUY_REJECT_AUTO_BUY_OFF]
-        # notify 호출 확인
-        reset_cash_gate.assert_awaited()
+        assert bt1.reject_reason == ""
+        assert fresh_state.buy_gate_reason == "자동매수 OFF"
+        reset_cash_gate.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_successful_buy_does_not_set_reason(self, fresh_state, reset_cash_gate):
@@ -1184,7 +1198,7 @@ class TestRejectReasonRecording:
             await evaluate_buy_candidates()
         ss = fresh_state.sector_summary_cache
         bt1 = ss.buy_targets[0]
-        assert bt1.reject_reason == BUY_REJECT_REASON_TEXT[BUY_REJECT_QTY_ZERO]
+        assert bt1.reject_reason == ""
 
 
 # ── 시장 전체 차단 사전 게이트 ────────────────────────────────────────────────
@@ -1259,7 +1273,7 @@ class TestMarketGuardPreGate:
             await evaluate_buy_candidates()
         assert fresh_state.auto_trade.execute_buy.await_count == 1
         assert fresh_state.auto_trade.execute_buy.await_args.args[0] == "A002"
-        assert fresh_state.sector_summary_cache.buy_targets[0].reject_reason == "코스피 급락 차단"
+        assert fresh_state.sector_summary_cache.buy_targets[0].reject_reason == ""
         assert fresh_state.sector_summary_cache.buy_targets[1].reject_reason == ""
 
     @pytest.mark.asyncio
@@ -1279,7 +1293,7 @@ class TestMarketGuardPreGate:
             ))
             mock_rm.return_value.get_withdrawable_deposit.return_value = 10_000_000
             await evaluate_buy_candidates()
-        assert target.reject_reason == "코스피 급락 차단"
+        assert target.reject_reason == ""
 
 
 # ── 매수 근거 가산점 통합 문자열 생성 (BUY-REASON-S4: P10 SSOT, P20 폴백 금지, P21 사용자 투명성, P23 용어 통일) ──

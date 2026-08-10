@@ -40,6 +40,10 @@ GROUP_B_ACCOUNT = {
     "quote_subscribed",
     "index_subscribed",
     "account_rest_bootstrapped",
+    "account_context_mode",
+    "account_context_ready",
+    "account_context_reason",
+    "buy_gate_reason",
     "broker_rest_totals",
     "auto_trade",
     "broker_rest_apis",
@@ -128,7 +132,7 @@ class TestGroupClassification:
 
     def test_group_sizes_match_docstring(self):
         """docstring에 명시된 그룹별 속성 수와 일치."""
-        expected_sizes = {"A": 5, "B": 13, "C": 8, "D": 15, "E": 17, "F": 15}
+        expected_sizes = {"A": 5, "B": 17, "C": 8, "D": 15, "E": 17, "F": 15}
         for name, group in ALL_GROUPS.items():
             assert len(group) == expected_sizes[name], (
                 f"그룹 {name} 속성 수 불일치: 예상 {expected_sizes[name]}, 실제 {len(group)}"
@@ -139,7 +143,7 @@ class TestGroupClassification:
         all_attrs = set()
         for group in ALL_GROUPS.values():
             all_attrs |= group
-        assert len(all_attrs) == 73, f"전체 속성 수: {len(all_attrs)} (예상 73)"
+        assert len(all_attrs) == 77, f"전체 속성 수: {len(all_attrs)} (예상 77)"
 
     def test_no_overlap_between_groups(self):
         """어떤 속성도 두 그룹에 중복 분류되지 않음."""

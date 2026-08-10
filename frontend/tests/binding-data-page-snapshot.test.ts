@@ -43,7 +43,7 @@ describe('binding — 자료 중심 화면 초기 스냅샷 수신', () => {
     stockClassificationStore.setState({
       sectors: {}, stockMoves: {}, mergedSectors: [], noSectorCount: 0, allStocks: [],
     })
-    uiStore.setState({ settings: { trade_mode: 'virtual' } as any })
+    uiStore.setState({ settings: { trade_mode: 'virtual' } as any, buyGateStatus: null })
     prices = createMockWSClient()
     settings = createMockWSClient()
     orders = createMockWSClient()
@@ -82,6 +82,14 @@ describe('binding — 자료 중심 화면 초기 스냅샷 수신', () => {
     expect(state.mergedSectors).toEqual(['반도체'])
     expect(state.noSectorCount).toBe(3)
     expect(state.allStocks).toHaveLength(1)
+  })
+
+  it('buy-gate-status 수신 시 행과 분리된 전역 상태 갱신', () => {
+    prices.emit('buy-gate-status', { blocked: true, reason: '일일 매수한도 초과' })
+    expect(uiStore.getState().buyGateStatus).toEqual({ reason: '일일 매수한도 초과' })
+
+    prices.emit('buy-gate-status', { blocked: false })
+    expect(uiStore.getState().buyGateStatus).toBeNull()
   })
 
   it('settings-snapshot 수신 시 uiStore.settings 갱신', () => {

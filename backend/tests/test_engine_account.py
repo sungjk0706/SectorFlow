@@ -16,6 +16,9 @@ from backend.app.services.engine_account import (
     _merge_positions_from_rest,
     _apply_broker_totals_from_summary,
     _fetch_and_store_unfilled_orders,
+    is_account_context_ready,
+    get_account_context_status,
+    set_account_context_status,
 )
 
 
@@ -47,6 +50,7 @@ class TestGetAccountSnapshot:
     async def test_empty_snapshot_test_mode(self):
         with patch("backend.app.services.engine_account.state") as mock_state, \
              patch("backend.app.services.engine_account.is_virtual_mode", return_value=True), \
+             patch("backend.app.services.settlement_engine.is_loaded", return_value=True), \
              patch("backend.app.services.settlement_engine.get_accumulated_investment", return_value=10000000), \
              patch("backend.app.services.settlement_engine.get_orderable", return_value=8000000):
             mock_state.account_snapshot = {}
@@ -67,6 +71,28 @@ class TestGetTradeMode:
     def test_test(self):
         with patch("backend.app.services.engine_account.is_virtual_mode", return_value=True):
             assert get_trade_mode() == "virtual"
+
+
+# ── account context ────────────────────────────────────────────────────────────────
+
+class TestAccountContext:
+    def test_virtual_context_is_independent_from_live_rest_flag(self):
+        mock_state = MagicMock()
+        mock_state.integrated_system_settings_cache = {"trade_mode": "virtual"}
+        mock_state.account_rest_bootstrapped = False
+        with patch("backend.app.services.engine_state.state", mock_state):
+            set_account_context_status("virtual", True)
+            assert is_account_context_ready()
+            assert get_account_context_status() == {"mode": "virtual", "ready": True, "reason": ""}
+
+    def test_live_context_requires_current_live_bootstrap(self):
+        mock_state = MagicMock()
+        mock_state.integrated_system_settings_cache = {"trade_mode": "live"}
+        with patch("backend.app.services.engine_state.state", mock_state):
+            set_account_context_status("live", False, "잔고 확인 미완료")
+            assert not is_account_context_ready()
+            set_account_context_status("live", True)
+            assert is_account_context_ready()
 
 
 # ── get_positions ───────────────────────────────────────────────────────────────────

@@ -93,6 +93,9 @@ export interface UIState {
   /* ── 일일 매수 상태 로드 실패 (매수 전용 차단) ── */
   dailyBuyStateFailed: boolean
 
+  accountReadiness: { mode: string; ready: boolean; reason: string } | null
+  buyGateStatus: { reason: string } | null
+
   /* ── 가상매매 예수금 검증 실패 (사후 1회성 — 헤더 칩 알림) ── */
   virtualCashFailed: { stk_cd: string; reason: string } | null
 
@@ -129,6 +132,8 @@ const initialState: UIState = {
   riskBlockStatus: null,
   realtimeLatencyExceeded: false,
   dailyBuyStateFailed: false,
+  accountReadiness: null,
+  buyGateStatus: null,
   virtualCashFailed: null,
   positionBuildFailed: false,
   degradedMode: false,
@@ -273,6 +278,10 @@ export function applyDailyBuyStateStatus(data: { failed?: boolean }): void {
   uiStore.setState({ dailyBuyStateFailed: !!data.failed })
 }
 
+export function applyBuyGateStatus(data: { blocked?: boolean; reason?: string }): void {
+  uiStore.setState({ buyGateStatus: data.blocked ? { reason: data.reason ?? '매수 차단' } : null })
+}
+
 /* ── virtual-cash-failed: 가상매매 예수금 검증 실패 갱신 (사후 1회성 — 헤더 칩) ── */
 export function applyVirtualCashFailed(data: { failed?: boolean; stk_cd?: string; reason?: string }): void {
   if (data.failed) {
@@ -356,6 +365,27 @@ export function applyEngineStatus(data: EngineStatusPayload): void {
     if (data.degraded_mode !== undefined) {
       patch.degradedMode = !!data.degraded_mode
     }
+    if (data.account_ready !== undefined) {
+      const readiness = {
+        mode: data.account_ready_mode ?? (data.is_virtual_mode ? 'virtual' : 'live'),
+        ready: !!data.account_ready,
+        reason: data.account_ready_reason ?? '',
+      }
+      patch.accountReadiness = readiness
+      if (!readiness.ready && readiness.reason) {
+        patch.buyGateStatus = { reason: readiness.reason }
+      } else if (
+        readiness.ready &&
+        state.accountReadiness &&
+        !state.accountReadiness.ready &&
+        state.buyGateStatus?.reason === state.accountReadiness.reason
+      ) {
+        patch.buyGateStatus = null
+      }
+    }
+    if (data.buy_gate_reason !== undefined && data.account_ready !== false) {
+      patch.buyGateStatus = data.buy_gate_reason ? { reason: data.buy_gate_reason } : null
+    }
     // R-3: 런타임 모드 전환 시 헤더 모드 칩 즉시 갱신 — 백엔드가 이미 전송 중인
     // is_virtual_mode/trade_mode를 화면 상태에 반영 (기존 patch.status spread 병합 패턴 유지)
     if (data.is_virtual_mode !== undefined) {
@@ -383,9 +413,10 @@ export function setSelectedSector(sector: string | null): void {
 
 /* ── initial-snapshot (uiStore): UI 상태 초기화 ── */
 export function applyInitialSnapshotUI(data: Record<string, unknown>): void {
+  const engineStatus = (data.status as EngineStatus) ?? null
   uiStore.setState({
     settings: (data.settings as AppSettings) ?? null,
-    status: (data.status as EngineStatus) ?? null,
+    status: engineStatus,
     sectorStatus: (data.sector_status as SectorStatus) ?? null,
     sectorSummary: (data.sector_summary as Record<string, unknown>) ?? null,
     buyLimitStatus: (data.buy_limit_status as { daily_buy_spent: number }) ?? { daily_buy_spent: 0 },
@@ -396,6 +427,12 @@ export function applyInitialSnapshotUI(data: Record<string, unknown>): void {
     riskBlockStatus: null,
     realtimeLatencyExceeded: false,
     dailyBuyStateFailed: false,
+    accountReadiness: engineStatus?.account_ready !== undefined ? {
+      mode: engineStatus.account_ready_mode ?? (engineStatus.is_virtual_mode ? 'virtual' : 'live'),
+      ready: !!engineStatus.account_ready,
+      reason: engineStatus.account_ready_reason ?? '',
+    } : null,
+    buyGateStatus: engineStatus?.buy_gate_reason ? { reason: engineStatus.buy_gate_reason } : null,
     virtualCashFailed: null,
     positionBuildFailed: !!(data.position_build_failed),
     degradedMode: !!(data.degraded_mode),

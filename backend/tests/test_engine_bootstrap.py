@@ -7,6 +7,7 @@ from unittest.mock import patch, AsyncMock, MagicMock
 from backend.app.services.engine_bootstrap import (
     _login_post_pipeline,
 )
+from backend.app.services.engine_lifecycle import on_trade_mode_switched
 
 
 # ── 공통 fixture ────────────────────────────────────────────────────
@@ -212,3 +213,53 @@ class TestLoginPostPipeline:
              patch("backend.app.services.engine_account_notify.notify_desktop_sector_stocks_refresh", new=AsyncMock()):
             # 예외가 raise되지 않음
             await _login_post_pipeline()
+
+
+class TestTradeModeSwitchAccountContext:
+    @pytest.mark.asyncio
+    async def test_virtual_switch_prepares_without_broker_connection(self):
+        mock_state = _make_login_state_mock(
+            integrated_system_settings_cache={"trade_mode": "virtual"},
+            account_rest_bootstrapped=False,
+            account_context_mode="live",
+            account_context_ready=False,
+            connector_manager=None,
+        )
+        mock_state.running = True
+        mock_state.engine_task = MagicMock()
+        mock_state.engine_task.done.return_value = False
+        with patch("backend.app.services.engine_state.state", mock_state), \
+             patch("backend.app.services.settlement_engine.load_state", new=AsyncMock()) as mock_load, \
+             patch("backend.app.services.dry_run._refresh_positions_if_dirty", new=AsyncMock()) as mock_positions, \
+             patch("backend.app.services.engine_account._refresh_account_snapshot_meta", new=AsyncMock()), \
+             patch("backend.app.services.engine_account._broadcast_account", new=AsyncMock()), \
+             patch("backend.app.services.engine_account_notify.notify_buy_targets_update", new=AsyncMock()), \
+             patch("backend.app.services.engine_lifecycle.broadcast_engine_status", new=AsyncMock()):
+            await on_trade_mode_switched()
+        mock_load.assert_awaited_once()
+        mock_positions.assert_awaited_once()
+        assert mock_state.account_context_mode == "virtual"
+        assert mock_state.account_context_ready is True
+
+    @pytest.mark.asyncio
+    async def test_live_switch_without_broker_stays_unready(self):
+        mock_state = _make_login_state_mock(
+            integrated_system_settings_cache={"trade_mode": "live"},
+            account_rest_bootstrapped=False,
+            account_context_mode="virtual",
+            account_context_ready=True,
+            connector_manager=None,
+        )
+        mock_state.running = True
+        mock_state.engine_task = MagicMock()
+        mock_state.engine_task.done.return_value = False
+        with patch("backend.app.services.engine_state.state", mock_state), \
+             patch("backend.app.services.settlement_engine.save_state", new=AsyncMock()) as mock_save, \
+             patch("backend.app.services.engine_account._refresh_account_snapshot_meta", new=AsyncMock()), \
+             patch("backend.app.services.engine_account._broadcast_account", new=AsyncMock()), \
+             patch("backend.app.services.engine_account_notify.notify_buy_targets_update", new=AsyncMock()), \
+             patch("backend.app.services.engine_lifecycle.broadcast_engine_status", new=AsyncMock()):
+            await on_trade_mode_switched()
+        mock_save.assert_awaited_once()
+        assert mock_state.account_context_mode == "live"
+        assert mock_state.account_context_ready is False

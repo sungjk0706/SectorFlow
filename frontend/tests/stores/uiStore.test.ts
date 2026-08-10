@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { uiStore, applySettingsChanged } from '../../src/stores/uiStore'
+import { uiStore, applySettingsChanged, applyBuyGateStatus, applyEngineStatus } from '../../src/stores/uiStore'
 import type { AppSettings, SettingsChangedDeltaEvent } from '../../src/types'
 
 /**
@@ -95,7 +95,36 @@ function makeFullSettings(): AppSettings {
 
 describe('uiStore — applySettingsChanged (settings-changed 이벤트 payload 계약, COUPLING-S3 항목9 후속)', () => {
   beforeEach(() => {
-    uiStore.setState({ settings: null })
+    uiStore.setState({ settings: null, accountReadiness: null, buyGateStatus: null })
+  })
+
+  it('계좌 준비 미완료 상태는 매수 게이트로 표시하고 준비 완료 시 해제한다', () => {
+    applyEngineStatus({
+      trade_mode: 'virtual',
+      is_virtual_mode: true,
+      account_ready: false,
+      account_ready_mode: 'virtual',
+      account_ready_reason: '가상매매 잔고 준비 중',
+    })
+    expect(uiStore.getState().accountReadiness?.ready).toBe(false)
+    expect(uiStore.getState().buyGateStatus?.reason).toBe('가상매매 잔고 준비 중')
+
+    applyEngineStatus({
+      trade_mode: 'virtual',
+      is_virtual_mode: true,
+      account_ready: true,
+      account_ready_mode: 'virtual',
+      account_ready_reason: '',
+    })
+    expect(uiStore.getState().accountReadiness?.ready).toBe(true)
+    expect(uiStore.getState().buyGateStatus).toBeNull()
+  })
+
+  it('전역 매수 차단 사유를 행별 상태와 분리해 저장한다', () => {
+    applyBuyGateStatus({ blocked: true, reason: '일일 매수한도 초과' })
+    expect(uiStore.getState().buyGateStatus).toEqual({ reason: '일일 매수한도 초과' })
+    applyBuyGateStatus({ blocked: false })
+    expect(uiStore.getState().buyGateStatus).toBeNull()
   })
 
   describe('전체 payload — settings 전체 교체', () => {

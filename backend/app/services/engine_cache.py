@@ -115,6 +115,9 @@ async def _load_caches_preboot(settings: dict) -> None:
             logger.debug("[데이터] 정산 엔진 상태 로드 (가상매매)")
             # 기동 시 정합성 대조 — fake_fill_event 태스크 실패로 인한 잔고 불일치 복구 (B5-08-03, P22)
             await settlement_engine.reconcile_with_trades()
+            from backend.app.services.engine_account import set_account_context_status
+            if not engine_state.state.position_build_failed:
+                set_account_context_status("virtual", True)
 
         from backend.app.services.engine_account_notify import notify_cache
         notify_cache.prev_scores = []

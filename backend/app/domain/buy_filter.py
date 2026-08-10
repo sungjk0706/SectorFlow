@@ -293,7 +293,6 @@ def rank_buy_targets(
     blocked_targets: list = []
     pass_rank = 1
     blocked_rank = 1
-    _prev = prev_targets_map or {}
     for stock, sc in stock_sector_pairs:
         if not stock.guard_pass:
             # 차단 종목: guard_reason 사용. 보유중/금일매수 등 가드 사유는 guard_pass 전환 시 재설정되므로 보존하지 않음.
@@ -306,15 +305,11 @@ def rank_buy_targets(
             blocked_targets.append(target)
             blocked_rank += 1
         else:
-            # 통과 종목: 이전 reject_reason 보존 (업종 재계산으로 인한 리셋 방지 — P21 투명성, P23 일관성).
-            # 보존 조건: 같은 code의 이전 BuyTarget이 통과 상태였을 때의 reject_reason.
-            # guard_pass가 차단→통과로 바뀐 종목은 _prev에 없거나 이전이 차단 사유였으므로 빈칸으로 시작.
-            _preserved = _prev.get(stock.code, "")
             target = BuyTarget(
                 rank=pass_rank,
                 sector_rank=sc.rank,
                 stock=stock,
-                reject_reason=_preserved,
+                reject_reason="",
             )
             buy_targets.append(target)
             pass_rank += 1

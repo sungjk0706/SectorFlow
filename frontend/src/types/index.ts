@@ -108,6 +108,10 @@ export interface EngineStatus {
   stock_subscribed_count: number;
   ws_reg_total_estimate: number;
   broker_statuses?: Record<string, { token_valid: boolean; ws_connected: boolean }>;
+  account_ready?: boolean;
+  account_ready_mode?: string;
+  account_ready_reason?: string;
+  buy_gate_reason?: string;
 }
 
 export interface IndexData {
@@ -133,6 +137,10 @@ export interface EngineStatusPayload {
   stock_subscribed_count?: number;
   ws_reg_total_estimate?: number;
   broker_statuses?: Record<string, { token_valid: boolean; ws_connected: boolean }>;
+  account_ready?: boolean;
+  account_ready_mode?: string;
+  account_ready_reason?: string;
+  buy_gate_reason?: string;
   market_phase?: {
     krx: string;
     nxt: string;

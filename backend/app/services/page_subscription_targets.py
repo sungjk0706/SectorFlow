@@ -327,15 +327,9 @@ class PageTargetRegistry:
           - 가상매매: 모의투자 보유 목록이 start_engine에서 준비되므로 ready.
           - 실전매매: 잔고 조회(REST) 완료 후 ready. 조회 전에는 미준비.
         """
-        from backend.app.core.trade_mode import is_virtual_mode
-        from backend.app.services.engine_account import get_held_codes
+        from backend.app.services.engine_account import get_held_codes, is_account_context_ready
 
-        settings = engine_state.state.integrated_system_settings_cache
-        if is_virtual_mode(settings):
-            codes = await get_held_codes()
-            return sorted(codes), True
-        # 실전매매 — 잔고 조회 완료 여부로 준비 상태 판별.
-        if not engine_state.state.account_rest_bootstrapped:
+        if not is_account_context_ready():
             return [], False
         codes = await get_held_codes()
         return sorted(codes), True

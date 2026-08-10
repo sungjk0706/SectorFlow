@@ -34,6 +34,14 @@ async def start_engine(user_id: str = "") -> bool:
     engine_state.state.running = True
     engine_state.state.engine_task = asyncio.create_task(_engine_loop())
 
+    from backend.app.services.engine_account import set_account_context_status
+    _start_virtual = is_virtual_mode(engine_state.state.integrated_system_settings_cache)
+    set_account_context_status(
+        "virtual" if _start_virtual else "live",
+        False,
+        "가상매매 잔고 준비 중" if _start_virtual else "잔고 확인 미완료",
+    )
+
     # ── 가상매매: 거래내역 기반 포지션 구축 ──────────────────────────────────
     # 가상매매는 증권사 서버가 없으므로 trades 테이블(SSOT)에서 포지션 구축.
     # 실전매매 모드는 증권사 서버가 SSOT이므로 별도 대조 불필요.
@@ -44,10 +52,15 @@ async def start_engine(user_id: str = "") -> bool:
         from backend.app.services import dry_run
         try:
             await dry_run._refresh_positions_if_dirty()
-            # 가상매매 잔고 확인 완료 표시 — 가상 잔고는 동기식으로 준비되므로 즉시 주문 허용 (P22 정합성)
-            engine_state.state.account_rest_bootstrapped = True
+            from backend.app.services import settlement_engine
+            if settlement_engine.is_loaded():
+                engine_state.state.account_rest_bootstrapped = True
+                set_account_context_status("virtual", True)
+            else:
+                set_account_context_status("virtual", False, "가상매매 잔고 준비 중")
         except Exception as e:
             engine_state.state.position_build_failed = True
+            set_account_context_status("virtual", False, "가상매매 잔고 준비 실패")
             logger.warning("[연산] 가상매매 포지션 구축 실패 — 엔진은 계속 가동: %s", e, exc_info=True)
 
     # ── Pending Settings Changes 적용 ───────────────────────────────────────
@@ -146,6 +159,10 @@ def reset_broker_session_state() -> None:
     engine_state.state.quote_subscribed = False
     engine_state.state.ws_connection_status = False
     engine_state.state.account_rest_bootstrapped = False
+    engine_state.state.account_context_mode = ""
+    engine_state.state.account_context_ready = False
+    engine_state.state.account_context_reason = "잔고 확인 미완료"
+    engine_state.state.buy_gate_reason = ""
     engine_state.state.login_ok = False
     engine_state.state.access_token = None
 
@@ -194,6 +211,8 @@ def get_engine_status() -> dict:
     sub_count = sum(1 for entry in engine_state.state.master_stocks_cache.values() if entry.get("_subscribed", False))
 
     virtual_mode = is_virtual_mode(engine_state.state.integrated_system_settings_cache)
+    from backend.app.services.engine_account import get_account_context_status
+    account_context = get_account_context_status()
     ws = engine_state.state.connector_manager
     conn_ok = bool(ws and ws.is_connected())
 
@@ -225,6 +244,10 @@ def get_engine_status() -> dict:
         "market_phase": get_market_phase(),  # 장 상태 (P21 사용자 투명성)
         "position_build_failed": engine_state.state.position_build_failed,  # P21 — 가상매매 포지션 구축 실패
         "degraded_mode": engine_state.state.degraded_mode,  # P21 — 감소 모드 기동
+        "account_ready": account_context["ready"],
+        "account_ready_mode": account_context["mode"],
+        "account_ready_reason": account_context["reason"],
+        "buy_gate_reason": engine_state.state.buy_gate_reason,
     }
 
 
@@ -234,7 +257,12 @@ async def on_trade_mode_switched() -> None:
     """매매모드 전환 시 호출 — 엔진 재기동 없이 계좌 구독 상태만 전환한다."""
     from backend.app.services import settlement_engine
     from backend.app.services.engine_ws import _subscribe_account_realtime, _subscribe_positions_stocks_realtime
-    from backend.app.services.engine_account import _refresh_account_snapshot_meta, _broadcast_account
+    from backend.app.services.engine_account import (
+        _refresh_account_snapshot_meta,
+        _broadcast_account,
+        _update_account_memory,
+        set_account_context_status,
+    )
 
     _new_virtual = is_virtual_mode(engine_state.state.integrated_system_settings_cache)
     _mode_str = "가상매매" if _new_virtual else "실전매매"
@@ -249,49 +277,60 @@ async def on_trade_mode_switched() -> None:
     }
     engine_state.state.positions = []
     engine_state.state.account_rest_bootstrapped = False
+    set_account_context_status(
+        "virtual" if _new_virtual else "live",
+        False,
+        "가상매매 잔고 준비 중" if _new_virtual else "잔고 확인 미완료",
+    )
+    engine_state.state.buy_gate_reason = ""
     # 알림 delta 캐시 초기화 — 모드 전환 후 첫 브로드캐스트가 전체 데이터로 전송되도록 기준점 리셋 (P22 정합성)
     from backend.app.services.engine_account_notify import notify_cache
     notify_cache.clear_all()
 
-    # BrokerRouter를 통해 현재 연결된 커넥터 확인 (증권사 하드코딩 제거)
-    ws = engine_state.state.connector_manager
-    if not is_engine_running() or not ws or not ws.is_connected():
-        return
-
-    # 구독 전환 실패 시 사용자 알림 전송 — 자동 롤백 금지 (설계서 결정 3 + 기각안).
-    # DB·캐시는 새 모드이나 구독이 이전 모드인 불일치 상태를 사용자가 인지하여 수동 대응하도록 알림만 전송 (W10 사용자 투명성).
     _subscribe_failed_reason: str | None = None
     if _new_virtual:
-        # 실전매매→가상매매: 계좌 실시간 구독(00/04) 해제, 분석용 구독은 유지
-        from backend.app.services.engine_ws_reg import _unreg_grp
         try:
-            await _unreg_grp("10")
-            logger.info("[구독] 가상매매 전환 — 계좌 실시간 구독 해제")
+            _initial_deposit = engine_state.state.integrated_system_settings_cache.get("virtual_deposit")
+            await settlement_engine.load_state(initial_deposit=_initial_deposit)
+            from backend.app.services import dry_run
+            await dry_run._refresh_positions_if_dirty()
+            engine_state.state.position_build_failed = False
+            set_account_context_status("virtual", True)
+            logger.info("[연산] 가상매매 전환 — 정산 엔진·가상 포지션 준비 완료")
         except Exception as e:
-            _subscribe_failed_reason = "unreg_failed"
-            logger.error("[구독] 가상매매 전환 — 계좌 구독 해제 실패: %s", e, exc_info=True)
-        # Settlement Engine: 상태 로드 (모드 전환 시 복원 목적) + 만료 항목 정리 + 타이머 재스케줄
-        # load_state는 기동 시(로드)와 모드 전환 시(복원) 양쪽에 사용되는 dual-purpose 함수
-        await settlement_engine.load_state()
-        logger.info("[연산] 가상매매 전환 — 정산 엔진 상태 복원")
+            engine_state.state.position_build_failed = True
+            set_account_context_status("virtual", False, "가상매매 잔고 준비 실패")
+            logger.warning("[연산] 가상매매 전환 — 계좌 준비 실패: %s", e, exc_info=True)
     else:
-        # 가상매매→실전매매: Settlement Engine 상태 저장 + 타이머 취소
         await settlement_engine.save_state()
         logger.info("[연산] 실전매매 전환 — 정산 엔진 상태 저장")
-        # 가상매매→실전매매: 계좌 실시간 구독(00/04) + 보유종목 실시간(0B) 등록
-        try:
-            await _subscribe_account_realtime()
-            await _subscribe_positions_stocks_realtime()
-            logger.info("[구독] 실전매매 전환 — 계좌 + 보유종목 실시간 구독")
-        except Exception as e:
-            _subscribe_failed_reason = "subscribe_failed"
-            logger.error("[구독] 실전매매 전환 — 계좌/보유종목 구독 등록 실패: %s", e, exc_info=True)
 
-    # 모드 전환 후 계좌 스냅샷 즉시 갱신
+    ws = engine_state.state.connector_manager
+    if is_engine_running() and ws and ws.is_connected():
+        if _new_virtual:
+            from backend.app.services.engine_ws_reg import _unreg_grp
+            try:
+                await _unreg_grp("10")
+                logger.info("[구독] 가상매매 전환 — 계좌 실시간 구독 해제")
+            except Exception as e:
+                _subscribe_failed_reason = "unreg_failed"
+                logger.error("[구독] 가상매매 전환 — 계좌 구독 해제 실패: %s", e, exc_info=True)
+        else:
+            try:
+                await _subscribe_account_realtime()
+                await _subscribe_positions_stocks_realtime()
+                await _update_account_memory(engine_state.state.integrated_system_settings_cache)
+                logger.info("[구독] 실전매매 전환 — 계좌 구독·REST 잔고 준비 완료")
+            except Exception as e:
+                set_account_context_status("live", False, "잔고 확인 미완료")
+                _subscribe_failed_reason = "subscribe_failed"
+                logger.error("[구독] 실전매매 전환 — 계좌 준비 실패: %s", e, exc_info=True)
+
     await _refresh_account_snapshot_meta()
     await _broadcast_account(reason="trade_mode_switch")
 
-    # 엔진 상태 브로드캐스트 (프론트엔드 헤더 가상매매 표시 갱신)
+    from backend.app.services.engine_account_notify import notify_buy_targets_update
+    await notify_buy_targets_update()
     await broadcast_engine_status()
 
     # 구독 전환 실패 시 사용자 알림 전송 — 4단계 프론트엔드 핸들러와 동일 구조 (설계서 결정 3).

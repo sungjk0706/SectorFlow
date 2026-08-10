@@ -48,32 +48,31 @@ async def refresh_buy_market_guard_and_recompute() -> None:
         logger.warning("[매수] 주문 큐 가득 참 — 매수 후보 평가 요청 드롭 (시장 가드 회복)")
 
 
-async def _mark_all_reject_reasons(ss, reason_code: str) -> None:
-    """전역 차단 사유를 모든 guard_pass 매수 후보에 기록 후 WS delta 전송."""
+async def _mark_all_reject_reasons(ss, reason_code: str, display_reason: str | None = None) -> None:
+    """전역 차단 사유를 후보 행과 분리하여 상태 배지로 전송한다."""
     from backend.app.services.trading import BUY_REJECT_REASON_TEXT
-    text = BUY_REJECT_REASON_TEXT.get(reason_code, "")
+    from backend.app.services.engine_account_notify import (
+        notify_buy_targets_update,
+        publish_buy_gate_status,
+    )
+    text = display_reason or BUY_REJECT_REASON_TEXT.get(reason_code, "")
     if not text:
         return
-    for bt in ss.buy_targets:
-        if bt.stock.guard_pass:
-            bt.reject_reason = text
-    from backend.app.services.engine_account_notify import notify_buy_targets_update
+    await publish_buy_gate_status(text, reason_code)
     await notify_buy_targets_update()
 
 
-async def _apply_market_guard_reject_reasons(ss, market_status) -> None:
-    """현재 시장별 차단 상태를 후보별 원인에 반영한다."""
-    from backend.app.services.risk_manager import get_market_guard_reason, is_market_guard_reason
+async def _clear_buy_gate_status() -> None:
+    from backend.app.services.engine_account_notify import publish_buy_gate_status
+    await publish_buy_gate_status()
+
+
+async def _apply_market_guard_reject_reasons(ss, _market_status) -> None:
+    """시장 가드 사유가 후보 행에 남지 않도록 정리한다."""
+    from backend.app.services.risk_manager import is_market_guard_reason
     changed = False
     for bt in ss.buy_targets:
-        if not bt.stock.guard_pass:
-            continue
-        reason = get_market_guard_reason(bt.stock.market_type, market_status)
-        if reason:
-            if bt.reject_reason != reason:
-                bt.reject_reason = reason
-                changed = True
-        elif is_market_guard_reason(bt.reject_reason):
+        if bt.stock.guard_pass and is_market_guard_reason(bt.reject_reason):
             bt.reject_reason = ""
             changed = True
     if changed:
@@ -136,6 +135,7 @@ async def evaluate_buy_candidates() -> None:
     from backend.app.services import dry_run
     from backend.app.services.daily_time_scheduler import is_order_blocked_by_time
     from backend.app.services.engine_state import state
+    from backend.app.services.engine_account import is_account_context_ready
 
     if not state.running:
         return
@@ -147,12 +147,16 @@ async def evaluate_buy_candidates() -> None:
     if not ss or not ss.buy_targets:
         return
 
-    # ── 잔고 확인 완료 전 매수 후보 평가 차단 (P22 정합성 — 잔고 미준비 상태 주문 금지) ──
-    if not state.account_rest_bootstrapped:
+    if not is_account_context_ready():
+        from backend.app.services.engine_account import get_account_context_status
         from backend.app.services.trading import BUY_REJECT_BALANCE_NOT_READY
-        logger.info("[매수] 잔고 확인 미완료 — 매수 후보 평가 차단 (기동 중 잔고 조회 완료 후 허용)")
-        await _mark_all_reject_reasons(ss, BUY_REJECT_BALANCE_NOT_READY)
+        status = get_account_context_status()
+        reason_code = BUY_REJECT_BALANCE_NOT_READY
+        logger.info("[매수] 계좌 데이터 준비 미완료 — 매수 후보 평가 차단 (mode=%s, reason=%s)", status["mode"], status["reason"])
+        await _mark_all_reject_reasons(ss, reason_code, str(status["reason"]))
         return
+
+    await _clear_buy_gate_status()
 
     # ── 자동매수 게이트 (auto_buy_on + 시간 범위 + 마스터 스위치 통합 체크) ──
     # 사유별 분기 → 모든 매수 후보 "원인" 컬럼에 차단 사유 표시 (P21 사용자 투명성).
@@ -263,15 +267,16 @@ async def evaluate_buy_candidates() -> None:
     # 전체 차단 시 break
     # 잔액 0·최대 보유수·일일 한도 도달 시 break
     from backend.app.services.trading import (
-        BUY_REJECT_QTY_ZERO, BUY_GLOBAL_REJECT_REASONS, BUY_REJECT_REASON_TEXT,
+        BUY_REJECT_QTY_ZERO, BUY_GLOBAL_REJECT_REASONS, BUY_REJECT_REASON_TEXT, BUY_REJECT_RISK_CASH,
+        BUY_REJECT_RISE_GUARD, BUY_REJECT_FALL_GUARD, BUY_REJECT_REBUY,
     )
+    from backend.app.services.engine_account_notify import publish_buy_gate_status
     from backend.app.services.risk_manager import (
         get_risk_manager as _get_rm,
         get_market_guard_reason,
     )
 
-    _reject_reason_changed = False  # bt.reject_reason 변경 추적 — 루프 종료 후 notify 1회 호출 (P21)
-
+    _stock_reason_changed = False
     for bt in ss.buy_targets:
         s = bt.stock
         if not s.guard_pass:
@@ -319,19 +324,26 @@ async def evaluate_buy_candidates() -> None:
             else:
                 # 실패 사유 분류
                 _reject_text = BUY_REJECT_REASON_TEXT.get(_reason, "")
-                if _reject_text and bt.reject_reason != _reject_text:
-                    bt.reject_reason = _reject_text
-                    _reject_reason_changed = True
+                if _reason in {BUY_REJECT_RISE_GUARD, BUY_REJECT_FALL_GUARD, BUY_REJECT_REBUY}:
+                    if bt.reject_reason != _reject_text:
+                        bt.reject_reason = _reject_text
+                        _stock_reason_changed = True
                 if _reason == BUY_REJECT_QTY_ZERO:
                     # 잔액 0이면 전체 차단, 단가 비싸면 종목별 차단
                     if _get_rm().get_withdrawable_deposit() <= 0:
                         _cash_insufficient = True
+                        await publish_buy_gate_status(
+                            BUY_REJECT_REASON_TEXT[BUY_REJECT_RISK_CASH],
+                            BUY_REJECT_RISK_CASH,
+                        )
                         logger.info("[매매] %s 잔액 0 — 차순위 시도 중단 (사유=%s)", s.code, _reason)
                         break
                     else:
                         logger.info("[매매] %s 단가 초과 — 차순위 시도 (사유=%s)", s.code, _reason)
                         continue
                 if _reason in BUY_GLOBAL_REJECT_REASONS:
+                    if _reject_text:
+                        await publish_buy_gate_status(_reject_text, _reason)
                     logger.info("[매매] %s 전체 차단 사유 — 차순위 시도 중단 (사유=%s)", s.code, _reason)
                     break
                 # 종목별 차단 사유 → 차순위 시도
@@ -341,7 +353,6 @@ async def evaluate_buy_candidates() -> None:
             logger.warning("[매매] 매수 실행 오류 %s: %s — 차순위 시도 중단", s.code, e, exc_info=True)
             break  # 예외 시 안전 종료
 
-    # ── 차단 사유 변경 시 WS delta 전송 (P21 사용자 투명성) ──
-    if _reject_reason_changed:
+    if _stock_reason_changed:
         from backend.app.services.engine_account_notify import notify_buy_targets_update
         await notify_buy_targets_update()

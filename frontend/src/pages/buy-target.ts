@@ -87,6 +87,8 @@ let _rsOrderTimeBlocked: UIState['orderTimeBlocked'] = null
 let _rsRiskBlockStatus: UIState['riskBlockStatus'] = null
 let _rsRealtimeLatency: UIState['realtimeLatencyExceeded'] = false
 let _rsDailyBuyStateFailed: UIState['dailyBuyStateFailed'] = false
+let _rsAccountReadiness: UIState['accountReadiness'] = null
+let _rsBuyGateStatus: UIState['buyGateStatus'] = null
 
 /* ── 배지 컨텍스트 — updateBadges 공통 조회 (P24 단순성 — 분할) ── */
 
@@ -203,6 +205,15 @@ function computeCombinedStatus(
   try {
     const { text: hardStatusText, blocked: hardBlocked, partial: hardPartial, blockedMarkets: hardBlockedMarkets, holiday } =
       computeOrderBlockStatus('buy', uiState, settings)
+    if (uiState.accountReadiness && !uiState.accountReadiness.ready) {
+      return {
+        value: '대기',
+        unit: '',
+        statusText: ` · ${uiState.accountReadiness.reason || '잔고 확인 미완료'}`,
+        status: 'warn',
+        statusColor: COLOR.warning,
+      }
+    }
     if (holiday) {
       // 휴장일 — 장 자체가 열리지 않으므로 주문가능금액 대신 휴장일 문구 표시.
       // 위험이 아니라 정보 상태이므로 헤더 휴장일 칩과 동일한 회색 표시 (P21/P23).
@@ -219,6 +230,16 @@ function computeCombinedStatus(
       }
       // 전면 차단 (서킷브레이커/리스크/자동매매 OFF 등) — 차단 사유 표시, 주문가능금액 숨김 (빨간색)
       return { value: '차단', unit: '', statusText: ` · ${hardStatusText.replace(/^차단: /, '')}`, status: 'warn', statusColor: COLOR.up }
+    }
+    if (uiState.buyGateStatus) {
+      return {
+        ...base,
+        value: '차단',
+        unit: '',
+        statusText: ` · ${uiState.buyGateStatus.reason}`,
+        status: 'warn',
+        statusColor: COLOR.up,
+      }
     }
     if (hardStatusText !== '매수 가능') {
       // 정보 상태 (NXT만 가능 / 거래 시간 외) — 주문가능금액 유지 + 정보 텍스트 (파란색, P21 투명성).
@@ -382,6 +403,8 @@ function initRenderState(initHot: HotState, initUi: UIState): void {
   _rsRiskBlockStatus = initUi.riskBlockStatus
   _rsRealtimeLatency = initUi.realtimeLatencyExceeded
   _rsDailyBuyStateFailed = initUi.dailyBuyStateFailed
+  _rsAccountReadiness = initUi.accountReadiness
+  _rsBuyGateStatus = initUi.buyGateStatus
 }
 
 /** 렌더링 참조 상태 reset — unmount 시 호출 */
@@ -397,6 +420,8 @@ function resetRenderState(): void {
   _rsRiskBlockStatus = null
   _rsRealtimeLatency = false
   _rsDailyBuyStateFailed = false
+  _rsAccountReadiness = null
+  _rsBuyGateStatus = null
 }
 
 /** 상태 변화 감지 — positions/account/settings/차단 상태 중 하나라도 변경 시 true */
@@ -410,7 +435,9 @@ function hasStateChanged(latest: HotState, latestUi: UIState): boolean {
     latestUi.orderTimeBlocked !== _rsOrderTimeBlocked ||
     latestUi.riskBlockStatus !== _rsRiskBlockStatus ||
     latestUi.realtimeLatencyExceeded !== _rsRealtimeLatency ||
-    latestUi.dailyBuyStateFailed !== _rsDailyBuyStateFailed
+    latestUi.dailyBuyStateFailed !== _rsDailyBuyStateFailed ||
+    latestUi.accountReadiness !== _rsAccountReadiness ||
+    latestUi.buyGateStatus !== _rsBuyGateStatus
   )
 }
 
@@ -454,6 +481,8 @@ function renderFrame(): void {
     _rsRiskBlockStatus = latestUi.riskBlockStatus
     _rsRealtimeLatency = latestUi.realtimeLatencyExceeded
     _rsDailyBuyStateFailed = latestUi.dailyBuyStateFailed
+    _rsAccountReadiness = latestUi.accountReadiness
+    _rsBuyGateStatus = latestUi.buyGateStatus
     updateBadges()
   }
 }

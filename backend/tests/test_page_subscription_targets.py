@@ -44,6 +44,11 @@ def _mock_state(**overrides):
         "integrated_system_settings_cache", {"trade_mode": "virtual"}
     )
     mock.account_rest_bootstrapped = overrides.get("account_rest_bootstrapped", False)
+    mode = str(mock.integrated_system_settings_cache.get("trade_mode", "virtual"))
+    mock.account_context_mode = overrides.get("account_context_mode", mode)
+    default_ready = mode == "virtual" or bool(mock.account_rest_bootstrapped)
+    mock.account_context_ready = overrides.get("account_context_ready", default_ready)
+    mock.account_context_reason = overrides.get("account_context_reason", "" if mode == "virtual" else "잔고 확인 미완료")
     mock.sector_summary_ready_event = overrides.get("sector_summary_ready_event", MagicMock(is_set=MagicMock(return_value=True)))
     return mock
 

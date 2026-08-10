@@ -30,7 +30,6 @@ async def _login_post_pipeline() -> None:
                 logger.info("[연산] 파이프라인 — REST 잔고 선행 조회 (보유 %d종목)", len(engine_state.state.positions))
             else:
                 logger.info("[연산] 파이프라인 — 잔고 이미 앱 기동 — 재조회 생략 (보유 %d종목)", len(engine_state.state.positions))
-
         stale = {cd for cd, entry in engine_state.state.master_stocks_cache.items() if entry.get("_subscribed", False)}
         if stale:
             logger.debug("[연산] 새 세션 — 0B 구독 상태 초기화 %d종목 (강제 재등록)", len(stale))
