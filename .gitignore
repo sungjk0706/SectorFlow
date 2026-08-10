@@ -101,3 +101,14 @@ docs/조사보고서/
 
 # IDE 로컬 설정
 .vscode/
+
+# Agent configuration, rules, and scripts (local-only)
+.devin/
+AGENTS.md
+scripts/pre-complete-check.sh
+
+# Procedure documents
+docs/절차규칙/
+
+# External broker API specs (do not push third-party copyrighted docs)
+docs/api_specs/LS증권API/rest/계좌/*.txt
