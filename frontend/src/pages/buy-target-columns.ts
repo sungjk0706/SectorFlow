@@ -214,7 +214,7 @@ export const COLUMNS: ColumnDef<StockScore>[] = [
       const breakthrough = !!(t.high_5d && t.high_5d > 0 && curPrice != null && Number(curPrice) > t.high_5d)
       const cached = high5dCellMap.get(t.code)
       if (cached && cached.lastBreakthrough !== breakthrough) {
-        cell.style.backgroundColor = breakthrough ? COLOR.successBg : ''
+        cell.style.fontWeight = breakthrough ? FONT_WEIGHT.bold : FONT_WEIGHT.normal
         cached.lastBreakthrough = breakthrough
       }
       return cell
