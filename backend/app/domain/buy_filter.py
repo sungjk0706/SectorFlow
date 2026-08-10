@@ -406,8 +406,9 @@ def apply_incremental_buy_target_update(
 
     Args:
         summary: 기존 SectorSummary (캐시 — sectors + buy_targets + blocked_targets).
-        events: 매수후보 갱신 이벤트 리스트. 각 항목:
+        events: 매수후보 갱신 이벤트 리스트. 일반 이벤트 항목:
             {"sector": 업종명, "action": "add"|"remove", "reason": str, "stock_codes": list[str]}
+            후보 집합 불일치 시 {"action": "reconcile", "reason": str}.
         settings: 매수설정 (가드·가산점·정렬 기준).
         held_codes: 보유 종목 코드 집합 (재매수 차단용).
         bought_today_codes: 금일 매수 종목 코드 집합 (재매수 차단용).
@@ -416,6 +417,15 @@ def apply_incremental_buy_target_update(
     Returns:
         갱신된 SectorSummary (sectors는 기존 유지, buy_targets·blocked_targets 재구성).
     """
+    if any(event.get("action") == "reconcile" for event in events):
+        return build_buy_targets_from_settings(
+            summary.sectors,
+            settings,
+            held_codes=held_codes,
+            bought_today_codes=bought_today_codes,
+            prev_targets_map=prev_targets_map,
+        )
+
     from backend.app.services.engine_radar import (
         get_high_price_5d_cache,
         get_orderbook_cache,

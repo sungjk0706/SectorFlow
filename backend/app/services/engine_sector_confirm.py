@@ -217,6 +217,21 @@ def are_buy_target_page_codes_changed(prev_summary, new_summary) -> bool:
     return extract_buy_target_page_codes(prev_summary) != extract_buy_target_page_codes(new_summary)
 
 
+def are_buy_target_page_codes_aligned(
+    summary: object | None,
+    sector_scores: list,
+    max_sectors: int,
+) -> bool:
+    """현재 선택 업종의 종목 코드 집합과 매수 후보 화면 집합의 일치 여부를 확인한다."""
+    from backend.app.domain.sector_calculator import select_top_sector_stocks
+
+    expected_codes = {
+        stock.code
+        for stock, _ in select_top_sector_stocks(sector_scores, max_sectors=max_sectors)
+    }
+    return extract_buy_target_page_codes(summary) == expected_codes
+
+
 async def _refresh_buy_target_page_subscriptions(reason: str) -> None:
     """매수 후보 코드 변경 시 활성 화면의 downstream 구독을 최신화한다."""
     from backend.app.services.page_subscription_targets import (
@@ -337,6 +352,8 @@ async def _flush_sector_recompute_impl() -> None:
         events = detect_buy_target_events(
             prev_cutoff_map, new_cutoff_map, prev_top_n, new_top_n
         )
+        if not are_buy_target_page_codes_aligned(existing, merged, max_sectors):
+            events.append({"action": "reconcile", "reason": "stock_set_changed"})
 
         # 참조 교체 방식으로 캐시 갱신 (R5.6) — _set_sector_summary 단일 경로 (COUPLING-S1)
         # 업종 점수 캐시는 업종순위 단계의 역할이므로 유지 — existing.sectors를 merged로 교체.
@@ -355,20 +372,26 @@ async def _flush_sector_recompute_impl() -> None:
             from backend.app.services.core_queues import get_buy_target_update_queue
             buy_target_queue = get_buy_target_update_queue()
             for event in events:
-                # 이벤트 페이로드: 업종명 + 이벤트 종류 + 종목 리스트 (3단계 소비 루프용)
-                # 종목 리스트는 신규 결과(merged)에서 해당 업종의 종목 코드 추출
-                sector_name = event["sector"]
-                sector_stocks = []
-                for sc in merged:
-                    if sc.sector == sector_name:
-                        sector_stocks = [stock.code for stock in sc.stocks]
-                        break
-                payload = {
-                    "sector": sector_name,
-                    "action": event["action"],  # "add" | "remove"
-                    "reason": event["reason"],  # "cutoff_in" | "cutoff_out" | "top_n_in" | "top_n_out"
-                    "stock_codes": sector_stocks,
-                }
+                if event["action"] == "reconcile":
+                    payload = {
+                        "action": "reconcile",
+                        "reason": event["reason"],
+                    }
+                else:
+                    # 이벤트 페이로드: 업종명 + 이벤트 종류 + 종목 리스트 (3단계 소비 루프용)
+                    # 종목 리스트는 신규 결과(merged)에서 해당 업종의 종목 코드 추출
+                    sector_name = event["sector"]
+                    sector_stocks = []
+                    for sc in merged:
+                        if sc.sector == sector_name:
+                            sector_stocks = [stock.code for stock in sc.stocks]
+                            break
+                    payload = {
+                        "sector": sector_name,
+                        "action": event["action"],  # "add" | "remove"
+                        "reason": event["reason"],  # "cutoff_in" | "cutoff_out" | "top_n_in" | "top_n_out"
+                        "stock_codes": sector_stocks,
+                    }
                 try:
                     buy_target_queue.put_nowait(payload)
                 except asyncio.QueueFull:

@@ -14,6 +14,7 @@ from backend.app.services.engine_sector_confirm import (
     are_buy_targets_changed,
     extract_buy_target_page_codes,
     are_buy_target_page_codes_changed,
+    are_buy_target_page_codes_aligned,
     cancel_sector_recompute,
     cancel_recompute_timer,
     _dirty_codes,
@@ -668,6 +669,48 @@ class TestFlushSectorRecomputeImpl:
             mock_buy_target_queue.put_nowait.assert_not_called()
 
     @pytest.mark.asyncio
+    async def test_stock_set_change_publishes_reconcile_event(self):
+        """업종 상태 불변이어도 종목 집합 변경 시 후보 재동기화 이벤트 발행."""
+        request_sector_recompute("005930")
+        existing_sector = _make_sector_score("반도체", rise_ratio=0.8)
+        existing_sector.is_cutoff_passed = True
+        mock_cache = MagicMock()
+        mock_cache.sectors = [existing_sector]
+        mock_cache.buy_targets = [_make_buy_target("005931")]
+        mock_cache.blocked_targets = []
+
+        new_sector = _make_sector_score("반도체", rise_ratio=0.85)
+        new_sector.is_cutoff_passed = True
+        new_sector.stocks = [MagicMock(code="005930")]
+        mock_buy_target_queue = MagicMock()
+
+        with patch("backend.app.services.engine_state.state") as mock_state, \
+             patch("backend.app.services.sector_data_provider.get_sector_summary_inputs", new=AsyncMock(return_value={
+                 "all_codes": ["005930"], "trade_prices": {}, "trade_amounts": {}, "avg_amt_5d": {}, "master_stocks_cache": {}, "sector_map": {"005930": "반도체"},
+             })), \
+             patch("backend.app.core.sector_mapping.get_merged_sectors_batch", new=AsyncMock(return_value={"005930": "반도체"})), \
+             patch("backend.app.domain.sector_calculator.compute_sector_scores", new=AsyncMock(return_value=[new_sector])), \
+             patch("backend.app.domain.sector_score.calculate_bonus_scores"), \
+             patch("backend.app.services.engine_account_notify.notify_desktop_sector_scores", new=AsyncMock()), \
+             patch("backend.app.services.core_queues.get_buy_target_update_queue", return_value=mock_buy_target_queue):
+            mock_state.sector_summary_cache = mock_cache
+            mock_state.integrated_system_settings_cache = {
+                "sector_min_trade_amt": 0.0,
+                "sector_min_rise_ratio_pct": 0.0,
+                "sector_bonus_rise_ratio_slider": 0,
+                "sector_bonus_relative_strength_slider": 0,
+                "sector_bonus_trade_amount_slider": 0,
+                "sector_max_targets": 3,
+            }
+            mock_state.auto_trade = None
+            mock_state.sector_summary_ready_event = MagicMock()
+
+            await _flush_sector_recompute_impl()
+
+        payloads = [call.args[0] for call in mock_buy_target_queue.put_nowait.call_args_list]
+        assert {payload["action"] for payload in payloads} == {"reconcile"}
+
+    @pytest.mark.asyncio
     async def test_exception_logged(self):
         """try 블록 내 예외 시 로깅만 수행 (L208-209)."""
         request_sector_recompute("005930")
@@ -1191,6 +1234,38 @@ class TestExtractTopNSectors:
         result = _extract_top_n_sectors(sectors, 3)
         # 정렬 순서대로 앞의 3개 (final_score 내림차순 가정)
         assert len(result) == 3
+
+
+class TestBuyTargetPageCodeAlignment:
+    def test_detects_stale_stock_when_sector_status_is_unchanged(self):
+        """업종 상태가 같아도 종목 목록이 바뀌면 후보 불일치로 감지."""
+        summary = MagicMock()
+        summary.buy_targets = [_make_buy_target("005931")]
+        summary.blocked_targets = []
+        current_sector = _make_sector_score("반도체")
+        current_sector.is_cutoff_passed = True
+        current_sector.stocks = [MagicMock(code="005930")]
+
+        assert are_buy_target_page_codes_aligned(
+            summary,
+            [current_sector],
+            max_sectors=3,
+        ) is False
+
+    def test_accepts_current_selected_sector_stocks(self):
+        """현재 선택 업종 종목과 후보 목록이 같으면 불일치 아님."""
+        summary = MagicMock()
+        summary.buy_targets = [_make_buy_target("005930")]
+        summary.blocked_targets = []
+        current_sector = _make_sector_score("반도체")
+        current_sector.is_cutoff_passed = True
+        current_sector.stocks = [MagicMock(code="005930")]
+
+        assert are_buy_target_page_codes_aligned(
+            summary,
+            [current_sector],
+            max_sectors=3,
+        ) is True
 
 
 class TestDetectBuyTargetEvents:

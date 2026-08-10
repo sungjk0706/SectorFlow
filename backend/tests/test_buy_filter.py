@@ -852,6 +852,26 @@ class TestSelectTopSectorStocks:
         assert "A002" in codes
         assert "A003" not in codes
 
+    def test_max_sectors_limits_ten_passed_sectors_to_seven(self):
+        sectors = [
+            _sector(sector=f"업종{i}", rank=i, stocks=[_stock(code=f"A{i:03d}")])
+            for i in range(1, 11)
+        ]
+
+        pairs = select_top_sector_stocks(sectors, max_sectors=7)
+
+        assert len(pairs) == 7
+
+    def test_max_sectors_keeps_all_when_fewer_passed_sectors(self):
+        sectors = [
+            _sector(sector=f"업종{i}", rank=i, stocks=[_stock(code=f"A{i:03d}")])
+            for i in range(1, 4)
+        ]
+
+        pairs = select_top_sector_stocks(sectors, max_sectors=7)
+
+        assert len(pairs) == 3
+
     def test_empty_sector_scores_returns_empty(self):
         assert select_top_sector_stocks([]) == []
 
@@ -1226,6 +1246,31 @@ class TestApplyIncrementalBuyTargetUpdate:
         result = _incremental_update(summary, [])
 
         result_codes = {t.stock.code for t in result.buy_targets}
+        assert result_codes == {"005930"}
+
+    def test_reconcile_rebuilds_from_current_sector_stocks(self):
+        """후보 종목 집합 불일치 시 현재 선택 업종 종목으로 다시 구성."""
+        from backend.app.domain.models import BuyTarget
+
+        current_stock = _stock("005930", sector="반도체")
+        stale_stock = _stock("005931", sector="반도체")
+        semi = _sector("반도체", rank=1, stocks=[current_stock])
+        stale_target = BuyTarget(rank=1, sector_rank=1, stock=stale_stock)
+        summary = SectorSummary(
+            sectors=[semi],
+            buy_targets=[stale_target],
+            blocked_targets=[],
+        )
+
+        result = _incremental_update(
+            summary,
+            [{"action": "reconcile", "reason": "stock_set_changed"}],
+        )
+
+        result_codes = {
+            target.stock.code
+            for target in result.buy_targets + result.blocked_targets
+        }
         assert result_codes == {"005930"}
 
     def test_add_sector_not_in_cache_skipped(self):
