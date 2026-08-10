@@ -16,6 +16,7 @@ import {
 } from './profit-math'
 import { saveProfitDetailView } from './profit-detail-view'
 import { globalSettingsManager } from '../settings'
+import { getTradingToday } from '../utils/date'
 import type { ProfitDetailState } from './profit-detail'
 
 /* ── 1프레임 내 필터 결과 재사용 (P24 단순성 — filterTradeRows 중복 연산 방지) ──
@@ -28,7 +29,7 @@ function getFilteredRows(state: ProfitDetailState): { sells: Record<string, unkn
   const stockQuery = state.stockFilterInput?.getValue() || ''
 
   // 자동 기간의 날짜 정보가 아직 준비되지 않은 동안 전체 내역을 당일 자료처럼 표시하지 않음.
-  const waitingForRange = (state.selectedView === 'today' || state.selectedView === 'fiveday')
+  const waitingForRange = (state.selectedView === 'today' || state.selectedView === 'today_intraday' || state.selectedView === 'fiveday')
     && (!dateRange.from || !dateRange.to)
 
   // 캐시 유효성 검증 — 참조 동등성 + 입력값 + 선택 기간 동등성
@@ -44,10 +45,15 @@ function getFilteredRows(state: ProfitDetailState): { sells: Record<string, unkn
     return { sells: cache.sells, buys: cache.buys }
   }
 
+  // 당일 매수후 매도: 당일 매도 중 buy_date=오늘인 매도만 필터링 (P21 투명성)
+  // 매수 내역은 당일 매수만 표시 (buy_date=오늘 — 당일 카드와 동일 날짜 범위 유지)
+  const isIntraday = state.selectedView === 'today_intraday'
+  const intradayBuyDate = isIntraday ? getTradingToday() : undefined
+
   // 캐시 미스 또는 무효 — 재계산
   const sells = waitingForRange
     ? []
-    : filterTradeRows(state.sellHistory, dateRange.from, dateRange.to, stockQuery || undefined)
+    : filterTradeRows(state.sellHistory, dateRange.from, dateRange.to, stockQuery || undefined, intradayBuyDate, intradayBuyDate)
   const buys = waitingForRange
     ? []
     : filterTradeRows(state.buyHistory, dateRange.from, dateRange.to, stockQuery || undefined)
@@ -76,6 +82,7 @@ function applyCardStyle(card: HTMLDivElement, active: boolean, borderActive: str
 function updateStatCardSelection(state: ProfitDetailState): void {
   const colorMap: Record<string, { border: string; bg: string }> = {
     today: { border: COLOR.down, bg: COLOR.downBg },
+    today_intraday: { border: COLOR.periodIntraday, bg: COLOR.periodIntradayBg },
     fiveday: { border: COLOR.period5day, bg: COLOR.period5dayBg },
     month: { border: COLOR.periodMonth, bg: COLOR.periodMonthBg },
     total: { border: COLOR.periodTotal, bg: COLOR.periodTotalBg },
@@ -95,7 +102,8 @@ function updateStatCardSelection(state: ProfitDetailState): void {
  * 단일 날짜(시작=종료)는 '8/4' 형태, 범위는 '7/1~8/4' 형태. */
 const STAT_BASE_LABELS = ['총 건수', '매수 지출(수수료 포함)', '매도 수령(실수령)', '실현손익', '실현 수익률']
 const VIEW_PREFIX: Record<string, string> = {
-  today: '당일',
+  today: '당일 전체매도',
+  today_intraday: '당일 매수후매도',
   fiveday: '5거래일',
   month: '당월',
   total: '누적',
@@ -125,6 +133,7 @@ function updateStatLabels(state: ProfitDetailState): void {
 export function updateCardSelection(state: ProfitDetailState): void {
   if (!state.summaryCardEls) return
   applyCardStyle(state.summaryCardEls.todayCard, state.selectedView === 'today', COLOR.down, COLOR.downBg)
+  applyCardStyle(state.summaryCardEls.todayIntradayCard, state.selectedView === 'today_intraday', COLOR.periodIntraday, COLOR.periodIntradayBg)
   applyCardStyle(state.summaryCardEls.fivedayCard, state.selectedView === 'fiveday', COLOR.period5day, COLOR.period5dayBg)
   applyCardStyle(state.summaryCardEls.monthCard, state.selectedView === 'month', COLOR.periodMonth, COLOR.periodMonthBg)
   applyCardStyle(state.summaryCardEls.totalCard, state.selectedView === 'total', COLOR.periodTotal, COLOR.periodTotalBg)

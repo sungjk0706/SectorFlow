@@ -142,6 +142,8 @@ export const COLOR = {
   periodMonthBg:  '#f3e5f5',
   periodTotal:    '#455a64', // 슬레이트 (누적)
   periodTotalBg:  '#eceff1',
+  periodIntraday:    '#0d9488', // 청록 (당일 매수후 매도 — 당일 파랑과 구분)
+  periodIntradayBg:  '#ccfbf1',
   // ── 종목 거래소 라벨 (createStockNameCell) ──
   krxLabel:       '#0288d1', // K 라벨 글자 — 진한 하늘 (KRX 전용)
   krxLabelBg:     '#e1f5fe', // K 라벨 배경 — 약한 하늘

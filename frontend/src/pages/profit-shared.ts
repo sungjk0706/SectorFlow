@@ -15,6 +15,7 @@ import {
 } from './profit-math'
 
 import { FONT_SIZE, FONT_WEIGHT, pnlColor, fmtWon, COLOR, RADIUS, SHADOW } from '../components/common/ui-styles'
+import { createInfoTooltip } from '../components/common/info-tooltip'
 import { getTradingToday } from '../utils/date'
 import type { AccountSnapshot } from '../types'
 
@@ -23,6 +24,8 @@ import type { AccountSnapshot } from '../types'
 export interface SummaryCardEls {
   todayPnlEl: HTMLSpanElement
   todayRateEl: HTMLSpanElement
+  todayIntradayPnlEl: HTMLSpanElement
+  todayIntradayRateEl: HTMLSpanElement
   fivedayPnlEl: HTMLSpanElement
   fivedayRateEl: HTMLSpanElement
   monthPnlEl: HTMLSpanElement
@@ -30,6 +33,7 @@ export interface SummaryCardEls {
   totalPnlEl: HTMLSpanElement
   totalRateEl: HTMLSpanElement
   todayCard: HTMLDivElement
+  todayIntradayCard: HTMLDivElement
   fivedayCard: HTMLDivElement
   monthCard: HTMLDivElement
   totalCard: HTMLDivElement
@@ -37,20 +41,29 @@ export interface SummaryCardEls {
 
 interface SummaryCardCallbacks {
   onTodayClick?: () => void
+  onTodayIntradayClick?: () => void
   onFivedayClick?: () => void
   onMonthClick?: () => void
   onTotalClick?: () => void
 }
 
 const SUMMARY_CARD_STYLE = `flex:1;background:${COLOR.surfaceLight};border:1px solid ${COLOR.borderLight};border-radius:${RADIUS.sm};box-shadow:${SHADOW.card};padding:6px 12px;display:flex;flex-direction:column;justify-content:center;cursor:pointer;`
-const SUMMARY_CARD_TITLES = ['당일 손익', '5거래일 손익', '당월 손익', '누적 손익']
+const SUMMARY_CARD_TITLES = ['당일 전체 매도', '당일 매수후 매도', '5거래일 손익', '당월 손익', '누적 손익']
+const SUMMARY_CARD_TOOLTIPS: (string | undefined)[] = [
+  '오늘 매도한 전체 내역입니다. 과거에 사둔 종목을 오늘 판 것도 포함됩니다.',
+  '오늘 매수 후 같은 날 매도한 내역만 표시합니다. 두 카드의 차이가 과거 매수분을 오늘 매도한 건수입니다.',
+  undefined,
+  undefined,
+  undefined,
+]
 
 /** 요약 카드 1개 DOM 생성. 실패 시 null 반환 (P25 격리 + P22 인덱스 정합성 — 호출부에서 더미 push).
- *  4카드 동일 구조 (P23 일관성) — 당일 카드 특수 분기 제거 (개장 전 폴백 제거, P10 SSOT 단일 해석). */
+ *  5카드 동일 구조 (P23 일관성). tooltip 문구 전달 시 제목 옆에 안내 아이콘 추가. */
 function buildSummaryCard(
   container: HTMLElement,
   title: string,
   handler: (() => void) | undefined,
+  tooltip?: string,
 ): { pnlEl: HTMLSpanElement; rateEl: HTMLSpanElement; cardEl: HTMLDivElement } | null {
   try {
     const card = document.createElement('div')
@@ -58,8 +71,15 @@ function buildSummaryCard(
     if (handler) card.addEventListener('click', handler)
 
     const titleEl = document.createElement('div')
-    Object.assign(titleEl.style, { fontSize: FONT_SIZE.section, color: COLOR.tertiary, whiteSpace: 'nowrap' })
+    Object.assign(titleEl.style, { fontSize: FONT_SIZE.section, color: COLOR.tertiary, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '4px' })
     titleEl.textContent = title
+    if (tooltip) {
+      try {
+        titleEl.appendChild(createInfoTooltip(tooltip))
+      } catch (e) {
+        console.warn('[profit-shared] tooltip build error (카드는 정상 동작)', e)
+      }
+    }
 
     const valRow = document.createElement('div')
     Object.assign(valRow.style, { display: 'flex', justifyContent: 'flex-end', alignItems: 'baseline', gap: '6px' })
@@ -85,20 +105,20 @@ function buildSummaryCard(
   }
 }
 
-/** 요약 카드 4개(당일/5거래일/당월/누적 손익) DOM 생성, 클릭 콜백 주입, 요소 참조 반환.
- *  전일 카드 제거 (다단계 1세션 결정 1). 4카드 동일 구조 (P23 일관성).
+/** 요약 카드 5개(당일 전체 매도/당일 매수후 매도/5거래일/당월/누적 손익) DOM 생성, 클릭 콜백 주입, 요소 참조 반환.
+ *  5카드 동일 구조 (P23 일관성). 당일 카드 2개에 툴팁 안내 아이콘 추가.
  *  카드 클릭 시 테이블 필터링 + 선택 강조 표시 (팝업 없음 — P24 단순성). */
 export function createSummaryCards(container: HTMLElement, callbacks: SummaryCardCallbacks = {}): SummaryCardEls {
-  const clickHandlers = [callbacks.onTodayClick, callbacks.onFivedayClick, callbacks.onMonthClick, callbacks.onTotalClick]
+  const clickHandlers = [callbacks.onTodayClick, callbacks.onTodayIntradayClick, callbacks.onFivedayClick, callbacks.onMonthClick, callbacks.onTotalClick]
 
   const pnlEls: HTMLSpanElement[] = []
   const rateEls: HTMLSpanElement[] = []
   const cardEls: HTMLDivElement[] = []
 
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < 5; i++) {
     // P25: 카드 단위 격리 — 한 카드 생성 throw 시 다음 카드 계속 렌더링.
     // 실패 시 더미 push로 인덱스 정합성 유지 (P22). buildStatRow 패턴과 일치 (P23).
-    const built = buildSummaryCard(container, SUMMARY_CARD_TITLES[i], clickHandlers[i])
+    const built = buildSummaryCard(container, SUMMARY_CARD_TITLES[i], clickHandlers[i], SUMMARY_CARD_TOOLTIPS[i])
     if (built) {
       pnlEls.push(built.pnlEl)
       rateEls.push(built.rateEl)
@@ -117,20 +137,21 @@ export function createSummaryCards(container: HTMLElement, callbacks: SummaryCar
 
   return {
     todayPnlEl: pnlEls[0], todayRateEl: rateEls[0],
-    fivedayPnlEl: pnlEls[1], fivedayRateEl: rateEls[1],
-    monthPnlEl: pnlEls[2], monthRateEl: rateEls[2],
-    totalPnlEl: pnlEls[3], totalRateEl: rateEls[3],
-    todayCard: cardEls[0], fivedayCard: cardEls[1], monthCard: cardEls[2], totalCard: cardEls[3],
+    todayIntradayPnlEl: pnlEls[1], todayIntradayRateEl: rateEls[1],
+    fivedayPnlEl: pnlEls[2], fivedayRateEl: rateEls[2],
+    monthPnlEl: pnlEls[3], monthRateEl: rateEls[3],
+    totalPnlEl: pnlEls[4], totalRateEl: rateEls[4],
+    todayCard: cardEls[0], todayIntradayCard: cardEls[1], fivedayCard: cardEls[2], monthCard: cardEls[3], totalCard: cardEls[4],
   }
 }
 
-/** 당일/5거래일/당월/누적 손익 계산 및 요약 카드 DOM 갱신 (전일 카드 제거 — 다단계 1세션 결정 1).
+/** 당일 전체 매도/당일 매수후 매도/5거래일/당월/누적 손익 계산 및 요약 카드 DOM 갱신.
  *  모든 카드를 computeCumulativePnl SSOT로 계산 (P10 SSOT — 분모 규칙 단일 소스).
  *  분모 규칙 (매수원금 기반 — 설계서 0절 최상위 원칙):
  *    - 실현 수익률 = 해당 기간 매도 완료된 종목들의 실현손익 합 ÷ 총 매수원금 합 × 100
- *    - 4카드(당일/5거래일/당월/누적) 동일 공식 (설계 원칙 5) — computeCumulativePnl이 aggregatePnl 기반으로 계산.
+ *    - 5카드 동일 공식 (설계 원칙 5) — computeCumulativePnl이 aggregatePnl 기반으로 계산.
  *    - 실전매매: 증권사 서버가 SSOT — rate null → '-' 표시 (AGENTS.md 실전vs가상 테이블).
- *  당일 카드: getTradingToday() SSOT 기준 당일 실현손익 (개장 전 폴백 제거 — P10 단일 해석, P20 폴백 금지).
+ *  당일 매수후 매도 카드: 당일 매도 중 buy_date=오늘인 매도만 집계 (P21 투명성 — 당일 전체와 구분).
  *  dailySummary는 5거래일 날짜 추출에만 사용 (날짜 결정 SSOT). */
 export function updateSummaryCards(
   dailySummary: Record<string, unknown>[],
@@ -148,8 +169,16 @@ export function updateSummaryCards(
   const fivedayFrom = recent5.length > 0 ? recent5[recent5.length - 1] : ''
   const fivedayTo = recent5.length > 0 ? recent5[0] : ''
 
-  // 4카드 동일 경로: computeCumulativePnl SSOT (P10 — 분모 규칙 단일 소스, P23 — 4카드 일관성)
+  // 당일 매수후 매도: 당일 매도 중 buy_date=오늘인 것만 필터링 (P21 투명성)
+  const intradaySells = sellHistory.filter(r => {
+    const d = String(r.date ?? '')
+    const bd = String(r.buy_date ?? '')
+    return d === today && bd === today
+  })
+
+  // 5카드 동일 경로: computeCumulativePnl SSOT (P10 — 분모 규칙 단일 소스, P23 — 5카드 일관성)
   const dayS = computeCumulativePnl({ sellHistory, isTestMode, dateFrom: today, dateTo: today })
+  const intradayS = computeCumulativePnl({ sellHistory: intradaySells, isTestMode })
   const fiveS = (fivedayFrom && fivedayTo)
     ? computeCumulativePnl({ sellHistory, isTestMode, dateFrom: fivedayFrom, dateTo: fivedayTo })
     : { pnl: 0, rate: 0 as number | null }
@@ -160,6 +189,10 @@ export function updateSummaryCards(
   els.todayPnlEl.style.color = pnlColor(dayS.pnl)
   els.todayRateEl.textContent = dayS.rate == null ? '-' : `${dayS.rate.toFixed(2)}%`
   els.todayRateEl.style.color = pnlColor(dayS.pnl)
+  els.todayIntradayPnlEl.textContent = fmtWon(intradayS.pnl)
+  els.todayIntradayPnlEl.style.color = pnlColor(intradayS.pnl)
+  els.todayIntradayRateEl.textContent = intradayS.rate == null ? '-' : `${intradayS.rate.toFixed(2)}%`
+  els.todayIntradayRateEl.style.color = pnlColor(intradayS.pnl)
   els.fivedayPnlEl.textContent = fmtWon(fiveS.pnl)
   els.fivedayPnlEl.style.color = pnlColor(fiveS.pnl)
   els.fivedayRateEl.textContent = fiveS.rate == null ? '-' : `${fiveS.rate.toFixed(2)}%`

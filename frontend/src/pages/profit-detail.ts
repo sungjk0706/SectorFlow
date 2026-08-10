@@ -29,7 +29,7 @@ import {
 
 /* ── 모듈 변수 ── */
 type LowerTab = 'buy' | 'sell'
-export type SelectedView = 'today' | 'fiveday' | 'month' | 'total' | null
+export type SelectedView = 'today' | 'today_intraday' | 'fiveday' | 'month' | 'total' | null
 
 /* ── 1프레임 내 필터 결과 재사용 캐시 (P24 단순성 — filterTradeRows 중복 연산 방지) ── */
 interface FilterCache {

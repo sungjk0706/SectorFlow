@@ -39,6 +39,12 @@ export function buildSummaryRow(state: ProfitDetailState): HTMLDivElement {
       filterByDate(state, getTradingToday())
       persistViewState(state)
     },
+    onTodayIntradayClick: () => {
+      state.selectedView = 'today_intraday'
+      updateCardSelection(state)
+      filterByDate(state, getTradingToday())
+      persistViewState(state)
+    },
     onFivedayClick: () => {
       state.selectedView = 'fiveday'
       updateCardSelection(state)
@@ -219,6 +225,9 @@ export function getAutomaticDateRange(
   dailySummary: Record<string, unknown>[],
 ): { from: string; to: string } | null {
   if (selectedView === 'today') {
+    return { from: today, to: today }
+  }
+  if (selectedView === 'today_intraday') {
     return { from: today, to: today }
   }
   if (selectedView === 'month') {

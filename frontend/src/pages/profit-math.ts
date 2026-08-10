@@ -141,17 +141,25 @@ export function buildSectorStockPnl(
   })
 }
 
-/** 거래내역 날짜 + 종목 필터 (profit-overview/profit-detail 공통 — P23 SSOT) */
+/** 거래내역 날짜 + 종목 필터 (profit-overview/profit-detail 공통 — P23 SSOT)
+ *  buyDateFrom/buyDateTo: 매수일자(buy_date) 기반 추가 필터 (당일 매수후 매도 카드용). */
 export function filterTradeRows(
   rows: Record<string, unknown>[],
   dateFrom: string,
   dateTo: string,
   stockQuery?: string,
+  buyDateFrom?: string,
+  buyDateTo?: string,
 ): Record<string, unknown>[] {
   return rows.filter(r => {
     const d = String(r.date ?? '')
     if (dateFrom && d < dateFrom) return false
     if (dateTo && d > dateTo) return false
+    if (buyDateFrom || buyDateTo) {
+      const bd = String(r.buy_date ?? '')
+      if (buyDateFrom && bd < buyDateFrom) return false
+      if (buyDateTo && bd > buyDateTo) return false
+    }
     if (stockQuery) {
       const code = String(r.stk_cd ?? '')
       const name = String(r.stk_nm ?? '')

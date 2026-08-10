@@ -3,8 +3,9 @@
 // 드릴다운 컬럼 제거 (다단계 4세션 F-4 — 인라인 드릴다운 테이블 폐지, 공통 dialog.ts 모달로 전환)
 
 import type { ColumnDef } from '../components/common/data-table'
-import { pnlColor, fmtWon, fmtComma, createStockNameColumn, createCodeCell, createNumberCell } from '../components/common/ui-styles'
+import { pnlColor, fmtWon, fmtComma, createStockNameColumn, createCodeCell, createNumberCell, COLOR, FONT_SIZE } from '../components/common/ui-styles'
 import { hotStore, normalizeStockCode } from '../stores/hotStore'
+import { getTradingToday } from '../utils/date'
 
 /* ── 매수 컬럼 (9개) — 업종/매수순위 제거 (P24 단순성, 매수 후보 화면에서 이미 확인 가능) ── */
 export const BUY_COLS: ColumnDef<Record<string, unknown>>[] = [
@@ -46,7 +47,28 @@ export const SELL_COLS: ColumnDef<Record<string, unknown>>[] = [
       }
     }
   ),
-  { key: 'buy_date', label: '매수일시', align: 'center', type: 'date_short', render: r => { const d = String(r.buy_date ?? ''); return d.length >= 10 ? d.slice(5, 7) + '/' + d.slice(8, 10) : d } },
+  { key: 'buy_date', label: '매수일시', align: 'center', type: 'date_short', render: r => {
+    const d = String(r.buy_date ?? '')
+    const dateText = d.length >= 10 ? d.slice(5, 7) + '/' + d.slice(8, 10) : d
+    // 당일 매수분 vs 과거 매수분 배지 (P21 투명성 — buy_date=오늘이면 "당일", 아니면 "보유")
+    const today = getTradingToday()
+    const isIntraday = d === today && d !== ''
+    const wrap = document.createElement('span')
+    Object.assign(wrap.style, { display: 'inline-flex', alignItems: 'center', gap: '4px' })
+    wrap.textContent = dateText
+    const badge = document.createElement('span')
+    Object.assign(badge.style, {
+      fontSize: FONT_SIZE.label,
+      padding: '1px 5px',
+      borderRadius: '3px',
+      whiteSpace: 'nowrap',
+      color: COLOR.white,
+      background: isIntraday ? COLOR.down : COLOR.tertiary,
+    })
+    badge.textContent = isIntraday ? '당일' : '보유'
+    wrap.appendChild(badge)
+    return wrap
+  }},
   { key: 'avg_buy_price', label: '매수가', align: 'right', type: 'avg_buy_price', render: r => createNumberCell(Number(r.avg_buy_price ?? 0)) },
   { key: 'price', label: '매도가', align: 'right', type: 'sell_price', render: r => {
     const sell = Number(r.price ?? 0)
