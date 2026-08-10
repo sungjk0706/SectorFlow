@@ -192,8 +192,9 @@ function buildTestVirtualResetWrap(): HTMLElement {
 
 function renderTestVirtualSection(state: GeneralSettingsState): HTMLElement {
   const wrap = document.createElement('div')
-  const disabled = state.vals.trade_mode !== 'virtual'
-  if (disabled) { wrap.style.opacity = '0.4'; wrap.style.pointerEvents = 'none' }
+  // display 토글 단일 메커니즘 — syncTradeMode가 testVirtualSection.style.display로 표시/숨김 처리.
+  //   초기 opacity/pointerEvents 설정은 display: none 상태에서 중복이며,
+  //   실전→가상 전환 시 syncTradeMode가 갱신하지 않아 잔존하던 버그 제거.
 
   const inputState = { inputAmount: Number(state.vals.virtual_deposit) || 0 }
   wrap.appendChild(buildTestVirtualInputRow(state, inputState))
